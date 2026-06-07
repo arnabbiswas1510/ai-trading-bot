@@ -78,7 +78,9 @@ def init_db():
         "stop_loss_pct": "7.0",
         "profit_target_pct": "25.0",
         "initial_balance": "100000.0",
-        "cash_balance": "100000.0"
+        "cash_balance": "100000.0",
+        "fmp_api_key": "",
+        "last_watchlist_gen_time": ""
     }
     
     for key, value in default_settings.items():

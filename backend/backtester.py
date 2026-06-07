@@ -1,30 +1,25 @@
-import yfinance as yf
+from fmp_client import FMPClient
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
 def run_backtest(tickers, start_date_str, end_date_str, initial_capital=100000.0, stop_loss_pct=7.0, profit_target_pct=25.0, max_positions=5):
     """
-    Runs a historical simulation of a breakout CAN SLIM-inspired technical strategy.
-    
-    Rules:
-    - Entry: Stock breaks above its 20-day price channel high, volume > 1.4x of its 50-day average, 
-             and price is above its 50-day and 200-day moving averages.
-             Index must be in an uptrend (S&P 500 above 200 SMA).
-    - Exit:
-      - Stop loss triggered at entry_price * (1 - stop_loss_pct/100)
-      - Profit target hit at entry_price * (1 + profit_target_pct/100)
-      - Trailing exit: close below 50-day moving average.
+    Runs a historical simulation of a breakout CAN SLIM-inspired technical strategy using FMP data.
     """
     
     # Parse dates
     start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
     end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
     
+    fmp = FMPClient()
+    if not fmp.is_configured():
+        raise ValueError("FMP API Key is not configured. Go to settings to set it.")
+        
     # Download S&P 500 for market filter
-    sp500_df = yf.download("^GSPC", start=start_date_str, end=end_date_str, progress=False)
-    if isinstance(sp500_df.columns, pd.MultiIndex):
-        sp500_df.columns = sp500_df.columns.get_level_values(0)
+    sp500_df = fmp.get_historical_prices("^GSPC", start_date_str, end_date_str)
+    if sp500_df.empty:
+        raise ValueError("Could not download index data (^GSPC) from FMP.")
     sp500_df['SMA200'] = sp500_df['Close'].rolling(200).mean()
     
     # Download data for all tickers
@@ -33,11 +28,8 @@ def run_backtest(tickers, start_date_str, end_date_str, initial_capital=100000.0
         try:
             # Download extra historical days (approx 1 year prior) to compute 200 SMA right from start_date
             dl_start = (start_dt - timedelta(days=365)).strftime("%Y-%m-%d")
-            df = yf.download(t, start=dl_start, end=end_date_str, progress=False)
+            df = fmp.get_historical_prices(t, dl_start, end_date_str)
             if not df.empty:
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                
                 # Calculate indicators
                 df['SMA50'] = df['Close'].rolling(50).mean()
                 df['SMA200'] = df['Close'].rolling(200).mean()

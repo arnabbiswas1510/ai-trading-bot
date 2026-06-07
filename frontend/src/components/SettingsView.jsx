@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Save, RefreshCw, Trash2 } from 'lucide-react';
+import { Settings, Save, RefreshCw, Trash2, Globe } from 'lucide-react';
 
 export default function SettingsView({ settings, onSaveSettings, onResetPortfolio }) {
   const [watchlist, setWatchlist] = useState('');
   const [stopLoss, setStopLoss] = useState(7.0);
   const [profitTarget, setProfitTarget] = useState(25.0);
   const [initialBalance, setInitialBalance] = useState(100000.0);
+  const [fmpApiKey, setFmpApiKey] = useState('');
   const [saving, setSaving] = useState(false);
+  const [generatingWatchlist, setGeneratingWatchlist] = useState(false);
 
   // Sync settings when loaded
   useEffect(() => {
@@ -15,24 +17,62 @@ export default function SettingsView({ settings, onSaveSettings, onResetPortfoli
       setStopLoss(settings.stop_loss_pct ?? 7.0);
       setProfitTarget(settings.profit_target_pct ?? 25.0);
       setInitialBalance(settings.initial_balance ?? 100000.0);
+      setFmpApiKey(settings.fmp_api_key || '');
     }
   }, [settings]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setSaving(true);
     try {
       await onSaveSettings({
         watchlist,
         stop_loss_pct: parseFloat(stopLoss),
         profit_target_pct: parseFloat(profitTarget),
-        initial_balance: parseFloat(initialBalance)
+        initial_balance: parseFloat(initialBalance),
+        fmp_api_key: fmpApiKey
       });
       alert('Settings updated successfully');
     } catch (err) {
       alert(`Failed to save settings: ${err.message}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAutoGenerateWatchlist = async () => {
+    if (!fmpApiKey && (!settings || !settings.fmp_api_key)) {
+      alert('Please enter your FMP API Key first.');
+      return;
+    }
+    setGeneratingWatchlist(true);
+    try {
+      // First, save settings to make sure FMP API key is updated in the DB
+      await onSaveSettings({
+        watchlist,
+        stop_loss_pct: parseFloat(stopLoss),
+        profit_target_pct: parseFloat(profitTarget),
+        initial_balance: parseFloat(initialBalance),
+        fmp_api_key: fmpApiKey
+      });
+
+      const response = await fetch('/api/screener/auto-watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to auto-generate watchlist');
+      }
+      
+      const data = await response.json();
+      setWatchlist(data.watchlist);
+      alert(data.message);
+    } catch (err) {
+      alert(`Auto-generation failed: ${err.message}`);
+    } finally {
+      setGeneratingWatchlist(false);
     }
   };
 
@@ -59,9 +99,36 @@ export default function SettingsView({ settings, onSaveSettings, onResetPortfoli
         
         <form onSubmit={handleSubmit}>
           
+          {/* FMP API Key */}
+          <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+            <label>Financial Modeling Prep (FMP) API Key</label>
+            <input 
+              type="text" 
+              className="form-control"
+              value={fmpApiKey}
+              onChange={(e) => setFmpApiKey(e.target.value)}
+              placeholder="Enter FMP API Key (e.g. pr_... or free key)"
+            />
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+              Required to fetch fundamental stock metrics, financial statements, and auto-generate watchlists programmatically.
+            </p>
+          </div>
+
           {/* Watchlist Input */}
           <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-            <label>Scanned Watchlist (Comma-separated Tickers)</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <label style={{ margin: 0 }}>Scanned Watchlist (Comma-separated Tickers)</label>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem', height: 'auto' }}
+                onClick={handleAutoGenerateWatchlist}
+                disabled={generatingWatchlist}
+              >
+                <Globe size={14} />
+                <span>{generatingWatchlist ? 'Generating...' : 'Auto-Generate Watchlist (FMP)'}</span>
+              </button>
+            </div>
             <textarea 
               className="form-control" 
               style={{ minHeight: '100px', resize: 'vertical', fontFamily: 'var(--font-sans)', lineHeight: '1.5' }}

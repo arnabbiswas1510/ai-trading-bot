@@ -1,14 +1,23 @@
-import yfinance as yf
 import pandas as pd
 import numpy as np
 import datetime
 from database import get_watchlist
+from fmp_client import FMPClient
 
 def get_market_direction():
     """
-    Analyzes ^GSPC (S&P 500) and ^IXIC (Nasdaq Composite) to determine general market health (M).
+    Analyzes ^GSPC (S&P 500) and ^IXIC (Nasdaq Composite) to determine general market health (M) using FMP.
     Returns a dict with status, moving averages, and current prices.
     """
+    fmp = FMPClient()
+    if not fmp.is_configured():
+        return {
+            "status": "FMP API Key Not Configured",
+            "score": 0.0,
+            "details": ["Please configure your FMP API Key in Settings to run the screener."],
+            "indices": {}
+        }
+
     indices = {"S&P 500": "^GSPC", "Nasdaq": "^IXIC"}
     status_summary = []
     total_score = 15
@@ -16,11 +25,16 @@ def get_market_direction():
     
     index_data = {}
     
+    end_dt = datetime.datetime.now()
+    start_dt = end_dt - datetime.timedelta(days=365)
+    start_str = start_dt.strftime("%Y-%m-%d")
+    end_str = end_dt.strftime("%Y-%m-%d")
+
     for name, symbol in indices.items():
         try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(period="1y")
+            df = fmp.get_historical_prices(symbol, start_str, end_str)
             if df.empty:
+                # Try fallback index symbol names if needed (e.g. without ^ for some feeds, but FMP standard is ^GSPC)
                 continue
                 
             close = float(df['Close'].iloc[-1])
@@ -40,19 +54,13 @@ def get_market_direction():
                 "golden_cross": sma50_above_200
             }
             
-            # If both indices are below their 200 SMA, it's a correction
             if not above_200:
                 status_summary.append(f"{name} is below 200-day SMA")
             elif not above_50:
                 status_summary.append(f"{name} is below 50-day SMA but above 200-day SMA")
         except Exception as e:
-            print(f"Error fetching market direction for {symbol}: {e}")
+            print(f"Error fetching market direction for {symbol} from FMP: {e}")
             
-    # Calculate M score
-    # Both above 50 and 200, and 50 > 200 -> Confirmed Uptrend (15 pts)
-    # One or both below 50 but above 200 -> Uptrend Under Pressure (8 pts)
-    # One or both below 200 -> Market in Correction (0 pts)
-    
     num_indices = len(index_data)
     if num_indices > 0:
         below_200_count = sum(1 for data in index_data.values() if not data["above_200"])
@@ -67,6 +75,11 @@ def get_market_direction():
         else:
             market_status = "Confirmed Uptrend"
             total_score = 15
+    else:
+        # Fallback if indices couldn't be loaded (e.g., weekend/API limits)
+        market_status = "Uptrend Under Pressure"
+        total_score = 5
+        status_summary.append("Indices data temporarily unavailable. Defaulting to Uptrend Under Pressure.")
             
     return {
         "status": market_status,
@@ -116,7 +129,6 @@ def calculate_rs_scores(watchlist, historical_data):
             if rs_raw_scores[t] <= -900:
                 rs_percentiles[t] = 1.0
                 continue
-            # Calculate rank percentile
             score = rs_raw_scores[t]
             rank = sum(1 for s in valid_scores if s <= score)
             percentile = (rank / len(valid_scores)) * 99.0
@@ -129,17 +141,24 @@ def calculate_rs_scores(watchlist, historical_data):
 
 def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
     """
-    Evaluates a single ticker against C, A, N, S, L, I, M
+    Evaluates a single ticker against C, A, N, S, L, I, M using FMP.
     Returns a dict with overall scores and details.
     """
-    ticker = yf.Ticker(ticker_symbol)
+    fmp = FMPClient()
+    if not fmp.is_configured():
+        raise ValueError("FMP API Key is not configured.")
+
+    # Get quote details
+    quote = fmp.get_quote(ticker_symbol)
     
-    # Check if we already have the historical data passed in
+    # Get historical data
     if hist_df is None or hist_df.empty:
         try:
-            hist_df = ticker.history(period="1y")
+            end_dt = datetime.datetime.now()
+            start_dt = end_dt - datetime.timedelta(days=365)
+            hist_df = fmp.get_historical_prices(ticker_symbol, start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d"))
         except Exception as e:
-            print(f"Error downloading history for {ticker_symbol}: {e}")
+            print(f"Error downloading FMP history for {ticker_symbol}: {e}")
             hist_df = pd.DataFrame()
             
     if hist_df.empty:
@@ -148,7 +167,7 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
             "total_score": 0.0,
             "score_c": 0.0, "score_a": 0.0, "score_n": 0.0, "score_s": 0.0,
             "score_l": 0.0, "score_i": 0.0, "score_m": 0.0,
-            "details": {"error": "No price history available"}
+            "details": {"error": "No price history available from FMP"}
         }
         
     details = {}
@@ -160,8 +179,8 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
     score_i = 0.0
     score_m = market_m["score"]
     
-    # Get current price
-    current_price = float(hist_df['Close'].iloc[-1])
+    # Get current price from quote or fallback to historical
+    current_price = float(quote.get("price") or hist_df['Close'].iloc[-1])
     details['current_price'] = round(current_price, 2)
     
     # ------------------
@@ -172,65 +191,44 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
     details['c_eps_acceleration'] = False
     
     try:
-        quarterly_income = ticker.quarterly_income_stmt
-        if quarterly_income is not None and not quarterly_income.empty:
-            # Clean indexes
-            quarterly_income.index = quarterly_income.index.str.strip().str.lower()
+        q_inc = fmp.get_income_statements(ticker_symbol, period="quarter", limit=5)
+        if q_inc and len(q_inc) >= 5:
+            # FMP returns quarterly data descending by date.
+            # q0 = q_inc[0], q1 = q_inc[1], q4 (YoY) = q_inc[4]
+            eps_q0 = float(q_inc[0].get("epsdiluted") or q_inc[0].get("eps") or 0)
+            eps_q4 = float(q_inc[4].get("epsdiluted") or q_inc[4].get("eps") or 0)
             
-            # Find EPS row
-            eps_row = None
-            for idx in ['basic eps', 'diluted eps', 'basiceps', 'dilutedeps']:
-                if idx in quarterly_income.index:
-                    eps_row = quarterly_income.loc[idx]
-                    break
-                    
-            # Find Revenue row
-            rev_row = None
-            for idx in ['total revenue', 'revenue', 'operating revenue', 'totalrevenue']:
-                if idx in quarterly_income.index:
-                    rev_row = quarterly_income.loc[idx]
-                    break
-                    
-            if eps_row is not None and len(eps_row) >= 5:
-                eps_q0 = float(eps_row.iloc[0])
-                eps_q4 = float(eps_row.iloc[4]) # Same quarter last year (columns are desc dates)
-                
-                # Check for Q-1 and Q-5 for acceleration
-                eps_q1 = float(eps_row.iloc[1])
-                eps_q5 = float(eps_row.iloc[5]) if len(eps_row) >= 6 else None
-                
-                if eps_q4 > 0:
-                    yoy_growth = (eps_q0 - eps_q4) / eps_q4
-                    details['c_growth_yoy'] = round(yoy_growth * 100.0, 1)
-                    if yoy_growth >= 0.25:
-                        score_c += 8.0
-                        # Boost for extreme growth
-                        score_c += min(4.0, (yoy_growth - 0.25) * 10.0)
-                    elif yoy_growth > 0:
-                        score_c += max(0.0, yoy_growth * 32.0)
-                        
-                    # Check acceleration
-                    if eps_q5 is not None and eps_q5 > 0:
-                        prev_yoy_growth = (eps_q1 - eps_q5) / eps_q5
-                        if yoy_growth > prev_yoy_growth:
-                            details['c_eps_acceleration'] = True
-                            score_c += 2.0
-                else:
-                    details['c_growth_yoy'] = 0.0
+            eps_q1 = float(q_inc[1].get("epsdiluted") or q_inc[1].get("eps") or 0)
+            eps_q5 = float(q_inc[5].get("epsdiluted") or q_inc[5].get("eps") or 0) if len(q_inc) >= 6 else None
             
-            if rev_row is not None and len(rev_row) >= 5:
-                rev_q0 = float(rev_row.iloc[0])
-                rev_q4 = float(rev_row.iloc[4])
-                if rev_q4 > 0:
-                    rev_growth = (rev_q0 - rev_q4) / rev_q4
-                    details['c_rev_growth_yoy'] = round(rev_growth * 100.0, 1)
-                    if rev_growth >= 0.25:
-                        score_c += 3.0
-                    elif rev_growth > 0:
-                        score_c += max(0.0, rev_growth * 12.0)
+            if eps_q4 > 0:
+                yoy_growth = (eps_q0 - eps_q4) / eps_q4
+                details['c_growth_yoy'] = round(yoy_growth * 100.0, 1)
+                if yoy_growth >= 0.25:
+                    score_c += 8.0
+                    score_c += min(4.0, (yoy_growth - 0.25) * 10.0)
+                elif yoy_growth > 0:
+                    score_c += max(0.0, yoy_growth * 32.0)
+                    
+                # Check acceleration
+                if eps_q5 is not None and eps_q5 > 0:
+                    prev_yoy_growth = (eps_q1 - eps_q5) / eps_q5
+                    if yoy_growth > prev_yoy_growth:
+                        details['c_eps_acceleration'] = True
+                        score_c += 2.0
+            
+            rev_q0 = float(q_inc[0].get("revenue") or 0)
+            rev_q4 = float(q_inc[4].get("revenue") or 0)
+            if rev_q4 > 0:
+                rev_growth = (rev_q0 - rev_q4) / rev_q4
+                details['c_rev_growth_yoy'] = round(rev_growth * 100.0, 1)
+                if rev_growth >= 0.25:
+                    score_c += 3.0
+                elif rev_growth > 0:
+                    score_c += max(0.0, rev_growth * 12.0)
     except Exception as e:
         print(f"Error evaluating C for {ticker_symbol}: {e}")
-        details['c_notes'] = "Failed to parse quarterly statements"
+        details['c_notes'] = "Failed to parse FMP quarterly statements"
         
     score_c = min(15.0, round(score_c, 1))
     
@@ -241,63 +239,36 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
     details['a_roe'] = 0.0
     
     try:
-        # Check annual earnings
-        annual_income = ticker.income_stmt
-        annual_balance = ticker.balance_sheet
+        a_inc = fmp.get_income_statements(ticker_symbol, period="annual", limit=3)
+        a_bal = fmp.get_balance_sheets(ticker_symbol, period="annual", limit=3)
         
-        if annual_income is not None and not annual_income.empty:
-            annual_income.index = annual_income.index.str.strip().str.lower()
-            
-            # Find EPS
-            eps_row = None
-            for idx in ['basic eps', 'diluted eps', 'basiceps', 'dilutedeps']:
-                if idx in annual_income.index:
-                    eps_row = annual_income.loc[idx]
-                    break
+        if a_inc and len(a_inc) >= 3:
+            eps_y0 = float(a_inc[0].get("epsdiluted") or a_inc[0].get("eps") or 0)
+            eps_y2 = float(a_inc[2].get("epsdiluted") or a_inc[2].get("eps") or 0)
+            if eps_y2 > 0 and eps_y0 > 0:
+                cagr = (eps_y0 / eps_y2) ** (0.5) - 1.0
+                details['a_eps_growth_cagr'] = round(cagr * 100.0, 1)
+                if cagr >= 0.20:
+                    score_a += 8.0
+                    if cagr >= 0.25:
+                        score_a += 2.0
+                elif cagr > 0:
+                    score_a += max(0.0, cagr * 40.0)
                     
-            if eps_row is not None and len(eps_row) >= 3:
-                # CAGR over last 3 years (e.g. Y0, Y1, Y2)
-                eps_y0 = float(eps_row.iloc[0])
-                eps_y2 = float(eps_row.iloc[2])
-                if eps_y2 > 0 and eps_y0 > 0:
-                    cagr = (eps_y0 / eps_y2) ** (0.5) - 1.0 # 2-year growth
-                    details['a_eps_growth_cagr'] = round(cagr * 100.0, 1)
-                    if cagr >= 0.20:
-                        score_a += 8.0
-                        if cagr >= 0.25:
-                            score_a += 2.0
-                    elif cagr > 0:
-                        score_a += max(0.0, cagr * 40.0)
-                        
-            # Return on Equity (ROE)
-            # Find Net Income from Income Stmt
-            net_income_row = None
-            for idx in ['net income', 'netincome', 'net income common stockholders']:
-                if idx in annual_income.index:
-                    net_income_row = annual_income.loc[idx]
-                    break
-                    
-            if annual_balance is not None and not annual_balance.empty:
-                annual_balance.index = annual_balance.index.str.strip().str.lower()
-                equity_row = None
-                for idx in ['stockholders equity', 'stockholdersequity', 'total equity']:
-                    if idx in annual_balance.index:
-                        equity_row = annual_balance.loc[idx]
-                        break
-                        
-                if net_income_row is not None and equity_row is not None:
-                    net_income = float(net_income_row.iloc[0])
-                    equity = float(equity_row.iloc[0])
-                    if equity > 0:
-                        roe = net_income / equity
-                        details['a_roe'] = round(roe * 100.0, 1)
-                        if roe >= 0.17:
-                            score_a += 5.0
-                        elif roe > 0:
-                            score_a += max(0.0, roe * 29.4) # scale up to 5 points
+            # ROE calculation
+            net_income = float(a_inc[0].get("netIncome") or 0)
+            if a_bal and len(a_bal) > 0:
+                equity = float(a_bal[0].get("totalStockholdersEquity") or a_bal[0].get("totalEquity") or 0)
+                if equity > 0:
+                    roe = net_income / equity
+                    details['a_roe'] = round(roe * 100.0, 1)
+                    if roe >= 0.17:
+                        score_a += 5.0
+                    elif roe > 0:
+                        score_a += max(0.0, roe * 29.4)
     except Exception as e:
         print(f"Error evaluating A for {ticker_symbol}: {e}")
-        details['a_notes'] = "Failed to parse annual financials"
+        details['a_notes'] = "Failed to parse FMP annual financials"
         
     score_a = min(15.0, round(score_a, 1))
     
@@ -305,21 +276,21 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
     # N - New Catalyst / Price High (Max 15)
     # ------------------
     try:
-        # Distance to 52-week High
-        max_52w = float(hist_df['Close'].max())
+        # Distance to 52-week High (from FMP Quote or historical)
+        max_52w = float(quote.get("yearHigh") or hist_df['Close'].max())
         dist_to_high = (max_52w - current_price) / max_52w
         details['n_52w_high'] = round(max_52w, 2)
         details['n_pct_from_high'] = round(dist_to_high * 100.0, 1)
         
         # Calculate moving averages
-        sma50 = float(hist_df['Close'].rolling(50).mean().iloc[-1])
-        sma200 = float(hist_df['Close'].rolling(200).mean().iloc[-1])
+        sma50 = float(quote.get("priceAvg50") or hist_df['Close'].rolling(50).mean().iloc[-1])
+        sma200 = float(quote.get("priceAvg200") or hist_df['Close'].rolling(200).mean().iloc[-1])
         details['sma50'] = round(sma50, 2)
         details['sma200'] = round(sma200, 2)
         
-        if dist_to_high <= 0.15: # Within 15% of 52-week high
+        if dist_to_high <= 0.15:
             score_n += 10.0
-            if dist_to_high <= 0.05: # Extremely close to breakout
+            if dist_to_high <= 0.05:
                 score_n += 2.0
         elif dist_to_high <= 0.25:
             score_n += 5.0
@@ -337,9 +308,8 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
     # S - Supply and Demand (Max 15)
     # ------------------
     try:
-        # Accumulation vs Distribution days (last 20 days)
-        # Average volume (last 50 days)
-        avg_vol_50 = float(hist_df['Volume'].rolling(50).mean().iloc[-1])
+        # Accumulation vs Distribution days
+        avg_vol_50 = float(quote.get("avgVolume") or hist_df['Volume'].rolling(50).mean().iloc[-1])
         details['s_avg_volume'] = int(avg_vol_50)
         
         recent_df = hist_df.tail(20).copy()
@@ -354,9 +324,9 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
             chg = float(row['pct_change'])
             
             if vol > avg_vol_50 * 1.1:
-                if chg > 0.005: # up day
+                if chg > 0.005:
                     accumulation_days += 1
-                elif chg < -0.005: # down day
+                elif chg < -0.005:
                     distribution_days += 1
                     
         details['s_acc_days'] = accumulation_days
@@ -364,18 +334,16 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
         
         if accumulation_days > distribution_days:
             score_s += 8.0
-            # Higher diff is better
             score_s += min(4.0, (accumulation_days - distribution_days) * 1.0)
         elif accumulation_days == distribution_days:
             score_s += 4.0
             
         # Float / Shares outstanding
-        info = ticker.info
-        shares_out = info.get('sharesOutstanding')
+        market_cap = quote.get("marketCap")
+        price = quote.get("price")
+        shares_out = int(market_cap / price) if market_cap and price else None
         if shares_out:
             details['s_shares_outstanding'] = shares_out
-            # O'Neil prefers small cap/low float but in 4th edition quality matters.
-            # Give points for smaller size (less than 150 million shares)
             if shares_out < 150_000_000:
                 score_s += 3.0
             elif shares_out < 500_000_000:
@@ -399,13 +367,14 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
     elif rs_rating >= 60:
         score_l += 5.0
         
-    # Check if price > S&P 500 relative performance over 3 months
+    # Check S&P 500 comparison
     try:
-        sp_ticker = yf.Ticker("^GSPC")
-        sp_df = sp_ticker.history(period="3mo")
+        end_dt = datetime.datetime.now()
+        start_dt = end_dt - datetime.timedelta(days=100)
+        sp_df = fmp.get_historical_prices("^GSPC", start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d"))
         if not sp_df.empty:
             sp_perf = (sp_df['Close'].iloc[-1] / sp_df['Close'].iloc[0]) - 1.0
-            stock_perf = (hist_df['Close'].iloc[-1] / hist_df['Close'].iloc[-63]) - 1.0 # 3 months ago
+            stock_perf = (hist_df['Close'].iloc[-1] / hist_df['Close'].iloc[-63]) - 1.0 if len(hist_df) >= 63 else 0.0
             if stock_perf > sp_perf:
                 score_l += 2.0
     except Exception as e:
@@ -418,13 +387,13 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
     # ------------------
     details['i_held_percent_inst'] = 0.0
     try:
-        info = ticker.info
-        held_inst = info.get('heldPercentInstitutions') # returns float, e.g., 0.76
-        if held_inst is not None:
-            inst_pct = held_inst * 100.0
+        market_cap = quote.get("marketCap")
+        price = quote.get("price")
+        shares_out = int(market_cap / price) if market_cap and price else None
+        if shares_out:
+            inst_pct = fmp.get_institutional_holdings_percentage(ticker_symbol, shares_out)
             details['i_held_percent_inst'] = round(inst_pct, 1)
             
-            # Ideal is 30% to 85%
             if 30.0 <= inst_pct <= 85.0:
                 score_i = 10.0
             elif 10.0 <= inst_pct < 30.0 or 85.0 < inst_pct <= 95.0:
@@ -432,9 +401,8 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
             else:
                 score_i = 2.0
         else:
-            # Fallback if heldPercentInstitutions is not returned
             details['i_held_percent_inst'] = None
-            score_i = 5.0 # Neutral fallback
+            score_i = 5.0
     except Exception as e:
         print(f"Error evaluating I for {ticker_symbol}: {e}")
         score_i = 5.0
@@ -462,28 +430,35 @@ def scan_ticker(ticker_symbol, rs_rating, market_m, hist_df=None):
 
 def run_canslim_screener():
     """
-    Scans the entire watchlist, updates scores in the SQLite database, and returns results.
+    Scans the entire watchlist, updates scores in the SQLite database, and returns results using FMP.
     """
     watchlist = get_watchlist()
     if not watchlist:
         return []
         
+    fmp = FMPClient()
+    if not fmp.is_configured():
+        raise ValueError("FMP API Key is not configured. Go to settings to set it.")
+
     # Get Market direction (M)
     market_m = get_market_direction()
     
     # Download daily history for all stocks (1y)
     historical_data = {}
-    print(f"Downloading historical data for {len(watchlist)} tickers...")
+    print(f"Downloading FMP historical data for {len(watchlist)} tickers...")
+    
+    end_dt = datetime.datetime.now()
+    start_dt = end_dt - datetime.timedelta(days=365)
+    start_str = start_dt.strftime("%Y-%m-%d")
+    end_str = end_dt.strftime("%Y-%m-%d")
+
     for ticker in watchlist:
         try:
-            df = yf.download(ticker, period="1y", progress=False)
+            df = fmp.get_historical_prices(ticker, start_str, end_str)
             if not df.empty:
-                # yfinance returns multi-index columns for download, flatten it if needed
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
                 historical_data[ticker] = df
         except Exception as e:
-            print(f"Failed download for {ticker}: {e}")
+            print(f"Failed FMP download for {ticker}: {e}")
             
     # Calculate RS ratings
     rs_ratings = calculate_rs_scores(watchlist, historical_data)

@@ -2,13 +2,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
-import yfinance as yf
 import datetime
 import json
+import asyncio
+import pandas as pd
 
 import database as db
 import screener
 import backtester
+from fmp_client import FMPClient
 
 app = FastAPI(title="CAN SLIM Trading Bot API")
 
@@ -29,6 +31,7 @@ class SettingsUpdate(BaseModel):
     stop_loss_pct: float
     profit_target_pct: float
     initial_balance: float
+    fmp_api_key: Optional[str] = ""
 
 class TradeOrder(BaseModel):
     ticker: str
@@ -46,6 +49,58 @@ class BacktestRequest(BaseModel):
     stop_loss_pct: float
     profit_target_pct: float
     max_positions: int
+
+# -----------------
+# Background Scheduler
+# -----------------
+def check_and_run_weekly_watchlist():
+    """Checks if more than 7 days have passed since the last watchlist generation, and runs it if so."""
+    try:
+        fmp = FMPClient()
+        if not fmp.is_configured():
+            print("[Scheduler] FMP API Key is not configured yet. Skipping weekly watchlist check.")
+            return
+            
+        last_run = db.get_setting("last_watchlist_gen_time", "")
+        should_run = False
+        if not last_run:
+            should_run = True
+        else:
+            try:
+                last_dt = datetime.datetime.strptime(last_run, "%Y-%m-%d %H:%M:%S")
+                # If it has been more than 7 days, trigger it
+                if (datetime.datetime.now() - last_dt).days >= 7:
+                    should_run = True
+            except Exception:
+                should_run = True
+                
+        if should_run:
+            print("[Scheduler] Running automatic weekly watchlist generation...")
+            symbols = fmp.run_screener_watchlist()
+            if symbols:
+                watchlist_str = ",".join(symbols)
+                db.set_setting("watchlist", watchlist_str)
+                now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                db.set_setting("last_watchlist_gen_time", now_str)
+                print(f"[Scheduler] Watchlist updated with {len(symbols)} tickers.")
+            else:
+                print("[Scheduler] FMP Stock Screener returned no symbols or failed.")
+    except Exception as e:
+        print(f"[Scheduler] Error running weekly watchlist generation: {e}")
+
+async def periodic_watchlist_scheduler():
+    while True:
+        try:
+            check_and_run_weekly_watchlist()
+        except Exception as e:
+            print(f"[Scheduler] Error in periodic loop: {e}")
+        # Wait 1 hour between checks
+        await asyncio.sleep(3600)
+
+@app.on_event("startup")
+async def startup_event():
+    # Start the periodic weekly check loop in the background
+    asyncio.create_task(periodic_watchlist_scheduler())
 
 # -----------------
 # Routes
@@ -67,6 +122,34 @@ def run_screener():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/screener/auto-watchlist")
+def auto_generate_watchlist():
+    try:
+        fmp = FMPClient()
+        if not fmp.is_configured():
+            raise HTTPException(status_code=400, detail="FMP API Key is not configured. Please set it in Settings.")
+            
+        print("Running manual watchlist auto-generation...")
+        symbols = fmp.run_screener_watchlist()
+        if not symbols:
+            raise HTTPException(status_code=500, detail="FMP stock screener returned no symbols or failed.")
+            
+        watchlist_str = ",".join(symbols)
+        db.set_setting("watchlist", watchlist_str)
+        
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db.set_setting("last_watchlist_gen_time", now_str)
+        
+        return {
+            "status": "success",
+            "message": f"Successfully auto-generated watchlist with {len(symbols)} tickers.",
+            "watchlist": watchlist_str
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/screener/results")
 def get_screener_results():
     try:
@@ -81,21 +164,20 @@ def get_portfolio():
         initial = float(db.get_setting("initial_balance", 100000.0))
         positions = db.get_positions()
         
-        # Update current prices in real-time
+        fmp = FMPClient()
         portfolio_value = cash
         updated_positions = []
         
         for pos in positions:
             ticker = pos['ticker']
             try:
-                # Get current price
-                stock = yf.Ticker(ticker)
-                # fast price download
-                price_df = stock.history(period="1d")
-                if not price_df.empty:
-                    current_price = float(price_df['Close'].iloc[-1])
-                    db.update_position_price(ticker, current_price)
-                    pos['current_price'] = current_price
+                if fmp.is_configured():
+                    # Get current price
+                    quote = fmp.get_quote(ticker)
+                    if quote and "price" in quote:
+                        current_price = float(quote['price'])
+                        db.update_position_price(ticker, current_price)
+                        pos['current_price'] = current_price
             except Exception as ex:
                 print(f"Could not update live price for {ticker}: {ex}")
                 
@@ -140,13 +222,15 @@ def get_portfolio():
 def buy_stock(order: TradeOrder):
     try:
         ticker = order.ticker.strip().upper()
-        # Fetch current price
-        stock = yf.Ticker(ticker)
-        df = stock.history(period="1d")
-        if df.empty:
-            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
+        fmp = FMPClient()
+        if not fmp.is_configured():
+            raise HTTPException(status_code=400, detail="FMP API Key is not configured. Please set it in Settings.")
             
-        price = float(df['Close'].iloc[-1])
+        quote = fmp.get_quote(ticker)
+        if not quote or "price" not in quote:
+            raise HTTPException(status_code=400, detail=f"Invalid ticker or no price data: {ticker}")
+            
+        price = float(quote['price'])
         date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         db.buy_position(ticker, order.shares, price, date_str)
@@ -160,13 +244,15 @@ def buy_stock(order: TradeOrder):
 def sell_stock(order: SellOrder):
     try:
         ticker = order.ticker.strip().upper()
-        # Fetch current price
-        stock = yf.Ticker(ticker)
-        df = stock.history(period="1d")
-        if df.empty:
-            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
+        fmp = FMPClient()
+        if not fmp.is_configured():
+            raise HTTPException(status_code=400, detail="FMP API Key is not configured. Please set it in Settings.")
             
-        price = float(df['Close'].iloc[-1])
+        quote = fmp.get_quote(ticker)
+        if not quote or "price" not in quote:
+            raise HTTPException(status_code=400, detail=f"Invalid ticker or no price data: {ticker}")
+            
+        price = float(quote['price'])
         date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         db.sell_position(ticker, price, date_str, order.reason)
@@ -214,13 +300,17 @@ def get_settings():
         profit_target_pct = float(db.get_setting("profit_target_pct", 25.0))
         initial_balance = float(db.get_setting("initial_balance", 100000.0))
         cash_balance = float(db.get_setting("cash_balance", 100000.0))
+        fmp_api_key = db.get_setting("fmp_api_key", "")
+        last_watchlist_gen_time = db.get_setting("last_watchlist_gen_time", "")
         
         return {
             "watchlist": watchlist,
             "stop_loss_pct": stop_loss_pct,
             "profit_target_pct": profit_target_pct,
             "initial_balance": initial_balance,
-            "cash_balance": cash_balance
+            "cash_balance": cash_balance,
+            "fmp_api_key": fmp_api_key,
+            "last_watchlist_gen_time": last_watchlist_gen_time
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -232,6 +322,8 @@ def update_settings(settings: SettingsUpdate):
         db.set_setting("stop_loss_pct", settings.stop_loss_pct)
         db.set_setting("profit_target_pct", settings.profit_target_pct)
         db.set_setting("initial_balance", settings.initial_balance)
+        if settings.fmp_api_key is not None:
+            db.set_setting("fmp_api_key", settings.fmp_api_key.strip())
         return {"status": "success", "message": "Settings updated"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -247,15 +339,17 @@ def reset_portfolio_endpoint():
 @app.get("/api/stock-history/{ticker}")
 def get_stock_history(ticker: str):
     try:
-        stock = yf.Ticker(ticker.strip().upper())
-        df = stock.history(period="1y")
+        fmp = FMPClient()
+        if not fmp.is_configured():
+            raise HTTPException(status_code=400, detail="FMP API Key is not configured.")
+            
+        end_dt = datetime.datetime.now()
+        start_dt = end_dt - datetime.timedelta(days=365)
+        df = fmp.get_historical_prices(ticker.strip().upper(), start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d"))
+        
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for ticker {ticker}")
             
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-            
-        # Resample or format history
         history = []
         df['SMA50'] = df['Close'].rolling(50).mean()
         df['SMA200'] = df['Close'].rolling(200).mean()
