@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  trading-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: can-slim-trading-bot
+    ports:
+      - "8000:8000"
+    volumes:
+      - bot-data:/app/data
+    restart: unless-stopped
+    environment:
+      - DB_PATH=/app/data/trading_bot.db
+
+volumes:
+  bot-data:
+    driver: local

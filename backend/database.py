@@ -2,9 +2,12 @@ import sqlite3
 import json
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "trading_bot.db")
+DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "trading_bot.db"))
 
 def get_db_connection():
+    parent_dir = os.path.dirname(DB_PATH)
+    if parent_dir and not os.path.exists(parent_dir):
+        os.makedirs(parent_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
