@@ -1,0 +1,6 @@
+# Exclude heavy folders to prevent agent freezes
+.git/
+backend/__pycache__/
+backend/venv/
+frontend/node_modules/
+frontend/dist/
