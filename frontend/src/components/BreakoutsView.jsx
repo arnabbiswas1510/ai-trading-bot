@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, AlertCircle, Calendar, ArrowUpRight, DollarSign, Play } from 'lucide-react';
+import { Activity, AlertCircle, Calendar, ArrowUpRight, DollarSign, Play, ShoppingCart } from 'lucide-react';
 
 export default function BreakoutsView({ breakouts, onBuyStock }) {
   const [selectedStock, setSelectedStock] = useState(null);
