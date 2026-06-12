@@ -5,12 +5,6 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies if needed
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libc6-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install python dependencies directly
 RUN pip install --no-cache-dir \
     ib-insync==0.9.86 \
