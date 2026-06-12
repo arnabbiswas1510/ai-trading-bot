@@ -19,9 +19,7 @@ services:
       - trading_bridge
 
   execution-agent:
-    build:
-      context: .
-      dockerfile: Dockerfile.agent
+    image: ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest
     container_name: execution-agent
     restart: unless-stopped
     depends_on:
@@ -36,9 +34,7 @@ services:
       - trading_bridge
 
   trading-bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/arnabbiswas1510/ai-trading-bot:latest
     container_name: can-slim-trading-bot
     ports:
       - "8000:8000"
