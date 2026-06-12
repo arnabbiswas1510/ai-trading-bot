@@ -10,12 +10,20 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 FMP_BASE_URL = "https://financialmodelingprep.com"
 
-# Initialize Supabase Client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Lazy Initialize Supabase Client
+supabase_client: Client = None
+
+def get_supabase_client() -> Client:
+    global supabase_client
+    if supabase_client is None:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY environment variables.")
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return supabase_client
 
 def get_watchlist_from_supabase():
     try:
-        response = supabase.table("watchlist").select("ticker").execute()
+        response = get_supabase_client().table("watchlist").select("ticker").execute()
         return [row['ticker'] for row in response.data]
     except Exception as e:
         print(f"❌ Failed to fetch watchlist from Supabase: {e}")
@@ -87,7 +95,7 @@ def write_triggers_to_supabase(triggers):
         return
     try:
         print(f"📤 Pushing {len(triggers)} breakouts to 'daily_triggers'...")
-        supabase.table("daily_triggers").insert(triggers).execute()
+        get_supabase_client().table("daily_triggers").insert(triggers).execute()
         print("✅ Breakouts recorded successfully.")
     except Exception as e:
         print(f"❌ Failed to log breakout signals: {e}")

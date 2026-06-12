@@ -11,8 +11,16 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 BASE_URL = "https://financialmodelingprep.com"
 
-# Initialize Supabase Client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Lazy Initialize Supabase Client
+supabase_client: Client = None
+
+def get_supabase_client() -> Client:
+    global supabase_client
+    if supabase_client is None:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY environment variables.")
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return supabase_client
 
 # Pre-defined fallback list of high-liquidity growth stock candidates (Top S&P 500 and tech leaders)
 FALLBACK_TICKERS = [
@@ -120,10 +128,11 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
 def update_supabase_watchlist(candidates_list):
     try:
         print("🧹 Clearing last week's watchlist from Supabase...")
-        supabase.table("watchlist").delete().neq("id", -1).execute()
+        db_client = get_supabase_client()
+        db_client.table("watchlist").delete().neq("id", -1).execute()
         
         print(f"📤 Uploading {len(candidates_list)} fresh entries to Supabase...")
-        supabase.table("watchlist").insert(candidates_list).execute()
+        db_client.table("watchlist").insert(candidates_list).execute()
         print("✅ Watchlist transaction completed.")
     except Exception as e:
         print(f"❌ Database update error: {e}")
