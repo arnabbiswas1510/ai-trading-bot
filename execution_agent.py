@@ -1,0 +1,419 @@
+import os
+import sys
+import argparse
+import datetime
+import time
+import requests
+from zoneinfo import ZoneInfo
+from supabase import create_client, Client
+from ib_insync import IB, Stock, MarketOrder
+
+# Load environment variables
+if os.path.exists(".env"):
+    with open(".env") as f:
+        for line in f:
+            if line.strip() and not line.strip().startswith("#"):
+                parts = line.strip().split("=", 1)
+                if len(parts) == 2:
+                    os.environ[parts[0].strip()] = parts[1].strip()
+
+FMP_API_KEY = os.getenv("FMP_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+IB_GATEWAY_HOST = os.getenv("IB_GATEWAY_HOST", "localhost")
+IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 7497))
+
+# Initialize Supabase client
+supabase: Client = None
+
+def get_supabase_client() -> Client:
+    global supabase
+    if supabase is None:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY environment variables.")
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return supabase
+
+def get_live_price(ticker: str) -> float:
+    """Fetch current price of a ticker from FMP."""
+    url = f"https://financialmodelingprep.com/stable/quote?symbol={ticker}&apikey={FMP_API_KEY}"
+    try:
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            if isinstance(data, list) and len(data) > 0:
+                return float(data[0].get("price", 0))
+    except Exception as e:
+        print(f"❌ Error fetching price for {ticker} from FMP: {e}")
+    return 0.0
+
+def get_available_cash(ib: IB) -> float:
+    """Query account values for settled cash / buying power in USD."""
+    try:
+        account_values = ib.accountValues()
+        for av in account_values:
+            if av.tag == "CashBalance" and av.currency == "USD":
+                return float(av.value)
+        # Fallback to TotalCashValue
+        for av in account_values:
+            if av.tag == "TotalCashValue" and av.currency == "USD":
+                return float(av.value)
+    except Exception as e:
+        print(f"❌ Error querying cash balance from IBKR: {e}")
+    return 0.0
+
+def handle_mock_sell(ticker: str, price: float, reason: str):
+    """Executes a mock sale event directly on Supabase, bypassing IBKR."""
+    print(f"🧪 Initiating mock sale for {ticker} at price ${price:.2f} (Reason: {reason})...")
+    client = get_supabase_client()
+    
+    # Fetch existing position
+    res = client.table("portfolio_positions").select("*").eq("ticker", ticker.upper()).execute()
+    if not res.data:
+        print(f"❌ No active position found in Supabase for {ticker.upper()}")
+        sys.exit(1)
+        
+    pos = res.data[0]
+    shares = int(pos["shares"])
+    buy_price = float(pos["buy_price"])
+    buy_date = pos["buy_date"]
+    buy_reason = pos.get("buy_reason", "Unknown")
+    
+    # Calculate returns
+    sell_price = price
+    profit_loss = round((sell_price - buy_price) * shares, 2)
+    percent_return = round(((sell_price / buy_price) - 1.0) * 100.0, 2)
+    
+    # Insert into trade history
+    trade_log = {
+        "ticker": ticker.upper(),
+        "shares": shares,
+        "buy_price": buy_price,
+        "buy_date": buy_date,
+        "buy_reason": buy_reason,
+        "sell_price": sell_price,
+        "sell_reason": reason,
+        "profit_loss": profit_loss,
+        "percent_return": percent_return
+    }
+    
+    try:
+        # Delete from portfolio
+        client.table("portfolio_positions").delete().eq("ticker", ticker.upper()).execute()
+        # Insert into history
+        client.table("trade_history").insert(trade_log).execute()
+        print(f"✅ Mock sale complete! Ticker {ticker} removed and logged to trade_history.")
+        print(f"   Return: {percent_return}% | PnL: ${profit_loss:.2f}")
+    except Exception as e:
+        print(f"❌ Database error during mock sale execution: {e}")
+        sys.exit(1)
+
+def run_market_open_buys(ib: IB):
+    """Checks for daily breakout triggers and executes buy orders at market open."""
+    print("⏳ Running Market Open Buy checks...")
+    client = get_supabase_client()
+    
+    # Fetch today's triggers (or triggers from the last 3 days to handle weekends/holidays)
+    tz = ZoneInfo("America/New_York")
+    today_ny = datetime.datetime.now(tz).date()
+    today_str = today_ny.strftime("%Y-%m-%d")
+    recent_date = (today_ny - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
+    
+    try:
+        triggers_res = client.table("daily_triggers").select("*").gte("triggered_at", recent_date).execute()
+        triggers = triggers_res.data
+    except Exception as e:
+        print(f"❌ Failed to fetch daily triggers: {e}")
+        return
+
+    if not triggers:
+        print("😴 No breakouts triggered in the last 3 days. Skipping purchases.")
+        return
+        
+    # Get current holdings in portfolio_positions
+    try:
+        portfolio_res = client.table("portfolio_positions").select("*").execute()
+        holdings = portfolio_res.data
+        active_tickers = [h["ticker"] for h in holdings]
+    except Exception as e:
+        print(f"❌ Failed to fetch portfolio positions: {e}")
+        return
+
+    # Check portfolio cap limits (exactly 5 active positions)
+    if len(holdings) >= 5:
+        print(f"🚫 Portfolio is fully invested ({len(holdings)}/5 positions). Standing down.")
+        return
+        
+    for trigger in triggers:
+        ticker = trigger["ticker"]
+        
+        # Don't buy a stock we already hold
+        if ticker in active_tickers:
+            continue
+            
+        # Verify settled cash is enough for a flat $20,000 position
+        available_cash = get_available_cash(ib)
+        print(f"💰 Available Cash Balance in IBKR: ${available_cash:.2f}")
+        if available_cash < 20000.0:
+            print(f"🚫 Insufficient cash to buy {ticker} (Required: $20,000.00). Skipping.")
+            continue
+            
+        # Double check active holdings size again (in case we bought one earlier in this loop)
+        portfolio_res = client.table("portfolio_positions").select("*").execute()
+        if len(portfolio_res.data) >= 5:
+            print("🚫 Portfolio capacity reached during loop. Skipping further buys.")
+            break
+            
+        print(f"🚀 Execution Trigger: Initiating purchase for {ticker}...")
+        
+        # Get live price to size shares
+        current_price = get_live_price(ticker)
+        if current_price <= 0:
+            current_price = float(trigger["close_price"])
+            
+        shares = int(20000.0 / current_price)
+        if shares <= 0:
+            print(f"⚠️ Price of {ticker} is too high for a $20k block. Skipping.")
+            continue
+            
+        # Place order on IBKR
+        try:
+            contract = Stock(ticker, 'SMART', 'USD')
+            ib.qualifyContracts(contract)
+            order = MarketOrder('BUY', shares)
+            trade = ib.placeOrder(contract, order)
+            
+            # Wait a few seconds for execution fill
+            print(f"   Waiting for fill on {shares} shares of {ticker}...")
+            ib.sleep(3)
+            
+            fill_price = trade.orderStatus.avgFillPrice if trade.orderStatus else 0.0
+            if fill_price <= 0:
+                fill_price = current_price  # fallback
+                
+            stop_loss = round(fill_price * 0.93, 2)       # 7% Stop
+            profit_target = round(fill_price * 1.25, 2)   # 25% Target
+            
+            # Record position in Supabase
+            position_data = {
+                "ticker": ticker,
+                "shares": shares,
+                "buy_price": fill_price,
+                "buy_reason": f"CANSLIM Breakout: Vol Surge {trigger['volume_surge']}x",
+                "stop_loss": stop_loss,
+                "profit_target": profit_target,
+                "is_power_hold": False
+            }
+            
+            client.table("portfolio_positions").insert(position_data).execute()
+            print(f"✅ Successfully bought {shares} shares of {ticker} at ${fill_price:.2f}.")
+            print(f"   Stop-Loss: ${stop_loss} | Profit Target: ${profit_target}")
+            
+            # Add to local tracker to prevent double buys in this loop
+            active_tickers.append(ticker)
+            
+        except Exception as order_err:
+            print(f"❌ Failed to execute order for {ticker}: {order_err}")
+
+def monitor_portfolio_intraday(ib: IB):
+    """Monitors open positions, enforcing stop-losses, profit targets, and the 8-week hold rule."""
+    print("🔍 Running Intraday Portfolio Monitoring...")
+    client = get_supabase_client()
+    
+    try:
+        portfolio_res = client.table("portfolio_positions").select("*").execute()
+        positions = portfolio_res.data
+    except Exception as e:
+        print(f"❌ Failed to fetch portfolio positions: {e}")
+        return
+
+    if not positions:
+        print("😴 No open positions to monitor.")
+        return
+
+    # Check actual IBKR positions to ensure we are in sync
+    ib_positions = ib.positions()
+    ib_tickers = [p.contract.symbol for p in ib_positions]
+    
+    for pos in positions:
+        ticker = pos["ticker"]
+        shares = int(pos["shares"])
+        buy_price = float(pos["buy_price"])
+        stop_loss = float(pos["stop_loss"])
+        profit_target = float(pos["profit_target"])
+        is_power_hold = bool(pos["is_power_hold"])
+        buy_reason = pos.get("buy_reason", "Unknown")
+        
+        # Parse dates
+        buy_date = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
+        
+        # 0. Sync check: If position was closed manually outside the bot, sync Supabase
+        if ticker not in ib_tickers:
+            print(f"⚠️ Out of Sync: Ticker {ticker} is in Supabase but not active in IBKR. Removing from DB.")
+            client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
+            continue
+            
+        # Fetch live price
+        current_price = get_live_price(ticker)
+        if current_price <= 0:
+            continue
+            
+        print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} (SL: ${stop_loss} | PT: ${profit_target})")
+        
+        # 1. 8-Week Power Holding Rule Check
+        # If stock surges 20%+ in less than 21 days from purchase
+        days_held = (datetime.datetime.now(datetime.timezone.utc) - buy_date).days
+        if not is_power_hold and current_price >= (buy_price * 1.20) and days_held <= 21:
+            print(f"🔥 Power Hold Triggered for {ticker}! Surged 20% in {days_held} days.")
+            tz = ZoneInfo("America/New_York")
+            today_ny = datetime.datetime.now(tz).date()
+            expiry_date = (today_ny + datetime.timedelta(weeks=8)).isoformat()
+            try:
+                client.table("portfolio_positions").update({
+                    "is_power_hold": True,
+                    "power_hold_expiry": expiry_date
+                }).eq("ticker", ticker).execute()
+                print(f"   Exempt from 25% target until {expiry_date} (8 weeks hold).")
+            except Exception as e:
+                print(f"   ❌ Failed to update power hold state: {e}")
+                
+        # If power hold has expired, deactivate it
+        if is_power_hold and pos["power_hold_expiry"]:
+            expiry_str = pos["power_hold_expiry"]
+            if 'T' in expiry_str:
+                expiry_str = expiry_str.split('T')[0]
+            expiry = datetime.date.fromisoformat(expiry_str)
+            tz = ZoneInfo("America/New_York")
+            today_ny = datetime.datetime.now(tz).date()
+            if today_ny >= expiry:
+                print(f"⏳ Power Hold expired for {ticker}. Restoring standard target.")
+                try:
+                    client.table("portfolio_positions").update({
+                        "is_power_hold": False,
+                        "power_hold_expiry": None
+                    }).eq("ticker", ticker).execute()
+                except Exception as e:
+                    print(f"   ❌ Failed to reset power hold state: {e}")
+
+        # 2. Enforce 7% Absolute Cut-Loss
+        if current_price <= stop_loss:
+            print(f"🚨 Stop-Loss Triggered for {ticker} at ${current_price:.2f} (Stop: ${stop_loss})!")
+            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, "7% Stop Loss")
+            continue
+            
+        # 3. Enforce 25% Profit Target (Skip if in Power Hold)
+        if current_price >= profit_target and not is_power_hold:
+            print(f"💰 Profit Target Triggered for {ticker} at ${current_price:.2f} (Target: ${profit_target})!")
+            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, "25% Profit Target")
+            continue
+
+def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float, buy_date, buy_reason: str, current_price: float, reason: str):
+    """Executes a market sell order on IBKR and archives the transaction in Supabase."""
+    try:
+        # Place sell order
+        contract = Stock(ticker, 'SMART', 'USD')
+        ib.qualifyContracts(contract)
+        order = MarketOrder('SELL', shares)
+        trade = ib.placeOrder(contract, order)
+        
+        print(f"   Placing market sell order for {shares} shares of {ticker}...")
+        ib.sleep(3)
+        
+        fill_price = trade.orderStatus.avgFillPrice if trade.orderStatus else 0.0
+        if fill_price <= 0:
+            fill_price = current_price
+            
+        profit_loss = round((fill_price - buy_price) * shares, 2)
+        percent_return = round(((fill_price / buy_price) - 1.0) * 100.0, 2)
+        
+        # Log to trade history
+        trade_log = {
+            "ticker": ticker,
+            "shares": shares,
+            "buy_price": buy_price,
+            "buy_date": buy_date.isoformat(),
+            "buy_reason": buy_reason,
+            "sell_price": fill_price,
+            "sell_reason": reason,
+            "profit_loss": profit_loss,
+            "percent_return": percent_return
+        }
+        
+        # Database transaction
+        client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
+        client.table("trade_history").insert(trade_log).execute()
+        
+        print(f"✅ Closed Position: Sold {shares} shares of {ticker} at ${fill_price:.2f}.")
+        print(f"   PnL: ${profit_loss} ({percent_return}%) | Reason: {reason}")
+        
+    except Exception as e:
+        print(f"❌ Error executing sell order for {ticker}: {e}")
+
+def main_loop():
+    """Main daemon loop running inside the Docker container."""
+    print("==================================================")
+    print("       CANSLIM Local Trade Execution Agent        ")
+    print("==================================================")
+    print(f"Connecting to IB Gateway at {IB_GATEWAY_HOST}:{IB_GATEWAY_PORT}...")
+    
+    ib = IB()
+    try:
+        ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
+        print("✅ Connected to IBKR Gateway successfully!")
+    except Exception as e:
+        print(f"❌ Failed to connect to IBKR Gateway: {e}")
+        print("   Ensure the ib-gateway container is running and API ports are open.")
+        sys.exit(1)
+        
+    while True:
+        try:
+            tz = ZoneInfo("America/New_York")
+            now = datetime.datetime.now(tz)
+            # If market is open (9:30 AM - 4:00 PM EST, Mon-Fri)
+            # 1-5 represents Monday to Friday
+            if now.weekday() < 5:
+                # 1. Market Open Check: Trigger buys between 9:30 AM and 9:45 AM
+                # Check if it is within the market open window
+                if now.hour == 9 and 30 <= now.minute <= 45:
+                    run_market_open_buys(ib)
+                    # Sleep 15 minutes to avoid duplicate runs during the open window
+                    time.sleep(900)
+                    continue
+                
+                # 2. Intraday monitoring during market hours
+                if (now.hour == 9 and now.minute > 45) or (10 <= now.hour < 16):
+                    monitor_portfolio_intraday(ib)
+                    # Check every 15 minutes
+                    time.sleep(900)
+                    continue
+                    
+            # Outside market hours: check once an hour
+            print(f"😴 Market is closed. Checking in 1 hour... (Current Time: {now.strftime('%H:%M:%S')})")
+            time.sleep(3600)
+            
+        except KeyboardInterrupt:
+            print("\nShutting down execution agent.")
+            ib.disconnect()
+            break
+        except Exception as loop_err:
+            print(f"❌ Error in main execution loop: {loop_err}")
+            time.sleep(60)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="CANSLIM Local execution agent CLI.")
+    parser.add_argument("--mock-sell", type=str, help="Mock close a position in Supabase (e.g. AAPL)")
+    parser.add_argument("--price", type=float, help="Mock sale price (required with --mock-sell)")
+    parser.add_argument("--reason", type=str, default="Mock exit", help="Mock sale reason")
+    
+    args = parser.parse_args()
+    
+    if args.mock_sell:
+        if not args.price:
+            print("❌ Error: --price is required when mocking a sale.")
+            sys.exit(1)
+        handle_mock_sell(args.mock_sell, args.price, args.reason)
+    else:
+        if not FMP_API_KEY:
+            print("❌ Error: FMP_API_KEY environment variable is not set.")
+            sys.exit(1)
+        main_loop()

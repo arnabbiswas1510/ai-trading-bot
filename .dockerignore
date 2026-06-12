@@ -1,0 +1,17 @@
+**/node_modules/
+**/dist/
+**/build/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/env/
+**/venv/
+.env
+**/*.db
+**/*.sqlite
+**/.vscode/
+**/.idea/
+**/.DS_Store
+.git/

@@ -160,9 +160,14 @@ def get_screener_results():
 @app.get("/api/portfolio")
 def get_portfolio():
     try:
-        cash = float(db.get_setting("cash_balance", 100000.0))
         initial = float(db.get_setting("initial_balance", 100000.0))
         positions = db.get_positions()
+        history = db.get_trade_history()
+        
+        # Calculate cash balance dynamically based on initial balance, trade history, and active positions
+        realized_pnl = sum(t["profit_loss"] for t in history)
+        open_cost = sum(p["shares"] * p["buy_price"] for p in positions)
+        cash = initial + realized_pnl - open_cost
         
         fmp = FMPClient()
         portfolio_value = cash
@@ -196,7 +201,6 @@ def get_portfolio():
         total_pnl = portfolio_value - initial
         total_pnl_pct = (portfolio_value / initial - 1.0) * 100.0
         
-        history = db.get_trade_history()
         win_rate = 0.0
         if history:
             wins = sum(1 for t in history if t['profit_loss'] > 0)

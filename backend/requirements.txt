@@ -4,3 +4,4 @@ yfinance>=0.2.37
 pandas>=2.2.0
 numpy>=1.26.0
 requests>=2.31.0
+supabase>=2.11.0

@@ -1,0 +1,26 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Install system dependencies if needed
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies directly
+RUN pip install --no-cache-dir \
+    ib-insync==0.9.86 \
+    supabase==2.31.0 \
+    requests==2.32.3 \
+    pandas==2.2.2 \
+    httpx==0.28.1
+
+# Copy script files into the container
+COPY execution_agent.py .
+
+# Execute the agent loop
+CMD ["python", "execution_agent.py"]

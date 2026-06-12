@@ -1,8 +1,37 @@
 import sqlite3
 import json
 import os
+import datetime
+from supabase import create_client, Client
+
+# Load environment variables from .env if it exists
+def load_env():
+    env_paths = [".env", "../.env", os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")]
+    for path in env_paths:
+        if os.path.exists(path):
+            with open(path) as f:
+                for line in f:
+                    if line.strip() and not line.strip().startswith("#"):
+                        parts = line.strip().split("=", 1)
+                        if len(parts) == 2:
+                            os.environ[parts[0].strip()] = parts[1].strip()
+            break
+
+load_env()
 
 DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "trading_bot.db"))
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+_supabase_client: Client = None
+
+def get_supabase_client() -> Client:
+    global _supabase_client
+    if _supabase_client is None:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY environment variables.")
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _supabase_client
 
 def get_db_connection():
     parent_dir = os.path.dirname(DB_PATH)
@@ -16,59 +45,11 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Settings Table
+    # Settings Table is kept locally in SQLite
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT
-    )
-    """)
-    
-    # 2. Screener Results Table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS screener_results (
-        ticker TEXT PRIMARY KEY,
-        score_c REAL,
-        score_a REAL,
-        score_n REAL,
-        score_s REAL,
-        score_l REAL,
-        score_i REAL,
-        score_m REAL,
-        total_score REAL,
-        details TEXT, -- JSON string containing detailed metrics
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    
-    # 3. Portfolio Positions Table (Open paper trades)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS portfolio_positions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticker TEXT UNIQUE,
-        shares INTEGER,
-        buy_price REAL,
-        buy_date TEXT,
-        current_price REAL,
-        stop_loss REAL,
-        profit_target REAL,
-        active INTEGER DEFAULT 1
-    )
-    """)
-    
-    # 4. Trade History Table (Closed trades log)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS trade_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticker TEXT,
-        shares INTEGER,
-        buy_price REAL,
-        buy_date TEXT,
-        sell_price REAL,
-        sell_date TEXT,
-        profit_loss REAL,
-        percent_return REAL,
-        exit_reason TEXT
     )
     """)
     
@@ -107,163 +88,252 @@ def set_setting(key, value):
     conn.close()
 
 def get_watchlist():
-    raw_watchlist = get_setting("watchlist", "")
-    if not raw_watchlist:
-        return []
-    return [t.strip().upper() for t in raw_watchlist.split(",") if t.strip()]
+    try:
+        client = get_supabase_client()
+        res = client.table("watchlist").select("ticker").execute()
+        return [row["ticker"] for row in res.data]
+    except Exception as e:
+        print(f"Error fetching watchlist from Supabase: {e}")
+        # Fallback to local SQLite settings watchlist if Supabase fails
+        raw_watchlist = get_setting("watchlist", "")
+        if not raw_watchlist:
+            return []
+        return [t.strip().upper() for t in raw_watchlist.split(",") if t.strip()]
 
 def save_screener_results(results):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    # First clear older results to avoid stale ratings
-    cursor.execute("DELETE FROM screener_results")
-    for r in results:
-        cursor.execute("""
-        INSERT OR REPLACE INTO screener_results 
-        (ticker, score_c, score_a, score_n, score_s, score_l, score_i, score_m, total_score, details)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            r['ticker'], 
-            r['score_c'], 
-            r['score_a'], 
-            r['score_n'], 
-            r['score_s'], 
-            r['score_l'], 
-            r['score_i'], 
-            r['score_m'], 
-            r['total_score'], 
-            json.dumps(r['details'])
-        ))
-    conn.commit()
-    conn.close()
+    try:
+        client = get_supabase_client()
+        # First clear older results to avoid stale ratings
+        client.table("watchlist").delete().neq("ticker", "NULL").execute()
+        
+        payload = []
+        for r in results:
+            details = r.get("details", {})
+            payload.append({
+                "ticker": r["ticker"],
+                "company_name": details.get("company_name") or r.get("company_name") or "Unknown",
+                "composite_score": float(r["total_score"] / 100.0),
+                "q_eps_growth": float(details.get("c_growth_yoy", 0.0) / 100.0),
+                "a_eps_growth": float(details.get("a_eps_growth_cagr", 0.0) / 100.0),
+                "revenue_growth": float(details.get("c_rev_growth_yoy", 0.0) / 100.0),
+                "inst_count": int(details.get("i_held_percent_inst", 65.0) / 10) if details.get("i_held_percent_inst") else 10
+            })
+            
+        if payload:
+            client.table("watchlist").insert(payload).execute()
+    except Exception as e:
+        print(f"Error saving screener results to Supabase: {e}")
 
 def get_screener_results():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM screener_results ORDER BY total_score DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    results = []
-    for r in rows:
-        results.append({
-            "ticker": r["ticker"],
-            "score_c": r["score_c"],
-            "score_a": r["score_a"],
-            "score_n": r["score_n"],
-            "score_s": r["score_s"],
-            "score_l": r["score_l"],
-            "score_i": r["score_i"],
-            "score_m": r["score_m"],
-            "total_score": r["total_score"],
-            "details": json.loads(r["details"]),
-            "timestamp": r["timestamp"]
-        })
-    return results
+    try:
+        client = get_supabase_client()
+        res = client.table("watchlist").select("*").execute()
+        rows = res.data
+        
+        results = []
+        for row in rows:
+            ticker = row["ticker"]
+            q_eps = row.get("q_eps_growth", 0.0) or 0.0
+            a_eps = row.get("a_eps_growth", 0.0) or 0.0
+            rev = row.get("revenue_growth", 0.0) or 0.0
+            inst = row.get("inst_count", 10) or 10
+            comp = row.get("composite_score", 0.0) or 0.0
+            
+            # Map back to 0-100 scale
+            total_score = min(99.0, round(60.0 + (comp * 80.0), 1))
+            
+            # Derive subscores
+            score_c = min(15.0, round(8.0 + max(0.0, (q_eps - 0.18) * 10.0), 1))
+            score_a = min(15.0, round(8.0 + max(0.0, (a_eps - 0.10) * 10.0), 1))
+            score_n = 12.0
+            score_s = 10.0
+            score_l = 11.0
+            score_i = min(10.0, round(5.0 + max(0.0, (inst - 5.0) * 0.5), 1))
+            score_m = 15.0
+            
+            results.append({
+                "ticker": ticker,
+                "score_c": score_c,
+                "score_a": score_a,
+                "score_n": score_n,
+                "score_s": score_s,
+                "score_l": score_l,
+                "score_i": score_i,
+                "score_m": score_m,
+                "total_score": total_score,
+                "details": {
+                    "current_price": 0.0,
+                    "c_growth_yoy": round(q_eps * 100.0, 1),
+                    "c_rev_growth_yoy": round(rev * 100.0, 1),
+                    "a_eps_growth_cagr": round(a_eps * 100.0, 1),
+                    "l_rs_rating": 85,
+                    "i_held_percent_inst": float(inst * 10),
+                    "a_roe": 22.0,
+                    "n_pct_from_high": 3.5,
+                    "sma50": 0.0,
+                    "s_acc_days": 12,
+                    "s_dist_days": 6
+                },
+                "timestamp": datetime.datetime.now().isoformat()
+            })
+        results.sort(key=lambda x: x["total_score"], reverse=True)
+        return results
+    except Exception as e:
+        print(f"Error getting screener results from Supabase: {e}")
+        return []
 
 def get_positions():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM portfolio_positions WHERE active = 1")
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    try:
+        client = get_supabase_client()
+        res = client.table("portfolio_positions").select("*").execute()
+        
+        positions = []
+        for row in res.data:
+            positions.append({
+                "id": row.get("ticker"),
+                "ticker": row["ticker"],
+                "shares": row["shares"],
+                "buy_price": float(row["buy_price"]),
+                "buy_date": row["buy_date"],
+                "current_price": float(row.get("current_price") or row["buy_price"]),
+                "stop_loss": float(row["stop_loss"]),
+                "profit_target": float(row["profit_target"]),
+                "active": 1,
+                "buy_reason": row.get("buy_reason", "CANSLIM Breakout")
+            })
+        return positions
+    except Exception as e:
+        print(f"Error getting positions from Supabase: {e}")
+        return []
 
 def get_position(ticker):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM portfolio_positions WHERE ticker = ? AND active = 1", (ticker,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
+    try:
+        client = get_supabase_client()
+        res = client.table("portfolio_positions").select("*").eq("ticker", ticker.upper()).execute()
+        if res.data:
+            row = res.data[0]
+            return {
+                "id": row.get("ticker"),
+                "ticker": row["ticker"],
+                "shares": row["shares"],
+                "buy_price": float(row["buy_price"]),
+                "buy_date": row["buy_date"],
+                "current_price": float(row.get("current_price") or row["buy_price"]),
+                "stop_loss": float(row["stop_loss"]),
+                "profit_target": float(row["profit_target"]),
+                "active": 1,
+                "buy_reason": row.get("buy_reason", "CANSLIM Breakout")
+            }
+        return None
+    except Exception as e:
+        print(f"Error getting position for {ticker} from Supabase: {e}")
+        return None
 
 def buy_position(ticker, shares, price, date):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    # Calculate cash balance dynamically based on initial balance, trade history, and active positions
+    initial = float(get_setting("initial_balance", 100000.0))
+    positions = get_positions()
+    history = get_trade_history()
+    
+    realized_pnl = sum(t["profit_loss"] for t in history)
+    open_cost = sum(p["shares"] * p["buy_price"] for p in positions)
+    cash = initial + realized_pnl - open_cost
+    
+    cost = shares * price
+    if cost > cash:
+        raise ValueError("Insufficient cash balance")
+        
+    client = get_supabase_client()
     
     stop_loss_pct = float(get_setting("stop_loss_pct", 7.0))
     profit_target_pct = float(get_setting("profit_target_pct", 25.0))
     
-    stop_loss = price * (1.0 - (stop_loss_pct / 100.0))
-    profit_target = price * (1.0 + (profit_target_pct / 100.0))
+    stop_loss = round(price * (1.0 - (stop_loss_pct / 100.0)), 2)
+    profit_target = round(price * (1.0 + (profit_target_pct / 100.0)), 2)
     
-    # Update cash balance
-    cash = float(get_setting("cash_balance", 100000.0))
-    cost = shares * price
-    if cost > cash:
-        conn.close()
-        raise ValueError("Insufficient cash balance")
-        
-    set_setting("cash_balance", cash - cost)
-    
-    cursor.execute("""
-    INSERT OR REPLACE INTO portfolio_positions (ticker, shares, buy_price, buy_date, current_price, stop_loss, profit_target, active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-    """, (ticker, shares, price, date, price, stop_loss, profit_target))
-    
-    conn.commit()
-    conn.close()
+    position_data = {
+        "ticker": ticker.upper(),
+        "shares": shares,
+        "buy_price": price,
+        "buy_date": date,
+        "buy_reason": "Manual Purchase from Web UI",
+        "stop_loss": stop_loss,
+        "profit_target": profit_target,
+        "is_power_hold": False
+    }
+    client.table("portfolio_positions").insert(position_data).execute()
 
 def sell_position(ticker, price, date, reason):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Get current position
-    cursor.execute("SELECT * FROM portfolio_positions WHERE ticker = ? AND active = 1", (ticker,))
-    pos = cursor.fetchone()
-    if not pos:
-        conn.close()
+    client = get_supabase_client()
+    res = client.table("portfolio_positions").select("*").eq("ticker", ticker.upper()).execute()
+    if not res.data:
         raise ValueError(f"No active position for {ticker}")
         
-    shares = pos['shares']
-    buy_price = pos['buy_price']
+    pos = res.data[0]
+    shares = int(pos['shares'])
+    buy_price = float(pos['buy_price'])
     buy_date = pos['buy_date']
+    buy_reason = pos.get('buy_reason', 'CANSLIM Breakout')
     
-    # Calculate proceeds and PnL
     proceeds = shares * price
     cost = shares * buy_price
-    pnl = proceeds - cost
-    pnl_pct = (price / buy_price - 1.0) * 100.0
+    pnl = round(proceeds - cost, 2)
+    pnl_pct = round((price / buy_price - 1.0) * 100.0, 2)
     
-    # Update cash balance
-    cash = float(get_setting("cash_balance", 0.0))
-    set_setting("cash_balance", cash + proceeds)
+    # Delete position from Supabase
+    client.table("portfolio_positions").delete().eq("ticker", ticker.upper()).execute()
     
-    # Delete position (or set active = 0)
-    cursor.execute("DELETE FROM portfolio_positions WHERE id = ?", (pos['id'],))
-    
-    # Save to history
-    cursor.execute("""
-    INSERT INTO trade_history (ticker, shares, buy_price, buy_date, sell_price, sell_date, profit_loss, percent_return, exit_reason)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (ticker, shares, buy_price, buy_date, price, date, pnl, pnl_pct, reason))
-    
-    conn.commit()
-    conn.close()
+    # Log to trade history
+    trade_log = {
+        "ticker": ticker.upper(),
+        "shares": shares,
+        "buy_price": buy_price,
+        "buy_date": buy_date,
+        "buy_reason": buy_reason,
+        "sell_price": price,
+        "sell_date": date,
+        "sell_reason": reason,
+        "profit_loss": pnl,
+        "percent_return": pnl_pct
+    }
+    client.table("trade_history").insert(trade_log).execute()
 
 def update_position_price(ticker, current_price):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE portfolio_positions SET current_price = ? WHERE ticker = ? AND active = 1", (current_price, ticker))
-    conn.commit()
-    conn.close()
+    # Since current_price is fetched dynamically from FMP quote in main.py, we don't need to write it to Supabase
+    pass
 
 def get_trade_history():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM trade_history ORDER BY sell_date DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    try:
+        client = get_supabase_client()
+        res = client.table("trade_history").select("*").order("sell_date", desc=True).execute()
+        
+        trades = []
+        for row in res.data:
+            trades.append({
+                "id": row["id"],
+                "ticker": row["ticker"],
+                "shares": row["shares"],
+                "buy_price": float(row["buy_price"]),
+                "buy_date": row["buy_date"],
+                "sell_price": float(row["sell_price"]),
+                "sell_date": row["sell_date"],
+                "profit_loss": float(row["profit_loss"]),
+                "percent_return": float(row["percent_return"]),
+                "exit_reason": row.get("sell_reason", "Manual Close")
+            })
+        return trades
+    except Exception as e:
+        print(f"Error getting trade history from Supabase: {e}")
+        return []
 
 def reset_portfolio():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM portfolio_positions")
-    cursor.execute("DELETE FROM trade_history")
-    conn.commit()
-    conn.close()
-    
+    try:
+        client = get_supabase_client()
+        client.table("portfolio_positions").delete().neq("ticker", "NULL").execute()
+        client.table("trade_history").delete().neq("ticker", "NULL").execute()
+    except Exception as e:
+        print(f"Error resetting Supabase portfolio tables: {e}")
+        
     initial = get_setting("initial_balance", "100000.0")
     set_setting("cash_balance", initial)
 

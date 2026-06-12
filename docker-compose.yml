@@ -1,6 +1,40 @@
 version: '3.8'
 
 services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:latest
+    container_name: ib-gateway
+    restart: unless-stopped
+    ports:
+      - "4002:4004"
+      - "5900:5900"
+    environment:
+      - TWS_USERID=${IBKR_PAPER_USER}
+      - TWS_PASSWORD=${IBKR_PAPER_PASS}
+      - TRADING_MODE=paper
+      - READ_ONLY_API=no
+      - AUTO_LOGOFF=no
+    shm_size: '1gb'
+    networks:
+      - trading_bridge
+
+  execution-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: execution-agent
+    restart: unless-stopped
+    depends_on:
+      - ib-gateway
+    environment:
+      - FMP_API_KEY=${FMP_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - IB_GATEWAY_HOST=ib-gateway
+      - IB_GATEWAY_PORT=4004
+    networks:
+      - trading_bridge
+
   trading-bot:
     build:
       context: .
@@ -13,7 +47,17 @@ services:
     restart: unless-stopped
     environment:
       - DB_PATH=/app/data/trading_bot.db
+      - FMP_API_KEY=${FMP_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+    networks:
+      - trading_bridge
+
+networks:
+  trading_bridge:
+    driver: bridge
 
 volumes:
   bot-data:
     driver: local
+
