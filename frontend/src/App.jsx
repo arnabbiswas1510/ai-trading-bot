@@ -5,13 +5,15 @@ import {
   BarChart2, 
   Settings as SettingsIcon,
   TrendingUp,
-  Cpu
+  Cpu,
+  History
 } from 'lucide-react';
 
 import DashboardView from './components/DashboardView';
 import ScreenerView from './components/ScreenerView';
 import BacktesterView from './components/BacktesterView';
 import SettingsView from './components/SettingsView';
+import TradesView from './components/TradesView';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -175,6 +177,8 @@ export default function App() {
         );
       case 'backtester':
         return <BacktesterView />;
+      case 'history':
+        return <TradesView trades={tradeHistory} />;
       case 'settings':
         return (
           <SettingsView 
@@ -229,6 +233,15 @@ export default function App() {
           </li>
           <li>
             <div 
+              className={`nav-item ${currentView === 'history' ? 'active' : ''}`}
+              onClick={() => setCurrentView('history')}
+            >
+              <History />
+              <span>Trade History</span>
+            </div>
+          </li>
+          <li>
+            <div 
               className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
               onClick={() => setCurrentView('settings')}
             >
@@ -257,6 +270,7 @@ export default function App() {
             {currentView === 'dashboard' && "Simulated portfolio statistics, index direction, and live position tickers."}
             {currentView === 'screener' && "Live stock ranking, multi-factor scorecard checks, and technical details."}
             {currentView === 'backtester' && "Simulate technical breakout entries and automated exits on historical ranges."}
+            {currentView === 'history' && "Comprehensive history of all completed buying and selling transactions."}
             {currentView === 'settings' && "Manage trading budgets, risk constraints, and active ticker watchlists."}
           </p>
         </header>

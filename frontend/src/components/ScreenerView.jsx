@@ -3,6 +3,9 @@ import { Play, Sparkles, ChevronRight, X, ArrowUpRight, ShoppingCart, HelpCircle
 import StockChart from './StockChart';
 
 export default function ScreenerView({ results, onRunScan, loading, onBuyStock }) {
+  const watchlist = Array.isArray(results) ? results : (results?.watchlist || []);
+  const removedList = Array.isArray(results) ? [] : (results?.removed || []);
+
   const [selectedStock, setSelectedStock] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [chartLoading, setChartLoading] = useState(false);
@@ -97,38 +100,42 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
 
       {/* Screener Results Table */}
       <div className="card">
-        {results.length === 0 ? (
+        {watchlist.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
             <Sparkles size={40} strokeWidth={1} style={{ marginBottom: '1.25rem', color: 'var(--accent-primary)' }} />
             <p style={{ fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>No scan results found</p>
             <p style={{ fontSize: '0.85rem' }}>Click the "Run CAN SLIM Scan" button to retrieve live data and calculate scores.</p>
           </div>
         ) : (
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th style={{ textAlign: 'center' }}>Total Score</th>
-                  <th style={{ textAlign: 'center' }}>CAN SLIM Health</th>
-                  <th>Price</th>
-                  <th>YoY EPS Growth (C)</th>
-                  <th>Ann CAGR (A)</th>
-                  <th>RS Rating (L)</th>
-                  <th>Inst % (I)</th>
-                  <th style={{ width: '40px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((stock) => (
-                  <tr 
-                    key={stock.ticker} 
-                    onClick={() => setSelectedStock(stock)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '1.05rem' }}>
-                      {stock.ticker}
-                    </td>
+          <>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Ticker</th>
+                    <th style={{ textAlign: 'center' }}>Total Score</th>
+                    <th style={{ textAlign: 'center' }}>CAN SLIM Health</th>
+                    <th>Price</th>
+                    <th>YoY EPS Growth (C)</th>
+                    <th>Ann CAGR (A)</th>
+                    <th>RS Rating (L)</th>
+                    <th>Inst % (I)</th>
+                    <th style={{ width: '40px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {watchlist.map((stock) => (
+                    <tr 
+                      key={stock.ticker} 
+                      onClick={() => setSelectedStock(stock)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '1.05rem' }}>
+                        <span style={{ verticalAlign: 'middle' }}>{stock.ticker}</span>
+                        {stock.change_status === "NEW" && (
+                          <span className="badge-new-pulse">+ NEW</span>
+                        )}
+                      </td>
                     <td style={{ textAlign: 'center' }}>
                       <span 
                         style={{ 
@@ -175,10 +182,27 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                       <ChevronRight size={18} color="var(--text-muted)" />
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Watchlist Rotations (Removed Candidates) */}
+            {removedList.length > 0 && (
+              <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+                <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Weekly Watchlist Rotations (Removed Candidates)
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  {removedList.map((ticker) => (
+                    <div key={ticker} className="deleted-stock-tag" title="Removed from watchlist this week">
+                      {ticker}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 

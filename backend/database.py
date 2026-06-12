@@ -103,8 +103,6 @@ def get_watchlist():
 def save_screener_results(results):
     try:
         client = get_supabase_client()
-        # First clear older results to avoid stale ratings
-        client.table("watchlist").delete().neq("ticker", "NULL").execute()
         
         payload = []
         for r in results:
@@ -121,18 +119,49 @@ def save_screener_results(results):
             
         if payload:
             client.table("watchlist").insert(payload).execute()
+            
+        # Prune older watchlist entries (older than 30 days) to keep database tidy
+        prune_threshold = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)).isoformat()
+        client.table("watchlist").delete().lt("created_at", prune_threshold).execute()
     except Exception as e:
         print(f"Error saving screener results to Supabase: {e}")
 
 def get_screener_results():
     try:
         client = get_supabase_client()
-        res = client.table("watchlist").select("*").execute()
-        rows = res.data
         
+        # 1. Fetch the two most recent unique created_at timestamps to identify the latest two runs
+        timestamps_res = client.table("watchlist").select("created_at").order("created_at", desc=True).execute()
+        unique_timestamps = []
+        for r in timestamps_res.data:
+            ts = r["created_at"]
+            if ts not in unique_timestamps:
+                unique_timestamps.append(ts)
+                if len(unique_timestamps) == 2:
+                    break
+                    
+        if not unique_timestamps:
+            return {"watchlist": [], "removed": []}
+            
+        latest_ts = unique_timestamps[0]
+        
+        # 2. Fetch the current week's watchlist
+        curr_res = client.table("watchlist").select("*").eq("created_at", latest_ts).execute()
+        curr_rows = curr_res.data
+        
+        # 3. Fetch the previous week's watchlist to calculate changes if it exists
+        prev_tickers = set()
+        if len(unique_timestamps) == 2:
+            prev_ts = unique_timestamps[1]
+            prev_res = client.table("watchlist").select("ticker").eq("created_at", prev_ts).execute()
+            prev_tickers = set(row["ticker"] for row in prev_res.data)
+            
         results = []
-        for row in rows:
+        curr_tickers = set()
+        
+        for row in curr_rows:
             ticker = row["ticker"]
+            curr_tickers.add(ticker)
             q_eps = row.get("q_eps_growth", 0.0) or 0.0
             a_eps = row.get("a_eps_growth", 0.0) or 0.0
             rev = row.get("revenue_growth", 0.0) or 0.0
@@ -151,6 +180,9 @@ def get_screener_results():
             score_i = min(10.0, round(5.0 + max(0.0, (inst - 5.0) * 0.5), 1))
             score_m = 15.0
             
+            # Calculate change status (NEW if it wasn't in the previous list, RETAINED otherwise)
+            change_status = "NEW" if (prev_tickers and ticker not in prev_tickers) else "RETAINED"
+            
             results.append({
                 "ticker": ticker,
                 "score_c": score_c,
@@ -161,6 +193,7 @@ def get_screener_results():
                 "score_i": score_i,
                 "score_m": score_m,
                 "total_score": total_score,
+                "change_status": change_status,
                 "details": {
                     "current_price": 0.0,
                     "c_growth_yoy": round(q_eps * 100.0, 1),
@@ -174,13 +207,21 @@ def get_screener_results():
                     "s_acc_days": 12,
                     "s_dist_days": 6
                 },
-                "timestamp": datetime.datetime.now().isoformat()
+                "timestamp": row.get("created_at") or datetime.datetime.now().isoformat()
             })
+            
         results.sort(key=lambda x: x["total_score"], reverse=True)
-        return results
+        
+        # Calculate removed tickers (in previous week, not in current week)
+        removed_tickers = list(prev_tickers - curr_tickers) if prev_tickers else []
+        
+        return {
+            "watchlist": results,
+            "removed": removed_tickers
+        }
     except Exception as e:
         print(f"Error getting screener results from Supabase: {e}")
-        return []
+        return {"watchlist": [], "removed": []}
 
 def get_positions():
     try:
