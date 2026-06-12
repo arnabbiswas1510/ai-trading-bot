@@ -23,7 +23,13 @@ def get_supabase_client() -> Client:
 
 def get_watchlist_from_supabase():
     try:
-        response = get_supabase_client().table("watchlist").select("ticker").execute()
+        client = get_supabase_client()
+        # Fetch the most recent run's timestamp
+        timestamps_res = client.table("watchlist").select("created_at").order("created_at", desc=True).limit(1).execute()
+        if not timestamps_res.data:
+            return []
+        latest_ts = timestamps_res.data[0]["created_at"]
+        response = client.table("watchlist").select("ticker").eq("created_at", latest_ts).execute()
         return [row['ticker'] for row in response.data]
     except Exception as e:
         print(f"❌ Failed to fetch watchlist from Supabase: {e}")

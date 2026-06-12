@@ -90,7 +90,12 @@ def set_setting(key, value):
 def get_watchlist():
     try:
         client = get_supabase_client()
-        res = client.table("watchlist").select("ticker").execute()
+        # Fetch the most recent run's timestamp
+        timestamps_res = client.table("watchlist").select("created_at").order("created_at", desc=True).limit(1).execute()
+        if not timestamps_res.data:
+            return []
+        latest_ts = timestamps_res.data[0]["created_at"]
+        res = client.table("watchlist").select("ticker").eq("created_at", latest_ts).execute()
         return [row["ticker"] for row in res.data]
     except Exception as e:
         print(f"Error fetching watchlist from Supabase: {e}")
@@ -120,8 +125,8 @@ def save_screener_results(results):
         if payload:
             client.table("watchlist").insert(payload).execute()
             
-        # Prune older watchlist entries (older than 30 days) to keep database tidy
-        prune_threshold = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)).isoformat()
+        # Prune older watchlist entries (older than 8 weeks / 56 days) to keep database tidy
+        prune_threshold = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=56)).isoformat()
         client.table("watchlist").delete().lt("created_at", prune_threshold).execute()
     except Exception as e:
         print(f"Error saving screener results to Supabase: {e}")

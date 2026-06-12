@@ -156,13 +156,15 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
 
 def update_supabase_watchlist(candidates_list):
     try:
-        print("🧹 Clearing last week's watchlist from Supabase...")
         db_client = get_supabase_client()
-        db_client.table("watchlist").delete().neq("ticker", "NULL").execute()
         
         print(f"📤 Uploading {len(candidates_list)} fresh entries to Supabase...")
         db_client.table("watchlist").insert(candidates_list).execute()
-        print("✅ Watchlist transaction completed.")
+        
+        print("🧹 Pruning watchlist entries older than 8 weeks (56 days) from Supabase...")
+        prune_threshold = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=56)).isoformat()
+        db_client.table("watchlist").delete().lt("created_at", prune_threshold).execute()
+        print("✅ Watchlist transaction and pruning completed.")
     except Exception as e:
         print(f"❌ Database update error: {e}")
 
