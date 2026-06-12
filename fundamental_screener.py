@@ -50,7 +50,13 @@ FALLBACK_TICKERS = [
     "AMAT", "PLTR", "LRCX", "TJX", "ADI", "MDLZ", "MDT", "VRTX", "CI", "C",
     "SBUX", "ADP", "SYK", "REGN", "ANET", "DE", "EL", "CB", "MMC", "GILD",
     "PANW", "TMUS", "MU", "CRWD", "BSX", "LMT", "SMCI", "CELH", "COIN", "ELF",
-    "MSTR", "DKNG", "ON", "ARM", "SOFI", "HOOD", "BABA", "PDD"
+    "MSTR", "DKNG", "ON", "ARM", "SOFI", "HOOD", "BABA", "PDD",
+    # Additional high-growth leaders and liquid market candidates:
+    "UBER", "ABNB", "SNOW", "PANW", "WDAY", "DDOG", "NET", "CRWD", "MELI", "SE",
+    "SHOP", "SQ", "COIN", "MAR", "HLT", "RCL", "CCL", "NCLH", "CMG", "SHW",
+    "PH", "ETN", "GEHC", "MCK", "COR", "CAH", "CNC", "HUM", "BSX", "SYK",
+    "EW", "DXCM", "ABT", "ISRG", "MDT", "A", "KEYS", "FTNT", "FSLR", "ENPH",
+    "ANET", "MCHP", "MPWR", "ON", "NXPI", "ADI", "KLAC", "LRCX", "ASML", "TSM"
 ]
 
 async def get_sp500_tickers(client: httpx.AsyncClient):
@@ -147,7 +153,7 @@ def update_supabase_watchlist(candidates_list):
     try:
         print("🧹 Clearing last week's watchlist from Supabase...")
         db_client = get_supabase_client()
-        db_client.table("watchlist").delete().neq("id", -1).execute()
+        db_client.table("watchlist").delete().neq("ticker", "NULL").execute()
         
         print(f"📤 Uploading {len(candidates_list)} fresh entries to Supabase...")
         db_client.table("watchlist").insert(candidates_list).execute()
