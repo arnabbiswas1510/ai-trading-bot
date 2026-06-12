@@ -29,6 +29,25 @@ def get_watchlist_from_supabase():
         print(f"❌ Failed to fetch watchlist from Supabase: {e}")
         return []
 
+def fetch_with_retry_sync(url, retries=3, backoff=1.0):
+    import time
+    for i in range(retries):
+        try:
+            res = requests.get(url, timeout=10)
+            if res.status_code == 200:
+                return res
+            elif res.status_code == 429:
+                sleep_time = backoff * (2 ** i)
+                print(f"⚠️ Rate limited (429) on FMP API. Retrying in {sleep_time}s...")
+                time.sleep(sleep_time)
+            else:
+                return res
+        except Exception as e:
+            if i == retries - 1:
+                raise e
+            time.sleep(backoff * (2 ** i))
+    return None
+
 def check_technical_breakout(ticker):
     try:
         # Request EOD stable data for the past 380 calendar days to guarantee 252+ trading days
@@ -39,10 +58,10 @@ def check_technical_breakout(ticker):
         to_str = to_date.strftime("%Y-%m-%d")
         
         url = f"{FMP_BASE_URL}/stable/historical-price-eod/full?symbol={ticker}&from={from_str}&to={to_str}&apikey={FMP_API_KEY}"
-        response = requests.get(url, timeout=10)
+        response = fetch_with_retry_sync(url)
         
-        if response.status_code != 200:
-            print(f"⚠️ FMP API error ({response.status_code}) for {ticker}")
+        if response is None or response.status_code != 200:
+            print(f"⚠️ FMP API error ({response.status_code if response else 'failed'}) for {ticker}")
             return None
             
         data = response.json()

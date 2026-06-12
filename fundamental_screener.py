@@ -22,6 +22,24 @@ def get_supabase_client() -> Client:
         supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
     return supabase_client
 
+async def fetch_with_retry(client: httpx.AsyncClient, url: str, retries: int = 3, backoff: float = 1.0):
+    for i in range(retries):
+        try:
+            res = await client.get(url, timeout=10)
+            if res.status_code == 200:
+                return res
+            elif res.status_code == 429:
+                sleep_time = backoff * (2 ** i)
+                print(f"⚠️ Rate limited (429) on FMP API. Retrying in {sleep_time}s...")
+                await asyncio.sleep(sleep_time)
+            else:
+                return res
+        except Exception as e:
+            if i == retries - 1:
+                raise e
+            await asyncio.sleep(backoff * (2 ** i))
+    return None
+
 # Pre-defined fallback list of high-liquidity growth stock candidates (Top S&P 500 and tech leaders)
 FALLBACK_TICKERS = [
     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "LLY", "AVGO", "JPM",
@@ -39,8 +57,8 @@ async def get_sp500_tickers(client: httpx.AsyncClient):
     print("Attempting to fetch S&P 500 constituents from FMP...")
     url = f"{BASE_URL}/stable/sp500-constituent?apikey={API_KEY}"
     try:
-        response = await client.get(url, timeout=10)
-        if response.status_code == 200:
+        response = await fetch_with_retry(client, url)
+        if response and response.status_code == 200:
             data = response.json()
             if isinstance(data, list) and len(data) > 0 and 'symbol' in data[0]:
                 symbols = [company['symbol'] for company in data if 'symbol' in company]
@@ -48,7 +66,7 @@ async def get_sp500_tickers(client: httpx.AsyncClient):
                 return symbols
         
         # If API returns 402 (restricted) or 403, proceed to fallback
-        print(f"⚠️ S&P 500 API returned status {response.status_code}. Initiating active list fallback...")
+        print(f"⚠️ S&P 500 API returned status {response.status_code if response else 'failed'}. Initiating active list fallback...")
     except Exception as e:
         print(f"⚠️ Error fetching S&P 500 constituents: {e}. Initiating active list fallback...")
 
@@ -56,8 +74,8 @@ async def get_sp500_tickers(client: httpx.AsyncClient):
     tickers_set = set(FALLBACK_TICKERS)
     try:
         active_url = f"{BASE_URL}/stable/most-actives?apikey={API_KEY}"
-        active_res = await client.get(active_url, timeout=10)
-        if active_res.status_code == 200:
+        active_res = await fetch_with_retry(client, active_url)
+        if active_res and active_res.status_code == 200:
             active_data = active_res.json()
             if isinstance(active_data, list):
                 active_symbols = [item['symbol'] for item in active_data if isinstance(item, dict) and item.get('symbol')]
@@ -75,15 +93,15 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
             quote_url = f"{BASE_URL}/stable/quote?symbol={ticker}&apikey={API_KEY}"
             
             # Run API calls in parallel for this symbol
-            growth_task = client.get(growth_url, timeout=10)
-            quote_task = client.get(quote_url, timeout=10)
+            growth_task = fetch_with_retry(client, growth_url)
+            quote_task = fetch_with_retry(client, quote_url)
 
             growth_res, quote_res = await asyncio.gather(
                 growth_task, quote_task, return_exceptions=True
             )
 
-            if (isinstance(growth_res, Exception) or growth_res.status_code != 200 or
-                isinstance(quote_res, Exception) or quote_res.status_code != 200):
+            if (isinstance(growth_res, Exception) or growth_res is None or growth_res.status_code != 200 or
+                isinstance(quote_res, Exception) or quote_res is None or quote_res.status_code != 200):
                 return None
 
             growth_data = growth_res.json()
