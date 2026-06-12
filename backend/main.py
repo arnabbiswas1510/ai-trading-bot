@@ -273,6 +273,13 @@ def get_trades():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/breakouts")
+def get_breakouts():
+    try:
+        return db.get_daily_triggers()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/backtest")
 def run_backtest_simulation(req: BacktestRequest):
     try:

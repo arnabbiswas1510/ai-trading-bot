@@ -6,7 +6,8 @@ import {
   Settings as SettingsIcon,
   TrendingUp,
   Cpu,
-  History
+  History,
+  Activity
 } from 'lucide-react';
 
 import DashboardView from './components/DashboardView';
@@ -14,6 +15,7 @@ import ScreenerView from './components/ScreenerView';
 import BacktesterView from './components/BacktesterView';
 import SettingsView from './components/SettingsView';
 import TradesView from './components/TradesView';
+import BreakoutsView from './components/BreakoutsView';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -21,6 +23,7 @@ export default function App() {
   const [screenerResults, setScreenerResults] = useState([]);
   const [portfolioData, setPortfolioData] = useState(null);
   const [tradeHistory, setTradeHistory] = useState([]);
+  const [breakouts, setBreakouts] = useState([]);
   const [settings, setSettings] = useState(null);
   
   const [screenerLoading, setScreenerLoading] = useState(false);
@@ -54,6 +57,13 @@ export default function App() {
       if (tradesRes.ok) {
         const tData = await tradesRes.json();
         setTradeHistory(tData);
+      }
+
+      // Fetch breakouts
+      const breakoutsRes = await fetch('/api/breakouts');
+      if (breakoutsRes.ok) {
+        const bData = await breakoutsRes.json();
+        setBreakouts(bData);
       }
 
       // Fetch configurations
@@ -179,6 +189,8 @@ export default function App() {
         return <BacktesterView />;
       case 'history':
         return <TradesView trades={tradeHistory} />;
+      case 'breakouts':
+        return <BreakoutsView breakouts={breakouts} onBuyStock={handleBuyStock} />;
       case 'settings':
         return (
           <SettingsView 
@@ -220,6 +232,15 @@ export default function App() {
             >
               <Search />
               <span>Screener</span>
+            </div>
+          </li>
+          <li>
+            <div 
+              className={`nav-item ${currentView === 'breakouts' ? 'active' : ''}`}
+              onClick={() => setCurrentView('breakouts')}
+            >
+              <Activity />
+              <span>Breakouts</span>
             </div>
           </li>
           <li>
@@ -269,6 +290,7 @@ export default function App() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
             {currentView === 'dashboard' && "Simulated portfolio statistics, index direction, and live position tickers."}
             {currentView === 'screener' && "Live stock ranking, multi-factor scorecard checks, and technical details."}
+            {currentView === 'breakouts' && "Technical breakout alerts and daily triggers monitored by the execution agent."}
             {currentView === 'backtester' && "Simulate technical breakout entries and automated exits on historical ranges."}
             {currentView === 'history' && "Comprehensive history of all completed buying and selling transactions."}
             {currentView === 'settings' && "Manage trading budgets, risk constraints, and active ticker watchlists."}

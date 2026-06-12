@@ -367,6 +367,15 @@ def get_trade_history():
         print(f"Error getting trade history from Supabase: {e}")
         return []
 
+def get_daily_triggers():
+    try:
+        client = get_supabase_client()
+        res = client.table("daily_triggers").select("*").order("triggered_at", desc=True).execute()
+        return res.data
+    except Exception as e:
+        print(f"Error getting daily triggers from Supabase: {e}")
+        return []
+
 def reset_portfolio():
     try:
         client = get_supabase_client()
