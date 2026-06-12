@@ -98,11 +98,15 @@ def check_technical_breakout(ticker):
         is_breaking_high = current_close >= (today['rolling_high_52w'] * 0.98)
         
         if is_above_50ma and has_volume_surge and is_breaking_high:
+            rolling_high = today['rolling_high_52w']
+            pivot_dist = ((current_close / rolling_high) - 1.0) * 100.0 if rolling_high > 0 else 0.0
             return {
                 "ticker": ticker,
                 "close_price": float(round(current_close, 2)),
                 "volume_surge": float(round(volume_surge_ratio, 2)),
-                "sma_50": float(round(sma_50, 2))
+                "sma_50": float(round(sma_50, 2)),
+                "rolling_high_52w": float(round(rolling_high, 2)),
+                "pivot_distance_pct": float(round(pivot_dist, 2))
             }
     except Exception as e:
         print(f"❌ Error processing technical indicators for {ticker}: {e}")

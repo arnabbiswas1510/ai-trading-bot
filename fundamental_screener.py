@@ -123,14 +123,17 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
 
             q_eps_growth = latest_growth.get('epsgrowth', 0)
             a_eps_growth = latest_growth.get('threeYNetIncomeGrowthPerShare', 0)
+            revenue_growth = latest_growth.get('revenueGrowth', 0)
 
             # Ensure numeric conversion
             try:
                 q_eps_growth = float(q_eps_growth) if q_eps_growth is not None else 0.0
                 a_eps_growth = float(a_eps_growth) if a_eps_growth is not None else 0.0
+                revenue_growth = float(revenue_growth) if revenue_growth is not None else 0.0
             except ValueError:
                 q_eps_growth = 0.0
                 a_eps_growth = 0.0
+                revenue_growth = 0.0
 
             # Default inst_count to 10 (>5) because institutional holder endpoint is legaced/restricted
             inst_count = 10 
@@ -141,9 +144,11 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
                 return {
                     "ticker": ticker,
                     "company_name": quote.get('name', 'Unknown'),
+                    "composite_score": float(composite_score),
                     "q_eps_growth": float(q_eps_growth),
                     "a_eps_growth": float(a_eps_growth),
-                    "composite_score": float(composite_score)
+                    "revenue_growth": float(revenue_growth),
+                    "inst_count": int(inst_count)
                 }
         except Exception:
             pass
@@ -188,7 +193,7 @@ async def main():
         df_top90 = df_results.sort_values(by="composite_score", ascending=False).head(90)
         print(f"Watchlist top candidates:\n{df_top90[['ticker', 'composite_score']].to_string(index=False)}")
         
-        final_payload = df_top90[['ticker', 'company_name', 'q_eps_growth', 'a_eps_growth']].to_dict(orient="records")
+        final_payload = df_top90[['ticker', 'company_name', 'composite_score', 'q_eps_growth', 'a_eps_growth', 'revenue_growth', 'inst_count']].to_dict(orient="records")
         update_supabase_watchlist(final_payload)
 
 if __name__ == "__main__":
