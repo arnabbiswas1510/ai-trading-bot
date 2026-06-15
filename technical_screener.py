@@ -5,9 +5,20 @@ import pandas as pd
 from supabase import create_client, Client
 
 # Sourced safely from environment variables
-FMP_API_KEY = os.environ.get("FMP_API_KEY")
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+raw_api_key = os.environ.get("FMP_API_KEY")
+FMP_API_KEY = raw_api_key.strip().strip("'\"") if raw_api_key else None
+
+raw_supabase_url = os.environ.get("SUPABASE_URL")
+SUPABASE_URL = raw_supabase_url.strip().strip("'\"") if raw_supabase_url else None
+
+raw_supabase_key = os.environ.get("SUPABASE_KEY")
+if raw_supabase_key:
+    cleaned_key = raw_supabase_key.strip().strip("'\"")
+    if cleaned_key != raw_supabase_key:
+        print("⚠️ SUPABASE_KEY environment variable had leading/trailing whitespace, newlines, or quotes which were stripped.")
+    SUPABASE_KEY = cleaned_key
+else:
+    SUPABASE_KEY = None
 FMP_BASE_URL = "https://financialmodelingprep.com"
 
 # Lazy Initialize Supabase Client
