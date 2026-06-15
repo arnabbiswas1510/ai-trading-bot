@@ -44,7 +44,7 @@ def get_watchlist_from_supabase():
         return [row['ticker'] for row in response.data]
     except Exception as e:
         print(f"❌ Failed to fetch watchlist from Supabase: {e}")
-        return []
+        raise e
 
 def fetch_with_retry_sync(url, retries=3, backoff=1.0):
     import time
@@ -139,6 +139,7 @@ def write_triggers_to_supabase(triggers):
         print("✅ Breakouts recorded successfully.")
     except Exception as e:
         print(f"❌ Failed to log breakout signals: {e}")
+        raise e
 
 if __name__ == "__main__":
     if not FMP_API_KEY or not SUPABASE_URL or not SUPABASE_KEY:

@@ -178,6 +178,7 @@ def update_supabase_watchlist(candidates_list):
         print("✅ Watchlist transaction and pruning completed.")
     except Exception as e:
         print(f"❌ Database update error: {e}")
+        raise e
 
 async def main():
     if not API_KEY or not SUPABASE_URL or not SUPABASE_KEY:
