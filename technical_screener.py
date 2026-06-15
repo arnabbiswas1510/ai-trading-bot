@@ -134,9 +134,16 @@ def write_triggers_to_supabase(triggers):
         print("😴 No breakouts found today. Database insertion skipped.")
         return
     try:
+        client = get_supabase_client()
         print(f"📤 Pushing {len(triggers)} breakouts to 'daily_triggers'...")
-        get_supabase_client().table("daily_triggers").insert(triggers).execute()
+        client.table("daily_triggers").insert(triggers).execute()
         print("✅ Breakouts recorded successfully.")
+        
+        # Prune daily triggers older than 56 days (8 weeks)
+        print("🧹 Pruning breakout triggers older than 8 weeks (56 days) from Supabase...")
+        prune_threshold = (datetime.date.today() - datetime.timedelta(days=56)).strftime("%Y-%m-%d")
+        client.table("daily_triggers").delete().lt("triggered_at", prune_threshold).execute()
+        print("✅ Pruning of daily_triggers completed successfully.")
     except Exception as e:
         print(f"❌ Failed to log breakout signals: {e}")
         raise e
