@@ -267,6 +267,23 @@ def reconcile_with_ibkr(ib: IB):
     else:
         print(f"   🔄 Reconciliation complete — {changes} correction(s) applied.")
 
+    # ── Case 4: Sync live IBKR cash balance to Supabase ─────────────────────
+    # The backend derives cash dynamically (initial + realized_pnl - open_cost)
+    # which doesn't account for deposits, withdrawals, commissions, or dividends.
+    # We write the real IBKR CashBalance here so the backend can use it directly.
+    try:
+        ibkr_cash = get_available_cash(ib)
+        if ibkr_cash > 0:
+            client.table("account_balances").upsert(
+                {"key": "ibkr_cash_balance", "value": round(ibkr_cash, 2)},
+                on_conflict="key"
+            ).execute()
+            print(f"   💰 Cash balance synced from IBKR: ${ibkr_cash:,.2f}")
+        else:
+            print("   ⚠️  IBKR cash balance returned 0 or negative — skipping cash sync.")
+    except Exception as e:
+        print(f"   ❌ Could not sync cash balance from IBKR: {e}")
+
 
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""

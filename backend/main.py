@@ -156,10 +156,23 @@ def get_portfolio():
         positions = db.get_positions()
         history = db.get_trade_history()
         
-        # Calculate cash balance dynamically based on initial balance, trade history, and active positions
+        # Calculate cash balance:
+        # Prefer the real IBKR cash balance synced by the execution agent (accounts for
+        # deposits, withdrawals, commissions, dividends). Fall back to the derived formula
+        # (initial + realized_pnl - open_cost) when no synced value is available yet.
         realized_pnl = sum(t["profit_loss"] for t in history)
         open_cost = sum(p["shares"] * p["buy_price"] for p in positions)
-        cash = initial + realized_pnl - open_cost
+        computed_cash = initial + realized_pnl - open_cost
+
+        cash = computed_cash  # default
+        try:
+            supabase = db.get_supabase_client()
+            res = supabase.table("account_balances").select("value").eq("key", "ibkr_cash_balance").execute()
+            if res.data:
+                cash = float(res.data[0]["value"])
+        except Exception:
+            pass  # silently fall back to computed value
+
         
         fmp = FMPClient()
         portfolio_value = cash
