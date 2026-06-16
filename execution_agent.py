@@ -108,6 +108,140 @@ def handle_mock_sell(ticker: str, price: float, reason: str):
         print(f"❌ Database error during mock sale execution: {e}")
         sys.exit(1)
 
+def reconcile_with_ibkr(ib: IB):
+    """
+    Full bidirectional reconciliation between IBKR actual positions and Supabase ledger.
+    Runs every monitoring cycle (every 15 min during market hours).
+
+    Case 1 — In Supabase, NOT in IBKR:
+        Position was closed manually in TWS. Log to trade_history and remove from portfolio.
+
+    Case 2 — In IBKR, NOT in Supabase:
+        Position was opened manually in TWS. Insert into portfolio with computed stop/target.
+
+    Case 3 — In both, but share count differs:
+        Partial fill or manual adjustment. Update share count in Supabase.
+    """
+    print("🔄 Running IBKR ↔ Supabase reconciliation...")
+    client = get_supabase_client()
+
+    # ── Fetch IBKR positions ────────────────────────────────────────────────
+    try:
+        ib_raw = ib.positions()
+        # Only include equity positions with a positive share count
+        ib_map = {
+            p.contract.symbol: p
+            for p in ib_raw
+            if p.contract.secType == "STK" and int(p.position) > 0
+        }
+    except Exception as e:
+        print(f"❌ Could not fetch IBKR positions during reconciliation: {e}")
+        return
+
+    ib_tickers = set(ib_map.keys())
+
+    # ── Fetch Supabase positions ────────────────────────────────────────────
+    try:
+        res = client.table("portfolio_positions").select("*").execute()
+        supabase_positions = res.data or []
+    except Exception as e:
+        print(f"❌ Could not fetch Supabase positions during reconciliation: {e}")
+        return
+
+    supabase_map = {p["ticker"]: p for p in supabase_positions}
+    supabase_tickers = set(supabase_map.keys())
+
+    changes = 0
+
+    # ── Case 1: In Supabase but NOT in IBKR (manual sell / closed in TWS) ──
+    for ticker in supabase_tickers - ib_tickers:
+        pos = supabase_map[ticker]
+        print(f"   ⚠️  {ticker}: in Supabase but not in IBKR — manual close detected.")
+
+        # Best-effort sell price: live FMP quote, or fall back to buy_price
+        sell_price = get_live_price(ticker)
+        if sell_price <= 0:
+            sell_price = float(pos["buy_price"])
+            print(f"        Could not fetch live price for {ticker}; using buy_price as fallback.")
+
+        shares = int(pos["shares"])
+        buy_price = float(pos["buy_price"])
+        buy_date = pos["buy_date"]
+        buy_reason = pos.get("buy_reason", "Unknown")
+        profit_loss = round((sell_price - buy_price) * shares, 2)
+        percent_return = round(((sell_price / buy_price) - 1.0) * 100.0, 2)
+
+        trade_log = {
+            "ticker": ticker,
+            "shares": shares,
+            "buy_price": buy_price,
+            "buy_date": buy_date,
+            "buy_reason": buy_reason,
+            "sell_price": sell_price,
+            "sell_reason": "Manual close in IBKR (reconciled)",
+            "profit_loss": profit_loss,
+            "percent_return": percent_return,
+        }
+        try:
+            client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
+            client.table("trade_history").insert(trade_log).execute()
+            print(f"        ✅ Removed from portfolio, logged to history. PnL: ${profit_loss:+.2f} ({percent_return:+.2f}%)")
+            changes += 1
+        except Exception as e:
+            print(f"        ❌ DB error reconciling close for {ticker}: {e}")
+
+    # ── Case 2: In IBKR but NOT in Supabase (manual buy / opened in TWS) ───
+    for ticker in ib_tickers - supabase_tickers:
+        ib_pos = ib_map[ticker]
+        shares = int(ib_pos.position)
+        avg_cost = round(float(ib_pos.avgCost), 2)
+
+        if avg_cost <= 0:
+            print(f"   ⚠️  {ticker}: in IBKR with zero avg cost — skipping.")
+            continue
+
+        print(f"   ⚠️  {ticker}: in IBKR but not in Supabase — manual buy detected.")
+
+        stop_loss = round(avg_cost * 0.93, 2)     # 7% stop
+        profit_target = round(avg_cost * 1.25, 2)  # 25% target
+        buy_date = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        position_data = {
+            "ticker": ticker,
+            "shares": shares,
+            "buy_price": avg_cost,
+            "buy_date": buy_date,
+            "buy_reason": "Manual IBKR order (reconciled)",
+            "stop_loss": stop_loss,
+            "profit_target": profit_target,
+            "is_power_hold": False,
+        }
+        try:
+            client.table("portfolio_positions").insert(position_data).execute()
+            print(f"        ✅ Added to Supabase: {shares} shares @ ${avg_cost} | SL: ${stop_loss} | PT: ${profit_target}")
+            changes += 1
+        except Exception as e:
+            print(f"        ❌ DB error adding {ticker} to Supabase: {e}")
+
+    # ── Case 3: In both, but share count mismatch (partial fill / adjustment)
+    for ticker in ib_tickers & supabase_tickers:
+        ib_shares = int(ib_map[ticker].position)
+        db_shares = int(supabase_map[ticker]["shares"])
+        if ib_shares != db_shares:
+            print(f"   ⚠️  {ticker}: share count mismatch — IBKR: {ib_shares}, Supabase: {db_shares}. Correcting.")
+            try:
+                client.table("portfolio_positions").update({"shares": ib_shares}).eq("ticker", ticker).execute()
+                print(f"        ✅ Updated to {ib_shares} shares.")
+                changes += 1
+            except Exception as e:
+                print(f"        ❌ DB error updating shares for {ticker}: {e}")
+
+    if changes == 0:
+        print("   ✅ Supabase and IBKR are in sync. No changes needed.")
+    else:
+        print(f"   🔄 Reconciliation complete — {changes} correction(s) applied.")
+
+
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
     print("⏳ Running Market Open Buy checks...")
@@ -247,10 +381,9 @@ def monitor_portfolio_intraday(ib: IB):
         # Parse dates
         buy_date = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
         
-        # 0. Sync check: If position was closed manually outside the bot, sync Supabase
+        # 0. Skip positions already reconciled as missing from IBKR
+        # (reconcile_with_ibkr handles the full bidirectional sync before this loop runs)
         if ticker not in ib_tickers:
-            print(f"⚠️ Out of Sync: Ticker {ticker} is in Supabase but not active in IBKR. Removing from DB.")
-            client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
             continue
             
         # Fetch live price
@@ -375,13 +508,15 @@ def main_loop():
                 # 1. Market Open Check: Trigger buys between 9:30 AM and 9:45 AM
                 # Check if it is within the market open window
                 if now.hour == 9 and 30 <= now.minute <= 45:
+                    reconcile_with_ibkr(ib)   # Sync before placing any new buys
                     run_market_open_buys(ib)
                     # Sleep 15 minutes to avoid duplicate runs during the open window
                     time.sleep(900)
                     continue
-                
+
                 # 2. Intraday monitoring during market hours
                 if (now.hour == 9 and now.minute > 45) or (10 <= now.hour < 16):
+                    reconcile_with_ibkr(ib)   # Sync every 15 min — catches manual TWS trades
                     monitor_portfolio_intraday(ib)
                     # Check every 15 minutes
                     time.sleep(900)
