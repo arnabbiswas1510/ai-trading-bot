@@ -29,6 +29,11 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 7497))
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))
 # Skip a buy if the computed position size falls below this floor (USD).
 MIN_POSITION_SIZE = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
+# ── Stale position rotation ────────────────────────────────────────────────────
+# Days held before a sideways position is considered eligible for rotation.
+STALE_HOLD_DAYS = int(os.getenv("STALE_HOLD_DAYS", 15))
+# Maximum gain (decimal) that qualifies as "sideways". 0.03 = within 3% of entry.
+STALE_HOLD_MAX_GAIN = float(os.getenv("STALE_HOLD_MAX_GAIN", 0.03))
 
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(
@@ -457,6 +462,23 @@ def run_market_open_buys(ib: IB):
             print(f"❌ Failed to execute order for {ticker}: {order_err}")
             notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
 
+def get_fresh_triggers_today(client: Client, active_tickers: list) -> list:
+    """
+    Returns ticker symbols from today's daily_triggers that are not already held.
+    Used by the stale rotation gate to confirm a real replacement opportunity exists
+    before rotating out a sideways position.
+    """
+    tz = ZoneInfo("America/New_York")
+    today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
+    try:
+        res = client.table("daily_triggers") \
+                    .select("ticker") \
+                    .gte("triggered_at", today_str) \
+                    .execute()
+        return [r["ticker"] for r in res.data if r["ticker"] not in active_tickers]
+    except Exception:
+        return []
+
 def monitor_portfolio_intraday(ib: IB):
     """Monitors open positions, enforcing stop-losses, profit targets, and the 8-week hold rule."""
     print("🔍 Running Intraday Portfolio Monitoring...")
@@ -476,8 +498,69 @@ def monitor_portfolio_intraday(ib: IB):
     # Check actual IBKR positions to ensure we are in sync
     ib_positions = ib.positions()
     ib_tickers = [p.contract.symbol for p in ib_positions]
-    
+
+    # ── Pre-pass: Stale Position Rotation ────────────────────────────────────────
+    # Before entering the per-position loop, identify ALL stale candidates and pick
+    # the single worst performer. This ensures we always rotate the weakest position
+    # rather than whichever happens to appear first in the Supabase results.
+    # Rotation only fires when: portfolio is full AND a fresh trigger exists today.
+    if len(positions) >= MAX_POSITIONS:
+        active_tickers_now = [p["ticker"] for p in positions]
+        fresh_triggers = get_fresh_triggers_today(client, active_tickers_now)
+        if fresh_triggers:
+            stale_candidates = []
+            for p in positions:
+                if bool(p.get("is_power_hold")):
+                    continue  # Power Hold positions are exempt
+                try:
+                    bd = datetime.datetime.fromisoformat(p["buy_date"].replace('Z', '+00:00'))
+                    days = (datetime.datetime.now(datetime.timezone.utc) - bd).days
+                    bp = float(p["buy_price"])
+                    lp = get_live_price(p["ticker"])
+                    if lp <= 0:
+                        continue
+                    gain = (lp / bp) - 1.0
+                    if days >= STALE_HOLD_DAYS and gain < STALE_HOLD_MAX_GAIN:
+                        stale_candidates.append((gain, lp, days, p))
+                except Exception:
+                    continue
+
+            if stale_candidates:
+                # Sort ascending by gain — worst performer first
+                stale_candidates.sort(key=lambda x: x[0])
+                worst_gain, worst_price, worst_days, worst_pos = stale_candidates[0]
+                replacement = fresh_triggers[0]
+                gain_pct = worst_gain * 100.0
+                wticker = worst_pos["ticker"]
+                wshares = int(worst_pos["shares"])
+                wbuy_price = float(worst_pos["buy_price"])
+                wbuy_date = datetime.datetime.fromisoformat(
+                    worst_pos["buy_date"].replace('Z', '+00:00'))
+                wbuy_reason = worst_pos.get("buy_reason", "Unknown")
+                reason = (
+                    f"Stale Rotation — held {worst_days}d, "
+                    f"only {gain_pct:+.1f}% gain. "
+                    f"Freeing slot for: {replacement}"
+                )
+                print(f"♻️  Stale Rotation: {wticker} ({worst_days}d, {gain_pct:+.1f}%) "
+                      f"→ slot freed for {replacement}")
+                execute_sell(ib, client, wticker, wshares, wbuy_price,
+                             wbuy_date, wbuy_reason, worst_price, reason)
+                notifier.notify_sell(
+                    ticker=wticker, shares=wshares, buy_price=wbuy_price,
+                    buy_date=wbuy_date.isoformat(), fill_price=worst_price,
+                    reason=reason
+                )
+                # Refresh positions list after rotation sell before entering main loop
+                try:
+                    positions = client.table("portfolio_positions").select("*").execute().data
+                    ib_positions = ib.positions()
+                    ib_tickers = [p.contract.symbol for p in ib_positions]
+                except Exception:
+                    pass
+
     for pos in positions:
+
         ticker = pos["ticker"]
         shares = int(pos["shares"])
         buy_price = float(pos["buy_price"])
