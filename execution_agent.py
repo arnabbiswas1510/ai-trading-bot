@@ -264,6 +264,7 @@ def reconcile_with_ibkr(ib: IB):
             "stop_loss": stop_loss,
             "profit_target": profit_target,
             "is_power_hold": False,
+            "high_water_mark": avg_cost,   # Trailing stop anchor — set to entry price
         }
         try:
             client.table("portfolio_positions").insert(position_data).execute()
@@ -371,14 +372,15 @@ def run_market_open_buys(ib: IB):
         # ── Cooling-off period: skip tickers sold within the last 3 days ────────
         # Prevents re-buying a stock that was just stopped out (trailing stop)
         # before it has had time to form a new valid base.
+        # Uses sell_date (the actual trade_history column) not created_at.
         try:
-            cooling_cutoff = (today_ny - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
-            recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("created_at", cooling_cutoff).execute()
+            cooling_cutoff = (today_ny - datetime.timedelta(days=3)).isoformat()
+            recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
             if recent_sell_res.data:
                 print(f"   ⏳ {ticker} sold within last 3 days — cooling-off period active. Skipping.")
                 continue
-        except Exception:
-            pass  # If check fails, allow the buy to proceed
+        except Exception as cool_err:
+            print(f"   ⚠️ Cooling-off check failed for {ticker}: {cool_err} — allowing buy.")
             
         # Verify settled cash is enough for at least one minimum-sized position
         available_cash = get_available_cash(ib)
@@ -546,11 +548,7 @@ def monitor_portfolio_intraday(ib: IB):
                       f"→ slot freed for {replacement}")
                 execute_sell(ib, client, wticker, wshares, wbuy_price,
                              wbuy_date, wbuy_reason, worst_price, reason)
-                notifier.notify_sell(
-                    ticker=wticker, shares=wshares, buy_price=wbuy_price,
-                    buy_date=wbuy_date.isoformat(), fill_price=worst_price,
-                    reason=reason
-                )
+                # execute_sell() already calls notifier.notify_sell() internally
                 # Refresh positions list after rotation sell before entering main loop
                 try:
                     positions = client.table("portfolio_positions").select("*").execute().data
