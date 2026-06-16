@@ -353,7 +353,7 @@ def run_market_open_buys(ib: IB):
         return
 
     if not triggers:
-        print("😴 No breakouts triggered in the last 3 days. Skipping purchases.")
+        print(f"😴 No breakouts triggered in the last {TRIGGER_LOOKBACK_DAYS} days. Skipping purchases.")
         return
         
     # Get current holdings in portfolio_positions
@@ -385,7 +385,7 @@ def run_market_open_buys(ib: IB):
             cooling_cutoff = (today_ny - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
             recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
             if recent_sell_res.data:
-                print(f"   ⏳ {ticker} sold within last 3 days — cooling-off period active. Skipping.")
+                print(f"   ⏳ {ticker} sold within last {COOLING_OFF_DAYS} days — cooling-off period active. Skipping.")
                 continue
         except Exception as cool_err:
             print(f"   ⚠️ Cooling-off check failed for {ticker}: {cool_err} — allowing buy.")
@@ -615,7 +615,7 @@ def monitor_portfolio_intraday(ib: IB):
                     "is_power_hold": True,
                     "power_hold_expiry": expiry_date
                 }).eq("ticker", ticker).execute()
-                print(f"   Exempt from 25% target until {expiry_date} (8 weeks hold).")
+                print(f"   Exempt from {PROFIT_TARGET_PCT*100:.0f}% target until {expiry_date} ({POWER_HOLD_DURATION_WEEKS} weeks hold).")
                 gain_pct = ((current_price / buy_price) - 1.0) * 100.0
                 notifier.notify_power_hold(
                     ticker=ticker, gain_pct=gain_pct, days_held=days_held,
