@@ -7,6 +7,7 @@ import requests
 from zoneinfo import ZoneInfo
 from supabase import create_client, Client
 from ib_insync import IB, Stock, MarketOrder
+from telegram_notifier import TelegramNotifier
 
 # Load environment variables
 if os.path.exists(".env"):
@@ -28,6 +29,12 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 7497))
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))
 # Skip a buy if the computed position size falls below this floor (USD).
 MIN_POSITION_SIZE = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
+
+# ── Telegram notifications ─────────────────────────────────────────────────────
+notifier = TelegramNotifier(
+    bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+    chat_ids=os.getenv("TELEGRAM_CHAT_IDS", "").split(",")
+)
 
 # Initialize Supabase client
 supabase: Client = None
@@ -218,6 +225,11 @@ def reconcile_with_ibkr(ib: IB):
             client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
             client.table("trade_history").insert(trade_log).execute()
             print(f"        ✅ Removed from portfolio, logged to history. PnL: ${profit_loss:+.2f} ({percent_return:+.2f}%)")
+            notifier.notify_manual_close(
+                ticker=ticker, shares=shares, buy_price=buy_price,
+                sell_price=sell_price, sell_price_source=sell_price_source,
+                buy_date=buy_date
+            )
             changes += 1
         except Exception as e:
             print(f"        ❌ DB error reconciling close for {ticker}: {e}")
@@ -414,11 +426,23 @@ def run_market_open_buys(ib: IB):
             print(f"✅ Successfully bought {shares} shares of {ticker} at ${fill_price:.2f}.")
             print(f"   Stop-Loss: ${stop_loss} | Profit Target: ${profit_target}")
             
+            # Notify all configured Telegram recipients
+            portfolio_res = client.table("portfolio_positions").select("ticker").execute()
+            slot_used = len(portfolio_res.data) if portfolio_res.data else 1
+            notifier.notify_buy(
+                ticker=ticker, shares=shares, fill_price=fill_price,
+                stop_loss=stop_loss, profit_target=profit_target,
+                volume_surge=float(trigger.get("volume_surge", 0)),
+                pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
+                slot_used=slot_used, max_slots=MAX_POSITIONS
+            )
+            
             # Add to local tracker to prevent double buys in this loop
             active_tickers.append(ticker)
             
         except Exception as order_err:
             print(f"❌ Failed to execute order for {ticker}: {order_err}")
+            notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
 
 def monitor_portfolio_intraday(ib: IB):
     """Monitors open positions, enforcing stop-losses, profit targets, and the 8-week hold rule."""
@@ -478,6 +502,11 @@ def monitor_portfolio_intraday(ib: IB):
                     "power_hold_expiry": expiry_date
                 }).eq("ticker", ticker).execute()
                 print(f"   Exempt from 25% target until {expiry_date} (8 weeks hold).")
+                gain_pct = ((current_price / buy_price) - 1.0) * 100.0
+                notifier.notify_power_hold(
+                    ticker=ticker, gain_pct=gain_pct, days_held=days_held,
+                    expiry_date=expiry_date, stop_loss=stop_loss
+                )
             except Exception as e:
                 print(f"   ❌ Failed to update power hold state: {e}")
                 
@@ -549,9 +578,14 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         
         print(f"✅ Closed Position: Sold {shares} shares of {ticker} at ${fill_price:.2f}.")
         print(f"   PnL: ${profit_loss} ({percent_return}%) | Reason: {reason}")
+        notifier.notify_sell(
+            ticker=ticker, shares=shares, buy_price=buy_price,
+            buy_date=buy_date.isoformat(), fill_price=fill_price, reason=reason
+        )
         
     except Exception as e:
         print(f"❌ Error executing sell order for {ticker}: {e}")
+        notifier.notify_exception(f"execute_sell({ticker}) — execution_agent.py", e)
 
 def main_loop():
     """Main daemon loop running inside the Docker container."""
@@ -603,6 +637,7 @@ def main_loop():
             break
         except Exception as loop_err:
             print(f"❌ Error in main execution loop: {loop_err}")
+            notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
             time.sleep(60)
 
 if __name__ == "__main__":

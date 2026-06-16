@@ -4,6 +4,7 @@ import datetime
 import httpx
 import pandas as pd
 from supabase import create_client, Client
+from telegram_notifier import TelegramNotifier
 
 # Sourced safely from environment variables
 raw_api_key = os.environ.get("FMP_API_KEY")
@@ -21,6 +22,12 @@ if raw_supabase_key:
 else:
     SUPABASE_KEY = None
 BASE_URL = "https://financialmodelingprep.com"
+
+# ── Telegram notifications ─────────────────────────────────────────────────────
+notifier = TelegramNotifier(
+    bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+    chat_ids=os.environ.get("TELEGRAM_CHAT_IDS", "").split(",")
+)
 
 # Lazy Initialize Supabase Client
 supabase_client: Client = None
@@ -241,4 +248,8 @@ async def main():
         update_supabase_watchlist(final_payload)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        notifier.notify_exception("main() — fundamental_screener.py", e)
+        raise

@@ -3,6 +3,7 @@ import requests
 import datetime
 import pandas as pd
 from supabase import create_client, Client
+from telegram_notifier import TelegramNotifier
 
 # Sourced safely from environment variables
 raw_api_key = os.environ.get("FMP_API_KEY")
@@ -20,6 +21,12 @@ if raw_supabase_key:
 else:
     SUPABASE_KEY = None
 FMP_BASE_URL = "https://financialmodelingprep.com"
+
+# ── Telegram notifications ─────────────────────────────────────────────────────
+notifier = TelegramNotifier(
+    bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+    chat_ids=os.environ.get("TELEGRAM_CHAT_IDS", "").split(",")
+)
 
 # Lazy Initialize Supabase Client
 supabase_client: Client = None
@@ -153,18 +160,22 @@ if __name__ == "__main__":
         print("❌ Missing environment variables. Please check FMP_API_KEY, SUPABASE_URL, and SUPABASE_KEY.")
         exit(1)
 
-    print("⏳ Synchronizing cloud fundamental watchlist data...")
-    watchlist = get_watchlist_from_supabase()
-    
-    if not watchlist:
-        print("📭 Target tracking watchlist is empty or could not be retrieved.")
-    else:
-        print(f"🔍 Analyzing {len(watchlist)} assets for volume breakouts...")
-        active_triggers = []
-        for ticker in watchlist:
-            trigger_data = check_technical_breakout(ticker)
-            if trigger_data:
-                print(f"🔥 Breakout detected for {ticker}! Price: ${trigger_data['close_price']}, Volume Surge: {trigger_data['volume_surge']}x")
-                active_triggers.append(trigger_data)
-                
-        write_triggers_to_supabase(active_triggers)
+    try:
+        print("⏳ Synchronizing cloud fundamental watchlist data...")
+        watchlist = get_watchlist_from_supabase()
+        
+        if not watchlist:
+            print("💭 Target tracking watchlist is empty or could not be retrieved.")
+        else:
+            print(f"🔍 Analyzing {len(watchlist)} assets for volume breakouts...")
+            active_triggers = []
+            for ticker in watchlist:
+                trigger_data = check_technical_breakout(ticker)
+                if trigger_data:
+                    print(f"🔥 Breakout detected for {ticker}! Price: ${trigger_data['close_price']}, Volume Surge: {trigger_data['volume_surge']}x")
+                    active_triggers.append(trigger_data)
+                    
+            write_triggers_to_supabase(active_triggers)
+    except Exception as e:
+        notifier.notify_exception("main block — technical_screener.py", e)
+        raise
