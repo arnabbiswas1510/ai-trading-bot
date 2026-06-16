@@ -15,3 +15,8 @@
 **/.idea/
 **/.DS_Store
 .git/
+docs/
+README.md
+AGENTS.md
+**/*.md
+**/test_*.py
