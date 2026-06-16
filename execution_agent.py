@@ -158,11 +158,37 @@ def reconcile_with_ibkr(ib: IB):
         pos = supabase_map[ticker]
         print(f"   ⚠️  {ticker}: in Supabase but not in IBKR — manual close detected.")
 
-        # Best-effort sell price: live FMP quote, or fall back to buy_price
-        sell_price = get_live_price(ticker)
+        # Prefer the actual IBKR fill price from execution history.
+        # reqExecutions() returns all fills from the current IB Gateway session.
+        sell_price = 0.0
+        sell_price_source = "unknown"
+        try:
+            fills = ib.reqExecutions()
+            # Find the most recent SLD (sold) execution for this ticker
+            sell_fills = [
+                f for f in fills
+                if f.contract.symbol == ticker and f.execution.side == "SLD"
+            ]
+            if sell_fills:
+                # Sort newest first by execution time string (IB format: 'YYYYMMDD  HH:MM:SS TZ')
+                sell_fills.sort(key=lambda f: f.execution.time, reverse=True)
+                sell_price = float(sell_fills[0].execution.avgPrice)
+                sell_price_source = f"IBKR fill (execId {sell_fills[0].execution.execId})"
+        except Exception as ex:
+            print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex}")
+
+        # Fallback 1: live FMP quote (price at reconciliation moment, up to 15 min late)
+        if sell_price <= 0:
+            sell_price = get_live_price(ticker)
+            sell_price_source = "FMP live quote (fill not found in current session)"
+
+        # Fallback 2: buy_price (prevents a zero-division or zero-price log entry)
         if sell_price <= 0:
             sell_price = float(pos["buy_price"])
-            print(f"        Could not fetch live price for {ticker}; using buy_price as fallback.")
+            sell_price_source = "buy_price (no price source available)"
+
+        print(f"        Sell price source: {sell_price_source} → ${sell_price:.2f}")
+
 
         shares = int(pos["shares"])
         buy_price = float(pos["buy_price"])
