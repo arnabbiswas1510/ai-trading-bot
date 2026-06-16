@@ -362,6 +362,18 @@ def run_market_open_buys(ib: IB):
         # Don't buy a stock we already hold
         if ticker in active_tickers:
             continue
+
+        # ── Cooling-off period: skip tickers sold within the last 3 days ────────
+        # Prevents re-buying a stock that was just stopped out (trailing stop)
+        # before it has had time to form a new valid base.
+        try:
+            cooling_cutoff = (today_ny - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
+            recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("created_at", cooling_cutoff).execute()
+            if recent_sell_res.data:
+                print(f"   ⏳ {ticker} sold within last 3 days — cooling-off period active. Skipping.")
+                continue
+        except Exception:
+            pass  # If check fails, allow the buy to proceed
             
         # Verify settled cash is enough for at least one minimum-sized position
         available_cash = get_available_cash(ib)
@@ -417,9 +429,10 @@ def run_market_open_buys(ib: IB):
                 "shares": shares,
                 "buy_price": fill_price,
                 "buy_reason": f"CANSLIM Breakout: Vol Surge {trigger['volume_surge']}x",
-                "stop_loss": stop_loss,
+                "stop_loss": round(fill_price * 0.93, 2),   # Initial floor (entry-based)
                 "profit_target": profit_target,
-                "is_power_hold": False
+                "is_power_hold": False,
+                "high_water_mark": fill_price               # Trailing stop anchor — rises with price
             }
             
             client.table("portfolio_positions").insert(position_data).execute()
@@ -468,10 +481,11 @@ def monitor_portfolio_intraday(ib: IB):
         ticker = pos["ticker"]
         shares = int(pos["shares"])
         buy_price = float(pos["buy_price"])
-        stop_loss = float(pos["stop_loss"])
         profit_target = float(pos["profit_target"])
         is_power_hold = bool(pos["is_power_hold"])
         buy_reason = pos.get("buy_reason", "Unknown")
+        # Trailing stop: watermark rises with price, never falls. Default to buy_price on first cycle.
+        high_water_mark = float(pos.get("high_water_mark") or buy_price)
         
         # Parse dates
         buy_date = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
@@ -485,8 +499,19 @@ def monitor_portfolio_intraday(ib: IB):
         current_price = get_live_price(ticker)
         if current_price <= 0:
             continue
-            
-        print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} (SL: ${stop_loss} | PT: ${profit_target})")
+
+        # ── Update trailing high-water mark ─────────────────────────────────
+        if current_price > high_water_mark:
+            high_water_mark = round(current_price, 2)
+            try:
+                client.table("portfolio_positions").update(
+                    {"high_water_mark": high_water_mark}
+                ).eq("ticker", ticker).execute()
+            except Exception as e:
+                print(f"   ⚠️ Could not update high_water_mark for {ticker}: {e}")
+
+        trailing_stop = round(high_water_mark * 0.93, 2)
+        print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} | High: ${high_water_mark:.2f} | Trail Stop: ${trailing_stop:.2f} | PT: ${profit_target:.2f}")
         
         # 1. 8-Week Power Holding Rule Check
         # If stock surges 20%+ in less than 21 days from purchase
@@ -505,7 +530,7 @@ def monitor_portfolio_intraday(ib: IB):
                 gain_pct = ((current_price / buy_price) - 1.0) * 100.0
                 notifier.notify_power_hold(
                     ticker=ticker, gain_pct=gain_pct, days_held=days_held,
-                    expiry_date=expiry_date, stop_loss=stop_loss
+                    expiry_date=expiry_date, stop_loss=trailing_stop
                 )
             except Exception as e:
                 print(f"   ❌ Failed to update power hold state: {e}")
@@ -528,10 +553,17 @@ def monitor_portfolio_intraday(ib: IB):
                 except Exception as e:
                     print(f"   ❌ Failed to reset power hold state: {e}")
 
-        # 2. Enforce 7% Absolute Cut-Loss
-        if current_price <= stop_loss:
-            print(f"🚨 Stop-Loss Triggered for {ticker} at ${current_price:.2f} (Stop: ${stop_loss})!")
-            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, "7% Stop Loss")
+        # 2. Enforce Trailing Stop Loss (7% below high-water mark)
+        # Trailing stop rises as price climbs but never falls — locks in gains.
+        # Falls back to entry-based -7% if price never exceeded buy price.
+        if current_price <= trailing_stop:
+            gain_from_entry = ((high_water_mark / buy_price) - 1.0) * 100.0
+            if high_water_mark > buy_price:
+                reason_str = f"Trailing Stop (-7% from high of ${high_water_mark:.2f}, locked in {gain_from_entry:+.1f}% gain)"
+            else:
+                reason_str = "Trailing Stop (-7% from entry — position never gained)"
+            print(f"🚨 Trailing Stop triggered for {ticker} at ${current_price:.2f} (Stop: ${trailing_stop:.2f}, High: ${high_water_mark:.2f})")
+            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason_str)
             continue
             
         # 3. Enforce 25% Profit Target (Skip if in Power Hold)

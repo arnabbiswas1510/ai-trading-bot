@@ -72,7 +72,17 @@ if ticker in active_tickers:
     continue  # Already holding — skip
 ```
 
-#### 4b. Cash Sufficiency Check
+#### 4b. Cooling-Off Period (3 days after a sale)
+```python
+cooling_cutoff = today - timedelta(days=3)
+recent_sells = trade_history.select("ticker").eq("ticker", ticker).gte("created_at", cooling_cutoff)
+if recent_sells.data:
+    continue  # Sold within last 3 days — cooling-off active
+```
+
+Prevents re-buying a ticker that was recently stopped out (trailing stop) before it has formed a new valid base. A 3-day window covers the typical post-stop consolidation period while still allowing legitimate re-entries from fresh CANSLIM breakouts.
+
+#### 4c. Cash Sufficiency Check
 ```python
 MIN_POSITION_SIZE = float(os.getenv("MIN_POSITION_SIZE", 5000.0))  # default: $5,000
 
@@ -157,19 +167,21 @@ if fill_price <= 0:
 
 ---
 
-### Step 10 — Stop-Loss & Profit Target Calculation
+### Step 10 — Trailing Stop & Profit Target Initialization
 
-Computed from the **actual fill price**:
+Computed from the **actual fill price** and stored at buy time:
 
 ```python
-stop_loss     = round(fill_price * 0.93, 2)   # 7% below fill
+stop_loss     = round(fill_price * 0.93, 2)   # Initial trailing stop floor (entry-based)
 profit_target = round(fill_price * 1.25, 2)   # 25% above fill
+high_water_mark = fill_price                  # Trailing stop anchor — rises with price each cycle
 ```
 
-| Exit Level | Formula | Description |
-|------------|---------|-------------|
-| Stop-Loss | fill × 0.93 | Hard cut-loss at -7% |
-| Profit Target | fill × 1.25 | Take-profit at +25% |
+| Field | Formula | Description |
+|-------|---------|-------------|
+| `stop_loss` | fill × 0.93 | Stored for reference only; trailing stop is computed live from `high_water_mark` |
+| `profit_target` | fill × 1.25 | Take-profit at +25% (suspended during Power Hold) |
+| `high_water_mark` | fill price | Initialized to fill; rises with price during monitoring cycles |
 
 ---
 
@@ -183,12 +195,14 @@ position_data = {
     "buy_reason": f"CANSLIM Breakout: Vol Surge {trigger['volume_surge']}x",
     "stop_loss": stop_loss,
     "profit_target": profit_target,
-    "is_power_hold": False
+    "is_power_hold": False,
+    "high_water_mark": fill_price   # Trailing stop anchor — rises with price
 }
 portfolio_positions.insert(position_data)
 ```
 
 The `buy_reason` captures the volume surge ratio from the technical trigger for trade audit purposes.
+The `high_water_mark` is updated every monitoring cycle whenever the stock makes a new high.
 
 ---
 
@@ -223,6 +237,7 @@ Load current portfolio
     ▼
 For each trigger:
     ├─ Already holding ticker? → Skip
+    ├─ Sold within last 3 days? → Skip (cooling-off)
     ├─ Cash < MIN_POSITION_SIZE? → Skip
     ├─ Portfolio refilled to MAX? → Break
     │
@@ -241,8 +256,9 @@ shares = int(position_size / price)
 IBKR MarketOrder BUY → wait 3s → get fill price
     │
     ▼
-stop_loss = fill * 0.93
+stop_loss = fill * 0.93      (initial floor, stored for reference)
 profit_target = fill * 1.25
+high_water_mark = fill       (trailing stop anchor)
     │
     ▼
 Insert into Supabase portfolio_positions

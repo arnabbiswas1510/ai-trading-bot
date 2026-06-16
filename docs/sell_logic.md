@@ -80,20 +80,38 @@ Once the 8-week hold expires, the 25% profit target resumes immediately on the n
 
 ---
 
-## Check 2 — 7% Hard Stop-Loss
+## Check 1 — Trailing Stop Loss (7% below high-water mark)
 
 ```python
-if current_price <= stop_loss:    # stop_loss = buy_price * 0.93
-    execute_sell(..., reason="7% Stop Loss")
+# Rise the watermark whenever price makes a new high
+if current_price > high_water_mark:
+    high_water_mark = round(current_price, 2)
+    # Persisted to Supabase portfolio_positions.high_water_mark
+
+trailing_stop = round(high_water_mark * 0.93, 2)
+
+if current_price <= trailing_stop:
+    execute_sell(..., reason=f"Trailing Stop (...)")
 ```
 
-- **Threshold:** Price falls to or below `buy_price × 0.93` (7% loss from entry)
-- **No exceptions:** This fires even if `is_power_hold = True`
-- Continues to next position after sell (`continue`)
+**How it works:**
+- `high_water_mark` is initialized to `buy_price` at purchase and stored in `portfolio_positions`
+- Each monitoring cycle, if `current_price > high_water_mark`, the watermark is raised and persisted to Supabase
+- The trailing stop is always `high_water_mark × 0.93` — computed live, never stored
+- If the stock never gains, the trailing stop equals `buy_price × 0.93` (identical to the old hard stop)
+- If the stock rises to $130 from $100 entry, the trailing stop rises to $120.90 — locking in profit
+
+**Sell reason strings:**
+| Scenario | Reason String |
+|----------|---------------|
+| Stock gained before pullback | `Trailing Stop (-7% from high of $130.00, locked in +30.0% gain)` |
+| Stock never gained | `Trailing Stop (-7% from entry — position never gained)` |
+
+- **No exceptions:** Fires even if `is_power_hold = True` (stop protection always active)
 
 ---
 
-## Check 3 — 25% Profit Target
+## Check 2 — 25% Profit Target
 
 ```python
 if current_price >= profit_target and not is_power_hold:
@@ -102,6 +120,7 @@ if current_price >= profit_target and not is_power_hold:
 
 - **Threshold:** Price rises to or above `buy_price × 1.25` (25% gain from entry)
 - **Blocked during Power Hold:** If `is_power_hold = True`, this check is skipped entirely
+- Note: During a Power Hold, the trailing stop still applies — the position is not unprotected
 
 ---
 
@@ -109,9 +128,9 @@ if current_price >= profit_target and not is_power_hold:
 
 | Priority | Trigger | Condition | Power Hold Override? |
 |----------|---------|-----------|---------------------|
-| 1 | 7% Stop-Loss | `price <= buy * 0.93` | No — always fires |
-| 2 | 25% Profit Target | `price >= buy * 1.25` | Yes — suspended during hold |
-| — | Power Hold Activation | 20% gain in ≤ 21 days | Suspends profit target for 8 weeks |
+| 1 | Trailing Stop Loss | `price <= high_water_mark × 0.93` | No — always fires |
+| 2 | 25% Profit Target | `price >= buy × 1.25` | Yes — suspended during hold |
+| — | Power Hold Activation | 20% gain in ≤21 days | Suspends profit target for 8 weeks |
 
 ---
 
