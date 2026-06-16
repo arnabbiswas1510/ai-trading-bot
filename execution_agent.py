@@ -277,18 +277,35 @@ def reconcile_with_ibkr(ib: IB):
     # The backend derives cash dynamically (initial + realized_pnl - open_cost)
     # which doesn't account for deposits, withdrawals, commissions, or dividends.
     # We write the real IBKR CashBalance here so the backend can use it directly.
+    # Only upsert if the balance has changed by more than $1 to avoid redundant writes.
     try:
         ibkr_cash = get_available_cash(ib)
         if ibkr_cash > 0:
-            client.table("account_balances").upsert(
-                {"key": "ibkr_cash_balance", "value": round(ibkr_cash, 2)},
-                on_conflict="key"
-            ).execute()
-            print(f"   💰 Cash balance synced from IBKR: ${ibkr_cash:,.2f}")
+            new_balance = round(ibkr_cash, 2)
+
+            # Read current stored value before writing
+            stored_balance = None
+            try:
+                res = client.table("account_balances").select("value").eq("key", "ibkr_cash_balance").execute()
+                if res.data:
+                    stored_balance = float(res.data[0]["value"])
+            except Exception:
+                pass  # If read fails, proceed with write
+
+            if stored_balance is None or abs(new_balance - stored_balance) > 1.00:
+                client.table("account_balances").upsert(
+                    {"key": "ibkr_cash_balance", "value": new_balance},
+                    on_conflict="key"
+                ).execute()
+                change_str = f" (was ${stored_balance:,.2f})" if stored_balance is not None else " (first write)"
+                print(f"   💰 Cash balance synced from IBKR: ${new_balance:,.2f}{change_str}")
+            else:
+                print(f"   💰 Cash balance unchanged (${new_balance:,.2f}) — skipping write.")
         else:
             print("   ⚠️  IBKR cash balance returned 0 or negative — skipping cash sync.")
     except Exception as e:
         print(f"   ❌ Could not sync cash balance from IBKR: {e}")
+
 
 
 def run_market_open_buys(ib: IB):

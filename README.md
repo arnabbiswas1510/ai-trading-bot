@@ -1,71 +1,199 @@
-# CAN SLIM AI Trading Bot
+# AI Trading Bot — CANSLIM Momentum Strategy
 
-A premium, growth-stock screening and paper-trading bot implementing the investment methodology described in William J. O'Neil's classic, *"How to Make Money in Stocks (Fourth Edition)"*.
-
-This full-stack application scores watchlists, visualizes price breakouts with moving averages (SMAs), simulates paper trading with automated risk boundaries, and runs historical backtests.
+An automated equity trading system implementing the **CANSLIM** methodology developed by William O'Neil.
+The bot screens fundamentally strong stocks, detects technical breakout triggers, and executes
+market orders via Interactive Brokers (IBKR), running as a fully containerized daemon.
 
 ---
 
-## CAN SLIM Criteria Evaluated
+## Architecture Overview
 
-- **C - Current Quarterly Earnings**: Growth rate >= 25% YoY, accelerating growth trends, and quarterly revenue increases.
-- **A - Annual Earnings Increases**: Compound annual growth rate over 3 years >= 20%, and Return on Equity (ROE) >= 17%.
-- **N - New Product/Price Highs**: Stock proximity (within 15%) to its 52-week price highs (breakout setup).
-- **S - Supply and Demand**: Daily volume surges vs. 50-day average on upward price action (accumulation days).
-- **L - Leader or Laggard**: Relative Strength (RS) rating comparison (percentile ranking above 80) and S&P 500 performance comparison.
-- **I - Institutional Sponsorship**: Stable holdings owned by mutual funds/banks (optimal ranges between 30% and 85%).
-- **M - Market Direction**: S&P 500 (`^GSPC`) and Nasdaq Composite (`^IXIC`) index price trends relative to their 50d and 200d moving averages.
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  DATA SOURCES                                                        │
+│  Financial Modeling Prep (FMP API)  ←→  Interactive Brokers (IBKR)  │
+└────────────┬──────────────────────────────────┬─────────────────────┘
+             │                                  │
+             ▼                                  ▼
+┌────────────────────────┐        ┌─────────────────────────────────────┐
+│  FUNDAMENTAL SCREENER  │        │         EXECUTION AGENT             │
+│  fundamental_screener  │        │         execution_agent.py          │
+│  .py (weekly cron)     │        │         (continuous daemon)         │
+│                        │        │                                     │
+│  S&P 500 universe      │        │  9:30–9:45 AM → run_market_open_   │
+│  EPS growth filter     │        │  buys() [buy logic]                 │
+│  Composite scoring     │        │                                     │
+│  Top 90 → Supabase     │        │  9:45 AM–4 PM → monitor_portfolio_ │
+│  watchlist table       │        │  intraday() [sell logic]            │
+└────────────┬───────────┘        │                                     │
+             │                    │  Every cycle → reconcile_with_      │
+             ▼                    │  ibkr() [sync]                      │
+┌────────────────────────┐        └──────────────┬──────────────────────┘
+│  TECHNICAL SCREENER    │                       │
+│  technical_screener.py │                       │
+│  (daily cron)          │                       │
+│                        │                       │
+│  Reads watchlist       │                       │
+│  SMA-50 check          │                       │
+│  40%+ volume surge     │    ┌──────────────────▼──────────────────────┐
+│  Within 2% of 52w high │    │            SUPABASE DATABASE            │
+│  → daily_triggers table│───►│  watchlist · daily_triggers             │
+└────────────────────────┘    │  portfolio_positions · trade_history    │
+                              │  account_balances                       │
+                              └─────────────────────────────────────────┘
+```
 
 ---
 
 ## Technology Stack
 
-- **Backend**: FastAPI (Python), SQLite3 Database, `yfinance` API.
-- **Frontend**: React (Vite), Recharts, Lucide-React, premium Vanilla CSS with space-navy glassmorphic theme.
+| Component | Technology |
+|-----------|-----------|
+| Language | Python 3.11+ |
+| Broker API | Interactive Brokers (`ib_insync`) |
+| Market Data | Financial Modeling Prep (FMP) REST API |
+| Database | Supabase (PostgreSQL) |
+| Containerization | Docker + Docker Compose |
+| HTTP Client | `httpx` (async), `requests` (sync) |
+| Data Processing | `pandas` |
 
 ---
 
-## Getting Started (Local Development)
+## Component Documentation
 
-To launch the servers concurrently and open the app in your browser, run:
+> These documents are derived directly from source code and must be kept in sync
+> with any code changes. See [Maintenance Policy](#llm-maintenance-policy) below.
 
-```bash
-python run_app.py
-```
-
-This master script automatically installs dependencies (Python & Node.js) and orchestrates the backend (port 8000) and frontend (port 5173).
+| Document | Source File(s) | Description |
+|----------|---------------|-------------|
+| [Fundamental Screener](docs/fundamental_screener.md) | `fundamental_screener.py`, `backend/screener.py` | CANSLIM 7-dimension scoring, watchlist pipeline, EPS thresholds |
+| [Technical Triggers](docs/technical_triggers.md) | `technical_screener.py` | Breakout detection: SMA-50, volume surge, 52-week high proximity |
+| [Buy Logic](docs/buy_logic.md) | `execution_agent.py` → `run_market_open_buys()` | Market open buys, position sizing, stop/target setup |
+| [Sell Logic](docs/sell_logic.md) | `execution_agent.py` → `monitor_portfolio_intraday()` | Stop-loss, profit target, Power Hold Rule, manual close reconciliation |
 
 ---
 
-## Docker Deployment
+## CANSLIM Strategy Summary
 
-This application is fully dockerized. It bundles the React static build outputs directly inside the FastAPI backend, serving the entire application from a single port (`8000`).
+| Letter | Dimension | Pipeline Implementation |
+|--------|-----------|------------------------|
+| **C** | Current Earnings | Q EPS growth > 18% (pipeline) / scored 0–15 pts (full screener) |
+| **A** | Annual Earnings | 3Y EPS growth > 10% (pipeline) / CAGR + ROE scored 0–15 pts |
+| **N** | New Highs | Within 2% of 52-week high (technical trigger) |
+| **S** | Supply & Demand | Volume surge >= 1.4x avg (technical trigger) |
+| **L** | Leader vs Laggard | RS rating percentile, weighted 4-period momentum |
+| **I** | Institutional Sponsorship | > 5 distinct institutional holders (FMP v3 endpoint) |
+| **M** | Market Direction | S&P 500 + Nasdaq vs. SMA-50 / SMA-200 |
 
-### Using Docker Compose (Recommended)
+---
 
-Docker Compose automatically configures persistent storage for your paper trading portfolio database using named volumes.
+## Exit Rules
 
-To build and launch the bot, run:
+| Rule | Trigger | Threshold |
+|------|---------|-----------|
+| Hard Stop-Loss | Price falls | -7% from fill price |
+| Profit Target | Price rises | +25% from fill price |
+| Power Hold | Surge > 20% in ≤ 21 days | Suspend profit target for 8 weeks |
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FMP_API_KEY` | — | Financial Modeling Prep API key |
+| `SUPABASE_URL` | — | Supabase project URL |
+| `SUPABASE_KEY` | — | Supabase service role key |
+| `IB_GATEWAY_HOST` | `localhost` | IB Gateway hostname (use `ib-gateway` in Docker) |
+| `IB_GATEWAY_PORT` | `7497` | IB Gateway API port (4004 in Docker via `buy_triggers.py`) |
+| `MAX_POSITIONS` | `4` | Maximum concurrent open positions |
+| `MIN_POSITION_SIZE` | `5000.0` | Minimum USD position size floor |
+
+---
+
+## Running the System
+
+### Local (Development)
 
 ```bash
-docker-compose up --build -d
+# 1. Copy and fill environment variables
+cp .env.example .env
+
+# 2. Run the fundamental screener (weekly)
+python fundamental_screener.py
+
+# 3. Run the technical screener (daily, after market close)
+python technical_screener.py
+
+# 4. Run the execution agent daemon (during market hours)
+python execution_agent.py
+
+# 5. Manual buy trigger (connects to ib-gateway container)
+python buy_triggers.py
+
+# 6. Mock-sell a position for testing (no IBKR connection needed)
+python execution_agent.py --mock-sell AAPL --price 195.50 --reason "Test exit"
 ```
 
-Open your browser to: **`http://localhost:8000`**
+### Docker (Production)
 
-To shut down:
 ```bash
-docker-compose down
+docker compose up -d
 ```
 
-### Using Standard Docker Run
+Key services in `docker-compose.yml`:
+- `ib-gateway` — Interactive Brokers Gateway (API port 4004)
+- `execution-agent` — The main daemon
+- `backend` — FastAPI dashboard backend
 
-To build the image manually:
-```bash
-docker build -t ai-trading-bot .
-```
+---
 
-To run the container:
-```bash
-docker run -d -p 8000:8000 --name can-slim-bot ai-trading-bot
-```
+## Supabase Schema
+
+| Table | Purpose | Retention |
+|-------|---------|-----------|
+| `watchlist` | Fundamental screener top-90 output | 56 days rolling |
+| `daily_triggers` | Technical breakout signals | 56 days rolling |
+| `portfolio_positions` | Open positions ledger | Until sell/close |
+| `trade_history` | Closed trade audit log | Permanent |
+| `account_balances` | IBKR cash balance sync | Live upsert |
+
+---
+
+## LLM Maintenance Policy
+
+> [!IMPORTANT]
+> These markdown files are **living documentation** tied directly to the source code.
+> They must be updated whenever the corresponding source files change.
+
+### How These Docs Are Maintained
+
+The 4 component docs ([fundamental_screener.md](docs/fundamental_screener.md), [technical_triggers.md](docs/technical_triggers.md),
+[buy_logic.md](docs/buy_logic.md), [sell_logic.md](docs/sell_logic.md)) are stored as
+**Knowledge Items** in the AI assistant's knowledge base. This means:
+
+1. **Auto-loaded at conversation start** — The assistant receives summaries of all knowledge items and reads
+   the relevant ones before answering questions about this codebase.
+2. **Triggered on code changes** — When you modify source files, ask the assistant to
+   update the corresponding doc. Example: *"I changed the stop-loss to 8% — update the sell logic doc."*
+3. **Accurate by design** — Docs are generated from actual code, not written by hand,
+   so they reflect real thresholds, formulas, and logic.
+
+### What Triggers a Doc Update
+
+| Change | Doc to Update |
+|--------|--------------|
+| Modify `fundamental_screener.py` | `fundamental_screener.md` |
+| Modify `backend/screener.py` | `fundamental_screener.md` (CANSLIM scoring section) |
+| Modify `technical_screener.py` | `technical_triggers.md` |
+| Modify `run_market_open_buys()` in `execution_agent.py` | `buy_logic.md` |
+| Modify `monitor_portfolio_intraday()` or `execute_sell()` | `sell_logic.md` |
+| Modify `backend/fmp_client.py` | Any doc using FMP endpoints |
+
+### Limitations
+
+The assistant **cannot** automatically detect code changes without being asked.
+To ensure docs stay accurate:
+- Mention doc updates when requesting code changes
+- Or periodically ask: *"Are the trading bot docs still accurate?"* — the assistant will
+  re-read the source files and flag any drift.
