@@ -103,7 +103,35 @@ async def get_sp500_tickers(client: httpx.AsyncClient):
 
     return sorted(list(tickers_set))
 
+async def fetch_institutional_holder_count(ticker: str, client: httpx.AsyncClient) -> int | None:
+    """
+    Returns the number of distinct institutional holders for a ticker using FMP v3.
+    Returns None if the endpoint is restricted or unavailable (caller should treat as
+    'filter inactive' rather than failing the ticker).
+    Threshold used by CANSLIM screener: > 5 institutional holders.
+    """
+    url = f"https://financialmodelingprep.com/api/v3/institutional-holder/{ticker}?apikey={API_KEY}"
+    try:
+        res = await fetch_with_retry(client, url)
+        if res is None:
+            return None
+        if res.status_code in (402, 403):
+            print(f"⚠️ Institutional holder endpoint restricted (HTTP {res.status_code}). Skipping I-filter for {ticker}.")
+            return None
+        if res.status_code != 200:
+            return None
+        data = res.json()
+        if not isinstance(data, list):
+            return None
+        # Filter out any error-message dicts; count distinct holder names
+        holders = [h for h in data if isinstance(h, dict) and h.get("holder")]
+        return len(holders)
+    except Exception as e:
+        print(f"⚠️ Could not fetch institutional holder count for {ticker}: {e}")
+        return None
+
 async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, semaphore: asyncio.Semaphore):
+
     async with semaphore:
         try:
             growth_url = f"{BASE_URL}/stable/financial-growth?symbol={ticker}&limit=4&apikey={API_KEY}"
@@ -146,11 +174,13 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
                 a_eps_growth = 0.0
                 revenue_growth = 0.0
 
-            # Default inst_count to 10 (>5) because institutional holder endpoint is legaced/restricted
-            inst_count = 10 
+            # Fetch real institutional holder count from FMP v3 endpoint
+            inst_count = await fetch_institutional_holder_count(ticker, client)
 
             # Core CANSLIM thresholds (Current Earnings growth > 18%, Annual Growth > 10%, Sponsor Institutions > 5)
-            if q_eps_growth > 0.18 and a_eps_growth > 0.10 and inst_count > 5:
+            # If inst_count is None the endpoint is restricted — skip the I-filter rather than silently passing all
+            inst_filter_passed = (inst_count is None) or (inst_count > 5)
+            if q_eps_growth > 0.18 and a_eps_growth > 0.10 and inst_filter_passed:
                 composite_score = (q_eps_growth * 0.6) + (a_eps_growth * 0.4)
                 return {
                     "ticker": ticker,
@@ -159,7 +189,7 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
                     "q_eps_growth": float(q_eps_growth),
                     "a_eps_growth": float(a_eps_growth),
                     "revenue_growth": float(revenue_growth),
-                    "inst_count": int(inst_count)
+                    "inst_count": int(inst_count) if inst_count is not None else -1
                 }
         except Exception:
             pass
