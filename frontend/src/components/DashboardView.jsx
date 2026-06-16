@@ -4,14 +4,12 @@ import {
   TrendingDown, 
   DollarSign, 
   Activity, 
-  Award, 
-  AlertTriangle,
+  Award,
   Briefcase,
-  History,
-  Info
+  History
 } from 'lucide-react';
 
-export default function DashboardView({ data, marketData, trades, onSellPosition }) {
+export default function DashboardView({ data, marketData, trades }) {
   const summary = data?.summary || {
     initial_balance: 100000.0,
     cash_balance: 100000.0,
@@ -136,7 +134,7 @@ export default function DashboardView({ data, marketData, trades, onSellPosition
           <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
             <Briefcase size={40} strokeWidth={1} style={{ marginBottom: '1rem', color: 'var(--text-muted)' }} />
             <p style={{ fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>No open positions</p>
-            <p style={{ fontSize: '0.85rem' }}>Run a CAN SLIM Scan and purchase breakouts to populate your portfolio.</p>
+            <p style={{ fontSize: '0.85rem' }}>The execution engine will automatically open positions when breakout triggers are detected.</p>
           </div>
         ) : (
           <div className="table-container">
@@ -151,7 +149,6 @@ export default function DashboardView({ data, marketData, trades, onSellPosition
                   <th>Return</th>
                   <th>Stop Loss</th>
                   <th>Profit Target</th>
-                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -167,15 +164,6 @@ export default function DashboardView({ data, marketData, trades, onSellPosition
                     </td>
                     <td style={{ color: 'var(--color-down)', fontSize: '0.85rem' }}>{formatCurrency(pos.stop_loss)}</td>
                     <td style={{ color: 'var(--color-up)', fontSize: '0.85rem' }}>{formatCurrency(pos.profit_target)}</td>
-                    <td>
-                      <button 
-                        className="btn btn-secondary" 
-                        style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
-                        onClick={() => onSellPosition(pos.ticker)}
-                      >
-                        Sell
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>

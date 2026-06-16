@@ -33,14 +33,6 @@ class SettingsUpdate(BaseModel):
     initial_balance: float
     fmp_api_key: Optional[str] = ""
 
-class TradeOrder(BaseModel):
-    ticker: str
-    shares: int
-
-class SellOrder(BaseModel):
-    ticker: str
-    reason: str
-
 class BacktestRequest(BaseModel):
     tickers: Optional[List[str]] = None
     start_date: str
@@ -219,50 +211,6 @@ def get_portfolio():
             },
             "positions": updated_positions
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/portfolio/buy")
-def buy_stock(order: TradeOrder):
-    try:
-        ticker = order.ticker.strip().upper()
-        fmp = FMPClient()
-        if not fmp.is_configured():
-            raise HTTPException(status_code=400, detail="FMP API Key is not configured. Please set it in Settings.")
-            
-        quote = fmp.get_quote(ticker)
-        if not quote or "price" not in quote:
-            raise HTTPException(status_code=400, detail=f"Invalid ticker or no price data: {ticker}")
-            
-        price = float(quote['price'])
-        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        db.buy_position(ticker, order.shares, price, date_str)
-        return {"status": "success", "message": f"Bought {order.shares} shares of {ticker} at ${price:.2f}"}
-    except ValueError as val_err:
-        raise HTTPException(status_code=400, detail=str(val_err))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/portfolio/sell")
-def sell_stock(order: SellOrder):
-    try:
-        ticker = order.ticker.strip().upper()
-        fmp = FMPClient()
-        if not fmp.is_configured():
-            raise HTTPException(status_code=400, detail="FMP API Key is not configured. Please set it in Settings.")
-            
-        quote = fmp.get_quote(ticker)
-        if not quote or "price" not in quote:
-            raise HTTPException(status_code=400, detail=f"Invalid ticker or no price data: {ticker}")
-            
-        price = float(quote['price'])
-        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        db.sell_position(ticker, price, date_str, order.reason)
-        return {"status": "success", "message": f"Sold {ticker} at ${price:.2f} due to: {order.reason}"}
-    except ValueError as val_err:
-        raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

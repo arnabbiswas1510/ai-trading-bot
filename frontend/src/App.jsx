@@ -99,41 +99,6 @@ export default function App() {
     }
   };
 
-  const handleBuyStock = async (ticker, shares) => {
-    const res = await fetch('/api/portfolio/buy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker, shares })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Buy order failed");
-    }
-    // Refresh portfolio
-    await fetchAllData();
-  };
-
-  const handleSellPosition = async (ticker) => {
-    const reason = prompt("Enter exit reason:", "Manual Profit Taker");
-    if (reason === null) return; // cancelled
-    
-    try {
-      const res = await fetch('/api/portfolio/sell', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker, reason })
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Sell order failed");
-      }
-      alert(`Position for ${ticker} closed successfully.`);
-      await fetchAllData();
-    } catch (err) {
-      alert(`Sell order failed: ${err.message}`);
-    }
-  };
-
   const handleSaveSettings = async (updatedSettings) => {
     const res = await fetch('/api/settings', {
       method: 'POST',
@@ -173,7 +138,6 @@ export default function App() {
             data={portfolioData} 
             marketData={marketData} 
             trades={tradeHistory}
-            onSellPosition={handleSellPosition}
           />
         );
       case 'screener':
@@ -182,7 +146,6 @@ export default function App() {
             results={screenerResults} 
             onRunScan={handleRunScan} 
             loading={screenerLoading}
-            onBuyStock={handleBuyStock}
           />
         );
       case 'backtester':
@@ -190,7 +153,7 @@ export default function App() {
       case 'history':
         return <TradesView trades={tradeHistory} />;
       case 'breakouts':
-        return <BreakoutsView breakouts={breakouts} onBuyStock={handleBuyStock} />;
+        return <BreakoutsView breakouts={breakouts} />;
       case 'settings':
         return (
           <SettingsView 
@@ -200,7 +163,7 @@ export default function App() {
           />
         );
       default:
-        return <DashboardView data={portfolioData} marketData={marketData} trades={tradeHistory} onSellPosition={handleSellPosition} />;
+        return <DashboardView data={portfolioData} marketData={marketData} trades={tradeHistory} />;
     }
   };
 
@@ -277,7 +240,7 @@ export default function App() {
             <TrendingUp size={14} color="var(--accent-secondary)" />
             <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>O'Neil Growth Engine</span>
           </div>
-          <span>v1.0.0 (Simulated Mode)</span>
+          <span>v1.0.0 (Execution Engine Mode)</span>
         </div>
       </nav>
 
@@ -288,7 +251,7 @@ export default function App() {
             {currentView}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-            {currentView === 'dashboard' && "Simulated portfolio statistics, index direction, and live position tickers."}
+            {currentView === 'dashboard' && "Live portfolio monitoring — positions opened and closed automatically by the execution engine."}
             {currentView === 'screener' && "Live stock ranking, multi-factor scorecard checks, and technical details."}
             {currentView === 'breakouts' && "Technical breakout alerts and daily triggers monitored by the execution agent."}
             {currentView === 'backtester' && "Simulate technical breakout entries and automated exits on historical ranges."}
