@@ -23,6 +23,14 @@ else:
     SUPABASE_KEY = None
 BASE_URL = "https://financialmodelingprep.com"
 
+# ── Fundamental screener configuration (set in .env) ──────────────────────────
+CANSLIM_MIN_Q_EPS_GROWTH  = float(os.environ.get("CANSLIM_MIN_Q_EPS_GROWTH", 0.18))
+CANSLIM_MIN_A_EPS_GROWTH  = float(os.environ.get("CANSLIM_MIN_A_EPS_GROWTH", 0.10))
+CANSLIM_MIN_INST_HOLDERS  = int(os.environ.get("CANSLIM_MIN_INST_HOLDERS", 5))
+CANSLIM_WATCHLIST_SIZE    = int(os.environ.get("CANSLIM_WATCHLIST_SIZE", 90))
+WATCHLIST_PRUNE_DAYS      = int(os.environ.get("WATCHLIST_PRUNE_DAYS", 56))
+API_CONCURRENCY           = int(os.environ.get("API_CONCURRENCY", 10))
+
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(
     bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
@@ -184,10 +192,10 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
             # Fetch real institutional holder count from FMP v3 endpoint
             inst_count = await fetch_institutional_holder_count(ticker, client)
 
-            # Core CANSLIM thresholds (Current Earnings growth > 18%, Annual Growth > 10%, Sponsor Institutions > 5)
+            # Core CANSLIM thresholds (all configurable via .env)
             # If inst_count is None the endpoint is restricted — skip the I-filter rather than silently passing all
-            inst_filter_passed = (inst_count is None) or (inst_count > 5)
-            if q_eps_growth > 0.18 and a_eps_growth > 0.10 and inst_filter_passed:
+            inst_filter_passed = (inst_count is None) or (inst_count > CANSLIM_MIN_INST_HOLDERS)
+            if q_eps_growth > CANSLIM_MIN_Q_EPS_GROWTH and a_eps_growth > CANSLIM_MIN_A_EPS_GROWTH and inst_filter_passed:
                 composite_score = (q_eps_growth * 0.6) + (a_eps_growth * 0.4)
                 return {
                     "ticker": ticker,
@@ -210,7 +218,7 @@ def update_supabase_watchlist(candidates_list):
         db_client.table("watchlist").insert(candidates_list).execute()
         
         print("🧹 Pruning watchlist entries older than 8 weeks (56 days) from Supabase...")
-        prune_threshold = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=56)).isoformat()
+        prune_threshold = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=WATCHLIST_PRUNE_DAYS)).isoformat()
         db_client.table("watchlist").delete().lt("created_at", prune_threshold).execute()
         print("✅ Watchlist transaction and pruning completed.")
     except Exception as e:
@@ -225,7 +233,7 @@ async def main():
     print("🚀 Running S&P 500 Fundamental Screening Pipeline...")
     
     # Configure concurrency limit to avoid overwhelming the API
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(API_CONCURRENCY)
     
     async with httpx.AsyncClient() as client:
         tickers = await get_sp500_tickers(client)
@@ -241,10 +249,10 @@ async def main():
         print("❌ Zero assets matched qualifications this week.")
     else:
         # Sort and take top 90
-        df_top90 = df_results.sort_values(by="composite_score", ascending=False).head(90)
-        print(f"Watchlist top candidates:\n{df_top90[['ticker', 'composite_score']].to_string(index=False)}")
+        df_top = df_results.sort_values(by="composite_score", ascending=False).head(CANSLIM_WATCHLIST_SIZE)
+        print(f"Watchlist top candidates:\n{df_top[['ticker', 'composite_score']].to_string(index=False)}")
         
-        final_payload = df_top90[['ticker', 'company_name', 'composite_score', 'q_eps_growth', 'a_eps_growth', 'revenue_growth', 'inst_count']].to_dict(orient="records")
+        final_payload = df_top[['ticker', 'company_name', 'composite_score', 'q_eps_growth', 'a_eps_growth', 'revenue_growth', 'inst_count']].to_dict(orient="records")
         update_supabase_watchlist(final_payload)
 
 if __name__ == "__main__":

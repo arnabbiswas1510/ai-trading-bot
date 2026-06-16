@@ -34,6 +34,14 @@ MIN_POSITION_SIZE = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 STALE_HOLD_DAYS = int(os.getenv("STALE_HOLD_DAYS", 15))
 # Maximum gain (decimal) that qualifies as "sideways". 0.03 = within 3% of entry.
 STALE_HOLD_MAX_GAIN = float(os.getenv("STALE_HOLD_MAX_GAIN", 0.03))
+# ── Exit & hold parameters ──────────────────────────────────────────────────
+STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
+PROFIT_TARGET_PCT        = float(os.getenv("PROFIT_TARGET_PCT", 0.25))
+POWER_HOLD_GAIN_TRIGGER  = float(os.getenv("POWER_HOLD_GAIN_TRIGGER", 0.20))
+POWER_HOLD_DAYS_LIMIT    = int(os.getenv("POWER_HOLD_DAYS_LIMIT", 21))
+POWER_HOLD_DURATION_WEEKS = int(os.getenv("POWER_HOLD_DURATION_WEEKS", 8))
+COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
+TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(
@@ -251,8 +259,8 @@ def reconcile_with_ibkr(ib: IB):
 
         print(f"   ⚠️  {ticker}: in IBKR but not in Supabase — manual buy detected.")
 
-        stop_loss = round(avg_cost * 0.93, 2)     # 7% stop
-        profit_target = round(avg_cost * 1.25, 2)  # 25% target
+        stop_loss = round(avg_cost * (1 - STOP_LOSS_PCT), 2)
+        profit_target = round(avg_cost * (1 + PROFIT_TARGET_PCT), 2)
         buy_date = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         position_data = {
@@ -335,7 +343,7 @@ def run_market_open_buys(ib: IB):
     tz = ZoneInfo("America/New_York")
     today_ny = datetime.datetime.now(tz).date()
     today_str = today_ny.strftime("%Y-%m-%d")
-    recent_date = (today_ny - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
+    recent_date = (today_ny - datetime.timedelta(days=TRIGGER_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
     
     try:
         triggers_res = client.table("daily_triggers").select("*").gte("triggered_at", recent_date).execute()
@@ -374,7 +382,7 @@ def run_market_open_buys(ib: IB):
         # before it has had time to form a new valid base.
         # Uses sell_date (the actual trade_history column) not created_at.
         try:
-            cooling_cutoff = (today_ny - datetime.timedelta(days=3)).isoformat()
+            cooling_cutoff = (today_ny - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
             recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
             if recent_sell_res.data:
                 print(f"   ⏳ {ticker} sold within last 3 days — cooling-off period active. Skipping.")
@@ -427,8 +435,8 @@ def run_market_open_buys(ib: IB):
             if fill_price <= 0:
                 fill_price = current_price  # fallback
                 
-            stop_loss = round(fill_price * 0.93, 2)       # 7% Stop
-            profit_target = round(fill_price * 1.25, 2)   # 25% Target
+            stop_loss = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+            profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
             
             # Record position in Supabase
             position_data = {
@@ -436,7 +444,7 @@ def run_market_open_buys(ib: IB):
                 "shares": shares,
                 "buy_price": fill_price,
                 "buy_reason": f"CANSLIM Breakout: Vol Surge {trigger['volume_surge']}x",
-                "stop_loss": round(fill_price * 0.93, 2),   # Initial floor (entry-based)
+                "stop_loss": stop_loss,
                 "profit_target": profit_target,
                 "is_power_hold": False,
                 "high_water_mark": fill_price               # Trailing stop anchor — rises with price
@@ -591,17 +599,17 @@ def monitor_portfolio_intraday(ib: IB):
             except Exception as e:
                 print(f"   ⚠️ Could not update high_water_mark for {ticker}: {e}")
 
-        trailing_stop = round(high_water_mark * 0.93, 2)
+        trailing_stop = round(high_water_mark * (1 - STOP_LOSS_PCT), 2)
         print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} | High: ${high_water_mark:.2f} | Trail Stop: ${trailing_stop:.2f} | PT: ${profit_target:.2f}")
         
         # 1. 8-Week Power Holding Rule Check
         # If stock surges 20%+ in less than 21 days from purchase
         days_held = (datetime.datetime.now(datetime.timezone.utc) - buy_date).days
-        if not is_power_hold and current_price >= (buy_price * 1.20) and days_held <= 21:
-            print(f"🔥 Power Hold Triggered for {ticker}! Surged 20% in {days_held} days.")
+        if not is_power_hold and current_price >= (buy_price * (1 + POWER_HOLD_GAIN_TRIGGER)) and days_held <= POWER_HOLD_DAYS_LIMIT:
+            print(f"🔥 Power Hold Triggered for {ticker}! Surged {POWER_HOLD_GAIN_TRIGGER*100:.0f}% in {days_held} days.")
             tz = ZoneInfo("America/New_York")
             today_ny = datetime.datetime.now(tz).date()
-            expiry_date = (today_ny + datetime.timedelta(weeks=8)).isoformat()
+            expiry_date = (today_ny + datetime.timedelta(weeks=POWER_HOLD_DURATION_WEEKS)).isoformat()
             try:
                 client.table("portfolio_positions").update({
                     "is_power_hold": True,
@@ -640,16 +648,16 @@ def monitor_portfolio_intraday(ib: IB):
         if current_price <= trailing_stop:
             gain_from_entry = ((high_water_mark / buy_price) - 1.0) * 100.0
             if high_water_mark > buy_price:
-                reason_str = f"Trailing Stop (-7% from high of ${high_water_mark:.2f}, locked in {gain_from_entry:+.1f}% gain)"
+                reason_str = f"Trailing Stop (-{STOP_LOSS_PCT*100:.0f}% from high of ${high_water_mark:.2f}, locked in {gain_from_entry:+.1f}% gain)"
             else:
-                reason_str = "Trailing Stop (-7% from entry — position never gained)"
+                reason_str = f"Trailing Stop (-{STOP_LOSS_PCT*100:.0f}% from entry — position never gained)"
             print(f"🚨 Trailing Stop triggered for {ticker} at ${current_price:.2f} (Stop: ${trailing_stop:.2f}, High: ${high_water_mark:.2f})")
             execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason_str)
             continue
             
         # 3. Enforce 25% Profit Target (Skip if in Power Hold)
         if current_price >= profit_target and not is_power_hold:
-            print(f"💰 Profit Target Triggered for {ticker} at ${current_price:.2f} (Target: ${profit_target})!")
+            print(f"💰 Profit Target Triggered for {ticker} at ${current_price:.2f} (Target: ${profit_target}, +{PROFIT_TARGET_PCT*100:.0f}%)!")
             execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, "25% Profit Target")
             continue
 

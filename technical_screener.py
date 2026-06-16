@@ -22,6 +22,16 @@ else:
     SUPABASE_KEY = None
 FMP_BASE_URL = "https://financialmodelingprep.com"
 
+# ── Technical screener configuration (set in .env) ──────────────────────────────
+SMA_WINDOW        = int(os.environ.get("SMA_WINDOW", 50))
+VOLUME_AVG_WINDOW = int(os.environ.get("VOLUME_AVG_WINDOW", 50))
+VOLUME_SURGE_MIN  = float(os.environ.get("VOLUME_SURGE_MIN", 1.40))
+ROLLING_HIGH_WINDOW = int(os.environ.get("ROLLING_HIGH_WINDOW", 252))
+PIVOT_PROXIMITY   = float(os.environ.get("PIVOT_PROXIMITY", 0.98))
+MIN_PRICE_HISTORY = int(os.environ.get("MIN_PRICE_HISTORY", 50))
+FMP_HISTORY_DAYS  = int(os.environ.get("FMP_HISTORY_DAYS", 380))
+TRIGGER_PRUNE_DAYS = int(os.environ.get("TRIGGER_PRUNE_DAYS", 56))
+
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(
     bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
@@ -76,7 +86,7 @@ def check_technical_breakout(ticker):
     try:
         # Request EOD stable data for the past 380 calendar days to guarantee 252+ trading days
         to_date = datetime.date.today()
-        from_date = to_date - datetime.timedelta(days=380)
+        from_date = to_date - datetime.timedelta(days=FMP_HISTORY_DAYS)
         
         from_str = from_date.strftime("%Y-%m-%d")
         to_str = to_date.strftime("%Y-%m-%d")
@@ -96,17 +106,17 @@ def check_technical_breakout(ticker):
         df['date'] = pd.to_datetime(df['date'])
         df = df.sort_values('date', ascending=True).reset_index(drop=True)
         
-        if len(df) < 50:
-            print(f"⚠️ Insufficient price history for {ticker} (minimum 50 days required)")
+        if len(df) < MIN_PRICE_HISTORY:
+            print(f"⚠️ Insufficient price history for {ticker} (minimum {MIN_PRICE_HISTORY} days required)")
             return None
             
-        df['sma_50'] = df['close'].rolling(window=50).mean()
-        df['avg_volume_50'] = df['volume'].rolling(window=50).mean()
+        df['sma_50'] = df['close'].rolling(window=SMA_WINDOW).mean()
+        df['avg_volume_50'] = df['volume'].rolling(window=VOLUME_AVG_WINDOW).mean()
         
-        # Calculate 52-week rolling high (252 trading days)
-        # Handle newer stocks with less than 252 days of history gracefully
-        window_size = min(252, len(df))
-        df['rolling_high_52w'] = df['high'].rolling(window=window_size, min_periods=min(50, window_size)).max()
+        # Calculate rolling high (configurable window, default 252 trading days)
+        # Handle newer stocks with less than the full window gracefully
+        window_size = min(ROLLING_HIGH_WINDOW, len(df))
+        df['rolling_high_52w'] = df['high'].rolling(window=window_size, min_periods=min(MIN_PRICE_HISTORY, window_size)).max()
         
         today = df.iloc[-1]
         current_close = today['close']
@@ -116,10 +126,10 @@ def check_technical_breakout(ticker):
         
         is_above_50ma = current_close > sma_50
         volume_surge_ratio = today_volume / avg_vol_50 if avg_vol_50 > 0 else 0
-        has_volume_surge = volume_surge_ratio >= 1.40  # 40% above 50-day volume average
+        has_volume_surge = volume_surge_ratio >= VOLUME_SURGE_MIN
         
-        # Proximity to peak breakout (within 2% of the rolling 52-week high)
-        is_breaking_high = current_close >= (today['rolling_high_52w'] * 0.98)
+        # Proximity to peak breakout (within configured % of the rolling high)
+        is_breaking_high = current_close >= (today['rolling_high_52w'] * PIVOT_PROXIMITY)
         
         if is_above_50ma and has_volume_surge and is_breaking_high:
             rolling_high = today['rolling_high_52w']
@@ -148,7 +158,7 @@ def write_triggers_to_supabase(triggers):
         
         # Prune daily triggers older than 56 days (8 weeks)
         print("🧹 Pruning breakout triggers older than 8 weeks (56 days) from Supabase...")
-        prune_threshold = (datetime.date.today() - datetime.timedelta(days=56)).strftime("%Y-%m-%d")
+        prune_threshold = (datetime.date.today() - datetime.timedelta(days=TRIGGER_PRUNE_DAYS)).strftime("%Y-%m-%d")
         client.table("daily_triggers").delete().lt("triggered_at", prune_threshold).execute()
         print("✅ Pruning of daily_triggers completed successfully.")
     except Exception as e:
