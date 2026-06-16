@@ -23,6 +23,12 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 IB_GATEWAY_HOST = os.getenv("IB_GATEWAY_HOST", "localhost")
 IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 7497))
 
+# ── Strategy configuration (set in .env) ──────────────────────────────────────
+# Maximum concurrent open positions. Each slot gets an equal share of available cash.
+MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))
+# Skip a buy if the computed position size falls below this floor (USD).
+MIN_POSITION_SIZE = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
+
 # Initialize Supabase client
 supabase: Client = None
 
@@ -316,9 +322,9 @@ def run_market_open_buys(ib: IB):
         print(f"❌ Failed to fetch portfolio positions: {e}")
         return
 
-    # Check portfolio cap limits (exactly 5 active positions)
-    if len(holdings) >= 5:
-        print(f"🚫 Portfolio is fully invested ({len(holdings)}/5 positions). Standing down.")
+    # Check portfolio cap limits
+    if len(holdings) >= MAX_POSITIONS:
+        print(f"🚫 Portfolio is fully invested ({len(holdings)}/{MAX_POSITIONS} positions). Standing down.")
         return
         
     for trigger in triggers:
@@ -328,29 +334,34 @@ def run_market_open_buys(ib: IB):
         if ticker in active_tickers:
             continue
             
-        # Verify settled cash is enough for a flat $20,000 position
+        # Verify settled cash is enough for at least one minimum-sized position
         available_cash = get_available_cash(ib)
-        print(f"💰 Available Cash Balance in IBKR: ${available_cash:.2f}")
-        if available_cash < 20000.0:
-            print(f"🚫 Insufficient cash to buy {ticker} (Required: $20,000.00). Skipping.")
+        print(f"💰 Available Cash Balance in IBKR: ${available_cash:,.2f}")
+        if available_cash < MIN_POSITION_SIZE:
+            print(f"🚫 Insufficient cash to buy {ticker} (floor: ${MIN_POSITION_SIZE:,.0f}). Skipping.")
             continue
+
+        # Size the position as an equal share of remaining capital across unfilled slots
+        remaining_slots = max(1, MAX_POSITIONS - len(portfolio_res.data))
+        position_size = available_cash / remaining_slots
+        print(f"   Position sizing: ${available_cash:,.2f} cash / {remaining_slots} remaining slot(s) = ${position_size:,.2f} per position")
             
         # Double check active holdings size again (in case we bought one earlier in this loop)
         portfolio_res = client.table("portfolio_positions").select("*").execute()
-        if len(portfolio_res.data) >= 5:
-            print("🚫 Portfolio capacity reached during loop. Skipping further buys.")
+        if len(portfolio_res.data) >= MAX_POSITIONS:
+            print(f"🚫 Portfolio capacity ({MAX_POSITIONS}) reached during loop. Skipping further buys.")
             break
-            
+
         print(f"🚀 Execution Trigger: Initiating purchase for {ticker}...")
-        
+
         # Get live price to size shares
         current_price = get_live_price(ticker)
         if current_price <= 0:
             current_price = float(trigger["close_price"])
-            
-        shares = int(20000.0 / current_price)
+
+        shares = int(position_size / current_price)
         if shares <= 0:
-            print(f"⚠️ Price of {ticker} is too high for a $20k block. Skipping.")
+            print(f"⚠️ Price of {ticker} (${current_price:.2f}) is too high for the computed position size (${position_size:,.0f}). Skipping.")
             continue
             
         # Place order on IBKR
