@@ -89,25 +89,77 @@ market orders via Interactive Brokers (IBKR), running as a fully containerized d
 
 ## Exit Rules
 
-| Rule | Trigger | Threshold |
-|------|---------|-----------|
-| Hard Stop-Loss | Price falls | -7% from fill price |
-| Profit Target | Price rises | +25% from fill price |
-| Power Hold | Surge > 20% in ≤ 21 days | Suspend profit target for 8 weeks |
+| Rule | Trigger | Default Threshold | Config Variable |
+|------|---------|-------------------|-----------------|
+| Trailing Stop Loss | Price falls below high-water mark | -7% from highest price reached | `STOP_LOSS_PCT` |
+| Profit Target | Price rises from entry | +25% from fill price | `PROFIT_TARGET_PCT` |
+| Power Hold activation | Rapid early surge | ≥20% gain in ≤21 days | `POWER_HOLD_GAIN_TRIGGER`, `POWER_HOLD_DAYS_LIMIT` |
+| Power Hold duration | Profit target suspended for | 8 weeks | `POWER_HOLD_DURATION_WEEKS` |
+| Stale Rotation | Sideways holder, portfolio full, fresh trigger exists | Held ≥15 days with <3% gain | `STALE_HOLD_DAYS`, `STALE_HOLD_MAX_GAIN` |
+| Cooling-off | Re-buy blocked after a stop-out | 3 days | `COOLING_OFF_DAYS` |
 
 ---
 
-## Environment Variables
+## Configuration Reference
+
+All strategy parameters are set in `.env`. Defaults are shown — override any value without touching code.
+
+### Infrastructure
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FMP_API_KEY` | — | Financial Modeling Prep API key |
 | `SUPABASE_URL` | — | Supabase project URL |
 | `SUPABASE_KEY` | — | Supabase service role key |
-| `IB_GATEWAY_HOST` | `localhost` | IB Gateway hostname (use `ib-gateway` in Docker) |
-| `IB_GATEWAY_PORT` | `7497` | IB Gateway API port (4004 in Docker via `buy_triggers.py`) |
+| `IB_GATEWAY_HOST` | `localhost` | IB Gateway hostname (`ib-gateway` in Docker) |
+| `IB_GATEWAY_PORT` | `7497` | IB Gateway API port |
+| `TELEGRAM_BOT_TOKEN` | — | Telegram bot token from @BotFather (leave empty to disable) |
+| `TELEGRAM_CHAT_IDS` | — | Comma-separated recipient chat IDs |
+
+### Portfolio Management
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `MAX_POSITIONS` | `4` | Maximum concurrent open positions |
-| `MIN_POSITION_SIZE` | `5000.0` | Minimum USD position size floor |
+| `MIN_POSITION_SIZE` | `5000.0` | Minimum USD position size — skip if position would be smaller |
+
+### Exit & Hold Parameters (`execution_agent.py`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STOP_LOSS_PCT` | `0.07` | Trailing stop distance — sell if price falls this % below high-water mark |
+| `PROFIT_TARGET_PCT` | `0.25` | Take-profit — sell when position gains this % from entry |
+| `POWER_HOLD_GAIN_TRIGGER` | `0.20` | Surge required to activate Power Hold (20%) |
+| `POWER_HOLD_DAYS_LIMIT` | `21` | Power Hold only activates if surge occurs within this many days of purchase |
+| `POWER_HOLD_DURATION_WEEKS` | `8` | Weeks the profit target is suspended after Power Hold activates |
+| `COOLING_OFF_DAYS` | `3` | Days before a stopped-out ticker can be re-bought |
+| `TRIGGER_LOOKBACK_DAYS` | `3` | Days back to look for valid breakout triggers (covers weekends/holidays) |
+| `STALE_HOLD_DAYS` | `15` | Min days held before a sideways position qualifies for rotation |
+| `STALE_HOLD_MAX_GAIN` | `0.03` | Max gain (decimal) that qualifies as "sideways" — 0.03 = within 3% of entry |
+
+### Fundamental Screener (`fundamental_screener.py`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CANSLIM_MIN_Q_EPS_GROWTH` | `0.18` | Minimum quarterly EPS growth rate (CANSLIM "C") |
+| `CANSLIM_MIN_A_EPS_GROWTH` | `0.10` | Minimum annual EPS growth rate (CANSLIM "A") |
+| `CANSLIM_MIN_INST_HOLDERS` | `5` | Minimum distinct institutional holders (CANSLIM "I") |
+| `CANSLIM_WATCHLIST_SIZE` | `90` | Max candidates written to watchlist per screening run |
+| `WATCHLIST_PRUNE_DAYS` | `56` | Days to retain watchlist rows in Supabase |
+| `API_CONCURRENCY` | `10` | Max parallel FMP API calls during screening |
+
+### Technical Screener (`technical_screener.py`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SMA_WINDOW` | `50` | Moving average period for trend filter |
+| `VOLUME_AVG_WINDOW` | `50` | Period for computing the volume baseline |
+| `VOLUME_SURGE_MIN` | `1.40` | Min volume surge ratio to qualify as a breakout (1.40 = 40% above avg) |
+| `ROLLING_HIGH_WINDOW` | `252` | Trading days used to compute the rolling high |
+| `PIVOT_PROXIMITY` | `0.98` | Price must be within this fraction of rolling high (0.98 = within 2%) |
+| `MIN_PRICE_HISTORY` | `50` | Min days of price history required to analyze a ticker |
+| `FMP_HISTORY_DAYS` | `380` | Calendar days of EOD data fetched from FMP per ticker |
+| `TRIGGER_PRUNE_DAYS` | `56` | Days to retain daily_trigger rows in Supabase |
 
 ---
 
@@ -150,13 +202,13 @@ Key services in `docker-compose.yml`:
 
 ## Supabase Schema
 
-| Table | Purpose | Retention |
-|-------|---------|-----------|
-| `watchlist` | Fundamental screener top-90 output | 56 days rolling |
-| `daily_triggers` | Technical breakout signals | 56 days rolling |
-| `portfolio_positions` | Open positions ledger | Until sell/close |
-| `trade_history` | Closed trade audit log | Permanent |
-| `account_balances` | IBKR cash balance sync | Live upsert |
+| Table | Key Columns | Purpose | Retention |
+|-------|------------|---------|--------- |
+| `watchlist` | `ticker`, `composite_score`, `q_eps_growth` | Fundamental screener top-N output | 56 days rolling |
+| `daily_triggers` | `ticker`, `triggered_at`, `volume_surge`, `pivot_distance_pct` | Technical breakout signals | 56 days rolling |
+| `portfolio_positions` | `ticker`, `buy_price`, `high_water_mark`, `profit_target`, `is_power_hold` | Open positions ledger | Until sell/close |
+| `trade_history` | `ticker`, `buy_price`, `sell_price`, `sell_date`, `sell_reason`, `profit_loss` | Closed trade audit log | Permanent |
+| `account_balances` | `key`, `value` | IBKR cash balance sync (single row: `ibkr_cash_balance`) | Live upsert |
 
 ---
 
