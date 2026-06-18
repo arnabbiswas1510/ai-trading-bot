@@ -75,19 +75,40 @@ market orders via Interactive Brokers (IBKR), running as a fully containerized d
 
 ## CANSLIM Strategy Summary
 
-| Letter | Dimension | Pipeline Implementation |
-|--------|-----------|------------------------|
-| **C** | Current Earnings | Q EPS growth > 18% (pipeline) / scored 0–15 pts (full screener) |
-| **A** | Annual Earnings | 3Y EPS growth > 10% (pipeline) / CAGR + ROE scored 0–15 pts |
-| **N** | New Highs | Within 2% of 52-week high (technical trigger) |
-| **S** | Supply & Demand | Volume surge >= 1.4x avg (technical trigger) |
-| **L** | Leader vs Laggard | RS rating percentile, weighted 4-period momentum |
-| **I** | Institutional Sponsorship | > 5 distinct institutional holders (FMP v3 endpoint) |
-| **M** | Market Direction | S&P 500 + Nasdaq vs. SMA-50 / SMA-200 |
+| Letter | Dimension | Pipeline Implementation | Config Variable |
+|--------|-----------|------------------------|----------------|
+| **C** | Current Earnings | Q EPS growth > 18% | `CANSLIM_MIN_Q_EPS_GROWTH` |
+| **A** | Annual Earnings | 3Y EPS growth > 10% | `CANSLIM_MIN_A_EPS_GROWTH` |
+| **N** | New Highs | Within 2% of 52-week high (technical trigger) | `PIVOT_PROXIMITY` |
+| **S** | Supply & Demand | Volume surge >= 1.4x avg (technical trigger) | `VOLUME_SURGE_MIN` |
+| **L** | Leader vs Laggard | RS rating percentile, weighted 4-period momentum | — |
+| **I** | Institutional Sponsorship | > 5 distinct institutional holders | `CANSLIM_MIN_INST_HOLDERS` |
+| **M** | Market Direction | S&P 500 + Nasdaq vs. SMA-50 / SMA-200 | — |
 
 ---
 
-## Exit Rules
+## Buy Rules
+
+Buys execute at **9:30–9:45 AM ET** via `run_market_open_buys()`. Every trigger passes through these gates in order — all must pass for an order to be placed:
+
+| # | Gate | Logic | Config |
+|---|------|-------|--------|
+| 1 | **Portfolio capacity** | Skip if positions ≥ MAX_POSITIONS | `MAX_POSITIONS` |
+| 2 | **Trigger freshness** | Only consider triggers from last N days | `TRIGGER_LOOKBACK_DAYS=3` |
+| 3 | **Not already held** | Skip if ticker already in portfolio | — |
+| 4 | **Cooling-off period** | Skip if ticker was sold within last N days | `COOLING_OFF_DAYS=3` |
+| 5 | **Sufficient cash** | Skip if available cash < minimum position floor | `MIN_POSITION_SIZE` |
+| 6 | **Pivot extension** | Skip if live price > N% above breakout pivot | `MAX_PIVOT_EXTENSION=0.05` |
+| 7 | **Share count** | Compute shares = position_size / live_price; skip if 0 | — |
+
+**Position sizing:** `available_cash ÷ remaining_slots` — equal-weight allocation across unfilled slots.
+
+> [!IMPORTANT]
+> Gate 6 (pivot extension) enforces O'Neil's buy zone rule: a stock that has already moved >5% beyond
+> its breakout pivot is considered "extended" and skipped. This is critical when the bot recovers
+> from downtime and evaluates triggers that are 1–2 days old.
+
+---
 
 | Rule | Trigger | Default Threshold | Config Variable |
 |------|---------|-------------------|-----------------|
