@@ -24,12 +24,14 @@ jobs:
             cd /home/dietpi/docker/ai-trading-bot
 
             echo "=== Pulling latest images ==="
-            docker compose pull execution-agent
-            docker compose pull can-slim-trading-bot
+            docker compose pull execution-agent trading-bot
 
-            echo "=== Restarting updated containers ==="
-            docker compose up -d execution-agent can-slim-trading-bot
+            echo "=== Restarting all trading bot containers (dependency order) ==="
+            docker compose up -d ib-gateway
+            sleep 5
+            docker compose up -d execution-agent trading-bot
 
             echo "=== Deployment complete ==="
-            docker inspect execution-agent --format 'execution-agent: {{.State.Status}} (restarts: {{.RestartCount}})'
-            docker inspect can-slim-trading-bot --format 'can-slim-trading-bot: {{.State.Status}}'
+            docker inspect ib-gateway       --format 'ib-gateway:       {{.State.Status}} (restarts: {{.RestartCount}})'
+            docker inspect execution-agent  --format 'execution-agent:  {{.State.Status}} (restarts: {{.RestartCount}})'
+            docker inspect can-slim-trading-bot --format 'can-slim-trading-bot: {{.State.Status}} (restarts: {{.RestartCount}})'
