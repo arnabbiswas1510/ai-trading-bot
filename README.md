@@ -134,6 +134,7 @@ All strategy parameters are set in `.env`. Defaults are shown — override any v
 | `POWER_HOLD_DURATION_WEEKS` | `8` | Weeks the profit target is suspended after Power Hold activates |
 | `COOLING_OFF_DAYS` | `3` | Days before a stopped-out ticker can be re-bought |
 | `TRIGGER_LOOKBACK_DAYS` | `3` | Days back to look for valid breakout triggers (covers weekends/holidays) |
+| `MAX_PIVOT_EXTENSION` | `0.05` | Skip buy if live price is already >5% above the trigger's pivot close — stock is "extended" per O'Neil |
 | `STALE_HOLD_DAYS` | `15` | Min days held before a sideways position qualifies for rotation |
 | `STALE_HOLD_MAX_GAIN` | `0.03` | Max gain (decimal) that qualifies as "sideways" — 0.03 = within 3% of entry |
 

@@ -42,6 +42,7 @@ POWER_HOLD_DAYS_LIMIT    = int(os.getenv("POWER_HOLD_DAYS_LIMIT", 21))
 POWER_HOLD_DURATION_WEEKS = int(os.getenv("POWER_HOLD_DURATION_WEEKS", 8))
 COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
+MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
 
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(
@@ -414,6 +415,19 @@ def run_market_open_buys(ib: IB):
         current_price = get_live_price(ticker)
         if current_price <= 0:
             current_price = float(trigger["close_price"])
+
+        # ── CANSLIM pivot extension check ────────────────────────────────────
+        # O'Neil's rule: only buy within 5% of the breakout pivot price.
+        # Beyond that the stock is "extended" — risk/reward is unfavourable.
+        # This guards against buying stale triggers where price has already run.
+        pivot_price = float(trigger["close_price"])
+        extension_pct = (current_price - pivot_price) / pivot_price if pivot_price > 0 else 0
+        if extension_pct > MAX_PIVOT_EXTENSION:
+            print(f"   ⛔ {ticker} is {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
+                  f"— extended beyond {MAX_PIVOT_EXTENSION*100:.0f}% buy zone. Skipping.")
+            continue
+        print(f"   ✅ {ticker} within buy zone: {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
+              f"(max {MAX_PIVOT_EXTENSION*100:.0f}%)")
 
         shares = int(position_size / current_price)
         if shares <= 0:
