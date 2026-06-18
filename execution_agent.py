@@ -44,6 +44,12 @@ COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
 
+# ── Momentum (secondary) screener thresholds ──────────────────────────────────
+MOMENTUM_MIN_Q_EPS_GROWTH  = float(os.getenv("MOMENTUM_MIN_Q_EPS_GROWTH", 0.10))
+MOMENTUM_MIN_INST_HOLDERS  = int(os.getenv("MOMENTUM_MIN_INST_HOLDERS", 3))
+MOMENTUM_VOLUME_SURGE_MIN  = float(os.getenv("MOMENTUM_VOLUME_SURGE_MIN", 1.20))
+MOMENTUM_PIVOT_PROXIMITY   = float(os.getenv("MOMENTUM_PIVOT_PROXIMITY", 0.95))
+
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(
     bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
@@ -354,8 +360,8 @@ def run_market_open_buys(ib: IB):
         return
 
     if not triggers:
-        print(f"😴 No breakouts triggered in the last {TRIGGER_LOOKBACK_DAYS} days. Skipping purchases.")
-        return
+        print(f"😴 No primary breakouts in the last {TRIGGER_LOOKBACK_DAYS} days.")
+        # Don't return — fall through to momentum_triggers cascade below
         
     # Get current holdings in portfolio_positions
     try:
@@ -409,6 +415,10 @@ def run_market_open_buys(ib: IB):
             print(f"🚫 Portfolio capacity ({MAX_POSITIONS}) reached during loop. Skipping further buys.")
             break
 
+        # Buy reason tags the trigger source
+        buy_reason = f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x"
+        buy_source = "daily_triggers"
+
         print(f"🚀 Execution Trigger: Initiating purchase for {ticker}...")
 
         # Get live price to size shares
@@ -454,14 +464,15 @@ def run_market_open_buys(ib: IB):
             
             # Record position in Supabase
             position_data = {
-                "ticker": ticker,
-                "shares": shares,
-                "buy_price": fill_price,
-                "buy_reason": f"CANSLIM Breakout: Vol Surge {trigger['volume_surge']}x",
-                "stop_loss": stop_loss,
-                "profit_target": profit_target,
-                "is_power_hold": False,
-                "high_water_mark": fill_price               # Trailing stop anchor — rises with price
+                "ticker":          ticker,
+                "shares":          shares,
+                "buy_price":       fill_price,
+                "buy_reason":      buy_reason,
+                "buy_source":      buy_source,
+                "stop_loss":       stop_loss,
+                "profit_target":   profit_target,
+                "is_power_hold":   False,
+                "high_water_mark": fill_price
             }
             
             client.table("portfolio_positions").insert(position_data).execute()
@@ -484,6 +495,114 @@ def run_market_open_buys(ib: IB):
             
         except Exception as order_err:
             print(f"❌ Failed to execute order for {ticker}: {order_err}")
+            notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
+
+    # ── Momentum cascade: fill remaining slots from momentum_triggers ──────────
+    # Only runs if daily_triggers didn't fill all slots.
+    # momentum_triggers positions are tagged buy_source='momentum_triggers' and
+    # are prioritised for stale rotation selling over CANSLIM positions.
+    portfolio_res = client.table("portfolio_positions").select("*").execute()
+    if len(portfolio_res.data) >= MAX_POSITIONS:
+        return  # fully invested — no cascade needed
+
+    print(f"\n⚡ Cascading to momentum_triggers ({MAX_POSITIONS - len(portfolio_res.data)} slot(s) remaining)...")
+    try:
+        momentum_res = client.table("momentum_triggers").select("*") \
+                             .gte("triggered_at", recent_date).execute()
+        momentum_triggers_list = momentum_res.data or []
+    except Exception as e:
+        print(f"❌ Failed to fetch momentum_triggers: {e}")
+        return
+
+    if not momentum_triggers_list:
+        print(f"😴 No momentum triggers in the last {TRIGGER_LOOKBACK_DAYS} days either. Cash stays idle.")
+        return
+
+    for trigger in momentum_triggers_list:
+        ticker = trigger["ticker"]
+
+        # Refresh portfolio state each iteration
+        portfolio_res = client.table("portfolio_positions").select("*").execute()
+        if len(portfolio_res.data) >= MAX_POSITIONS:
+            break
+        if ticker in active_tickers:
+            continue
+
+        # Cooling-off check
+        try:
+            cooling_cutoff = (today_ny - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
+            sell_check = client.table("trade_history").select("ticker") \
+                               .eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
+            if sell_check.data:
+                print(f"   ⏳ {ticker} [momentum] in cooling-off. Skipping.")
+                continue
+        except Exception:
+            pass
+
+        available_cash = get_available_cash(ib)
+        if available_cash < MIN_POSITION_SIZE:
+            print(f"🚫 Insufficient cash for momentum buy of {ticker}. Stopping cascade.")
+            break
+
+        remaining_slots = max(1, MAX_POSITIONS - len(portfolio_res.data))
+        position_size   = available_cash / remaining_slots
+
+        current_price = get_live_price(ticker)
+        if current_price <= 0:
+            current_price = float(trigger["close_price"])
+
+        # Pivot extension gate applies equally to momentum picks
+        pivot_price   = float(trigger["close_price"])
+        extension_pct = (current_price - pivot_price) / pivot_price if pivot_price > 0 else 0
+        if extension_pct > MAX_PIVOT_EXTENSION:
+            print(f"   ⛔ {ticker} [momentum] {extension_pct*100:.1f}% above pivot — extended. Skip.")
+            continue
+        print(f"   ✅ {ticker} [momentum] within buy zone: {extension_pct*100:.1f}% above pivot")
+
+        shares = int(position_size / current_price)
+        if shares <= 0:
+            continue
+
+        try:
+            contract = Stock(ticker, "SMART", "USD")
+            ib.qualifyContracts(contract)
+            order    = MarketOrder("BUY", shares)
+            trade    = ib.placeOrder(contract, order)
+            ib.sleep(3)
+
+            fill_price    = trade.orderStatus.avgFillPrice if trade.orderStatus else current_price
+            if fill_price <= 0:
+                fill_price = current_price
+            stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+            profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
+
+            client.table("portfolio_positions").insert({
+                "ticker":          ticker,
+                "shares":          shares,
+                "buy_price":       fill_price,
+                "buy_reason":      f"Momentum Breakout [momentum_triggers]: Vol Surge {trigger['volume_surge']}x",
+                "buy_source":      "momentum_triggers",
+                "stop_loss":       stop_loss,
+                "profit_target":   profit_target,
+                "is_power_hold":   False,
+                "high_water_mark": fill_price,
+            }).execute()
+
+            print(f"✅ [Momentum] Bought {shares} shares of {ticker} @ ${fill_price:.2f}")
+
+            portfolio_res_new = client.table("portfolio_positions").select("ticker").execute()
+            slot_used = len(portfolio_res_new.data) if portfolio_res_new.data else 1
+            notifier.notify_buy(
+                ticker=ticker, shares=shares, fill_price=fill_price,
+                stop_loss=stop_loss, profit_target=profit_target,
+                volume_surge=float(trigger.get("volume_surge", 0)),
+                pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
+                slot_used=slot_used, max_slots=MAX_POSITIONS
+            )
+            active_tickers.append(ticker)
+
+        except Exception as order_err:
+            print(f"❌ Momentum order failed for {ticker}: {order_err}")
             notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
 
 def get_fresh_triggers_today(client: Client, active_tickers: list) -> list:
@@ -550,8 +669,12 @@ def monitor_portfolio_intraday(ib: IB):
                     continue
 
             if stale_candidates:
-                # Sort ascending by gain — worst performer first
-                stale_candidates.sort(key=lambda x: x[0])
+                # Sort: momentum_triggers positions first (lower quality → sell first),
+                # then by gain ascending within each group (worst performer first).
+                stale_candidates.sort(key=lambda x: (
+                    0 if x[3].get("buy_source") == "momentum_triggers" else 1,
+                    x[0]  # gain ascending
+                ))
                 worst_gain, worst_price, worst_days, worst_pos = stale_candidates[0]
                 replacement = fresh_triggers[0]
                 gain_pct = worst_gain * 100.0

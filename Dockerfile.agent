@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir \
     httpx==0.28.1
 
 # Copy script files into the container
-COPY execution_agent.py telegram_notifier.py ./
+COPY execution_agent.py telegram_notifier.py momentum_screener.py ./
 
 # Execute the agent loop
 CMD ["python", "execution_agent.py"]

@@ -29,3 +29,26 @@ jobs:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: python technical_screener.py
+
+    - name: Execute Momentum Secondary Screener
+      env:
+        FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        MAX_POSITIONS: 4
+        VOLUME_SURGE_MIN: 1.40
+        PIVOT_PROXIMITY: "0.98"
+        SMA_WINDOW: 50
+        VOLUME_AVG_WINDOW: 50
+        ROLLING_HIGH_WINDOW: 252
+        MIN_PRICE_HISTORY: 50
+        FMP_HISTORY_DAYS: 380
+        API_CONCURRENCY: 10
+        MOMENTUM_MIN_Q_EPS_GROWTH: "0.10"
+        MOMENTUM_MIN_INST_HOLDERS: 3
+        MOMENTUM_VOLUME_SURGE_MIN: "1.20"
+        MOMENTUM_PIVOT_PROXIMITY: "0.95"
+        MOMENTUM_TRIGGER_PRUNE_DAYS: 56
+      run: python momentum_screener.py
