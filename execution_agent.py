@@ -168,7 +168,10 @@ def reconcile_with_ibkr(ib: IB):
 
     # ── Fetch IBKR positions ────────────────────────────────────────────────
     try:
-        ib_raw = ib.positions()
+        # Use ib.portfolio() instead of ib.positions(): portfolio() is always
+        # populated on connection whereas positions() relies on a subscription
+        # that may not have fired yet, causing false "in sync" results.
+        ib_raw = ib.portfolio()
         # Only include equity positions with a positive share count
         ib_map = {
             p.contract.symbol: p
@@ -266,7 +269,7 @@ def reconcile_with_ibkr(ib: IB):
     for ticker in ib_tickers - supabase_tickers:
         ib_pos = ib_map[ticker]
         shares = int(ib_pos.position)
-        avg_cost = round(float(ib_pos.avgCost), 2)
+        avg_cost = round(float(ib_pos.averageCost), 2)   # PortfolioItem uses averageCost
 
         if avg_cost <= 0:
             print(f"   ⚠️  {ticker}: in IBKR with zero avg cost — skipping.")
