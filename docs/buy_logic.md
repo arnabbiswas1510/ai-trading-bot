@@ -4,7 +4,12 @@
 
 **File:** `execution_agent.py` — function `run_market_open_buys(ib: IB)`
 
-Executes at **market open (9:30–9:45 AM ET, Mon–Fri)**. Reads breakout triggers from Supabase and places market buy orders via IBKR for any qualifying tickers not already held.
+Executes at **market open (9:30–9:45 AM ET, Mon–Fri)**. Runs a 5-step cascade:
+1. Liquidate ETF parking positions to free cash for incoming CANSLIM triggers
+2. Buy from `daily_triggers` (primary CANSLIM breakouts)
+3. Liquidate remaining ETF slots for incoming momentum triggers
+4. Buy from `momentum_triggers` (secondary relaxed screener) if slots remain
+5. Park any still-empty slots in `QQQ` (bull market) or hold cash (bear market)
 
 ---
 
@@ -19,190 +24,225 @@ if now.hour == 9 and 30 <= now.minute <= 45:
     time.sleep(900)            # Sleep 15 min to prevent duplicate runs
 ```
 
-- Runs **once per market open** (the 15-min sleep prevents re-triggering during the same window)
-- `reconcile_with_ibkr()` always runs first to ensure Supabase reflects actual IBKR holdings before any buy decisions
+- Runs **once per market open**
+- `reconcile_with_ibkr()` always runs first — uses `ib.portfolio()` (not `ib.positions()`) to ensure Supabase reflects actual IBKR holdings
 
 ---
 
-## Buy Decision Pipeline
-
-### Step 1 — Fetch Recent Triggers
+## Step 1 — Fetch Recent Triggers
 
 ```python
-recent_date = today - timedelta(days=3)
+recent_date = today - timedelta(days=TRIGGER_LOOKBACK_DAYS)   # default: 3
 triggers = daily_triggers.select("*").gte("triggered_at", recent_date)
 ```
 
-Looks back **3 days** to capture triggers from weekends and market holidays. If no triggers exist, execution stops.
+Looks back **3 days** to capture triggers from weekends and market holidays. If no primary triggers exist, execution falls through to the momentum cascade (it does **not** stop early).
 
 ---
 
-### Step 2 — Load Current Portfolio
+## Step 2 — Load Portfolio & Cap Check
 
 ```python
-holdings = portfolio_positions.select("*")
+holdings     = portfolio_positions.select("*")
 active_tickers = [h["ticker"] for h in holdings]
-```
 
-Used to enforce the position cap and prevent buying a stock already held.
-
----
-
-### Step 3 — Portfolio Cap Check
-
-```python
-MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))  # default: 4
-
-if len(holdings) >= MAX_POSITIONS:
-    # Fully invested — skip all buys
+# Only count real stock positions — ETF parking is displaceable liquid cash
+stock_holdings = [h for h in holdings if h.get("buy_source") != "etf_parking"]
+if len(stock_holdings) >= MAX_POSITIONS:
+    run_etf_parking(ib, client)   # still check market direction
     return
 ```
 
-If the portfolio is at or above `MAX_POSITIONS`, no buys are made. Configurable via `.env`.
+Cap check counts **stock positions only**. ETF parking positions (`buy_source='etf_parking'`) are excluded because they will be sold pre-flight to make room for incoming triggers.
 
 ---
 
-### Step 4 — Per-Trigger Checks (loop over each trigger)
+## Step 3 — Pre-flight ETF Liquidation (for primary triggers)
 
-For each breakout trigger:
+Before processing `daily_triggers`, any ETF parking positions are sold to free cash:
+
+```python
+new_trigger_count = count of triggers not already held
+etf_to_sell = get_etf_positions(client)
+if etf_to_sell and new_trigger_count > 0:
+    sell_count = min(len(etf_to_sell), new_trigger_count)
+    liquidate_etf_positions(ib, client, etf_to_sell[:sell_count], reason="Pre-flight...")
+    # Refresh holdings after ETF sell
+```
+
+Only enough ETF positions are sold to match the number of incoming triggers.
+
+---
+
+## Step 4 — Per-Trigger Checks (primary CANSLIM loop)
+
+For each trigger from `daily_triggers`:
 
 #### 4a. Duplicate Position Guard
 ```python
 if ticker in active_tickers:
-    continue  # Already holding — skip
+    continue
 ```
 
-#### 4b. Cooling-Off Period (3 days after a sale)
+#### 4b. Cooling-Off Period
 ```python
-cooling_cutoff = today - timedelta(days=3)
-recent_sells = trade_history.select("ticker").eq("ticker", ticker).gte("created_at", cooling_cutoff)
+cooling_cutoff = today - timedelta(days=COOLING_OFF_DAYS)   # default: 3
+recent_sells = trade_history.select("ticker").eq("ticker", ticker).gte("sell_date", cooling_cutoff)
 if recent_sells.data:
-    continue  # Sold within last 3 days — cooling-off active
+    continue   # Sold recently — skip
 ```
 
-Prevents re-buying a ticker that was recently stopped out (trailing stop) before it has formed a new valid base. A 3-day window covers the typical post-stop consolidation period while still allowing legitimate re-entries from fresh CANSLIM breakouts.
+Uses `sell_date` column (not `created_at`).
 
-#### 4c. Cash Sufficiency Check
+#### 4c. Re-verify Stock Cap (within loop)
 ```python
-MIN_POSITION_SIZE = float(os.getenv("MIN_POSITION_SIZE", 5000.0))  # default: $5,000
+portfolio_res = portfolio_positions.select("*")   # Refreshed each iteration
+if sum(1 for p in portfolio_res.data if p.get("buy_source") != "etf_parking") >= MAX_POSITIONS:
+    break   # Stock capacity reached mid-loop (ETFs not counted)
+```
 
-available_cash = get_available_cash(ib)  # Queries IBKR CashBalance (USD)
+#### 4d. Cash Sufficiency
+```python
+available_cash = get_available_cash(ib)   # IBKR CashBalance USD
 if available_cash < MIN_POSITION_SIZE:
-    continue  # Not enough cash for even a minimum-sized position
+    continue
 ```
-
-Cash is fetched live from IBKR (`CashBalance` tag, falling back to `TotalCashValue`).
-
-#### 4c. Re-verify Portfolio Cap (within loop)
-```python
-portfolio_res = portfolio_positions.select("*")  # Refreshed each iteration
-if len(portfolio_res.data) >= MAX_POSITIONS:
-    break  # Capacity reached mid-loop
-```
-
-Prevents race condition where multiple triggers could push past MAX_POSITIONS in the same run.
 
 ---
 
-### Step 5 — Position Sizing
+## Step 5 — Position Sizing
 
 ```python
-remaining_slots = max(1, MAX_POSITIONS - len(current_holdings))
-position_size = available_cash / remaining_slots
+stock_held_count = sum(1 for h in holdings if h.get("buy_source") != "etf_parking")
+remaining_slots  = max(1, MAX_POSITIONS - stock_held_count)
+position_size    = available_cash / remaining_slots
 ```
 
-**Equal-weight allocation:** Cash is divided evenly across remaining unfilled slots.
+**Equal-weight across unfilled stock slots.** ETF slots are excluded from the denominator.
 
-Example: `$20,000 cash, 2 remaining slots → $10,000 per position`
+Example: `$20,000 cash, 2 remaining stock slots → $10,000 per position`
 
 ---
 
-### Step 6 — Live Price Fetch
+## Step 6 — Pivot Extension Gate (O'Neil Buy Zone)
 
 ```python
-current_price = get_live_price(ticker)  # FMP /stable/quote
-if current_price <= 0:
-    current_price = trigger["close_price"]  # Fallback to yesterday's close
+pivot_price   = float(trigger["close_price"])    # Price at breakout candle
+extension_pct = (current_price - pivot_price) / pivot_price
+
+if extension_pct > MAX_PIVOT_EXTENSION:   # default: 0.05 (5%)
+    continue   # Stock is "extended" — risk/reward unfavorable
 ```
 
-Attempts a fresh FMP quote. Falls back to the price recorded in the trigger if FMP fails.
+Prevents buying a stock that has already run more than 5% beyond its pivot. Critical when the bot evaluates 1–3 day old triggers after a weekend or holiday.
 
 ---
 
-### Step 7 — Share Count Calculation
-
-```python
-shares = int(position_size / current_price)
-if shares <= 0:
-    continue  # Price too high for computed position size
-```
-
-Integer division — no fractional shares. If the stock price exceeds the position size, the ticker is skipped.
-
----
-
-### Step 8 — IBKR Market Order
+## Step 7 — IBKR Market Order & Fill Verification
 
 ```python
 contract = Stock(ticker, 'SMART', 'USD')
 ib.qualifyContracts(contract)
 order = MarketOrder('BUY', shares)
-trade = ib.placeOrder(contract, order)
-ib.sleep(3)  # Wait for fill
+ib.placeOrder(contract, order)
+ib.sleep(5)   # Wait for fill
+
+# Verify via ib.portfolio() NOT trade.orderStatus — avoids ghost positions
+# from IBKR paper trading's Error 10349 (order cancel-and-resubmit on TIF change)
+ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+if ticker not in ib_map:
+    ib.sleep(3)   # one more wait
+    ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+
+if ticker not in ib_map:
+    # Order did not confirm in IBKR — skip Supabase insert
+    notify_buy_failure(...)
+    continue
+
+ib_pos        = ib_map[ticker]
+fill_price    = round(ib_pos.averageCost, 2)
+actual_shares = int(ib_pos.position)
 ```
 
-- Uses IBKR Smart Routing (`SMART` exchange)
-- **Market order** — no limit price
-- Waits **3 seconds** for fill confirmation
+> [!IMPORTANT]
+> Fill verification **must** use `ib.portfolio()`, not `trade.orderStatus.avgFillPrice`.
+> IBKR paper trading cancels-and-resubmits orders when the TIF preset changes (Error 10349),
+> briefly showing status "Cancelled". Using `avgFillPrice` in this state returns 0 and would
+> insert a ghost row with a $0 buy price. `ib.portfolio()` reflects the actual settled position.
 
 ---
 
-### Step 9 — Fill Price Capture
+## Step 8 — Stop/Target Initialization & Supabase Record
 
 ```python
-fill_price = trade.orderStatus.avgFillPrice  # Actual IBKR fill
-if fill_price <= 0:
-    fill_price = current_price  # Fallback to pre-order quote
-```
+stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)      # default: fill * 0.93
+profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)  # default: fill * 1.25
 
----
-
-### Step 10 — Trailing Stop & Profit Target Initialization
-
-Computed from the **actual fill price** and stored at buy time:
-
-```python
-stop_loss     = round(fill_price * 0.93, 2)   # Initial trailing stop floor (entry-based)
-profit_target = round(fill_price * 1.25, 2)   # 25% above fill
-high_water_mark = fill_price                  # Trailing stop anchor — rises with price each cycle
+portfolio_positions.insert({
+    "ticker":          ticker,
+    "shares":          actual_shares,
+    "buy_price":       fill_price,
+    "buy_reason":      f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x",
+    "buy_source":      "daily_triggers",
+    "stop_loss":       stop_loss,
+    "profit_target":   profit_target,
+    "is_power_hold":   False,
+    "high_water_mark": fill_price,
+})
 ```
 
 | Field | Formula | Description |
 |-------|---------|-------------|
-| `stop_loss` | fill × 0.93 | Stored for reference only; trailing stop is computed live from `high_water_mark` |
-| `profit_target` | fill × 1.25 | Take-profit at +25% (suspended during Power Hold) |
-| `high_water_mark` | fill price | Initialized to fill; rises with price during monitoring cycles |
+| `stop_loss` | fill × (1 − STOP_LOSS_PCT) | Stored for reference; live trailing stop uses `high_water_mark` |
+| `profit_target` | fill × (1 + PROFIT_TARGET_PCT) | Take-profit at +25% (suspended during Power Hold) |
+| `high_water_mark` | fill price | Initialized to fill; rises each cycle whenever price makes new high |
+| `buy_source` | `"daily_triggers"` | Tags position quality — used for stale rotation priority |
 
 ---
 
-### Step 11 — Supabase Position Record
+## Step 9 — Momentum Cascade (if stock slots remain)
+
+After the primary loop, if stock slots are still empty:
 
 ```python
-position_data = {
-    "ticker": ticker,
-    "shares": shares,
-    "buy_price": fill_price,
-    "buy_reason": f"CANSLIM Breakout: Vol Surge {trigger['volume_surge']}x",
-    "stop_loss": stop_loss,
-    "profit_target": profit_target,
-    "is_power_hold": False,
-    "high_water_mark": fill_price   # Trailing stop anchor — rises with price
-}
-portfolio_positions.insert(position_data)
+stock_count = sum(1 for p in portfolio_res.data if p.get("buy_source") != "etf_parking")
+if stock_count >= MAX_POSITIONS:
+    return   # fully invested with stocks
+
+momentum_triggers = momentum_triggers.select("*").gte("triggered_at", recent_date)
 ```
 
-The `buy_reason` captures the volume surge ratio from the technical trigger for trade audit purposes.
-The `high_water_mark` is updated every monitoring cycle whenever the stock makes a new high.
+Before processing momentum triggers, a **second pre-flight** runs to sell any remaining ETF positions:
+
+```python
+if etf_to_sell and new_m_count > 0:
+    liquidate_etf_positions(ib, client, etf_to_sell[:sell_count], reason="Momentum pre-flight...")
+```
+
+Momentum buys follow the same 7 gates as primary buys, with:
+- `buy_source = "momentum_triggers"` (lower priority than `"daily_triggers"` in stale rotation)
+- Same `ib.portfolio()` fill verification (same ghost-position protection)
+
+See [Momentum Screener](momentum_screener.md) for details on how `momentum_triggers` are generated.
+
+---
+
+## Step 10 — ETF Cash Parking
+
+After all buy attempts (primary + momentum), if stock slots are still empty:
+
+```python
+run_etf_parking(ib, client)
+```
+
+`run_etf_parking()` calls `is_market_bullish()` (SPY vs SMA200) and:
+- **Bull market:** buys `QQQ` for remaining slots with `buy_source='etf_parking'`
+- **Bear market:** holds pure cash (no ETF purchase)
+
+ETF parking positions:
+- **Count toward** `MAX_POSITIONS` but are excluded from cap checks for stock slots
+- **Stop-loss / profit-target not enforced** (stored values are informational only)
+- **Sold immediately** when real stock triggers arrive (pre-flight) or bear market detected
 
 ---
 
@@ -210,10 +250,18 @@ The `high_water_mark` is updated every monitoring cycle whenever the stock makes
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MAX_POSITIONS` | `4` | Maximum concurrent open positions |
+| `MAX_POSITIONS` | `4` | Maximum concurrent positions (stocks + ETF parking combined) |
 | `MIN_POSITION_SIZE` | `5000.0` | Minimum USD floor per position |
-| `IB_GATEWAY_HOST` | `localhost` | IBKR Gateway hostname |
-| `IB_GATEWAY_PORT` | `7497` | IBKR Gateway API port |
+| `TRIGGER_LOOKBACK_DAYS` | `3` | Days back to look for valid triggers (covers weekends/holidays) |
+| `COOLING_OFF_DAYS` | `3` | Days before a stopped-out ticker can be re-bought |
+| `MAX_PIVOT_EXTENSION` | `0.05` | Skip if price >5% above pivot (O'Neil buy zone rule) |
+| `STOP_LOSS_PCT` | `0.07` | Initial trailing stop floor at purchase |
+| `PROFIT_TARGET_PCT` | `0.25` | Take-profit target from entry |
+| `ETF_PARKING_ENABLED` | `true` | Enable/disable ETF cash parking |
+| `ETF_PARKING_TICKER` | `QQQ` | Ticker to park idle cash in |
+| `MARKET_DIRECTION_FILTER_ENABLED` | `true` | Enable SPY SMA200 bear market gate |
+| `MARKET_DIRECTION_TICKER` | `SPY` | Ticker used to gauge market direction |
+| `MARKET_DIRECTION_SMA_WINDOW` | `200` | SMA window for market direction (O'Neil standard) |
 
 ---
 
@@ -222,44 +270,49 @@ The `high_water_mark` is updated every monitoring cycle whenever the stock makes
 ```
 Market Open (9:30–9:45 AM ET)
     │
-    ├─ reconcile_with_ibkr()
+    ├─ reconcile_with_ibkr()  [uses ib.portfolio()]
     │
     ▼
-Fetch triggers (last 3 days)
+Fetch daily_triggers (last 3 days)
     │
-    ├─ No triggers? → Exit
-    │
-    ▼
-Load current portfolio
-    │
-    ├─ >= MAX_POSITIONS? → Exit
+Load portfolio → stock-only cap check
+    ├─ stocks >= MAX_POSITIONS? → run_etf_parking() → Exit
     │
     ▼
-For each trigger:
-    ├─ Already holding ticker? → Skip
-    ├─ Sold within last 3 days? → Skip (cooling-off)
+PRE-FLIGHT: sell ETF slots for incoming triggers
+    │
+    ▼
+For each daily_trigger:
+    ├─ Already holding? → Skip
+    ├─ Cooling-off? → Skip
+    ├─ Stock cap reached? → Break (ETF not counted)
     ├─ Cash < MIN_POSITION_SIZE? → Skip
-    ├─ Portfolio refilled to MAX? → Break
-    │
-    ▼
-Position size = cash / remaining_slots
-    │
-    ▼
-Get live FMP price (fallback: trigger close)
-    │
-    ▼
-shares = int(position_size / price)
-    │
+    ├─ Price > pivot + 5%? → Skip (extended)
     ├─ shares <= 0? → Skip
     │
     ▼
-IBKR MarketOrder BUY → wait 3s → get fill price
+IBKR MarketOrder BUY → sleep 5s → verify via ib.portfolio()
+    ├─ Not in portfolio? → sleep 3s → retry
+    ├─ Still not in portfolio? → log failure, skip Supabase insert
     │
     ▼
-stop_loss = fill * 0.93      (initial floor, stored for reference)
-profit_target = fill * 1.25
-high_water_mark = fill       (trailing stop anchor)
+Insert into portfolio_positions [buy_source='daily_triggers']
     │
     ▼
-Insert into Supabase portfolio_positions
+── Momentum Cascade ──
+    │
+Stock slots still empty?
+    ├─ No → Exit
+    │
+    ▼
+Fetch momentum_triggers → MOMENTUM PRE-FLIGHT: sell remaining ETF slots
+    │
+For each momentum_trigger:  [same 7 gates, buy_source='momentum_triggers']
+    │
+    ▼
+── ETF Parking ──
+    │
+run_etf_parking():
+    ├─ SPY > SMA200? → buy QQQ [buy_source='etf_parking']
+    └─ SPY < SMA200? → hold cash
 ```
