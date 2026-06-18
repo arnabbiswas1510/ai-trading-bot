@@ -90,7 +90,9 @@ def main():
     # Fetch state
     positions  = client.table("portfolio_positions").select("*").execute().data or []
     held       = [p["ticker"] for p in positions]
-    free_slots = MAX_POSITIONS - len(held)
+    # Only count stock positions — ETF parking slots are displaceble
+    stock_count = sum(1 for p in positions if p.get("buy_source") != "etf_parking")
+    free_slots = MAX_POSITIONS - stock_count
 
     recent_sells = client.table("trade_history").select("ticker,sell_date") \
                          .gte("sell_date", cooloff_date).execute().data or []
@@ -107,7 +109,7 @@ def main():
     print(f"Triggers ({len(triggers)})  : {[t['ticker'] for t in triggers]}")
 
     if free_slots == 0:
-        print("\n⛔ Portfolio is full. No buys possible.")
+        print("\n⛔ Portfolio is fully invested with stocks. No buys possible.")
         return
 
     if not triggers:
@@ -166,6 +168,7 @@ def main():
 
         stop_loss     = round(current_price * (1 - STOP_LOSS_PCT), 2)
         profit_target = round(current_price * (1 + PROFIT_TARGET_PCT), 2)
+        buy_reason    = f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger.get('volume_surge', 'N/A')}x"
 
         confirm = input(f"\n   BUY {shares} shares of {ticker} @ ~${current_price:.2f} "
                         f"(stop: ${stop_loss}, target: ${profit_target})? [y/N] ").strip().lower()
@@ -240,10 +243,8 @@ def main():
             print("   😴 No momentum triggers in lookback window.")
         else:
             for trigger in m_triggers:
-                if bought >= (bought + remaining):
-                    break
                 portfolio_res = client.table("portfolio_positions").select("*").execute().data or []
-                if len(portfolio_res) >= MAX_POSITIONS:
+                if sum(1 for p in portfolio_res if p.get("buy_source") != "etf_parking") >= MAX_POSITIONS:
                     break
 
                 ticker = trigger["ticker"]
@@ -261,7 +262,7 @@ def main():
                 except Exception:
                     pass
 
-                available_cash = get_live_price.__module__ and get_available_cash(ib)
+                available_cash = get_available_cash(ib)
                 if available_cash < MIN_POSITION_SIZE:
                     print(f"   🚫 Insufficient cash for momentum buy. Stopping.")
                     break

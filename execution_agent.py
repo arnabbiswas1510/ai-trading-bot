@@ -568,8 +568,6 @@ def run_market_open_buys(ib: IB):
 
         # ── Cooling-off period: skip tickers sold within the last 3 days ────────
         # Prevents re-buying a stock that was just stopped out (trailing stop)
-        # before it has had time to form a new valid base.
-        # Uses sell_date (the actual trade_history column) not created_at.
         try:
             cooling_cutoff = (today_ny - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
             recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
@@ -579,24 +577,26 @@ def run_market_open_buys(ib: IB):
         except Exception as cool_err:
             print(f"   ⚠️ Cooling-off check failed for {ticker}: {cool_err} — allowing buy.")
             
-        # Verify settled cash is enough for at least one minimum-sized position
+        # Size the position as an equal share of remaining capital across unfilled slots
+        # Use refreshed holdings (not portfolio_res) since pre-flight ETF sell may have run
+        stock_held_count = sum(1 for h in holdings if h.get("buy_source") != "etf_parking")
+        remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
         available_cash = get_available_cash(ib)
         print(f"💰 Available Cash Balance in IBKR: ${available_cash:,.2f}")
+        position_size = available_cash / remaining_slots
+        print(f"   Position sizing: ${available_cash:,.2f} cash / {remaining_slots} remaining slot(s) = ${position_size:,.2f} per position")
+
+        # Double check active holdings size again (in case we bought one earlier in this loop)
+        portfolio_res = client.table("portfolio_positions").select("*").execute()
+        holdings = portfolio_res.data or []
+        if sum(1 for p in portfolio_res.data if p.get("buy_source") != "etf_parking") >= MAX_POSITIONS:
+            print(f"🚫 Portfolio capacity ({MAX_POSITIONS} stocks) reached during loop. Skipping further buys.")
+            break
+
         if available_cash < MIN_POSITION_SIZE:
             print(f"🚫 Insufficient cash to buy {ticker} (floor: ${MIN_POSITION_SIZE:,.0f}). Skipping.")
             continue
-
-        # Size the position as an equal share of remaining capital across unfilled slots
-        remaining_slots = max(1, MAX_POSITIONS - len(portfolio_res.data))
-        position_size = available_cash / remaining_slots
-        print(f"   Position sizing: ${available_cash:,.2f} cash / {remaining_slots} remaining slot(s) = ${position_size:,.2f} per position")
             
-        # Double check active holdings size again (in case we bought one earlier in this loop)
-        portfolio_res = client.table("portfolio_positions").select("*").execute()
-        if len(portfolio_res.data) >= MAX_POSITIONS:
-            print(f"🚫 Portfolio capacity ({MAX_POSITIONS}) reached during loop. Skipping further buys.")
-            break
-
         # Buy reason tags the trigger source
         buy_reason = f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x"
         buy_source = "daily_triggers"
@@ -609,9 +609,6 @@ def run_market_open_buys(ib: IB):
             current_price = float(trigger["close_price"])
 
         # ── CANSLIM pivot extension check ────────────────────────────────────
-        # O'Neil's rule: only buy within 5% of the breakout pivot price.
-        # Beyond that the stock is "extended" — risk/reward is unfavourable.
-        # This guards against buying stale triggers where price has already run.
         pivot_price = float(trigger["close_price"])
         extension_pct = (current_price - pivot_price) / pivot_price if pivot_price > 0 else 0
         if extension_pct > MAX_PIVOT_EXTENSION:
@@ -631,42 +628,53 @@ def run_market_open_buys(ib: IB):
             contract = Stock(ticker, 'SMART', 'USD')
             ib.qualifyContracts(contract)
             order = MarketOrder('BUY', shares)
-            trade = ib.placeOrder(contract, order)
-            
-            # Wait a few seconds for execution fill
+            ib.placeOrder(contract, order)
+
+            # Verify fill via ib.portfolio() (NOT trade.orderStatus) to avoid ghost
+            # positions from Error 10349 (IB cancels-and-resubmits on TIF change).
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
-            ib.sleep(3)
-            
-            fill_price = trade.orderStatus.avgFillPrice if trade.orderStatus else 0.0
-            if fill_price <= 0:
-                fill_price = current_price  # fallback
-                
-            stop_loss = round(fill_price * (1 - STOP_LOSS_PCT), 2)
-            profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
+            ib.sleep(5)
+            ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+            if ticker not in ib_map:
+                ib.sleep(3)  # one more wait
+                ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+
+            if ticker not in ib_map:
+                print(f"   ⚠️ {ticker} not found in IBKR portfolio after 8s — order may not have filled. Skipping Supabase insert.")
+                notifier.notify_buy_failure(ticker=ticker, shares=shares,
+                    error="Not confirmed in IBKR portfolio after 8s")
+                continue
+
+            ib_pos = ib_map[ticker]
+            fill_price = round(ib_pos.averageCost, 2)
+            actual_shares = int(ib_pos.position)
             
             # Record position in Supabase
             position_data = {
                 "ticker":          ticker,
-                "shares":          shares,
+                "shares":          actual_shares,
                 "buy_price":       fill_price,
-                "buy_reason":      buy_reason,
+                "buy_reason":      f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x",
                 "buy_source":      buy_source,
-                "stop_loss":       stop_loss,
-                "profit_target":   profit_target,
+                "stop_loss":       round(fill_price * (1 - STOP_LOSS_PCT), 2),
+                "profit_target":   round(fill_price * (1 + PROFIT_TARGET_PCT), 2),
                 "is_power_hold":   False,
                 "high_water_mark": fill_price
             }
             
             client.table("portfolio_positions").insert(position_data).execute()
-            print(f"✅ Successfully bought {shares} shares of {ticker} at ${fill_price:.2f}.")
+            stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+            profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
+            print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
             print(f"   Stop-Loss: ${stop_loss} | Profit Target: ${profit_target}")
             
             # Notify all configured Telegram recipients
             portfolio_res = client.table("portfolio_positions").select("ticker").execute()
             slot_used = len(portfolio_res.data) if portfolio_res.data else 1
             notifier.notify_buy(
-                ticker=ticker, shares=shares, fill_price=fill_price,
-                stop_loss=stop_loss, profit_target=profit_target,
+                ticker=ticker, shares=actual_shares, fill_price=fill_price,
+                stop_loss=round(fill_price * (1 - STOP_LOSS_PCT), 2),
+                profit_target=round(fill_price * (1 + PROFIT_TARGET_PCT), 2),
                 volume_surge=float(trigger.get("volume_surge", 0)),
                 pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
                 slot_used=slot_used, max_slots=MAX_POSITIONS
@@ -674,20 +682,23 @@ def run_market_open_buys(ib: IB):
             
             # Add to local tracker to prevent double buys in this loop
             active_tickers.append(ticker)
+            holdings = portfolio_res.data or []
             
         except Exception as order_err:
             print(f"❌ Failed to execute order for {ticker}: {order_err}")
             notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
 
     # ── Momentum cascade: fill remaining slots from momentum_triggers ──────────
-    # Only runs if daily_triggers didn't fill all slots.
-    # momentum_triggers positions are tagged buy_source='momentum_triggers' and
-    # are prioritised for stale rotation selling over CANSLIM positions.
+    # Only runs if daily_triggers didn't fill all STOCK slots.
+    # momentum_triggers positions are tagged buy_source='momentum_triggers'.
     portfolio_res = client.table("portfolio_positions").select("*").execute()
-    if len(portfolio_res.data) >= MAX_POSITIONS:
-        return  # fully invested — no cascade needed
+    stock_count = sum(1 for p in portfolio_res.data if p.get("buy_source") != "etf_parking")
+    if stock_count >= MAX_POSITIONS:
+        if ETF_PARKING_ENABLED:
+            run_etf_parking(ib, client)
+        return  # fully invested with real stocks
 
-    print(f"\n⚡ Cascading to momentum_triggers ({MAX_POSITIONS - len(portfolio_res.data)} slot(s) remaining)...")
+    print(f"\n⚡ Cascading to momentum_triggers ({MAX_POSITIONS - stock_count} slot(s) remaining)...")
     try:
         momentum_res = client.table("momentum_triggers").select("*") \
                              .gte("triggered_at", recent_date).execute()
@@ -703,12 +714,24 @@ def run_market_open_buys(ib: IB):
             run_etf_parking(ib, client)
         return
 
+    # ── Momentum pre-flight: sell ETF parking to free cash for incoming triggers ──
+    if ETF_PARKING_ENABLED:
+        m_active = [p["ticker"] for p in portfolio_res.data]
+        new_m_count = sum(1 for t in momentum_triggers_list if t["ticker"] not in m_active)
+        etf_to_sell = get_etf_positions(client)
+        if etf_to_sell and new_m_count > 0:
+            sell_count = min(len(etf_to_sell), new_m_count)
+            print(f"✈️  Momentum pre-flight: liquidating {sell_count} ETF position(s) for {new_m_count} momentum trigger(s)...")
+            liquidate_etf_positions(ib, client, etf_to_sell[:sell_count],
+                f"Pre-flight: freeing slot for {new_m_count} momentum trigger(s)")
+            portfolio_res = client.table("portfolio_positions").select("*").execute()
+
     for trigger in momentum_triggers_list:
         ticker = trigger["ticker"]
 
         # Refresh portfolio state each iteration
         portfolio_res = client.table("portfolio_positions").select("*").execute()
-        if len(portfolio_res.data) >= MAX_POSITIONS:
+        if sum(1 for p in portfolio_res.data if p.get("buy_source") != "etf_parking") >= MAX_POSITIONS:
             break
         if ticker in active_tickers:
             continue
@@ -752,18 +775,30 @@ def run_market_open_buys(ib: IB):
             contract = Stock(ticker, "SMART", "USD")
             ib.qualifyContracts(contract)
             order    = MarketOrder("BUY", shares)
-            trade    = ib.placeOrder(contract, order)
-            ib.sleep(3)
+            ib.placeOrder(contract, order)
+            ib.sleep(5)
 
-            fill_price    = trade.orderStatus.avgFillPrice if trade.orderStatus else current_price
-            if fill_price <= 0:
-                fill_price = current_price
+            # Verify via ib.portfolio() to avoid ghost positions from Error 10349
+            ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+            if ticker not in ib_map:
+                ib.sleep(3)
+                ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+
+            if ticker not in ib_map:
+                print(f"   ⚠️ {ticker} [momentum] not found in IBKR portfolio after 8s. Skipping insert.")
+                notifier.notify_buy_failure(ticker=ticker, shares=shares,
+                    error="Not confirmed in IBKR portfolio after 8s")
+                continue
+
+            ib_pos        = ib_map[ticker]
+            fill_price    = round(ib_pos.averageCost, 2)
+            actual_shares = int(ib_pos.position)
             stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)
             profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
 
             client.table("portfolio_positions").insert({
                 "ticker":          ticker,
-                "shares":          shares,
+                "shares":          actual_shares,
                 "buy_price":       fill_price,
                 "buy_reason":      f"Momentum Breakout [momentum_triggers]: Vol Surge {trigger['volume_surge']}x",
                 "buy_source":      "momentum_triggers",
@@ -773,7 +808,7 @@ def run_market_open_buys(ib: IB):
                 "high_water_mark": fill_price,
             }).execute()
 
-            print(f"✅ [Momentum] Bought {shares} shares of {ticker} @ ${fill_price:.2f}")
+            print(f"✅ [Momentum] Bought {actual_shares} shares of {ticker} @ ${fill_price:.2f}")
 
             portfolio_res_new = client.table("portfolio_positions").select("ticker").execute()
             slot_used = len(portfolio_res_new.data) if portfolio_res_new.data else 1
@@ -838,8 +873,10 @@ def monitor_portfolio_intraday(ib: IB):
         return
 
     # Check actual IBKR positions to ensure we are in sync
-    ib_positions = ib.positions()
-    ib_tickers = [p.contract.symbol for p in ib_positions]
+    # Use ib.portfolio() (not ib.positions()) — portfolio() is always populated
+    # on connection; positions() is subscription-based and may be empty.
+    ib_map_monitor = {p.contract.symbol: p for p in ib.portfolio()}
+    ib_tickers = list(ib_map_monitor.keys())
 
     # ── Pre-pass: Stale Position Rotation ────────────────────────────────────────
     # Before entering the per-position loop, identify ALL stale candidates and pick
@@ -903,8 +940,8 @@ def monitor_portfolio_intraday(ib: IB):
                 # Refresh positions list after rotation sell before entering main loop
                 try:
                     positions = client.table("portfolio_positions").select("*").execute().data
-                    ib_positions = ib.positions()
-                    ib_tickers = [p.contract.symbol for p in ib_positions]
+                    ib_map_monitor = {p.contract.symbol: p for p in ib.portfolio()}
+                    ib_tickers = list(ib_map_monitor.keys())
                 except Exception:
                     pass
 
