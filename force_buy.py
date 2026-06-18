@@ -215,8 +215,110 @@ def main():
         except Exception as e:
             print(f"   ❌ Order failed for {ticker}: {e}")
 
+    # ── Momentum cascade: fill remaining slots from momentum_triggers ──────────
+    portfolio_res = client.table("portfolio_positions").select("*").execute().data or []
+    if len(portfolio_res) < MAX_POSITIONS:
+        remaining = MAX_POSITIONS - len(portfolio_res)
+        print(f"\n⚡ Checking momentum_triggers for {remaining} remaining slot(s)...")
+        m_triggers = client.table("momentum_triggers").select("*") \
+                           .gte("triggered_at", lookback_date) \
+                           .order("triggered_at", desc=True).execute().data or []
+
+        if not m_triggers:
+            print("   😴 No momentum triggers in lookback window.")
+        else:
+            for trigger in m_triggers:
+                if bought >= (bought + remaining):
+                    break
+                portfolio_res = client.table("portfolio_positions").select("*").execute().data or []
+                if len(portfolio_res) >= MAX_POSITIONS:
+                    break
+
+                ticker = trigger["ticker"]
+                if ticker in held:
+                    continue
+
+                # Cooling-off check
+                try:
+                    cooling_cutoff = (today - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
+                    sold = client.table("trade_history").select("ticker") \
+                                 .eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute().data
+                    if sold:
+                        print(f"   ⏳ {ticker} [momentum] in cooling-off. Skipping.")
+                        continue
+                except Exception:
+                    pass
+
+                available_cash = get_live_price.__module__ and get_available_cash(ib)
+                if available_cash < MIN_POSITION_SIZE:
+                    print(f"   🚫 Insufficient cash for momentum buy. Stopping.")
+                    break
+
+                current_price = get_live_price(ticker)
+                if current_price <= 0:
+                    current_price = float(trigger["close_price"])
+
+                pivot_price   = float(trigger["close_price"])
+                extension_pct = (current_price - pivot_price) / pivot_price if pivot_price > 0 else 0
+                if extension_pct > MAX_PIVOT_EXTENSION:
+                    print(f"   ⛔ {ticker} [momentum] {extension_pct*100:.1f}% above pivot — extended. Skip.")
+                    continue
+
+                slots_left    = max(1, MAX_POSITIONS - len(portfolio_res))
+                position_size = available_cash / slots_left
+                shares        = int(position_size / current_price)
+                if shares <= 0:
+                    continue
+
+                stop_loss     = round(current_price * (1 - STOP_LOSS_PCT), 2)
+                profit_target = round(current_price * (1 + PROFIT_TARGET_PCT), 2)
+
+                confirm = input(f"\n   [MOMENTUM] BUY {shares} shares of {ticker} @ ~${current_price:.2f} "
+                                f"(stop: ${stop_loss}, target: ${profit_target})? [y/N] ").strip().lower()
+                if confirm != "y":
+                    print("   Skipped by user.")
+                    continue
+
+                try:
+                    contract = Stock(ticker, "SMART", "USD")
+                    ib.qualifyContracts(contract)
+                    order = MarketOrder("BUY", shares)
+                    trade = ib.placeOrder(contract, order)
+                    ib.sleep(3)
+
+                    fill_price = trade.orderStatus.avgFillPrice if trade.orderStatus else current_price
+                    if fill_price <= 0:
+                        fill_price = current_price
+
+                    client.table("portfolio_positions").insert({
+                        "ticker":          ticker,
+                        "shares":          shares,
+                        "buy_price":       fill_price,
+                        "high_water_mark": fill_price,
+                        "stop_loss":       stop_loss,
+                        "profit_target":   profit_target,
+                        "buy_reason":      f"Momentum Breakout [momentum_triggers]: Vol Surge {trigger.get('volume_surge', 'N/A')}x",
+                        "buy_source":      "momentum_triggers",
+                        "is_power_hold":   False,
+                    }).execute()
+
+                    print(f"   ✅ [Momentum] Bought {shares} shares of {ticker} @ ${fill_price:.2f}")
+                    notifier.notify_buy(
+                        ticker=ticker, shares=shares, fill_price=fill_price,
+                        stop_loss=stop_loss, profit_target=profit_target,
+                        volume_surge=float(trigger.get("volume_surge", 0)),
+                        pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
+                        slot_used=len(portfolio_res) + 1, max_slots=MAX_POSITIONS
+                    )
+                    bought += 1
+                    held.append(ticker)
+
+                except Exception as e:
+                    print(f"   ❌ Momentum order failed for {ticker}: {e}")
+
     ib.disconnect()
     print(f"\nDone. {bought} position(s) opened.")
 
 if __name__ == "__main__":
     main()
+
