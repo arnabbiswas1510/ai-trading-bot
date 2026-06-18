@@ -178,39 +178,51 @@ def main():
             ib.qualifyContracts(contract)
             order = MarketOrder("BUY", shares)
             trade = ib.placeOrder(contract, order)
-            ib.sleep(3)
 
-            fill_price = trade.orderStatus.avgFillPrice if trade.orderStatus else current_price
-            if fill_price <= 0:
-                fill_price = current_price
+            # Wait for fill — IBKR sometimes shows 'Cancelled' briefly when
+            # it replaces an order due to TIF preset change (Error 10349).
+            # Verify by checking the actual portfolio instead of trade status.
+            ib.sleep(5)
 
-            buy_reason = (
-                f"Force Buy — trigger {trigger['triggered_at']}, "
-                f"vol surge {trigger.get('volume_surge', 'N/A')}x, "
-                f"pivot dist {trigger.get('pivot_distance_pct', 'N/A')}%"
-            )
+            # Check if the position now exists in IBKR portfolio
+            ib_positions = {p.contract.symbol: p for p in ib.portfolio()}
+            if ticker not in ib_positions:
+                ib.sleep(3)  # one more wait
+                ib_positions = {p.contract.symbol: p for p in ib.portfolio()}
 
-            client.table("portfolio_positions").insert({
-                "ticker":          ticker,
-                "shares":          shares,
-                "buy_price":       fill_price,
-                "high_water_mark": fill_price,
-                "stop_loss":       stop_loss,
-                "profit_target":   profit_target,
-                "buy_reason":      buy_reason,
-                "is_power_hold":   False,
-            }).execute()
+            if ticker in ib_positions:
+                ib_pos = ib_positions[ticker]
+                fill_price = round(ib_pos.averageCost, 2)
+                actual_shares = int(ib_pos.position)
 
-            print(f"   ✅ Bought {shares} shares of {ticker} @ ${fill_price:.2f}")
-            notifier.notify_buy(
-                ticker=ticker, shares=shares, fill_price=fill_price,
-                stop_loss=stop_loss, profit_target=profit_target,
-                volume_surge=float(trigger.get("volume_surge", 0)),
-                pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
-                slot_used=len(held) + bought + 1, max_slots=MAX_POSITIONS
-            )
-            bought += 1
-            held.append(ticker)
+                client.table("portfolio_positions").insert({
+                    "ticker":          ticker,
+                    "shares":          actual_shares,
+                    "buy_price":       fill_price,
+                    "high_water_mark": fill_price,
+                    "stop_loss":       round(fill_price * (1 - STOP_LOSS_PCT), 2),
+                    "profit_target":   round(fill_price * (1 + PROFIT_TARGET_PCT), 2),
+                    "buy_reason":      buy_reason,
+                    "buy_source":      "daily_triggers",
+                    "is_power_hold":   False,
+                }).execute()
+
+                actual_stop   = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+                actual_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
+                print(f"   ✅ Confirmed fill: {actual_shares} shares of {ticker} @ ${fill_price:.2f}")
+                print(f"   Stop: ${actual_stop}  |  Target: ${actual_target}")
+                notifier.notify_buy(
+                    ticker=ticker, shares=actual_shares, fill_price=fill_price,
+                    stop_loss=actual_stop, profit_target=actual_target,
+                    volume_surge=float(trigger.get("volume_surge", 0)),
+                    pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
+                    slot_used=len(held) + bought + 1, max_slots=MAX_POSITIONS
+                )
+                bought += 1
+                held.append(ticker)
+            else:
+                print(f"   ⚠️ {ticker}: order placed but not detected in IBKR portfolio after 8s.")
+                print(f"      The execution-agent's reconcile_with_ibkr() will sync it on the next cycle.")
 
         except Exception as e:
             print(f"   ❌ Order failed for {ticker}: {e}")
@@ -282,36 +294,46 @@ def main():
                 try:
                     contract = Stock(ticker, "SMART", "USD")
                     ib.qualifyContracts(contract)
-                    order = MarketOrder("BUY", shares)
-                    trade = ib.placeOrder(contract, order)
-                    ib.sleep(3)
+                    order    = MarketOrder("BUY", shares)
+                    trade    = ib.placeOrder(contract, order)
+                    ib.sleep(5)
 
-                    fill_price = trade.orderStatus.avgFillPrice if trade.orderStatus else current_price
-                    if fill_price <= 0:
-                        fill_price = current_price
+                    ib_positions = {p.contract.symbol: p for p in ib.portfolio()}
+                    if ticker not in ib_positions:
+                        ib.sleep(3)
+                        ib_positions = {p.contract.symbol: p for p in ib.portfolio()}
 
-                    client.table("portfolio_positions").insert({
-                        "ticker":          ticker,
-                        "shares":          shares,
-                        "buy_price":       fill_price,
-                        "high_water_mark": fill_price,
-                        "stop_loss":       stop_loss,
-                        "profit_target":   profit_target,
-                        "buy_reason":      f"Momentum Breakout [momentum_triggers]: Vol Surge {trigger.get('volume_surge', 'N/A')}x",
-                        "buy_source":      "momentum_triggers",
-                        "is_power_hold":   False,
-                    }).execute()
+                    if ticker in ib_positions:
+                        ib_pos        = ib_positions[ticker]
+                        fill_price    = round(ib_pos.averageCost, 2)
+                        actual_shares = int(ib_pos.position)
+                        m_stop        = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+                        m_target      = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
 
-                    print(f"   ✅ [Momentum] Bought {shares} shares of {ticker} @ ${fill_price:.2f}")
-                    notifier.notify_buy(
-                        ticker=ticker, shares=shares, fill_price=fill_price,
-                        stop_loss=stop_loss, profit_target=profit_target,
-                        volume_surge=float(trigger.get("volume_surge", 0)),
-                        pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
-                        slot_used=len(portfolio_res) + 1, max_slots=MAX_POSITIONS
-                    )
-                    bought += 1
-                    held.append(ticker)
+                        client.table("portfolio_positions").insert({
+                            "ticker":          ticker,
+                            "shares":          actual_shares,
+                            "buy_price":       fill_price,
+                            "high_water_mark": fill_price,
+                            "stop_loss":       m_stop,
+                            "profit_target":   m_target,
+                            "buy_reason":      f"Momentum Breakout [momentum_triggers]: Vol Surge {trigger.get('volume_surge', 'N/A')}x",
+                            "buy_source":      "momentum_triggers",
+                            "is_power_hold":   False,
+                        }).execute()
+
+                        print(f"   ✅ [Momentum] Confirmed fill: {actual_shares} shares of {ticker} @ ${fill_price:.2f}")
+                        notifier.notify_buy(
+                            ticker=ticker, shares=actual_shares, fill_price=fill_price,
+                            stop_loss=m_stop, profit_target=m_target,
+                            volume_surge=float(trigger.get("volume_surge", 0)),
+                            pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
+                            slot_used=len(portfolio_res) + 1, max_slots=MAX_POSITIONS
+                        )
+                        bought += 1
+                        held.append(ticker)
+                    else:
+                        print(f"   ⚠️ {ticker} [momentum]: not detected in IBKR portfolio after 8s — reconcile will sync.")
 
                 except Exception as e:
                     print(f"   ❌ Momentum order failed for {ticker}: {e}")
