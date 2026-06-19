@@ -301,10 +301,22 @@ def update_settings(settings: SettingsUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/settings/reset")
-def reset_portfolio_endpoint():
+def reset_portfolio_endpoint(confirm: str = ""):
+    """
+    Reset local paper-trading state only.
+    Requires confirm=RESET_CONFIRMED query param as a safety guard against
+    accidental or automated (scanner) triggers.
+    NOTE: This endpoint does NOT affect live Supabase portfolio_positions — 
+          those are managed exclusively by the execution-agent.
+    """
+    if confirm != "RESET_CONFIRMED":
+        raise HTTPException(
+            status_code=403,
+            detail="Reset requires ?confirm=RESET_CONFIRMED query parameter."
+        )
     try:
         db.reset_portfolio()
-        return {"status": "success", "message": "Portfolio and trade history reset successfully"}
+        return {"status": "success", "message": "Local paper-trading state reset. Live positions untouched."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

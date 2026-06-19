@@ -431,15 +431,20 @@ def get_daily_triggers():
         return {"breakouts": [], "removed": []}
 
 def reset_portfolio():
-    try:
-        client = get_supabase_client()
-        client.table("portfolio_positions").delete().neq("ticker", "NULL").execute()
-        client.table("trade_history").delete().neq("ticker", "NULL").execute()
-    except Exception as e:
-        print(f"Error resetting Supabase portfolio tables: {e}")
-        
+    """
+    Resets the LOCAL paper-trading state only (SQLite settings).
+
+    CRITICAL SAFETY NOTE: This function intentionally does NOT touch
+    portfolio_positions or trade_history in Supabase. Those tables are
+    owned and managed exclusively by the execution-agent container.
+    Deleting from them here would wipe LIVE production positions.
+
+    If you need to manually clear Supabase positions, do it directly
+    in the Supabase dashboard after stopping the execution agent.
+    """
     initial = get_setting("initial_balance", "100000.0")
     set_setting("cash_balance", initial)
+    print("[reset_portfolio] Local paper-trading state reset. Supabase tables were NOT touched.")
 
 # Initialize database on load
 init_db()
