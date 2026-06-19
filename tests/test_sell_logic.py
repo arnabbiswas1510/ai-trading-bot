@@ -327,6 +327,81 @@ class TestPowerHold:
         )
         assert not deactivated
 
+    def test_power_hold_activation_places_trailing_stop_only(self):
+        """When Power Hold activates, the OCA bracket is cancelled and ONLY a
+        trailing stop (orderType='TRAIL') is re-placed — no 25% limit sell.
+        This prevents the profit target from auto-filling while the position
+        is exempt during the power hold window."""
+        pos = make_position("NVDA", buy_price=100.0, days_ago=10, is_power_hold=False)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["NVDA"])
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.get_live_price", return_value=121.0), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
+             patch("execution_agent.run_etf_parking"), \
+             patch("execution_agent.place_oca_bracket"), \
+             patch("execution_agent.cancel_ticker_sell_orders") as mock_cancel, \
+             patch("execution_agent.execute_sell"):
+            execution_agent.monitor_portfolio_intraday(ib)
+
+        # cancel_ticker_sell_orders must be called for NVDA to remove the OCA limit sell
+        cancel_tickers = [str(c) for c in mock_cancel.call_args_list]
+        assert any("NVDA" in t for t in cancel_tickers), \
+            "cancel_ticker_sell_orders must be called for NVDA when Power Hold activates"
+
+        # ib.placeOrder should have been called with exactly one TRAIL order
+        # (place_oca_bracket is mocked, so no OCA calls — only the manual trail re-place)
+        trail_calls = [
+            c for c in ib.placeOrder.call_args_list
+            if getattr(c.args[1], 'orderType', '') == 'TRAIL'
+        ]
+        assert len(trail_calls) == 1, (
+            "Exactly one TrailingStopOrder must be placed when Power Hold activates"
+        )
+        # No LimitOrder (profit target, orderType='LMT') should be placed during Power Hold
+        limit_calls = [
+            c for c in ib.placeOrder.call_args_list
+            if getattr(c.args[1], 'orderType', '') == 'LMT'
+        ]
+        assert len(limit_calls) == 0, (
+            "No LimitOrder (profit target) should be placed during Power Hold"
+        )
+
+    def test_power_hold_expiry_replaces_full_oca_bracket(self):
+        """When Power Hold expires, place_oca_bracket() is called without
+        is_power_hold=True, which means BOTH the trailing stop AND the 25%
+        limit sell are re-placed (full OCA bracket restored)."""
+        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        pos = make_position("TSLA", buy_price=100.0, is_power_hold=True,
+                            power_hold_expiry=yesterday)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["TSLA"])
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.get_live_price", return_value=110.0), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
+             patch("execution_agent.run_etf_parking"), \
+             patch("execution_agent.place_oca_bracket") as mock_oca, \
+             patch("execution_agent.cancel_ticker_sell_orders"), \
+             patch("execution_agent.execute_sell"):
+            execution_agent.monitor_portfolio_intraday(ib)
+
+        # place_oca_bracket must be called at least once without is_power_hold=True
+        # (call #1 is self-healing with is_power_hold=True; call #2 is expiry re-place
+        # with is_power_hold defaulting to False — i.e. full OCA bracket).
+        oca_calls = mock_oca.call_args_list
+        assert len(oca_calls) >= 1, "place_oca_bracket must be called on Power Hold expiry"
+        full_oca_calls = [
+            c for c in oca_calls
+            if not c.kwargs.get('is_power_hold', False)
+        ]
+        assert len(full_oca_calls) >= 1, (
+            "At least one place_oca_bracket call must have is_power_hold=False "
+            "(full OCA bracket restored after Power Hold expiry)"
+        )
+
+
 
 # ── ETF positions skipped in per-position loop ────────────────────────────────
 
