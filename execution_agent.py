@@ -287,6 +287,7 @@ def reconcile_with_ibkr(ib: IB):
             "buy_price": avg_cost,
             "buy_date": buy_date,
             "buy_reason": "Manual IBKR order (reconciled)",
+            "buy_source": "daily_triggers",   # Bug fix: always set buy_source to prevent NULL
             "stop_loss": stop_loss,
             "profit_target": profit_target,
             "is_power_hold": False,
@@ -1114,19 +1115,28 @@ def main_loop():
         print("   Ensure the ib-gateway container is running and API ports are open.")
         sys.exit(1)
         
+    _buy_ran_today: str = ""   # tracks date string of last successful buy run
+
     while True:
         try:
             tz = ZoneInfo("America/New_York")
             now = datetime.datetime.now(tz)
-            # If market is open (9:30 AM - 4:00 PM EST, Mon-Fri)
-            # 1-5 represents Monday to Friday
+            today_str = now.strftime("%Y-%m-%d")
+
             if now.weekday() < 5:
-                # 1. Market Open Check: Trigger buys between 9:30 AM and 9:45 AM
-                # Check if it is within the market open window
-                if now.hour == 9 and 30 <= now.minute <= 45:
+                # 1. Market Open Buy Window: 9:30 AM – 10:30 AM, runs ONCE per day.
+                # Widened from 9:45 to 10:30 so the agent does not miss the window
+                # when the pre-market hourly sleep crosses 9:30 AM (e.g. sleep starts
+                # at 9:02 AM and wakes at 10:02 AM — the original 9:30-9:45 window
+                # would never be reached).
+                is_buy_window = (
+                    (now.hour == 9 and now.minute >= 30)
+                    or (now.hour == 10 and now.minute <= 30)
+                )
+                if is_buy_window and _buy_ran_today != today_str:
+                    _buy_ran_today = today_str
                     reconcile_with_ibkr(ib)   # Sync before placing any new buys
                     run_market_open_buys(ib)
-                    # Sleep 15 minutes to avoid duplicate runs during the open window
                     time.sleep(900)
                     continue
 
@@ -1134,10 +1144,9 @@ def main_loop():
                 if (now.hour == 9 and now.minute > 45) or (10 <= now.hour < 16):
                     reconcile_with_ibkr(ib)   # Sync every 15 min — catches manual TWS trades
                     monitor_portfolio_intraday(ib)
-                    # Check every 15 minutes
                     time.sleep(900)
                     continue
-                    
+
             # Outside market hours: check once an hour
             print(f"😴 Market is closed. Checking in 1 hour... (Current Time: {now.strftime('%H:%M:%S')})")
             time.sleep(3600)
