@@ -240,24 +240,34 @@ def reconcile_with_ibkr(ib: IB):
         pos = supabase_map[ticker]
         print(f"   ⚠️  {ticker}: in Supabase but not in IBKR — manual close detected.")
 
-        # Prefer the actual IBKR fill price from execution history.
-        # reqExecutions() returns all fills from the current IB Gateway session.
+        # ── CRITICAL GUARD: verify via IBKR execution history before deleting ────
+        # If ib.portfolio() omits a ticker but reqExecutions() has NO sell fill
+        # for it in this session, it is a transient IBKR data glitch — do NOT
+        # delete the Supabase row. Only delete when there is a confirmed SLD
+        # (sold) execution proving the position was actually closed.
         sell_price = 0.0
         sell_price_source = "unknown"
+        confirmed_sell = False
         try:
             fills = ib.reqExecutions()
-            # Find the most recent SLD (sold) execution for this ticker
             sell_fills = [
                 f for f in fills
                 if f.contract.symbol == ticker and f.execution.side == "SLD"
             ]
             if sell_fills:
-                # Sort newest first by execution time string (IB format: 'YYYYMMDD  HH:MM:SS TZ')
                 sell_fills.sort(key=lambda f: f.execution.time, reverse=True)
                 sell_price = float(sell_fills[0].execution.avgPrice)
                 sell_price_source = f"IBKR fill (execId {sell_fills[0].execution.execId})"
+                confirmed_sell = True
+            else:
+                print(f"        ⚠️  No SLD execution found for {ticker} in this session."
+                      f" This is likely a transient IBKR data glitch — SKIPPING deletion.")
+                print(f"        (Position will re-sync on next IBKR portfolio refresh.)")
+                continue   # Skip — do NOT delete from Supabase
         except Exception as ex:
-            print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex}")
+            print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex} — SKIPPING deletion (safe-fail).")
+            continue   # Skip — do NOT delete from Supabase
+
 
         # Fallback 1: live FMP quote (price at reconciliation moment, up to 15 min late)
         if sell_price <= 0:
