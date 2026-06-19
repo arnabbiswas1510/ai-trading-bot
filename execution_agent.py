@@ -195,6 +195,16 @@ def reconcile_with_ibkr(ib: IB):
     supabase_map = {p["ticker"]: p for p in supabase_positions}
     supabase_tickers = set(supabase_map.keys())
 
+    # ── Safety guard: empty IBKR response while Supabase has positions ──────
+    # ib.portfolio() transiently returns [] when account data hasn't finished
+    # loading (e.g. after an internal reconnect). Without this guard, Case 1
+    # would delete every Supabase position on a false "not in IBKR" signal.
+    if not ib_tickers and supabase_tickers:
+        print(f"   ⚠️  IBKR returned empty portfolio but Supabase has "
+              f"{len(supabase_tickers)} position(s) — skipping reconcile to "
+              f"prevent false deletion. Will retry next cycle.")
+        return
+
     changes = 0
 
     # ── Case 1: In Supabase but NOT in IBKR (manual sell / closed in TWS) ──
