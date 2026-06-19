@@ -205,10 +205,38 @@ def reconcile_with_ibkr(ib: IB):
               f"prevent false deletion. Will retry next cycle.")
         return
 
+    # ── Safety guard 2: double-check before any Case 1 deletion ─────────────
+    # IBKR can transiently return a PARTIAL (non-empty) list that omits real
+    # positions during account data refreshes (e.g. when a second client
+    # connects). Re-fetch portfolio 3s later and only proceed if the ticker
+    # is still missing in BOTH checks.
+    candidates_to_delete = supabase_tickers - ib_tickers
+    if candidates_to_delete:
+        print(f"   🔁 Case 1 candidates: {candidates_to_delete}. Double-checking with fresh IBKR snapshot in 3s...")
+        ib.sleep(3)
+        try:
+            ib_raw2 = ib.portfolio()
+            ib_map2 = {
+                p.contract.symbol: p
+                for p in ib_raw2
+                if p.contract.secType == "STK" and int(p.position) > 0
+            }
+            ib_tickers2 = set(ib_map2.keys())
+            false_positives = candidates_to_delete - (candidates_to_delete - ib_tickers2)
+            if false_positives:
+                print(f"   ✅ {false_positives} reappeared in second check — NOT deleting (transient IBKR glitch).")
+                candidates_to_delete -= false_positives
+                # Update ib_map/ib_tickers with the fresh data for Case 2/3
+                ib_map.update(ib_map2)
+                ib_tickers = set(ib_map.keys())
+        except Exception as e2:
+            print(f"   ⚠️  Second IBKR check failed ({e2}) — skipping all Case 1 deletions this cycle.")
+            candidates_to_delete = set()
+
     changes = 0
 
     # ── Case 1: In Supabase but NOT in IBKR (manual sell / closed in TWS) ──
-    for ticker in supabase_tickers - ib_tickers:
+    for ticker in candidates_to_delete:
         pos = supabase_map[ticker]
         print(f"   ⚠️  {ticker}: in Supabase but not in IBKR — manual close detected.")
 
