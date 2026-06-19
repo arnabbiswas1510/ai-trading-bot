@@ -1,0 +1,95 @@
+﻿=== ALL RUNNING CONTAINERS ===
+NAMES                  IMAGE                                                           STATUS
+adminer                adminer:latest                                                  Up 10 hours
+n8n                    n8nio/n8n:latest                                                Up 10 hours
+ntopng                 ntop/ntopng:latest                                              Up 10 hours
+can-slim-trading-bot   ghcr.io/arnabbiswas1510/ai-trading-bot:latest                   Up 10 hours
+execution-agent        ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest   Up 15 minutes
+ib-gateway             ghcr.io/gnzsnz/ib-gateway:latest                                Up 18 hours
+prowlarr               lscr.io/linuxserver/prowlarr:latest                             Up 34 hours
+sabnzbd                lscr.io/linuxserver/sabnzbd:latest                              Up 34 hours
+code-server            lscr.io/linuxserver/code-server:latest                          Up 34 hours
+dozzle                 amir20/dozzle:latest                                            Up 2 days
+bazarr                 lscr.io/linuxserver/bazarr:latest                               Up 2 days
+lidarr                 lscr.io/linuxserver/lidarr:latest                               Up 2 days
+ai-health-coach        ghcr.io/arnabbiswas1510/ai-health-coach:latest                  Up 3 days
+plex                   ghcr.io/linuxserver/plex:latest                                 Up 3 days
+dawarich_db            postgis/postgis:17-3.5-alpine                                   Up 3 days (healthy)
+qbittorrent            lscr.io/linuxserver/qbittorrent:latest                          Up 3 days
+radarr                 lscr.io/linuxserver/radarr:latest                               Up 3 days
+sonarr                 lscr.io/linuxserver/sonarr:latest                               Up 3 days
+whisparr               ghcr.io/thespad/whisparr:latest                                 Up 3 days
+gluetun                qmcgaw/gluetun:latest                                           Up 3 days (healthy)
+dawarich_sidekiq       freikin/dawarich:latest                                         Up 3 days (healthy)
+dawarich_redis         redis:7.4-alpine                                                Up 3 days (healthy)
+watchtower             containrrr/watchtower                                           Up 3 days (healthy)
+embyserver             emby/embyserver:latest                                          Up 3 days
+audiobookshelf         ghcr.io/advplyr/audiobookshelf:latest                           Up 3 days
+netalertx              ghcr.io/jokob-sk/netalertx:latest                               Up 3 days (healthy)
+immich-server          ghcr.io/immich-app/immich-server:release                        Up 3 days (healthy)
+paperless-redis        redis:7-alpine                                                  Up 3 days
+immich_postgres        tensorchord/pgvecto-rs:pg14-v0.2.0                              Up 3 days (healthy)
+komga                  gotson/komga                                                    Up 3 days
+immich_ml              ghcr.io/immich-app/immich-machine-learning:release              Up 3 days (healthy)
+it-tools               corentinth/it-tools:latest                                      Up 3 days
+dufs                   sigoden/dufs                                                    Up 3 days
+obsidian-webdav        bytemark/webdav                                                 Up 3 days
+opencode-ai            docker-opencode-ai                                              Up 3 days
+
+
+=== can-slim-trading-bot logs (last 30) ===
+INFO:     192.168.1.52:39972 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.1.52:39974 - "GET /assets/index-Duh_f8_3.css HTTP/1.1" 200 OK
+INFO:     192.168.1.52:39984 - "GET /assets/index-hXm0XkIi.js HTTP/1.1" 200 OK
+INFO:     192.168.1.52:39994 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     192.168.1.52:39988 - "GET /api/market HTTP/1.1" 200 OK
+INFO:     192.168.1.52:40000 - "GET /api/screener/results HTTP/1.1" 200 OK
+INFO:     192.168.1.52:40004 - "GET /api/portfolio HTTP/1.1" 200 OK
+INFO:     192.168.1.52:40016 - "GET /api/trades HTTP/1.1" 200 OK
+INFO:     192.168.1.52:40020 - "GET /api/breakouts HTTP/1.1" 200 OK
+INFO:     192.168.1.52:40030 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33094 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33106 - "GET /assets/index-Duh_f8_3.css HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33108 - "GET /assets/index-hXm0XkIi.js HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33124 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33116 - "GET /api/market HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33128 - "GET /api/screener/results HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33138 - "GET /api/portfolio HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33146 - "GET /api/trades HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33150 - "GET /api/breakouts HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33154 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33156 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33166 - "GET /assets/index-hXm0XkIi.js HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33164 - "GET /assets/index-Duh_f8_3.css HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33186 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33176 - "GET /api/market HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33196 - "GET /api/screener/results HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33212 - "GET /api/portfolio HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33218 - "GET /api/trades HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33222 - "GET /api/breakouts HTTP/1.1" 200 OK
+INFO:     192.168.1.52:33234 - "GET /api/settings HTTP/1.1" 200 OK
+
+
+=== All containers with 'delete' in logs (last 100 lines) ===
+  execution-agent: (none)
+  can-slim-trading-bot: (none)
+  ib-gateway: (none)
+
+=== n8n containers or ports ===
+98173a8c43f4   n8nio/n8n:latest                                                "tini -- /docker-ent�"   10 hours ago   Up 10 hours           0.0.0.0:5678->5678/tcp, [::]:5678->5678/tcp                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    n8n
+42adba705678   containrrr/watchtower                                           "/watchtower"            2 weeks ago    Up 3 days (healthy)   8080/tcp                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       watchtower
+
+LISTEN 0      4096         0.0.0.0:5678       0.0.0.0:*    users:(("docker-proxy",pid=133701,fd=8))                                                                                                      
+LISTEN 0      4096            [::]:5678          [::]:*    users:(("docker-proxy",pid=133708,fd=8))                                                                                                      
+
+
+=== Check server-level cron for ALL users ===
+@reboot rclone mount gdrive: /home/dietpi/obsidian --vfs-cache-mode writes --daemon
+  [user: root]
+(no user crons)
+
+
+=== Supabase: check for pg_cron via API ===
+cron rpc not available: {'message': 'Could not find the function public.get_cron_jobs without parameters in the schema cache', 'code': 'PGRST202', 'hint': None, 'details': 'Searched for the function public.get_cron_jobs without parameters or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.'}
+Current positions: [{'ticker': 'MS', 'shares': 112, 'buy_price': 225.26, 'buy_date': '2026-06-19T17:15:38.269916+00:00', 'buy_reason': 'Manual IBKR order (reconciled)', 'stop_loss': 209.49, 'profit_target': 281.57, 'is_power_hold': False, 'power_hold_expiry': None, 'high_water_mark': 225.26, 'buy_source': 'daily_triggers'}]
+

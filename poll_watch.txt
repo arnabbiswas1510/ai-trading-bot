@@ -1,0 +1,35 @@
+﻿=== Multiple Python processes on server ===
+root      133526  0.1  0.5 2412288 97216 ?       Ssl  03:02   0:48 /usr/local/bin/python3.12 /usr/local/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+root      355419  0.0  0.1 130116 30996 ?        Ss   Jun16   0:18 python -u daemon.py
+root      360279  0.1  1.0 292324 172732 ?       Sl   Jun16   5:25 python -m uvicorn services.chat_api.main:app --host 0.0.0.0 --port 8001 --log-level info --no-access-log
+root      690809  0.1  0.3 363140 61452 ?        Ssl  13:00   0:01 python execution_agent.py
+20211     710429  0.8  0.2  49676 40752 ?        Sl   13:21   0:00 python3 /app/front/plugins/arp_scan/script.py userSubnets=MTkyLjE2OC4xLjAvMjQgLS1pbnRlcmZhY2U9ZXRoMSwxNzIuMTguMC4wLzE2IC0taW50ZXJmYWNlPWJyLTBlMDcxYmQ3YTg0ZiwxNzIuMTkuMC4wLzE2IC0taW50ZXJmYWNlPWJyLTAwOGVjMTYzZjgxYg==
+dietpi   1395751  0.0  0.0  13276  6952 ?        Ss   Jun17   0:03 python3 /app/bazarr/bin/bazarr.py --no-update --config /config
+dietpi   1395792  0.1  0.9 640248 160312 ?       Sl   Jun17   3:39 /lsiopy/bin/python3 -u /app/bazarr/bin/bazarr/main.py --no-update --config /config
+dietpi   2911186  0.0  0.3 134776 59780 ?        Ssl  Jun18   0:43 python3 /app/sabnzbd/SABnzbd.py --config-file /config --server ::
+root     3575182  0.0  0.0  35508  2224 ?        Ss   Jun15   0:08 tini -- python -m immich_ml
+root     3576833  0.0  0.2 309880 45144 ?        Sl   Jun15   0:01 python -m immich_ml
+20211    3577252  0.4  0.7 145780 124624 ?       Sl   Jun15  23:29 python3 -m server
+root     3578636  0.0  0.2 350888 43576 ?        Sl   Jun15   0:29 python -m gunicorn immich_ml.main:app -k immich_ml.config.CustomUvicornWorker -c /usr/src/immich_ml/gunicorn_conf.py -b [::]:3003 -w 1 -t 300 --log-config-json /usr/src/immich_ml/log_conf.json --keep-alive 2 --graceful-timeout 10
+python : Traceback (most recent call last):
+At line:1 char:1
++ python diagnose_morning.py 2>&1 | Out-File -Encoding utf8 poll_watch. ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+root     4181886  0.1  1.0 1419916 168612 ?      Sl   00:28   0:49 python -m gunicorn immich_ml.main:app -k immich_ml.config.CustomUvicornWorker -c /usr/src/immich_ml/gunicorn_conf.py -b [::]:3003 -w 1 -t 300 --log-config-json /usr/src/immich_ml/log_conf.json --keep-alive 2 --graceful-timeout 10
+
+
+=== Processes inside execution-agent container ===
+OCI runtime exec failed: exec failed: unable to start container process: exec: "ps": executable file not found in $PATH
+
+
+
+=== Agent logs (last 15, ascii-safe) ===
+  File "C:\Users\arnab\OneDrive\Documents\agy\ai-trading-bot\diagnose_morning.py", line 46, in <module>
+    print(out)
+  File "C:\Users\arnab\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>

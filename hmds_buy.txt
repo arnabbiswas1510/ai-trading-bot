@@ -1,0 +1,63 @@
+﻿Script uploaded.
+==============================================================
+  FORCE BUY - HMDS warmup then MarketOrder (clientId=10)
+==============================================================
+Connected (clientId=10)
+
+>> Step 1: Warming up HMDS via reqHistoricalData...
+   HMDS active! SPY last bar: 2026-06-18 15:59:00-04:00 close=746.56
+
+IBKR portfolio: ['MS']
+NetLiq: $102,497.08  Available: $93,245.73
+Supabase: {'MS'}  Slots free: 3
+Momentum triggers (2026-06-18): ['INTC', 'ADI', 'KEYS', 'TSM']
+
+==================================================
+INTC: pivot=$133.99
+  HMDS close: $133.99
+  Sizing: 152 sh @ ~$133.99  cost=$20,366.48
+  Order placed: BUY 152 INTC MKT
+Error 10349, reqId 21: Order TIF was set to DAY based on order preset.
+  [ERR 10349] Order TIF was set to DAY based on order preset.
+Canceled order: Trade(contract=Stock(conId=270639, symbol='INTC', exchange='SMART', primaryExchange='NASDAQ', currency='USD', localSymbol='INTC', tradingClass='NMS'), order=MarketOrder(orderId=21, clientId=10, action='BUY', totalQuantity=152), orderStatus=OrderStatus(orderId=21, status='Cancelled', filled=0.0, remaining=0.0, avgFillPrice=0.0, permId=0, parentId=0, lastFillPrice=0.0, clientId=0, whyHeld='', mktCapPrice=0.0), fills=[], log=[TradeLogEntry(time=datetime.datetime(2026, 6, 19, 19, 22, 55, 654570, tzinfo=datetime.timezone.utc), status='PendingSubmit', message='', errorCode=0), TradeLogEntry(time=datetime.datetime(2026, 6, 19, 19, 22, 55, 659110, tzinfo=datetime.timezone.utc), status='Cancelled', message='Error 10349, reqId 21: Order TIF was set to DAY based on order preset.', errorCode=10349)], advancedError='')
+  [ERR 202] Order Canceled - reason:No market data on major exchange for market order.
+  INTC not in portfolio after 13s. Status=Cancelled. Skip.
+
+==================================================
+ADI: pivot=$434.46
+  HMDS close: $434.46
+  Sizing: 47 sh @ ~$434.46  cost=$20,419.62
+  Order placed: BUY 47 ADI MKT
+Error 10349, reqId 24: Order TIF was set to DAY based on order preset.
+  [ERR 10349] Order TIF was set to DAY based on order preset.
+Canceled order: Trade(contract=Stock(conId=4157, symbol='ADI', exchange='SMART', primaryExchange='NASDAQ', currency='USD', localSymbol='ADI', tradingClass='NMS'), order=MarketOrder(orderId=24, clientId=10, action='BUY', totalQuantity=47), orderStatus=OrderStatus(orderId=24, status='Cancelled', filled=0.0, remaining=0.0, avgFillPrice=0.0, permId=0, parentId=0, lastFillPrice=0.0, clientId=0, whyHeld='', mktCapPrice=0.0), fills=[], log=[TradeLogEntry(time=datetime.datetime(2026, 6, 19, 19, 23, 8, 852491, tzinfo=datetime.timezone.utc), status='PendingSubmit', message='', errorCode=0), TradeLogEntry(time=datetime.datetime(2026, 6, 19, 19, 23, 8, 857186, tzinfo=datetime.timezone.utc), status='Cancelled', message='Error 10349, reqId 24: Order TIF was set to DAY based on order preset.', errorCode=10349)], advancedError='')
+  [ERR 202] Order Canceled - reason:No market data on major exchange for market order.
+  ADI not in portfolio after 13s. Status=Cancelled. Skip.
+
+==================================================
+KEYS: pivot=$363.67
+  HMDS close: $363.67
+  Sizing: 56 sh @ ~$363.67  cost=$20,365.52
+  Order placed: BUY 56 KEYS MKT
+Error 10349, reqId 27: Order TIF was set to DAY based on order preset.
+Canceled order: Trade(contract=Stock(conId=170167160, symbol='KEYS', exchange='SMART', primaryExchange='NYSE', currency='USD', localSymbol='KEYS', tradingClass='KEYS'), order=MarketOrder(orderId=27, clientId=10, action='BUY', totalQuantity=56), orderStatus=OrderStatus(orderId=27, status='Cancelled', filled=0.0, remaining=0.0, avgFillPrice=0.0, permId=0, parentId=0, lastFillPrice=0.0, clientId=0, whyHeld='', mktCapPrice=0.0), fills=[], log=[TradeLogEntry(time=datetime.datetime(2026, 6, 19, 19, 23, 21, 946107, tzinfo=datetime.timezone.utc), status='PendingSubmit', message='', errorCode=0), TradeLogEntry(time=datetime.datetime(2026, 6, 19, 19, 23, 21, 953630, tzinfo=datetime.timezone.utc), status='Cancelled', message='Error 10349, reqId 27: Order TIF was set to DAY based on order preset.', errorCode=10349)], advancedError='')
+  [ERR 10349] Order TIF was set to DAY based on order preset.
+  [ERR 202] Order Canceled - reason:No market data on major exchange for market order.
+  KEYS not in portfolio after 13s. Status=Cancelled. Skip.
+
+==================================================
+TSM: pivot=$462.12
+  HMDS close: $462.12
+  Sizing: 44 sh @ ~$462.12  cost=$20,333.28
+  Order placed: BUY 44 TSM MKT
+Error 10349, reqId 30: Order TIF was set to DAY based on order preset.
+Canceled order: Trade(contract=Stock(conId=6223250, symbol='TSM', exchange='SMART', primaryExchange='NYSE', currency='USD', localSymbol='TSM', tradingClass='TSM'), order=MarketOrder(orderId=30, clientId=10, action='BUY', totalQuantity=44), orderStatus=OrderStatus(orderId=30, status='Cancelled', filled=0.0, remaining=0.0, avgFillPrice=0.0, permId=0, parentId=0, lastFillPrice=0.0, clientId=0, whyHeld='', mktCapPrice=0.0), fills=[], log=[TradeLogEntry(time=datetime.datetime(2026, 6, 19, 19, 23, 35, 84262, tzinfo=datetime.timezone.utc), status='PendingSubmit', message='', errorCode=0), TradeLogEntry(time=datetime.datetime(2026, 6, 19, 19, 23, 35, 89607, tzinfo=datetime.timezone.utc), status='Cancelled', message='Error 10349, reqId 30: Order TIF was set to DAY based on order preset.', errorCode=10349)], advancedError='')
+  [ERR 10349] Order TIF was set to DAY based on order preset.
+  [ERR 202] Order Canceled - reason:No market data on major exchange for market order.
+  TSM not in portfolio after 13s. Status=Cancelled. Skip.
+
+==============================================================
+DONE. Bought: 0
+Final portfolio_positions:
+  MS  112sh @ $225.26  [daily_triggers]
+Done.

@@ -1,0 +1,18 @@
+﻿=== n8n environment variables ===
+N8N_BASIC_AUTH_USER=admin\nN8N_BASIC_AUTH_PASSWORD=secret\nN8N_HOST=n8n.local\nN8N_PORT=5678\nN8N_PROTOCOL=http\nN8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true\nN8N_BASIC_AUTH_ACTIVE=true\nNODE_VERSION=24.15.0\nNPM_CONFIG_UPDATE_NOTIFIER=false\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nNODE_PATH=/opt/nodejs/node-v24.15.0/lib/node_modules\nNODE_ENV=production\nN8N_RELEASE_TYPE=stable\nSHELL=/bin/sh\n
+
+
+n8n API key found: no
+
+=== n8n database workflow query ===
+DB files: /home/node/.n8n/database.sqlite
+
+Workflows from DB:
+OCI runtime exec failed: exec failed: unable to start container process: exec: "sqlite3": executable file not found in $PATH
+
+
+
+Via server sqlite3:
+-rw-r--r-- 1 root root 585728 Jun 19 03:02 /tmp/n8n_db.sqlite
+bash: line 1: sqlite3: command not found
+

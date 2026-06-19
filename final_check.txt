@@ -1,0 +1,128 @@
+﻿=== can-slim-trading-bot: ALL POST requests EVER ===
+
+
+=== can-slim-trading-bot: ALL logs last 200 lines ===
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     192.168.1.52:54296 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54300 - "GET /wp-content/debug.log HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54316 - "GET /.env HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54328 - "GET /app/.env HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54342 - "GET /.env.old HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54330 - "GET /.openclaw/openclaw.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54354 - "GET /.env.backup HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54374 - "GET /backend/.env HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54368 - "GET /.env.production HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54370 - "GET /.env.development HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54384 - "GET /.env.local HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54390 - "GET /.env.staging HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54508 - "GET /api/.env HTTP/1.1" 404 Not Found
+INFO:     192.168.1.52:54472 - "GET /server/.env HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54438 - "GET /credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54424 - "GET /.docker/config.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54448 - "GET /web/.env HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54492 - "GET /.env.test HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54410 - "GET /google-service-account.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54456 - "GET /serviceAccountKey.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54486 - "GET /.env.bak HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54402 - "GET /.anthropic/config.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54496 - "GET /.openai/config.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54482 - "GET /laravel/.env HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54550 - "GET /src/.env HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54524 - "GET /.env.save HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54538 - "GET /config.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54572 - "GET /appsettings.Production.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54604 - "GET /key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54578 - "GET /.openclaw/agents/main/agent/models.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54558 - "GET /.cursor/mcp.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54560 - "GET /public/.env HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54592 - "GET /appsettings.Development.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54586 - "GET /.yarnrc HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54674 - "GET /config/default.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54664 - "GET /.kube/config HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54632 - "GET /google-credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54630 - "GET /secrets/gcp-key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54666 - "GET /config/firebase_credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54678 - "GET /config/gcp.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54620 - "GET /.npmrc HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54608 - "GET /appsettings.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54748 - "GET /auth/service_key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54688 - "GET /app/credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54710 - "GET /.gcp/credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54718 - "GET /config/production.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54606 - "GET /.config/gcloud/application_default_credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54732 - "GET /credentials/service-account.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54700 - "GET /keyfile.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54756 - "GET /service-account-config.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54634 - "GET /secrets/gcp-credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54808 - "GET /gcloud-service-key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54774 - "GET /google_service_app.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54776 - "GET /service-account-credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54772 - "GET /application_default_credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54838 - "GET /config/gcp-credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54820 - "GET /service-account-file.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54854 - "GET /google-application-credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54818 - "GET /secrets/service-account.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55026 - "GET /api/client_secret.json HTTP/1.1" 404 Not Found
+INFO:     192.168.1.52:54990 - "GET /client_secret.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54940 - "GET /gcp-credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54956 - "GET /google_key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54884 - "GET /sa-private-key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55042 - "GET /service_account.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54870 - "GET /firebase_credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54974 - "GET /client_secrets.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54932 - "GET /service-account-key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54908 - "GET /firebase-credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54934 - "GET /sa-key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55056 - "GET /google_credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54922 - "GET /gcp.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54944 - "GET /secrets.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55080 - "GET /firebase-service-account.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55020 - "GET /.aws/credentials HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54900 - "GET /gcp_key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54958 - "GET /gcp-key.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55048 - "GET /firebase-adminsdk.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55006 - "GET /firebase.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54954 - "GET /service-account.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55070 - "GET /serviceAccount.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54904 - "GET /gcp-service-account.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:54896 - "GET /google-cloud.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55120 - "GET /config/service-account.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55082 - "GET /serviceAccountCredentials.json HTTP/1.1" 200 OK
+python : Traceback (most recent call last):
+At line:1 char:1
++ python diagnose_morning.py 2>&1 | Out-File -Encoding utf8 final_check ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\arnab\OneDrive\Documents\agy\ai-trading-bot\diagnose_morning.py", line 33, in <module>
+INFO:     192.168.1.52:55098 - "GET /google-services.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55112 - "GET /config/credentials.json HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55132 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55148 - "GET /.env.production.copy HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55164 - "GET /.git/HEAD HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55166 - "GET /.git/config HTTP/1.1" 200 OK
+INFO:     192.168.1.52:55186 - "GET /.git/FETCH_HEAD HTTP/1.1" 200 OK
+INFO:     192.168.1.52:45480 - "GET /.git/logs/HEAD HTTP/1.1" 200 OK
+INFO:     192.168.1.52:45478 - "GET /.git/refs/heads/master HTTP/1.1" 200 OK
+INFO:     192.168.1.52:45498 - "GET /.env~ HTTP/1.1" 200 OK
+INFO:     192.168.1.52:45496 - "GET /.git/refs/heads/main HTTP/1.1" 200 OK
+
+
+=== backend/main.py: full text (check for startup events) ===
+cat: /app/main.py: No such file or directory
+
+grep: /app/main.py: No such file or directory
+
+
+=== CRITICAL: reconcile_with_ibkr in CONTAINER (actual code running) ===
+    print(ssh("docker exec execution-agent grep -n 
+'DELETE\\|delete\\|supabase_tickers\\|ib_tickers\\|empty\\|safety\\|guard\\|abort' /app/execution_agent.py 2>&1 | head 
+-40"))
+  File "C:\Users\arnab\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 201-202: character maps to <undefined>

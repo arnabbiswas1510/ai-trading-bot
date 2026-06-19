@@ -1,0 +1,27 @@
+﻿=== What is daemon.py (pid 355419, started Jun16)? ===
+python -u daemon.py 
+lrwxrwxrwx 1 root root 0 Jun 19 13:22 /proc/355419/exe -> /usr/local/bin/python3.13
+
+
+root                355419              355394              0                   Jun16               ?                   00:00:18            python -u daemon.py
+root                360277              355419              0                   Jun16               ?                   00:00:00            nginx: master process nginx
+root                360279              355419              0                   Jun16               ?                   00:05:25            python -m uvicorn services.chat_api.main:app --host 0.0.0.0 --port 8001 --log-level info --no-access-log
+
+
+=== 3-minute Supabase poll ===
+POLL START
+[17:22:53] *** MS GONE *** remaining=[]
+[17:23:08] EMPTY: []
+[17:23:23] EMPTY: []
+[17:23:38] EMPTY: []
+[17:23:53] EMPTY: []
+[17:24:09] EMPTY: []
+[17:24:24] EMPTY: []
+[17:24:39] EMPTY: []
+[17:24:54] EMPTY: []
+[17:25:09] EMPTY: []
+[17:25:24] EMPTY: []
+[17:25:40] EMPTY: []
+[17:25:55] EMPTY: []
+POLL END
+

@@ -1,0 +1,26 @@
+﻿=== Guard in container ===
+'SLD execution' occurrences: 1
+'SKIPPING deletion' occurrences: 2
+
+=== Agent logs (last 15 lines) ===
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+==================================================
+       CANSLIM Local Trade Execution Agent        
+==================================================
+Connecting to IB Gateway at ib-gateway:4004...
+✅ Connected to IBKR Gateway successfully!
+🔄 Running IBKR ↔ Supabase reconciliation...
+   ⚠️  MS: in IBKR but not in Supabase — manual buy detected.
+        ✅ Added to Supabase: 112 shares @ $225.26 | SL: $209.49 | PT: $281.57
+   🔄 Reconciliation complete — 1 correction(s) applied.
+   💰 Cash balance unchanged ($76,466.79) — skipping write.
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+
+
+=== Supabase portfolio_positions ===
+Count: 1
+  MS  112sh @ $225.26  [daily_triggers]
+

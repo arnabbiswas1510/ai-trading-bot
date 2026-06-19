@@ -1,0 +1,70 @@
+﻿Script uploaded. Running...
+==============================================================
+  FORCE BUY FINAL - LimitOrder + 90s wait (clientId=10)
+==============================================================
+  [ERR 2104] Market data farm connection is OK:usfarm
+  [ERR 2107] HMDS data farm connection is inactive but should be available upon demand.ushmds
+  [ERR 2158] Sec-def data farm connection is OK:secdefnj
+Connected (clientId=10)
+IBKR portfolio: ['MS']
+NetLiq: $102,497.08  Available: $93,245.73
+Supabase: {'MS'}  Slots free: 3
+Momentum triggers (2026-06-18): ['INTC', 'ADI', 'KEYS', 'TSM']
+
+==================================================
+INTC: pivot=$133.99  limit=$139.35  152sh  cost=$20,366.48
+  Order placed: LMT 152 INTC @ $139.35
+  [ERR 2161] BUY 152 INTC NASDAQ.NMS @ 139.35  In accordance with our regulatory obligations as a broker, we will initially cap (or l
+  Still waiting... 15s  status=Submitted
+  Still waiting... 30s  status=Submitted
+  Still waiting... 45s  status=Submitted
+  Still waiting... 60s  status=Submitted
+  Still waiting... 75s  status=Submitted
+  Still waiting... 90s  status=Submitted
+  Not filled after 90s (status=Submitted) — cancelling
+  [ERR 202] Order Canceled - reason:
+
+==================================================
+ADI: pivot=$434.46  limit=$451.84  47sh  cost=$20,419.62
+  Order placed: LMT 47 ADI @ $451.84
+  [ERR 2161] BUY 47 ADI NASDAQ.NMS @ 451.84  In accordance with our regulatory obligations as a broker, we will initially cap (or lim
+  Still waiting... 15s  status=Submitted
+  Still waiting... 30s  status=Submitted
+  Still waiting... 45s  status=Submitted
+  Still waiting... 60s  status=Submitted
+  Still waiting... 75s  status=Submitted
+  Still waiting... 90s  status=Submitted
+  Not filled after 90s (status=Submitted) — cancelling
+  [ERR 202] Order Canceled - reason:
+
+==================================================
+KEYS: pivot=$363.67  limit=$378.22  56sh  cost=$20,365.52
+  Order placed: LMT 56 KEYS @ $378.22
+  [ERR 2161] BUY 56 KEYS NYSE @ 378.22  In accordance with our regulatory obligations as a broker, we will initially cap (or limit) t
+  Still waiting... 15s  status=Submitted
+  Still waiting... 30s  status=Submitted
+  Still waiting... 45s  status=Submitted
+  Still waiting... 60s  status=Submitted
+  Still waiting... 75s  status=Submitted
+  Still waiting... 90s  status=Submitted
+  Not filled after 90s (status=Submitted) — cancelling
+  [ERR 202] Order Canceled - reason:
+
+==================================================
+TSM: pivot=$462.12  limit=$480.6  44sh  cost=$20,333.28
+  Order placed: LMT 44 TSM @ $480.6
+  [ERR 2161] BUY 44 TSM NYSE @ 480.60  In accordance with our regulatory obligations as a broker, we will initially cap (or limit) th
+  Still waiting... 15s  status=Submitted
+  Still waiting... 30s  status=Submitted
+  Still waiting... 45s  status=Submitted
+  Still waiting... 60s  status=Submitted
+  Still waiting... 75s  status=Submitted
+  Still waiting... 90s  status=Submitted
+  Not filled after 90s (status=Submitted) — cancelling
+  [ERR 202] Order Canceled - reason:
+
+==============================================================
+DONE. Bought: 0
+Final portfolio_positions:
+  MS  112sh @ $225.26  [daily_triggers]
+Done.

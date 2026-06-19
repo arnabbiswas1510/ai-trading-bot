@@ -13,7 +13,7 @@ import sys
 import os
 import pytest
 import pandas as pd
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch, call
 
 # Make the project root importable from tests/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,7 +39,7 @@ def make_portfolio_item(symbol: str, position: int = 100,
 def make_ib_mock(symbols: list | None = None, avg_cost: float = 100.0) -> MagicMock:
     """
     Creates a mock IB instance whose portfolio() always returns the given symbols.
-    Includes stubs for placeOrder, qualifyContracts, sleep, accountValues.
+    Includes stubs for placeOrder, qualifyContracts, sleep, accountValues, openTrades.
     """
     ib = MagicMock()
     items = [make_portfolio_item(s, avg_cost=avg_cost) for s in (symbols or [])]
@@ -49,6 +49,8 @@ def make_ib_mock(symbols: list | None = None, avg_cost: float = 100.0) -> MagicM
     ib.qualifyContracts.return_value = None
     ib.placeOrder.return_value = MagicMock()
     ib.reqExecutions.return_value = []
+    ib.openTrades.return_value = []   # No open SELL orders by default
+    ib.cancelOrder.return_value = None
     return ib
 
 

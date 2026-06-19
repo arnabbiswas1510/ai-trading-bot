@@ -1,0 +1,64 @@
+﻿=== Agent last 40 lines ===
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+🔄 Running IBKR ↔ Supabase reconciliation...
+   ⚠️  MS: in IBKR but not in Supabase — manual buy detected.
+        ✅ Added to Supabase: 112 shares @ $225.26 | SL: $209.49 | PT: $281.57
+   🔄 Reconciliation complete — 1 correction(s) applied.
+   💰 Cash balance unchanged ($76,466.79) — skipping write.
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+==================================================
+       CANSLIM Local Trade Execution Agent        
+==================================================
+Connecting to IB Gateway at ib-gateway:4004...
+✅ Connected to IBKR Gateway successfully!
+🔄 Running IBKR ↔ Supabase reconciliation...
+   ⚠️  MS: in IBKR but not in Supabase — manual buy detected.
+        ✅ Added to Supabase: 112 shares @ $225.26 | SL: $209.49 | PT: $281.57
+   🔄 Reconciliation complete — 1 correction(s) applied.
+   💰 Cash balance unchanged ($76,466.79) — skipping write.
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+🔄 Running IBKR ↔ Supabase reconciliation...
+   ⚠️  MS: in IBKR but not in Supabase — manual buy detected.
+        ✅ Added to Supabase: 112 shares @ $225.26 | SL: $209.49 | PT: $281.57
+   🔄 Reconciliation complete — 1 correction(s) applied.
+   💰 Cash balance unchanged ($76,466.79) — skipping write.
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+🔄 Running IBKR ↔ Supabase reconciliation...
+   ⚠️  MS: in IBKR but not in Supabase — manual buy detected.
+        ✅ Added to Supabase: 112 shares @ $225.26 | SL: $209.49 | PT: $281.57
+   🔄 Reconciliation complete — 1 correction(s) applied.
+   💰 Cash balance unchanged ($76,466.79) — skipping write.
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+
+=== Can-slim backend last 20 lines ===
+INFO:     192.168.1.52:57978 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.1.52:57984 - "GET /assets/index-Duh_f8_3.css HTTP/1.1" 200 OK
+INFO:     192.168.1.52:57998 - "GET /assets/index-hXm0XkIi.js HTTP/1.1" 200 OK
+INFO:     192.168.1.52:58020 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     192.168.1.52:58008 - "GET /api/market HTTP/1.1" 200 OK
+INFO:     192.168.1.52:58034 - "GET /api/screener/results HTTP/1.1" 200 OK
+INFO:     192.168.1.52:58036 - "GET /api/portfolio HTTP/1.1" 200 OK
+INFO:     192.168.1.52:58048 - "GET /api/trades HTTP/1.1" 200 OK
+INFO:     192.168.1.52:58054 - "GET /api/breakouts HTTP/1.1" 200 OK
+INFO:     192.168.1.52:58066 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     192.168.1.52:52944 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.1.52:52954 - "GET /assets/index-Duh_f8_3.css HTTP/1.1" 200 OK
+INFO:     192.168.1.52:52952 - "GET /assets/index-hXm0XkIi.js HTTP/1.1" 200 OK
+INFO:     192.168.1.52:52986 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     192.168.1.52:52970 - "GET /api/market HTTP/1.1" 200 OK
+INFO:     192.168.1.52:52990 - "GET /api/screener/results HTTP/1.1" 200 OK
+INFO:     192.168.1.52:53004 - "GET /api/portfolio HTTP/1.1" 200 OK
+INFO:     192.168.1.52:53006 - "GET /api/trades HTTP/1.1" 200 OK
+INFO:     192.168.1.52:53008 - "GET /api/breakouts HTTP/1.1" 200 OK
+INFO:     192.168.1.52:53012 - "GET /api/settings HTTP/1.1" 200 OK
+

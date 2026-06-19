@@ -1,0 +1,13 @@
+﻿
+[TEST] === Explicit TIF=DAY test (clientId=5) ===
+[TEST] Connected.
+[TEST] Placing: BUY 10 INTC MKT  tif=DAY (explicit)
+[TEST] Status: Cancelled
+Filled: 0.0
+  Log: PendingSubmit |  | err=0
+  Log: PendingCancel |  | err=0
+  Log: Cancelled |  | err=0
+Portfolio: ['MS']
+  INTC NOT in portfolio - order genuinely cancelled.
+
+Done.

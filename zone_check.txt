@@ -1,0 +1,15 @@
+==============================================================
+  LIVE BUY ZONE CHECK — Momentum Triggers
+==============================================================
+  Currently held : []
+  Lookback cutoff: 2026-06-16
+
+  Ticker       Pivot      Live     Ext%  Zone?     Action
+  --------  --------  --------  -------  --------  ------------
+  INTC      $ 133.99   (no live price)     SKIP
+  ADI       $ 434.46   (no live price)     SKIP
+  KEYS      $ 363.67   (no live price)     SKIP
+  TSM       $ 462.12   (no live price)     SKIP
+
+  Tickers in buy zone (not held): (none)
+==============================================================

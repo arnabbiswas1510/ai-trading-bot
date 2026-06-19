@@ -1,0 +1,174 @@
+﻿=== Which container owns daemon.py (pid 355419)? ===
+/adminer 133779
+/n8n 133670
+/ntopng 133608
+/can-slim-trading-bot 133526
+/execution-agent 690809
+/ib-gateway 3904840
+/prowlarr 2911082
+/sabnzbd 2910911
+/code-server 2910587
+/dozzle 1395991
+/bazarr 1395339
+/lidarr 1395255
+/ai-health-coach 355419
+/plex 4084029
+/dawarich_db 4083866
+/qbittorrent 4083466
+/radarr 3578162
+/sonarr 3578241
+/whisparr 3578234
+/gluetun 3575712
+/dawarich_sidekiq 3575517
+/dawarich_redis 3575518
+/watchtower 3576163
+/embyserver 3574828
+/audiobookshelf 3576104
+/netalertx 3576051
+/immich-server 3576106
+/paperless-redis 3576071
+/immich_postgres 3575519
+/komga 3576198
+/immich_ml 3575182
+/it-tools 3575230
+/dufs 3574842
+/obsidian-webdav 3575161
+/opencode-ai 3574947
+
+
+=== ai-health-coach env variables (Supabase-related) ===
+
+
+=== Supabase URLs in ALL containers ===
+  execution-agent: FMP_API_KEY=06RZcTBLB4SJFUgLzPpQ02X6iCg8O9el\nSUPABASE_URL=https://yhaynfrmsjzbybbehfjs.supabase.co\nSUPABASE_KEY=sb_publishable_FEbLpUACho6fZAp9lulE0w_sj6jrDwX\nIB_GATEWAY_HOST=ib-gateway\nIB_GATEWAY_PORT=4004\nPATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nLANG=C.UTF-8\nGPG_KEY=7169605F62C751356D054A26A821E680E5FA6305\nPYTHON_VERSION=3.12.13\nPYTHON_SHA256=c08bc65a81971c1dd5783182826503369466c7e67374d1646519adf05207b684\nPYTHONUNBUFFERED=1\nPYTHONDONTWRITEBYTECODE=1\n
+  ai-health-coach: 
+  can-slim-trading-bot: FMP_API_KEY=06RZcTBLB4SJFUgLzPpQ02X6iCg8O9el\nSUPABASE_URL=https://yhaynfrmsjzbybbehfjs.supabase.co\nSUPABASE_KEY=sb_publishable_FEbLpUACho6fZAp9lulE0w_sj6jrDwX\nPATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nLANG=C.UTF-8\nGPG_KEY=7169605F62C751356D054A26A821E680E5FA6305\nPYTHON_VERSION=3.12.13\nPYTHON_SHA256=c08bc65a81971c1dd5783182826503369466c7e67374d1646519adf05207b684\nPYTHONUNBUFFERED=1\nPYTHONDONTWRITEBYTECODE=1\nDB_PATH=/app/data/trading_bot.db\n
+
+=== daemon.py content ===
+#!/usr/bin/env python3
+import logging
+import os
+import subprocess
+import time
+from pathlib import Path
+from typing import Any
+
+import yaml
+from garminconnect import Garmin
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("daemon")
+
+def check_and_run():  # noqa: C901
+    project_dir = Path(__file__).parent.resolve()
+    config_path = project_dir / "coach_config.yaml"
+    tokens_dir = project_dir / "tokens"
+    data_dir = project_dir / "data"
+
+    # 1. Parse athlete email from environment variable or config
+    email = os.getenv("GARMIN_EMAIL")
+    config: dict[str, Any] = {}
+    if config_path.exists():
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                config = yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.warning("Could not load config at %s: %s", config_path, e)
+
+    if not email:
+        email = config.get("athlete", {}).get("email")
+
+    if not email:
+        logger.error("Athlete email is missing. Please set GARMIN_EMAIL env var or provide coach_config.yaml")
+        return
+
+    # 2. Login to Garmin Connect (utilizing cached tokens)
+    logger.info("Checking Garmin Connect for updates...")
+    sanitized_email = email.replace("@", "_").replace(".", "_")
+    user_tokens_dir = tokens_dir / sanitized_email
+    user_tokens_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Login via tokenstore without password (requires one initial login with password)
+        client = Garmin(email=email, password="", prompt_mfa=None)
+        client.login(tokenstore=str(user_tokens_dir))
+    except Exception as e:
+        logger.error("Failed to log in using cached tokens: %s", e)
+        logger.error("Please run the coach container once interactively to log in/refresh tokens.")
+        return
+
+    # Retrieve latest athlete name dynamically from Garmin Connect profile
+    display_name = None
+    try:
+        display_name = client.get_full_name() or client.display_name
+    except Exception as e:
+        logger.warning("Could not retrieve profile name from Garmin Connect: %s", e)
+        try:
+            display_name = client.display_name
+        except Exception:
+            pass
+
+    if display_name and isinstance(display_name, str):
+        display_name = "".join(c if c.isalnum() or c in ("-", "_", " ") else "_" for c in display_name).strip()
+        display_name = display_name.replace(" ", "_")
+    else:
+        display_name = None
+
+    if not display_name:
+        display_name = os.getenv("ATHLETE_NAME") or config.get("athlete", {}).get("name", "Athlete")
+
+    user_data_dir = data_dir / display_name
+    user_data_dir.mkdir(parents=True, exist_ok=True)
+    last_id_file = user_data_dir / "last_processed_id.txt"
+
+    # 3. Retrieve latest activity
+    try:
+        activities = client.get_activities(0, 1)
+    except Exception as e:
+        logger.error("Failed to fetch activities: %s", e)
+        return
+
+    if not activities:
+        logger.info("No activities found on your account.")
+        return
+
+    latest_activity = activities[0]
+    activity_id = str(latest_activity.get("activityId"))
+    activity_name = latest_activity.get("activityName", "Activity")
+    start_time = latest_activity.get("startTimeLocal", "")
+
+    logger.info("Latest activity: ID=%s (%s, start=%s)", activity_id, activity_name, start_time)
+
+    # 4. Compare with last processed ID
+    last_processed_id = ""
+    if last_id_file.exists():
+
+
+=== Searching ai-health-coach code for 'portfolio_positions' ===
+
+
+=== ai-health-coach logs (last 20 lines) ===
+2026-06-19 16:52:09,863 - daemon - INFO - Latest activity: ID=23282359952 (Hartford - Coach: Autoregulated 5.7k, start=2026-06-17 08:11:48)
+2026-06-19 16:52:09,863 - daemon - INFO - No new runs detected for Arnabbiswas. Plan is up to date.
+2026-06-19 16:57:09,867 - daemon - INFO - Checking Garmin Connect for updates...
+2026-06-19 16:57:10,337 - daemon - INFO - Latest activity: ID=23282359952 (Hartford - Coach: Autoregulated 5.7k, start=2026-06-17 08:11:48)
+2026-06-19 16:57:10,337 - daemon - INFO - No new runs detected for Arnabbiswas. Plan is up to date.
+2026-06-19 17:02:10,342 - daemon - INFO - Checking Garmin Connect for updates...
+2026-06-19 17:02:10,786 - daemon - INFO - Latest activity: ID=23282359952 (Hartford - Coach: Autoregulated 5.7k, start=2026-06-17 08:11:48)
+2026-06-19 17:02:10,786 - daemon - INFO - No new runs detected for Arnabbiswas. Plan is up to date.
+2026-06-19 17:07:10,791 - daemon - INFO - Checking Garmin Connect for updates...
+2026-06-19 17:07:11,184 - daemon - INFO - Latest activity: ID=23282359952 (Hartford - Coach: Autoregulated 5.7k, start=2026-06-17 08:11:48)
+2026-06-19 17:07:11,184 - daemon - INFO - No new runs detected for Arnabbiswas. Plan is up to date.
+2026-06-19 17:12:11,189 - daemon - INFO - Checking Garmin Connect for updates...
+2026-06-19 17:12:11,554 - daemon - INFO - Latest activity: ID=23282359952 (Hartford - Coach: Autoregulated 5.7k, start=2026-06-17 08:11:48)
+2026-06-19 17:12:11,558 - daemon - INFO - No new runs detected for Arnabbiswas. Plan is up to date.
+2026-06-19 17:17:11,562 - daemon - INFO - Checking Garmin Connect for updates...
+2026-06-19 17:17:12,003 - daemon - INFO - Latest activity: ID=23282359952 (Hartford - Coach: Autoregulated 5.7k, start=2026-06-17 08:11:48)
+2026-06-19 17:17:12,003 - daemon - INFO - No new runs detected for Arnabbiswas. Plan is up to date.
+2026-06-19 17:22:12,007 - daemon - INFO - Checking Garmin Connect for updates...
+2026-06-19 17:22:12,367 - daemon - INFO - Latest activity: ID=23282359952 (Hartford - Coach: Autoregulated 5.7k, start=2026-06-17 08:11:48)
+2026-06-19 17:22:12,367 - daemon - INFO - No new runs detected for Arnabbiswas. Plan is up to date.
+

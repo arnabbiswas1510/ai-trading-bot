@@ -1,0 +1,43 @@
+﻿=== Container env vars containing 'service' or 'database_url' or 'postgres' ===
+[execution-agent]: none found
+[can-slim-trading-bot]: none found
+
+=== .env file contents (Supabase keys only) ===
+python : Traceback (most recent call last):
+At line:1 char:1
++ python quick_status.py 2>&1 | Out-File -Encoding utf8 creds_check.txt ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\arnab\AppData\Local\Programs\Python\Python312\Lib\site-packages\paramiko\channel.py", line 697, in 
+recv
+    out = self.in_buffer.read(nbytes, self.timeout)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\arnab\AppData\Local\Programs\Python\Python312\Lib\site-packages\paramiko\buffered_pipe.py", line 154, 
+in read
+    raise PipeTimeout()
+paramiko.buffered_pipe.PipeTimeout
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\arnab\OneDrive\Documents\agy\ai-trading-bot\quick_status.py", line 22, in <module>
+    out = ssh("find /root /home -name '.env' -o -name '*.env' 2>/dev/null | head -10 | xargs grep -il supabase 
+2>/dev/null")
+          
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\arnab\OneDrive\Documents\agy\ai-trading-bot\quick_status.py", line 12, in ssh
+    return (o.read() + e.read()).decode("utf-8", errors="replace")
+            ^^^^^^^^
+  File "C:\Users\arnab\AppData\Local\Programs\Python\Python312\Lib\site-packages\paramiko\file.py", line 184, in read
+    new_data = self._read(self._DEFAULT_BUFSIZE)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\arnab\AppData\Local\Programs\Python\Python312\Lib\site-packages\paramiko\channel.py", line 1359, in 
+_read
+    return self.channel.recv(size)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\arnab\AppData\Local\Programs\Python\Python312\Lib\site-packages\paramiko\channel.py", line 699, in 
+recv
+    raise socket.timeout()
+TimeoutError

@@ -1,0 +1,10 @@
+﻿python :   File "<string>", line 14
+At line:1 char:32
++ $env:PYTHONIOENCODING="utf-8"; python -c "
++                                ~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  File "<string>", line 14:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    print(ssh(" docker exec execution-agent grep -c SLD
+              ^
+SyntaxError: unterminated string literal (detected at line 14)

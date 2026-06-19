@@ -1,0 +1,10 @@
+﻿python :   File "C:\Users\arnab\OneDrive\Documents\agy\ai-trading-bot\diagnose_morning.py", line 44
+At line:1 char:1
++ python diagnose_morning.py 2>&1 | Out-File -Encoding utf8 hotpatch.tx ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  File "C:\User...ng.py", line 44:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    """PATCHED: does NOT touch Supabase. Only resets local SQLite cash."""
+       ^^^^^^^
+SyntaxError: invalid syntax

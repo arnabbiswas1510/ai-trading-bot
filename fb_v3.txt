@@ -1,0 +1,51 @@
+﻿=== Step 1: Get live prices from Yahoo Finance ===
+[price_check]   INTC: $133.99
+  ADI: $434.46
+[price_check]   KEYS: $363.67
+  TSM: $462.12
+Prices saved.
+Raw prices JSON: {"INTC": 133.99, "ADI": 434.46, "KEYS": 363.67, "TSM": 462.12}
+
+=== Buy zone check ===
+  INTC: live=$133.99  pivot=133.99  max_buy=140.69  → IN ZONE
+  ADI: live=$434.46  pivot=434.46  max_buy=456.18  → IN ZONE
+  KEYS: live=$363.67  pivot=363.67  max_buy=381.85  → IN ZONE
+  TSM: live=$462.12  pivot=462.12  max_buy=485.23  → IN ZONE
+
+Buyable tickers: ['INTC', 'ADI', 'KEYS', 'TSM']
+
+=== Step 2: Stopping execution-agent ===
+execution-agent
+
+
+=== Step 3: Force buy (clientId=1, LimitOrder) ===
+[force_buy_v3] Error response from daemon: container 95ffa82a408c0f40525bd1813830d75103ebff6ab047a7b6f9f7e7e9eb8f049b is not running
+
+=== Step 4: Restarting execution-agent ===
+execution-agent
+
+
+=== Step 5: Agent logs (looking for trigger exception) ===
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+🔄 Running IBKR ↔ Supabase reconciliation...
+   ✅ Supabase and IBKR are in sync. No changes needed.
+   💰 Cash balance unchanged ($76,466.79) — skipping write.
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+==================================================
+       CANSLIM Local Trade Execution Agent        
+==================================================
+Connecting to IB Gateway at ib-gateway:4004...
+✅ Connected to IBKR Gateway successfully!
+🔄 Running IBKR ↔ Supabase reconciliation...
+   ✅ Supabase and IBKR are in sync. No changes needed.
+   💰 Cash balance unchanged ($76,466.79) — skipping write.
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $746.74 vs SMA200 $688.36 → BULL ↑
+   Monitoring MS: Current: $223.17 | Entry: $225.26 | High: $225.26 | Trail Stop: $209.49 | PT: $281.57
+
+
+All done.

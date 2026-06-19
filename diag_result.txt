@@ -1,0 +1,17 @@
+﻿[DIAG] === IBKR Order Diagnostic ===
+  [ERROR_EVENT] ERR reqId=-1 code=2104: Market data farm connection is OK:usfarm
+  [ERROR_EVENT] ERR reqId=-1 code=2107: HMDS data farm connection is inactive but should be available upon demand.ushmds
+  [ERROR_EVENT] ERR reqId=-1 code=2158: Sec-def data farm connection is OK:secdefnj
+[DIAG] Connected (clientId=7)
+[DIAG] 
+Setting market data type=4 (free delayed)...
+[DIAG] Account status: Net=$102,497.08  Cash=$93,245.73
+TradingTypeSuspended: ''
+
+Requesting market data for INTC...
+[DIAG]   [ERROR_EVENT] ERR reqId=4 code=10167: Requested market data is not subscribed. Displaying delayed market data.
+[DIAG] Traceback (most recent call last):
+  File "/app/tif_test.py", line 55, in <module>
+    f"Close={ticker_data.close}  DelayedBid={ticker_data.delayedBid}")
+                                             ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Ticker' object has no attribute 'delayedBid'

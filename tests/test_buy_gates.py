@@ -81,7 +81,7 @@ class TestGate1StockSlots:
         ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "QQQ", "TSLA"])
         _run_buys(ib, supabase, live_price=100.0)
         # An order should be placed because stock count is only 3
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
     def test_gate1_three_stocks_one_slot_remaining(self):
         """3 stock positions → 1 slot open → order placed for incoming trigger."""
@@ -92,7 +92,7 @@ class TestGate1StockSlots:
         )
         ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "TSLA"])
         _run_buys(ib, supabase, live_price=100.0)
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
 
 # ── Gate 2: Trigger freshness ─────────────────────────────────────────────────
@@ -119,7 +119,7 @@ class TestGate2TriggerFreshness:
         )
         ib = make_ib_mock(symbols=["NVDA"])
         _run_buys(ib, supabase, live_price=100.0)
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
 
 # ── Gate 3: Not already held ──────────────────────────────────────────────────
@@ -146,7 +146,7 @@ class TestGate3NotAlreadyHeld:
         )
         ib = make_ib_mock(symbols=["AAPL", "NVDA"])
         _run_buys(ib, supabase, live_price=100.0)
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
 
 # ── Gate 4: Cooling-off period ────────────────────────────────────────────────
@@ -177,7 +177,7 @@ class TestGate4CoolingOff:
         )
         ib = make_ib_mock(symbols=["NVDA"])
         _run_buys(ib, supabase, live_price=100.0)
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
     def test_gate4_no_prior_trade_history_allows_buy(self):
         """Gate 4: ticker never traded → no cooling-off → allowed."""
@@ -188,7 +188,7 @@ class TestGate4CoolingOff:
         )
         ib = make_ib_mock(symbols=["CRWD"])
         _run_buys(ib, supabase, live_price=100.0)
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
 
 # ── Gate 5: Sufficient cash ───────────────────────────────────────────────────
@@ -213,7 +213,7 @@ class TestGate5SufficientCash:
         )
         ib = make_ib_mock(symbols=["NVDA"])
         _run_buys(ib, supabase, available_cash=5_000.0, live_price=100.0)
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
 
 # ── Gate 6: Pivot extension ───────────────────────────────────────────────────
@@ -239,7 +239,7 @@ class TestGate6PivotExtension:
         )
         ib = make_ib_mock(symbols=["NVDA"])
         _run_buys(ib, supabase, live_price=103.0)
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
     def test_gate6_exactly_at_5pct_boundary_skipped(self):
         """Gate 6: price exactly 5% above pivot → blocked (not strictly less than)."""
@@ -321,7 +321,7 @@ class TestMomentumCascade:
         )
         ib = make_ib_mock(symbols=["SOFI"])
         _run_buys(ib, supabase, live_price=100.0)
-        ib.placeOrder.assert_called_once()
+        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
 
     def test_momentum_cascade_skips_when_slots_full(self):
         """Cascade: daily_triggers filled all 4 stock slots → momentum skipped."""

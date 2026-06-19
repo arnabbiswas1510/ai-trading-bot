@@ -1,0 +1,11 @@
+﻿Downloaded n8n DB: 585,728 bytes
+
+Tables: ['migrations', 'sqlite_sequence', 'settings', 'installed_packages', 'installed_nodes', 'event_destinations', 'auth_identity', 'auth_provider_sync_history', 'tag_entity', 'workflows_tags', 'workflow_statistics', 'webhook_entity', 'execution_data', 'workflow_history', 'credentials_entity', 'shared_credentials', 'shared_workflow', 'execution_metadata', 'invalid_auth_token', 'execution_annotations', 'annotation_tag_entity', 'execution_annotation_tags', 'execution_entity', 'processed_data', 'project', 'folder', 'folder_tag', 'insights_metadata', 'test_run', 'scope', 'role_scope', 'user', 'test_case_execution', 'project_relation', 'data_table', 'data_table_column', 'role', 'user_api_keys', 'variables', 'insights_raw', 'insights_by_period', 'oauth_clients', 'oauth_authorization_codes', 'oauth_access_tokens', 'oauth_refresh_tokens', 'oauth_user_consents', 'workflow_dependency', 'chat_hub_messages', 'chat_hub_sessions', 'chat_hub_agents', 'workflow_entity']
+
+=== WORKFLOWS ===
+Total workflows: 0
+
+=== RECENT EXECUTIONS (last 20) ===
+
+=== n8n REST API (basic auth) ===
+Status: 401, Response: {"message":"'X-N8N-API-KEY' header required"}

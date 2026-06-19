@@ -6,7 +6,7 @@ import time
 import requests
 from zoneinfo import ZoneInfo
 from supabase import create_client, Client
-from ib_insync import IB, Stock, MarketOrder
+from ib_insync import IB, Stock, MarketOrder, LimitOrder, Order
 from telegram_notifier import TelegramNotifier
 
 # Load environment variables
@@ -102,6 +102,81 @@ def get_available_cash(ib: IB) -> float:
     except Exception as e:
         print(f"❌ Error querying cash balance from IBKR: {e}")
     return 0.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IBKR Order Management Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def TrailingStopOrder(action: str, totalQuantity: float,
+                     trailingPercent: float = None,
+                     trailStopPrice: float = None, **kwargs) -> Order:
+    """
+    Factory for IBKR TRAIL order type.
+    `ib_insync` 0.9.x does not export a TrailingStopOrder helper,
+    but the underlying Order dataclass supports it via orderType='TRAIL'.
+    """
+    o = Order()
+    o.action = action
+    o.orderType = 'TRAIL'
+    o.totalQuantity = totalQuantity
+    if trailingPercent is not None:
+        o.trailingPercent = trailingPercent
+    if trailStopPrice is not None:
+        o.trailStopPrice = trailStopPrice
+    for k, v in kwargs.items():
+        setattr(o, k, v)
+    return o
+
+def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
+                      profit_target_pct: float, stop_loss_pct: float,
+                      is_power_hold: bool = False) -> str:
+    """
+    Places a GTC OCA bracket for an open stock position:
+      • TrailingStopOrder  — trails {stop_loss_pct}% below the high-water mark.
+      • LimitOrder         — sells at +{profit_target_pct}% from buy_price.
+                             Omitted during Power Hold (position exempt from target).
+
+    Both orders share the same OCA group so IBKR cancels one when the other fills.
+    Returns the OCA group name (informational).
+    """
+    import time as _time
+    oca_group = f"OCA_{contract.symbol}_{int(_time.time())}"
+
+    # Trailing stop — IBKR adjusts the stop level as price climbs
+    stop = TrailingStopOrder('SELL', shares, trailingPercent=round(stop_loss_pct * 100, 2),
+                             ocaGroup=oca_group, ocaType=1)
+    stop.tif = 'GTC'
+    ib.placeOrder(contract, stop)
+    print(f"   🛡️  IBKR trailing stop placed: {stop_loss_pct*100:.0f}% trail (OCA: {oca_group})")
+
+    if not is_power_hold:
+        profit_target = round(buy_price * (1 + profit_target_pct), 2)
+        limit = LimitOrder('SELL', shares, profit_target,
+                           ocaGroup=oca_group, ocaType=1)
+        limit.tif = 'GTC'
+        ib.placeOrder(contract, limit)
+        print(f"   💰 IBKR limit sell placed: ${profit_target:.2f} "
+              f"(+{profit_target_pct*100:.0f}%) (OCA: {oca_group})")
+
+    return oca_group
+
+
+def cancel_ticker_sell_orders(ib: IB, ticker: str) -> int:
+    """Cancels all active GTC SELL orders for *ticker* (OCA cleanup before explicit sells)."""
+    cancelled = 0
+    for trade in ib.openTrades():
+        if (trade.contract.symbol == ticker
+                and trade.order.action == 'SELL'
+                and trade.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')):
+            try:
+                ib.cancelOrder(trade.order)
+                cancelled += 1
+            except Exception:
+                pass
+    if cancelled:
+        print(f"   🗑️  Cancelled {cancelled} open SELL order(s) for {ticker}")
+    return cancelled
+
 
 def handle_mock_sell(ticker: str, price: float, reason: str):
     """Executes a mock sale event directly on Supabase, bypassing IBKR."""
@@ -205,49 +280,23 @@ def reconcile_with_ibkr(ib: IB):
               f"prevent false deletion. Will retry next cycle.")
         return
 
-    # ── Safety guard 2: double-check before any Case 1 deletion ─────────────
-    # IBKR can transiently return a PARTIAL (non-empty) list that omits real
-    # positions during account data refreshes (e.g. when a second client
-    # connects). Re-fetch portfolio 3s later and only proceed if the ticker
-    # is still missing in BOTH checks.
     candidates_to_delete = supabase_tickers - ib_tickers
-    if candidates_to_delete:
-        print(f"   🔁 Case 1 candidates: {candidates_to_delete}. Double-checking with fresh IBKR snapshot in 3s...")
-        ib.sleep(3)
-        try:
-            ib_raw2 = ib.portfolio()
-            ib_map2 = {
-                p.contract.symbol: p
-                for p in ib_raw2
-                if p.contract.secType == "STK" and int(p.position) > 0
-            }
-            ib_tickers2 = set(ib_map2.keys())
-            false_positives = candidates_to_delete - (candidates_to_delete - ib_tickers2)
-            if false_positives:
-                print(f"   ✅ {false_positives} reappeared in second check — NOT deleting (transient IBKR glitch).")
-                candidates_to_delete -= false_positives
-                # Update ib_map/ib_tickers with the fresh data for Case 2/3
-                ib_map.update(ib_map2)
-                ib_tickers = set(ib_map.keys())
-        except Exception as e2:
-            print(f"   ⚠️  Second IBKR check failed ({e2}) — skipping all Case 1 deletions this cycle.")
-            candidates_to_delete = set()
-
     changes = 0
 
-    # ── Case 1: In Supabase but NOT in IBKR (manual sell / closed in TWS) ──
+    # ── Case 1: In Supabase but NOT in IBKR ─────────────────────────────────
+    # IBKR is the single source of truth: it manages trailing stops and limit
+    # sells via GTC OCA bracket. Any position missing from IBKR portfolio was
+    # legitimately closed (trailing stop fired, limit sell hit, or TWS manual
+    # close). Guard 1 above (empty portfolio) is the only transient-glitch
+    # guard needed.
     for ticker in candidates_to_delete:
         pos = supabase_map[ticker]
-        print(f"   ⚠️  {ticker}: in Supabase but not in IBKR — manual close detected.")
+        print(f"   ✅ {ticker}: position closed in IBKR — archiving to trade_history.")
 
-        # ── CRITICAL GUARD: verify via IBKR execution history before deleting ────
-        # If ib.portfolio() omits a ticker but reqExecutions() has NO sell fill
-        # for it in this session, it is a transient IBKR data glitch — do NOT
-        # delete the Supabase row. Only delete when there is a confirmed SLD
-        # (sold) execution proving the position was actually closed.
+        # ── Determine sell price from IBKR execution history ─────────────
         sell_price = 0.0
         sell_price_source = "unknown"
-        confirmed_sell = False
+        has_sld_fill = False
         try:
             fills = ib.reqExecutions()
             sell_fills = [
@@ -258,15 +307,25 @@ def reconcile_with_ibkr(ib: IB):
                 sell_fills.sort(key=lambda f: f.execution.time, reverse=True)
                 sell_price = float(sell_fills[0].execution.avgPrice)
                 sell_price_source = f"IBKR fill (execId {sell_fills[0].execution.execId})"
-                confirmed_sell = True
-            else:
-                print(f"        ⚠️  No SLD execution found for {ticker} in this session."
-                      f" This is likely a transient IBKR data glitch — SKIPPING deletion.")
-                print(f"        (Position will re-sync on next IBKR portfolio refresh.)")
-                continue   # Skip — do NOT delete from Supabase
+                has_sld_fill = True
         except Exception as ex:
-            print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex} — SKIPPING deletion (safe-fail).")
-            continue   # Skip — do NOT delete from Supabase
+            print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex}")
+
+        # If no SLD fill (e.g. manual TWS close), do a single double-check
+        # to rule out a transient partial portfolio read.
+        if not has_sld_fill:
+            ib.sleep(3)
+            _ib_recheck = {
+                p.contract.symbol: p for p in ib.portfolio()
+                if p.contract.secType == "STK" and int(p.position) > 0
+            }
+            if ticker in _ib_recheck:
+                print(f"        ⚠️  {ticker} reappeared on double-check — skipping (transient IBKR glitch).")
+                continue
+            print(f"        ℹ️  No SLD fill but position confirmed gone from IBKR — archiving.")
+
+        # Cancel any remaining OCA orders for this ticker (cleanup)
+        cancel_ticker_sell_orders(ib, ticker)
 
 
         # Fallback 1: live FMP quote (price at reconciliation moment, up to 15 min late)
@@ -716,6 +775,15 @@ def run_market_open_buys(ib: IB):
             profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
             print(f"   Stop-Loss: ${stop_loss} | Profit Target: ${profit_target}")
+
+            # Place IBKR GTC OCA bracket: trailing stop + limit sell at profit target.
+            # IBKR manages both orders server-side — no stop/target polling needed in code.
+            try:
+                place_oca_bracket(ib, contract, actual_shares, fill_price,
+                                  PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+            except Exception as _oca_err:
+                print(f"   ⚠️ OCA bracket placement failed for {ticker}: {_oca_err} "
+                      f"— self-healing will re-place on next monitor cycle.")
             
             # Notify all configured Telegram recipients
             portfolio_res = client.table("portfolio_positions").select("ticker").execute()
@@ -857,6 +925,14 @@ def run_market_open_buys(ib: IB):
                 "high_water_mark": fill_price,
             }).execute()
 
+            # Place IBKR GTC OCA bracket: trailing stop + limit sell at profit target.
+            try:
+                place_oca_bracket(ib, contract, actual_shares, fill_price,
+                                  PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+            except Exception as _oca_err:
+                print(f"   ⚠️ OCA bracket placement failed for {ticker}: {_oca_err} "
+                      f"— self-healing will re-place on next monitor cycle.")
+
             print(f"✅ [Momentum] Bought {actual_shares} shares of {ticker} @ ${fill_price:.2f}")
 
             portfolio_res_new = client.table("portfolio_positions").select("ticker").execute()
@@ -980,6 +1056,9 @@ def monitor_portfolio_intraday(ib: IB):
                 )
                 print(f"♻️  Stale Rotation: {wticker} ({worst_days}d, {gain_pct:+.1f}%) "
                       f"→ slot freed for {replacement}")
+                # Cancel IBKR OCA orders before placing explicit stale rotation sell
+                cancel_ticker_sell_orders(ib, wticker)
+                ib.sleep(1)
                 execute_sell(ib, client, wticker, wshares, wbuy_price,
                              wbuy_date, wbuy_reason, worst_price, reason)
                 # execute_sell() already calls notifier.notify_sell() internally
@@ -1035,8 +1114,30 @@ def monitor_portfolio_intraday(ib: IB):
                 print(f"   ⚠️ Could not update high_water_mark for {ticker}: {e}")
 
         trailing_stop = round(high_water_mark * (1 - STOP_LOSS_PCT), 2)
-        print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} | High: ${high_water_mark:.2f} | Trail Stop: ${trailing_stop:.2f} | PT: ${profit_target:.2f}")
-        
+        print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
+              f"| High: ${high_water_mark:.2f} | IBKR Trail: {STOP_LOSS_PCT*100:.0f}% | PT: ${profit_target:.2f}")
+
+        # ── Self-healing: ensure IBKR OCA bracket exists for this position ──
+        # GTC orders survive gateway restarts at IBKR's servers but may be
+        # absent for positions opened before this feature or after a full
+        # account reset. Re-place them automatically.
+        _open_sells = [
+            t for t in ib.openTrades()
+            if t.contract.symbol == ticker
+            and t.order.action == 'SELL'
+            and t.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')
+        ]
+        if not _open_sells:
+            print(f"   🔧 {ticker}: No IBKR SELL orders — re-placing OCA bracket (self-healing).")
+            try:
+                _heal_contract = Stock(ticker, 'SMART', 'USD')
+                ib.qualifyContracts(_heal_contract)
+                place_oca_bracket(ib, _heal_contract, shares, buy_price,
+                                  PROFIT_TARGET_PCT, STOP_LOSS_PCT,
+                                  is_power_hold=is_power_hold)
+            except Exception as _heal_err:
+                print(f"   ⚠️ Self-healing OCA placement failed for {ticker}: {_heal_err}")
+
         # 1. 8-Week Power Holding Rule Check
         # If stock surges 20%+ in less than 21 days from purchase
         days_held = (datetime.datetime.now(datetime.timezone.utc) - buy_date).days
@@ -1056,9 +1157,20 @@ def monitor_portfolio_intraday(ib: IB):
                     ticker=ticker, gain_pct=gain_pct, days_held=days_held,
                     expiry_date=expiry_date, stop_loss=trailing_stop
                 )
+                # Cancel OCA bracket (trailing stop + limit sell) and re-place
+                # only the trailing stop — power hold exempts from profit target.
+                cancel_ticker_sell_orders(ib, ticker)
+                ib.sleep(1)
+                _ph_contract = Stock(ticker, 'SMART', 'USD')
+                ib.qualifyContracts(_ph_contract)
+                _ph_stop = TrailingStopOrder('SELL', shares,
+                                             trailingPercent=STOP_LOSS_PCT * 100)
+                _ph_stop.tif = 'GTC'
+                ib.placeOrder(_ph_contract, _ph_stop)
+                print(f"   🛡️  Trailing stop re-placed (no 25% limit during Power Hold).")
             except Exception as e:
                 print(f"   ❌ Failed to update power hold state: {e}")
-                
+
         # If power hold has expired, deactivate it
         if is_power_hold and pos["power_hold_expiry"]:
             expiry_str = pos["power_hold_expiry"]
@@ -1074,35 +1186,37 @@ def monitor_portfolio_intraday(ib: IB):
                         "is_power_hold": False,
                         "power_hold_expiry": None
                     }).eq("ticker", ticker).execute()
+                    # Re-place full OCA bracket: trailing stop + 25% limit sell.
+                    cancel_ticker_sell_orders(ib, ticker)
+                    ib.sleep(1)
+                    _exp_contract = Stock(ticker, 'SMART', 'USD')
+                    ib.qualifyContracts(_exp_contract)
+                    place_oca_bracket(ib, _exp_contract, shares, buy_price,
+                                      PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                    print(f"   💰 OCA bracket re-placed (trailing stop + 25% limit) after Power Hold expiry.")
                 except Exception as e:
                     print(f"   ❌ Failed to reset power hold state: {e}")
 
-        # 2. Enforce Trailing Stop Loss (7% below high-water mark)
-        # Trailing stop rises as price climbs but never falls — locks in gains.
-        # Falls back to entry-based -7% if price never exceeded buy price.
-        if current_price <= trailing_stop:
-            gain_from_entry = ((high_water_mark / buy_price) - 1.0) * 100.0
-            if high_water_mark > buy_price:
-                reason_str = f"Trailing Stop (-{STOP_LOSS_PCT*100:.0f}% from high of ${high_water_mark:.2f}, locked in {gain_from_entry:+.1f}% gain)"
-            else:
-                reason_str = f"Trailing Stop (-{STOP_LOSS_PCT*100:.0f}% from entry — position never gained)"
-            print(f"🚨 Trailing Stop triggered for {ticker} at ${current_price:.2f} (Stop: ${trailing_stop:.2f}, High: ${high_water_mark:.2f})")
-            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason_str)
-            if ETF_PARKING_ENABLED:
-                run_etf_parking(ib, client)  # Re-park the freed slot
-            continue
-            
-        # 3. Enforce 25% Profit Target (Skip if in Power Hold)
-        if current_price >= profit_target and not is_power_hold:
-            print(f"💰 Profit Target Triggered for {ticker} at ${current_price:.2f} (Target: ${profit_target}, +{PROFIT_TARGET_PCT*100:.0f}%)!")
-            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, "25% Profit Target")
-            if ETF_PARKING_ENABLED:
-                run_etf_parking(ib, client)  # Re-park the freed slot
-            continue
+        # Stop-loss and profit-target enforcement removed from code.
+        # IBKR manages both via the GTC OCA bracket placed at buy time:
+        #   • TrailingStopOrder — trails STOP_LOSS_PCT% below the high-water mark.
+        #   • LimitOrder        — sells at +PROFIT_TARGET_PCT% from buy_price.
+        # reconcile_with_ibkr() (Case 1) detects the close next cycle and archives
+        # the position to trade_history with the IBKR fill price.
 
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float, buy_date, buy_reason: str, current_price: float, reason: str):
-    """Executes a market sell order on IBKR and archives the transaction in Supabase."""
+    """Executes a market sell order on IBKR and archives the transaction in Supabase.
+
+    CRITICAL INVARIANT: Supabase position is ONLY deleted after confirming via
+    ib.portfolio() that the position is truly gone from IBKR. This prevents phantom
+    deletions when market orders are cancelled/rejected (e.g. paper trading no-data).
+    """
     try:
+        # Cancel any open OCA orders (trailing stop + limit) before placing
+        # explicit sell (stale rotation, ETF liquidation) to avoid duplicate fills.
+        cancel_ticker_sell_orders(ib, ticker)
+        ib.sleep(1)
+
         # Place sell order
         contract = Stock(ticker, 'SMART', 'USD')
         ib.qualifyContracts(contract)
@@ -1110,8 +1224,26 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         trade = ib.placeOrder(contract, order)
         
         print(f"   Placing market sell order for {shares} shares of {ticker}...")
-        ib.sleep(3)
-        
+        ib.sleep(5)  # Give order time to fill or be rejected
+
+        # ── CRITICAL: verify fill via ib.portfolio() BEFORE touching Supabase ──
+        # MarketOrders can be cancelled (e.g. paper-trading no live market data)
+        # without raising a Python exception. We MUST confirm the position is
+        # actually gone from IBKR before removing it from Supabase.
+        ib_after = {
+            p.contract.symbol: p for p in ib.portfolio()
+            if p.contract.secType == "STK" and int(p.position) > 0
+        }
+        if ticker in ib_after:
+            print(f"   ⚠️  SELL NOT CONFIRMED: {ticker} still in IBKR portfolio after sell attempt.")
+            print(f"       Order status: {trade.orderStatus.status}. Cancelling order — Supabase record PRESERVED.")
+            try:
+                ib.cancelOrder(trade.order)
+            except Exception:
+                pass
+            return  # ← EXIT WITHOUT DELETING FROM SUPABASE
+
+        # Sell confirmed — position is gone from IBKR
         fill_price = trade.orderStatus.avgFillPrice if trade.orderStatus else 0.0
         if fill_price <= 0:
             fill_price = current_price
@@ -1132,7 +1264,7 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
             "percent_return": percent_return
         }
         
-        # Database transaction
+        # Database transaction — only reached after confirmed IBKR fill
         client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
         client.table("trade_history").insert(trade_log).execute()
         
@@ -1172,6 +1304,15 @@ def main_loop():
             today_str = now.strftime("%Y-%m-%d")
 
             if now.weekday() < 5:
+                # SENTINEL: if /app/run_buys_now.txt exists, force-run buy logic immediately
+                if os.path.exists("/app/run_buys_now.txt"):
+                    os.remove("/app/run_buys_now.txt")
+                    print("🎯 Force buy sentinel detected — running run_market_open_buys NOW")
+                    reconcile_with_ibkr(ib)
+                    run_market_open_buys(ib)
+                    time.sleep(900)
+                    continue
+
                 # 1. Market Open Buy Window: 9:30 AM – 10:30 AM, runs ONCE per day.
                 # Widened from 9:45 to 10:30 so the agent does not miss the window
                 # when the pre-market hourly sleep crosses 9:30 AM (e.g. sleep starts

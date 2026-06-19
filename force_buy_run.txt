@@ -1,0 +1,19 @@
+﻿=== STEP 1: Stopping execution-agent ===
+execution-agent
+
+Agent stopped.
+
+=== STEP 2: Running force buy (momentum cascade) ===
+Error response from daemon: container 95ffa82a408c0f40525bd1813830d75103ebff6ab047a7b6f9f7e7e9eb8f049b is not running
+
+
+=== STEP 3: Restarting execution-agent ===
+execution-agent
+
+Agent restarted.
+
+=== STEP 4: Final Supabase state ===
+portfolio_positions:
+  MS     shares= 112 buy=$225.26  sl=$209.49  pt=$281.57  [daily_triggers]
+  ibkr_cash_balance = 76466.79
+
