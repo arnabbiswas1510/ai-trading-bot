@@ -390,6 +390,11 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.015);
 }
 
+tr.row-expanded td {
+  background: rgba(139, 92, 246, 0.06);
+  border-bottom-color: transparent;
+}
+
 /* CAN SLIM specific display grid */
 .canslim-grid {
   display: flex;

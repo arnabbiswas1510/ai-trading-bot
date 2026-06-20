@@ -250,12 +250,15 @@ def get_positions():
                 "shares": row["shares"],
                 "buy_price": float(row["buy_price"]),
                 "buy_date": row["buy_date"],
+                "buy_source": row.get("buy_source", "daily_triggers"),
+                "buy_reason": row.get("buy_reason", "CANSLIM Breakout"),
                 "current_price": float(row.get("current_price") or row["buy_price"]),
                 "stop_loss": float(row["stop_loss"]),
                 "profit_target": float(row["profit_target"]),
                 "high_water_mark": float(row.get("high_water_mark") or row["buy_price"]),
+                "is_power_hold": bool(row.get("is_power_hold", False)),
+                "power_hold_expiry": row.get("power_hold_expiry"),
                 "active": 1,
-                "buy_reason": row.get("buy_reason", "CANSLIM Breakout")
             })
         return positions
     except Exception as e:
