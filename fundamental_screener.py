@@ -214,14 +214,27 @@ def update_supabase_watchlist(candidates_list):
     try:
         db_client = get_supabase_client()
 
-        # Delete all existing rows first so we never accumulate duplicates.
-        # The watchlist table holds only the latest screener snapshot.
-        print("🧹 Clearing existing watchlist entries...")
-        db_client.table("watchlist").delete().neq("ticker", "").execute()
+        now = datetime.datetime.now(datetime.timezone.utc)
+        # Monday 00:00 UTC of the current ISO week
+        week_start = (now - datetime.timedelta(days=now.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        week_end = week_start + datetime.timedelta(days=7)
+
+        # Replace only THIS week's snapshot — previous weeks kept for comparison
+        print("🧹 Replacing this week's watchlist snapshot...")
+        db_client.table("watchlist").delete() \
+            .gte("created_at", week_start.isoformat()) \
+            .lt("created_at", week_end.isoformat()) \
+            .execute()
 
         print(f"📤 Uploading {len(candidates_list)} fresh entries to Supabase...")
         db_client.table("watchlist").insert(candidates_list).execute()
-        print("✅ Watchlist updated successfully.")
+
+        # Prune entries older than 8 weeks (keeps last ~8 weekly snapshots)
+        prune_threshold = (now - datetime.timedelta(days=WATCHLIST_PRUNE_DAYS)).isoformat()
+        db_client.table("watchlist").delete().lt("created_at", prune_threshold).execute()
+        print("✅ Watchlist updated. History preserved for week-over-week comparison.")
     except Exception as e:
         print(f"❌ Database update error: {e}")
         raise e

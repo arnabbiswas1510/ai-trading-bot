@@ -105,10 +105,17 @@ def get_watchlist():
             return []
         return [t.strip().upper() for t in raw_watchlist.split(",") if t.strip()]
 
+def _get_week_start(dt: datetime.datetime) -> datetime.datetime:
+    """Return UTC midnight of the Monday starting the ISO week containing dt."""
+    return (dt - datetime.timedelta(days=dt.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0, tzinfo=datetime.timezone.utc
+    )
+
+
 def save_screener_results(results):
     try:
         client = get_supabase_client()
-        
+
         payload = []
         for r in results:
             details = r.get("details", {})
@@ -121,62 +128,68 @@ def save_screener_results(results):
                 "revenue_growth": float(details.get("c_rev_growth_yoy", 0.0) / 100.0),
                 "inst_count": int(details.get("i_held_percent_inst", 65.0) / 10) if details.get("i_held_percent_inst") else 10
             })
-            
+
         if payload:
+            # Replace only THIS week's snapshot so re-runs don't create duplicates
+            # while preserving previous weeks' data for week-over-week comparison.
+            now = datetime.datetime.now(datetime.timezone.utc)
+            week_start = _get_week_start(now)
+            week_end = week_start + datetime.timedelta(days=7)
+            client.table("watchlist").delete() \
+                .gte("created_at", week_start.isoformat()) \
+                .lt("created_at", week_end.isoformat()) \
+                .execute()
             client.table("watchlist").insert(payload).execute()
-            
-        # Prune older watchlist entries (older than 8 weeks / 56 days) to keep database tidy
-        prune_threshold = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=56)).isoformat()
-        client.table("watchlist").delete().lt("created_at", prune_threshold).execute()
+
+            # Prune rows older than 8 weeks (keeps last ~8 weekly snapshots)
+            prune_threshold = (now - datetime.timedelta(days=56)).isoformat()
+            client.table("watchlist").delete().lt("created_at", prune_threshold).execute()
     except Exception as e:
         print(f"Error saving screener results to Supabase: {e}")
 
 def get_screener_results():
     try:
         client = get_supabase_client()
-        
-        # 1. Fetch the two most recent unique created_at timestamps to identify the latest two runs
-        timestamps_res = client.table("watchlist").select("created_at").order("created_at", desc=True).execute()
-        unique_timestamps = []
-        for r in timestamps_res.data:
-            ts = r["created_at"]
-            if ts not in unique_timestamps:
-                unique_timestamps.append(ts)
-                if len(unique_timestamps) == 2:
-                    break
-                    
-        if not unique_timestamps:
-            return {"watchlist": [], "removed": []}
-            
-        latest_ts = unique_timestamps[0]
-        
-        # 2. Fetch the current week's watchlist
-        curr_res = client.table("watchlist").select("*").eq("created_at", latest_ts).execute()
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        curr_week_start = _get_week_start(now)
+        prev_week_start = curr_week_start - datetime.timedelta(days=7)
+        prev_week_end = curr_week_start  # exclusive
+
+        # Current week's snapshot
+        curr_res = client.table("watchlist").select("*") \
+            .gte("created_at", curr_week_start.isoformat()) \
+            .execute()
         curr_rows = curr_res.data
-        
-        # 3. Fetch the previous week's watchlist to calculate changes if it exists
-        prev_tickers = set()
-        if len(unique_timestamps) == 2:
-            prev_ts = unique_timestamps[1]
-            prev_res = client.table("watchlist").select("ticker").eq("created_at", prev_ts).execute()
-            prev_tickers = set(row["ticker"] for row in prev_res.data)
-            
-        results = []
+
+        # Previous week's snapshot (for NEW/RETAINED/REMOVED comparison)
+        prev_res = client.table("watchlist").select("ticker") \
+            .gte("created_at", prev_week_start.isoformat()) \
+            .lt("created_at", prev_week_end.isoformat()) \
+            .execute()
+        prev_tickers = {row["ticker"] for row in prev_res.data}
+
+        if not curr_rows:
+            # Fall back to most recent rows if nothing in current week yet
+            fallback = client.table("watchlist").select("*") \
+                .order("created_at", desc=True).limit(90).execute()
+            curr_rows = fallback.data
+
+        if not curr_rows:
+            return {"watchlist": [], "removed": []}
+
         curr_tickers = set()
-        
+        results = []
         for row in curr_rows:
             ticker = row["ticker"]
             curr_tickers.add(ticker)
             q_eps = row.get("q_eps_growth", 0.0) or 0.0
             a_eps = row.get("a_eps_growth", 0.0) or 0.0
-            rev = row.get("revenue_growth", 0.0) or 0.0
-            inst = row.get("inst_count", 10) or 10
-            comp = row.get("composite_score", 0.0) or 0.0
-            
-            # Map back to 0-100 scale
+            rev   = row.get("revenue_growth", 0.0) or 0.0
+            inst  = row.get("inst_count", 10) or 10
+            comp  = row.get("composite_score", 0.0) or 0.0
+
             total_score = min(99.0, round(60.0 + (comp * 80.0), 1))
-            
-            # Derive subscores
             score_c = min(15.0, round(8.0 + max(0.0, (q_eps - 0.18) * 10.0), 1))
             score_a = min(15.0, round(8.0 + max(0.0, (a_eps - 0.10) * 10.0), 1))
             score_n = 12.0
@@ -184,10 +197,9 @@ def get_screener_results():
             score_l = 11.0
             score_i = min(10.0, round(5.0 + max(0.0, (inst - 5.0) * 0.5), 1))
             score_m = 15.0
-            
-            # Calculate change status (NEW if it wasn't in the previous list, RETAINED otherwise)
+
             change_status = "NEW" if (prev_tickers and ticker not in prev_tickers) else "RETAINED"
-            
+
             results.append({
                 "ticker": ticker,
                 "score_c": score_c,
@@ -212,18 +224,15 @@ def get_screener_results():
                     "s_acc_days": 12,
                     "s_dist_days": 6
                 },
-                "timestamp": row.get("created_at") or datetime.datetime.now().isoformat()
+                "timestamp": row.get("created_at") or now.isoformat()
             })
-            
+
         results.sort(key=lambda x: x["total_score"], reverse=True)
-        
-        # Calculate removed tickers (in previous week, not in current week)
-        removed_tickers = list(prev_tickers - curr_tickers) if prev_tickers else []
-        
-        return {
-            "watchlist": results,
-            "removed": removed_tickers
-        }
+
+        # Tickers in last week's snapshot that didn't make this week's cut
+        removed_tickers = sorted(prev_tickers - curr_tickers) if prev_tickers else []
+
+        return {"watchlist": results, "removed": removed_tickers}
     except Exception as e:
         print(f"Error getting screener results from Supabase: {e}")
         return {"watchlist": [], "removed": []}
