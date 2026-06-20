@@ -24,6 +24,7 @@ export default function App() {
   const [portfolioData, setPortfolioData] = useState(null);
   const [tradeHistory, setTradeHistory] = useState([]);
   const [breakouts, setBreakouts] = useState([]);
+  const [momentumTriggers, setMomentumTriggers] = useState([]);
   const [settings, setSettings] = useState(null);
   
   const [screenerLoading, setScreenerLoading] = useState(false);
@@ -64,6 +65,13 @@ export default function App() {
       if (breakoutsRes.ok) {
         const bData = await breakoutsRes.json();
         setBreakouts(bData);
+      }
+
+      // Fetch Tier 2 momentum triggers
+      const momentumRes = await fetch('/api/momentum');
+      if (momentumRes.ok) {
+        const mTrig = await momentumRes.json();
+        setMomentumTriggers(mTrig);
       }
 
       // Fetch configurations
@@ -153,7 +161,7 @@ export default function App() {
       case 'history':
         return <TradesView trades={tradeHistory} />;
       case 'breakouts':
-        return <BreakoutsView breakouts={breakouts} />;
+        return <BreakoutsView breakouts={breakouts} momentum={momentumTriggers} />;
       case 'settings':
         return (
           <SettingsView 

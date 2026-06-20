@@ -439,6 +439,68 @@ def get_daily_triggers():
         print(f"Error getting daily triggers from Supabase: {e}")
         return {"breakouts": [], "removed": []}
 
+def get_momentum_triggers():
+    """Fetch the latest momentum_triggers (Tier 2 breakouts) from Supabase.
+
+    Same logic as get_daily_triggers — returns the most recent day's rows and
+    computes NEW / RETAINED / REMOVED relative to the previous day.
+    """
+    try:
+        client = get_supabase_client()
+
+        # 1. Two most recent unique triggered_at dates
+        res_dates = client.table("momentum_triggers").select("triggered_at") \
+            .order("triggered_at", desc=True).execute()
+        unique_dates = []
+        for row in res_dates.data:
+            dt = row["triggered_at"]
+            if dt not in unique_dates:
+                unique_dates.append(dt)
+                if len(unique_dates) == 2:
+                    break
+
+        if not unique_dates:
+            return {"breakouts": [], "removed": []}
+
+        latest_date = unique_dates[0]
+
+        # 2. Fetch latest momentum triggers
+        curr_res = client.table("momentum_triggers").select("*") \
+            .eq("triggered_at", latest_date).execute()
+        curr_rows = curr_res.data
+
+        # 3. Previous day's momentum triggers for comparison
+        prev_tickers = set()
+        if len(unique_dates) == 2:
+            prev_date = unique_dates[1]
+            prev_res = client.table("momentum_triggers").select("ticker") \
+                .eq("triggered_at", prev_date).execute()
+            prev_tickers = {row["ticker"] for row in prev_res.data}
+
+        results = []
+        curr_tickers = set()
+        for row in curr_rows:
+            ticker = row["ticker"]
+            curr_tickers.add(ticker)
+            change_status = "NEW" if (prev_tickers and ticker not in prev_tickers) else "RETAINED"
+            results.append({
+                "ticker":             ticker,
+                "close_price":        row["close_price"],
+                "volume_surge":       row["volume_surge"],
+                "sma_50":             row["sma_50"],
+                "rolling_high_52w":   row["rolling_high_52w"],
+                "pivot_distance_pct": row["pivot_distance_pct"],
+                "triggered_at":       row["triggered_at"],
+                "change_status":      change_status,
+            })
+
+        removed_tickers = list(prev_tickers - curr_tickers) if prev_tickers else []
+
+        return {"breakouts": results, "removed": removed_tickers}
+    except Exception as e:
+        print(f"Error getting momentum triggers from Supabase: {e}")
+        return {"breakouts": [], "removed": []}
+
 def reset_portfolio():
     """
     Resets the LOCAL paper-trading state only (SQLite settings).
