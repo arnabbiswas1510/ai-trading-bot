@@ -778,9 +778,14 @@ def run_market_open_buys(ib: IB):
 
             # Place IBKR GTC OCA bracket: trailing stop + limit sell at profit target.
             # IBKR manages both orders server-side — no stop/target polling needed in code.
+            # Store the OCA group name in Supabase so self-healing can verify the
+            # exact order pair (prevents double-placement if openTrades() is briefly stale).
             try:
-                place_oca_bracket(ib, contract, actual_shares, fill_price,
-                                  PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                _oca_group = place_oca_bracket(ib, contract, actual_shares, fill_price,
+                                               PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                client.table("portfolio_positions").update(
+                    {"oca_group": _oca_group}
+                ).eq("ticker", ticker).execute()
             except Exception as _oca_err:
                 print(f"   ⚠️ OCA bracket placement failed for {ticker}: {_oca_err} "
                       f"— self-healing will re-place on next monitor cycle.")
@@ -926,9 +931,13 @@ def run_market_open_buys(ib: IB):
             }).execute()
 
             # Place IBKR GTC OCA bracket: trailing stop + limit sell at profit target.
+            # Store OCA group so self-healing can verify the exact order pair.
             try:
-                place_oca_bracket(ib, contract, actual_shares, fill_price,
-                                  PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                _oca_group = place_oca_bracket(ib, contract, actual_shares, fill_price,
+                                               PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                client.table("portfolio_positions").update(
+                    {"oca_group": _oca_group}
+                ).eq("ticker", ticker).execute()
             except Exception as _oca_err:
                 print(f"   ⚠️ OCA bracket placement failed for {ticker}: {_oca_err} "
                       f"— self-healing will re-place on next monitor cycle.")
@@ -1121,20 +1130,39 @@ def monitor_portfolio_intraday(ib: IB):
         # GTC orders survive gateway restarts at IBKR's servers but may be
         # absent for positions opened before this feature or after a full
         # account reset. Re-place them automatically.
+        #
+        # Uses the stored oca_group to check for the EXACT order pair rather
+        # than any sell order — prevents double-placement if openTrades() is
+        # briefly stale right after a new buy.
+        _stored_oca = pos.get("oca_group")
         _open_sells = [
             t for t in ib.openTrades()
             if t.contract.symbol == ticker
             and t.order.action == 'SELL'
             and t.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')
         ]
-        if not _open_sells:
-            print(f"   🔧 {ticker}: No IBKR SELL orders — re-placing OCA bracket (self-healing).")
+        if _stored_oca:
+            # Precise check: look for our specific OCA group
+            _matching_oca = [t for t in _open_sells if t.order.ocaGroup == _stored_oca]
+            _needs_heal = len(_matching_oca) == 0
+        else:
+            # No stored group yet (old position or Power Hold standalone trail)
+            # — fall back to: any active sell order means we're covered
+            _needs_heal = len(_open_sells) == 0
+
+        if _needs_heal:
+            _heal_label = f"OCA group '{_stored_oca}'" if _stored_oca else "SELL orders"
+            print(f"   🔧 {ticker}: No matching {_heal_label} in IBKR — re-placing bracket (self-healing).")
             try:
                 _heal_contract = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_heal_contract)
-                place_oca_bracket(ib, _heal_contract, shares, buy_price,
-                                  PROFIT_TARGET_PCT, STOP_LOSS_PCT,
-                                  is_power_hold=is_power_hold)
+                _new_oca = place_oca_bracket(ib, _heal_contract, shares, buy_price,
+                                             PROFIT_TARGET_PCT, STOP_LOSS_PCT,
+                                             is_power_hold=is_power_hold)
+                # Update stored group so next cycle checks the new pair
+                client.table("portfolio_positions").update(
+                    {"oca_group": _new_oca if not is_power_hold else None}
+                ).eq("ticker", ticker).execute()
             except Exception as _heal_err:
                 print(f"   ⚠️ Self-healing OCA placement failed for {ticker}: {_heal_err}")
 
@@ -1167,6 +1195,11 @@ def monitor_portfolio_intraday(ib: IB):
                                              trailingPercent=STOP_LOSS_PCT * 100)
                 _ph_stop.tif = 'GTC'
                 ib.placeOrder(_ph_contract, _ph_stop)
+                # Clear oca_group: standalone trailing stop has no OCA pair.
+                # Self-healing will fall back to "any active SELL order" check.
+                client.table("portfolio_positions").update(
+                    {"oca_group": None}
+                ).eq("ticker", ticker).execute()
                 print(f"   🛡️  Trailing stop re-placed (no 25% limit during Power Hold).")
             except Exception as e:
                 print(f"   ❌ Failed to update power hold state: {e}")
@@ -1191,8 +1224,12 @@ def monitor_portfolio_intraday(ib: IB):
                     ib.sleep(1)
                     _exp_contract = Stock(ticker, 'SMART', 'USD')
                     ib.qualifyContracts(_exp_contract)
-                    place_oca_bracket(ib, _exp_contract, shares, buy_price,
-                                      PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                    _exp_oca = place_oca_bracket(ib, _exp_contract, shares, buy_price,
+                                                 PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                    # Record the new OCA group so self-healing tracks the right pair.
+                    client.table("portfolio_positions").update(
+                        {"oca_group": _exp_oca}
+                    ).eq("ticker", ticker).execute()
                     print(f"   💰 OCA bracket re-placed (trailing stop + 25% limit) after Power Hold expiry.")
                 except Exception as e:
                     print(f"   ❌ Failed to reset power hold state: {e}")

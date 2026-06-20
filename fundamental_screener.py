@@ -211,30 +211,74 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
         return None
 
 def update_supabase_watchlist(candidates_list):
+    """
+    Upsert-based watchlist writer (single row per ticker).
+
+    - First appearance  → INSERT with weeks_retained=1, first_seen_at=now
+    - Retained ticker   → UPDATE scores + increment weeks_retained + set last_seen_at=now
+    - Dropped ticker    → row stays untouched until the 8-week prune removes it
+    - Prune             → DELETE rows whose last_seen_at is older than WATCHLIST_PRUNE_DAYS
+    """
     try:
         db_client = get_supabase_client()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-        now = datetime.datetime.now(datetime.timezone.utc)
-        # Monday 00:00 UTC of the current ISO week
-        week_start = (now - datetime.timedelta(days=now.weekday())).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        week_end = week_start + datetime.timedelta(days=7)
+        incoming_tickers = {r["ticker"] for r in candidates_list}
 
-        # Replace only THIS week's snapshot — previous weeks kept for comparison
-        print("🧹 Replacing this week's watchlist snapshot...")
-        db_client.table("watchlist").delete() \
-            .gte("created_at", week_start.isoformat()) \
-            .lt("created_at", week_end.isoformat()) \
+        # Fetch existing rows for tickers in this week's list
+        existing_res = db_client.table("watchlist") \
+            .select("ticker, weeks_retained, first_seen_at") \
+            .in_("ticker", list(incoming_tickers)) \
             .execute()
+        existing_map = {row["ticker"]: row for row in (existing_res.data or [])}
 
-        print(f"📤 Uploading {len(candidates_list)} fresh entries to Supabase...")
-        db_client.table("watchlist").insert(candidates_list).execute()
+        inserts = []
+        updates = []
 
-        # Prune entries older than 8 weeks (keeps last ~8 weekly snapshots)
-        prune_threshold = (now - datetime.timedelta(days=WATCHLIST_PRUNE_DAYS)).isoformat()
-        db_client.table("watchlist").delete().lt("created_at", prune_threshold).execute()
-        print("✅ Watchlist updated. History preserved for week-over-week comparison.")
+        for record in candidates_list:
+            ticker = record["ticker"]
+            if ticker in existing_map:
+                ex = existing_map[ticker]
+                updates.append({
+                    "ticker":         ticker,
+                    # Refresh fundamental scores with latest run's data
+                    "company_name":   record.get("company_name", "Unknown"),
+                    "composite_score": record["composite_score"],
+                    "q_eps_growth":   record["q_eps_growth"],
+                    "a_eps_growth":   record["a_eps_growth"],
+                    "revenue_growth": record["revenue_growth"],
+                    "inst_count":     record["inst_count"],
+                    # Increment retention counter and refresh last_seen
+                    "weeks_retained": (ex.get("weeks_retained") or 0) + 1,
+                    "first_seen_at":  ex.get("first_seen_at") or now,
+                    "last_seen_at":   now,
+                    "created_at":     now,
+                })
+            else:
+                inserts.append({
+                    **record,
+                    "weeks_retained": 1,
+                    "first_seen_at":  now,
+                    "last_seen_at":   now,
+                })
+
+        if inserts:
+            print(f"📥 Inserting {len(inserts)} new ticker(s) into watchlist...")
+            db_client.table("watchlist").insert(inserts).execute()
+
+        if updates:
+            print(f"🔄 Upserting {len(updates)} retained ticker(s) (scores + weeks_retained)...")
+            db_client.table("watchlist").upsert(updates, on_conflict="ticker").execute()
+
+        # Prune tickers that haven't appeared in the last WATCHLIST_PRUNE_DAYS days
+        prune_threshold = (
+            datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=WATCHLIST_PRUNE_DAYS)
+        ).isoformat()
+        db_client.table("watchlist").delete().lt("last_seen_at", prune_threshold).execute()
+
+        print(f"✅ Watchlist upserted: {len(inserts)} new, {len(updates)} updated. "
+              f"Pruned tickers absent for >{WATCHLIST_PRUNE_DAYS} days.")
     except Exception as e:
         print(f"❌ Database update error: {e}")
         raise e

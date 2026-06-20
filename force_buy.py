@@ -22,6 +22,7 @@ import datetime
 from zoneinfo import ZoneInfo
 from supabase import create_client
 from ib_insync import IB, Stock, MarketOrder
+from execution_agent import place_oca_bracket
 from telegram_notifier import TelegramNotifier
 
 # ── Load .env if present (for local runs) ─────────────────────────────────────
@@ -208,7 +209,20 @@ def main():
                     "buy_reason":      buy_reason,
                     "buy_source":      "daily_triggers",
                     "is_power_hold":   False,
+                    "oca_group":       None,  # will be updated after bracket placement below
                 }).execute()
+
+                # Place OCA bracket immediately — trailing stop + limit sell.
+                # Store the group name so execution_agent self-healing won't
+                # double-place on the next monitor cycle.
+                try:
+                    _oca = place_oca_bracket(ib, contract, actual_shares, fill_price,
+                                             PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                    client.table("portfolio_positions").update(
+                        {"oca_group": _oca}
+                    ).eq("ticker", ticker).execute()
+                except Exception as _oca_err:
+                    print(f"   ⚠️ OCA bracket placement failed: {_oca_err} — self-healing will re-place.")
 
                 actual_stop   = round(fill_price * (1 - STOP_LOSS_PCT), 2)
                 actual_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
@@ -321,7 +335,18 @@ def main():
                             "buy_reason":      f"Momentum Breakout [momentum_triggers]: Vol Surge {trigger.get('volume_surge', 'N/A')}x",
                             "buy_source":      "momentum_triggers",
                             "is_power_hold":   False,
+                            "oca_group":       None,  # updated after bracket placement below
                         }).execute()
+
+                        # Place OCA bracket and store group name.
+                        try:
+                            _oca = place_oca_bracket(ib, contract, actual_shares, fill_price,
+                                                     PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                            client.table("portfolio_positions").update(
+                                {"oca_group": _oca}
+                            ).eq("ticker", ticker).execute()
+                        except Exception as _oca_err:
+                            print(f"   ⚠️ OCA bracket placement failed: {_oca_err} — self-healing will re-place.")
 
                         print(f"   ✅ [Momentum] Confirmed fill: {actual_shares} shares of {ticker} @ ${fill_price:.2f}")
                         notifier.notify_buy(
