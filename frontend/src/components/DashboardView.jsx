@@ -145,10 +145,10 @@ export default function DashboardView({ data, marketData, trades }) {
                   <th>Shares</th>
                   <th>Buy Price</th>
                   <th>Current Price</th>
+                  <th>Trail Stop</th>
+                  <th>Profit Target</th>
                   <th>Market Value</th>
                   <th>Return</th>
-                  <th>Stop Loss</th>
-                  <th>Profit Target</th>
                 </tr>
               </thead>
               <tbody>
@@ -158,12 +158,14 @@ export default function DashboardView({ data, marketData, trades }) {
                     <td>{pos.shares}</td>
                     <td>{formatCurrency(pos.buy_price)}</td>
                     <td>{formatCurrency(pos.current_price)}</td>
+                    <td style={{ color: 'var(--color-down)', fontSize: '0.85rem', fontWeight: 600 }}>
+                      {formatCurrency(parseFloat(((pos.high_water_mark || pos.buy_price) * 0.93).toFixed(2)))}
+                    </td>
+                    <td style={{ color: 'var(--color-up)', fontSize: '0.85rem', fontWeight: 600 }}>{formatCurrency(pos.profit_target)}</td>
                     <td>{formatCurrency(pos.value)}</td>
                     <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                       {pos.pnl >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(2)}% ({formatCurrency(pos.pnl)})
                     </td>
-                    <td style={{ color: 'var(--color-down)', fontSize: '0.85rem' }}>{formatCurrency(pos.stop_loss)}</td>
-                    <td style={{ color: 'var(--color-up)', fontSize: '0.85rem' }}>{formatCurrency(pos.profit_target)}</td>
                   </tr>
                 ))}
               </tbody>

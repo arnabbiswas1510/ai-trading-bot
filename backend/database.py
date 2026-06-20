@@ -253,6 +253,7 @@ def get_positions():
                 "current_price": float(row.get("current_price") or row["buy_price"]),
                 "stop_loss": float(row["stop_loss"]),
                 "profit_target": float(row["profit_target"]),
+                "high_water_mark": float(row.get("high_water_mark") or row["buy_price"]),
                 "active": 1,
                 "buy_reason": row.get("buy_reason", "CANSLIM Breakout")
             })
