@@ -44,6 +44,13 @@ COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
 
+# ── Moving Average Exit parameters ────────────────────────────────────────────
+EXIT_MA_TRIGGER_ENABLED  = os.getenv("EXIT_MA_TRIGGER_ENABLED", "true").lower() == "true"
+EXIT_MA_TYPE             = os.getenv("EXIT_MA_TYPE", "EMA")
+EXIT_MA_WINDOW           = int(os.getenv("EXIT_MA_WINDOW", 21))
+EXIT_MA_BUFFER_PCT       = float(os.getenv("EXIT_MA_BUFFER_PCT", 0.01))
+EXIT_MA_EOD_ONLY         = os.getenv("EXIT_MA_EOD_ONLY", "true").lower() == "true"
+
 # ── Momentum (secondary) screener thresholds ──────────────────────────────────
 MOMENTUM_MIN_Q_EPS_GROWTH  = float(os.getenv("MOMENTUM_MIN_Q_EPS_GROWTH", 0.10))
 MOMENTUM_MIN_INST_HOLDERS  = int(os.getenv("MOMENTUM_MIN_INST_HOLDERS", 3))
@@ -87,6 +94,71 @@ def get_live_price(ticker: str) -> float:
     except Exception as e:
         print(f"❌ Error fetching price for {ticker} from FMP: {e}")
     return 0.0
+
+def fetch_historical_closes_with_dates(ticker: str, window: int) -> list:
+    """Fetch historical daily close prices and dates from FMP (oldest first)."""
+    # Fetch window * 4 + 20 calendar days to guarantee sufficient trading days
+    lookback_days = window * 4 + 20
+    to_date = datetime.date.today()
+    from_date = to_date - datetime.timedelta(days=lookback_days)
+    url = ("https://financialmodelingprep.com/stable/historical-price-eod/full"
+           f"?symbol={ticker}&from={from_date}&to={to_date}"
+           f"&apikey={FMP_API_KEY}")
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, list) and len(data) > 0:
+                # Return sorted by date ascending (oldest first)
+                return sorted(data, key=lambda x: x["date"])
+            else:
+                print(f"⚠️ Empty historical data response for {ticker} from FMP.")
+        else:
+            print(f"⚠️ FMP historical API returned status code {r.status_code} for {ticker}.")
+    except Exception as e:
+        print(f"❌ Error fetching historical prices for {ticker} from FMP: {e}")
+    return []
+
+def calculate_sma(closes: list, window: int) -> float | None:
+    """Compute Simple Moving Average."""
+    if len(closes) < window:
+        return None
+    return sum(closes[-window:]) / window
+
+def calculate_ema(closes: list, window: int) -> float | None:
+    """Compute Exponential Moving Average."""
+    if len(closes) < window:
+        return None
+    alpha = 2 / (window + 1)
+    # Start with SMA of the first 'window' closes
+    ema = sum(closes[:window]) / window
+    # Apply recursive EMA formula to subsequent closes
+    for price in closes[window:]:
+        ema = (price * alpha) + (ema * (1 - alpha))
+    return ema
+
+def get_ma_value(ticker: str, current_price: float, ma_type: str, window: int) -> float | None:
+    """Calculate moving average value, appending current_price if today's EOD bar isn't finalized."""
+    hist = fetch_historical_closes_with_dates(ticker, window)
+    if not hist:
+        print(f"⚠️ No history found for {ticker}; cannot calculate {ma_type}-{window}.")
+        return None
+        
+    history_dates = [h["date"] for h in hist]
+    closes = [float(h["close"]) for h in hist]
+    
+    # Resolve today's date in New York time
+    tz = ZoneInfo("America/New_York")
+    today_ny = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
+    
+    # If the latest date in FMP history is before today, append current_price to represent today's close
+    if history_dates and history_dates[-1] < today_ny:
+        closes.append(current_price)
+        
+    if ma_type.upper() == "SMA":
+        return calculate_sma(closes, window)
+    else:
+        return calculate_ema(closes, window)
 
 def get_available_cash(ib: IB) -> float:
     """Query account values for settled cash / buying power in USD."""
@@ -1240,6 +1312,30 @@ def monitor_portfolio_intraday(ib: IB):
         #   • LimitOrder        — sells at +PROFIT_TARGET_PCT% from buy_price.
         # reconcile_with_ibkr() (Case 1) detects the close next cycle and archives
         # the position to trade_history with the IBKR fill price.
+
+        # ── Moving Average Exit Check ─────────────────────────────────────────
+        if EXIT_MA_TRIGGER_ENABLED:
+            is_ma_window = True
+            if EXIT_MA_EOD_ONLY:
+                tz = ZoneInfo("America/New_York")
+                now_ny = datetime.datetime.now(tz)
+                # Check if we are between 3:45 PM and 4:00 PM ET
+                is_ma_window = (now_ny.hour == 15 and now_ny.minute >= 45)
+                
+            if is_ma_window:
+                ma_val = get_ma_value(ticker, current_price, EXIT_MA_TYPE, EXIT_MA_WINDOW)
+                if ma_val is not None:
+                    threshold = ma_val * (1 - EXIT_MA_BUFFER_PCT)
+                    if current_price < threshold:
+                        reason = (
+                            f"{EXIT_MA_TYPE}-{EXIT_MA_WINDOW} Exit — Price ${current_price:.2f} "
+                            f"below MA ${ma_val:.2f} with {EXIT_MA_BUFFER_PCT*100:.1f}% buffer (${threshold:.2f})"
+                        )
+                        print(f"🚨 {ticker} breached Moving Average exit! {reason}")
+                        execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                        if ETF_PARKING_ENABLED:
+                            run_etf_parking(ib, client)
+                        continue
 
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float, buy_date, buy_reason: str, current_price: float, reason: str):
     """Executes a market sell order on IBKR and archives the transaction in Supabase.

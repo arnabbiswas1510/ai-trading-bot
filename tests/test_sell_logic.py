@@ -143,6 +143,11 @@ class TestHighWaterMark:
         pos = make_position("MSFT", buy_price=100.0, high_water_mark=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["MSFT"])
+        mock_trade = MagicMock()
+        mock_trade.contract.symbol = "MSFT"
+        mock_trade.order.action = "SELL"
+        mock_trade.orderStatus.status = "Submitted"
+        ib.openTrades.return_value = [mock_trade]
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=115.0), \
@@ -152,13 +157,19 @@ class TestHighWaterMark:
             execution_agent.monitor_portfolio_intraday(ib)
 
         # Verify update was called (high water mark rise)
-        supabase.table("portfolio_positions").update.assert_called()
+        # Should be called once for the HWM update, not the OCA group update
+        supabase.table("portfolio_positions").update.assert_called_with({"high_water_mark": 115.0})
 
     def test_high_water_mark_not_updated_when_price_falls(self):
         """Price below existing high → no high_water_mark update."""
         pos = make_position("MSFT", buy_price=100.0, high_water_mark=130.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["MSFT"])
+        mock_trade = MagicMock()
+        mock_trade.contract.symbol = "MSFT"
+        mock_trade.order.action = "SELL"
+        mock_trade.orderStatus.status = "Submitted"
+        ib.openTrades.return_value = [mock_trade]
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=115.0), \
@@ -169,6 +180,7 @@ class TestHighWaterMark:
 
         # No update to portfolio_positions when price < high_water_mark
         supabase.table("portfolio_positions").update.assert_not_called()
+
 
 
 # ── Profit target (IBKR-managed) ───────────────────────────────────────────────────────
@@ -555,3 +567,184 @@ class TestStaleRotation:
             execution_agent.monitor_portfolio_intraday(ib)
 
         assert "PH_STOCK" not in sold_tickers, "Power Hold position was incorrectly stale-rotated"
+
+
+# ── Moving Average Exits ──────────────────────────────────────────────────────
+
+from zoneinfo import ZoneInfo
+
+class TestMovingAverageCalculations:
+
+    def test_calculate_sma(self):
+        closes = [10.0, 20.0, 30.0, 40.0]
+        # SMA of last 3: (20 + 30 + 40) / 3 = 30
+        assert execution_agent.calculate_sma(closes, 3) == 30.0
+        # If not enough elements
+        assert execution_agent.calculate_sma(closes, 5) is None
+
+    def test_calculate_ema(self):
+        closes = [10.0, 11.0, 12.0]
+        # Window 2: SMA first 2 = (10 + 11)/2 = 10.5
+        # EMA_2 = 12 * (2/3) + 10.5 * (1/3) = 8.0 + 3.5 = 11.5
+        assert abs(execution_agent.calculate_ema(closes, 2) - 11.5) < 1e-6
+        # If not enough elements
+        assert execution_agent.calculate_ema(closes, 4) is None
+
+    @patch("execution_agent.fetch_historical_closes_with_dates")
+    def test_get_ma_value_appends_current_price_if_not_today(self, mock_fetch):
+        # Latest EOD close is yesterday (June 19)
+        mock_fetch.return_value = [
+            {"date": "2026-06-18", "close": 100.0},
+            {"date": "2026-06-19", "close": 102.0}
+        ]
+        
+        with patch("execution_agent.datetime") as mock_date:
+            tz = ZoneInfo("America/New_York")
+            mock_date.date.today.return_value = datetime.date(2026, 6, 20)
+            mock_date.datetime.now.return_value = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
+            
+            val = execution_agent.get_ma_value("AAPL", 104.0, "SMA", 2)
+            assert val == 103.0
+
+
+class TestMovingAverageExits:
+
+    def test_ma_exit_triggers_on_eod_breach(self):
+        """Price below threshold near market close -> execute_sell called."""
+        pos = make_position("AAPL", buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"])
+        mock_trade = MagicMock()
+        mock_trade.contract.symbol = "AAPL"
+        mock_trade.order.action = "SELL"
+        mock_trade.orderStatus.status = "Submitted"
+        ib.openTrades.return_value = [mock_trade]
+
+        # EMA-21 will calculate to 100.0, buffer 1%, threshold = 99.0
+        # Price is 98.0 (< 99.0) -> breach
+        hist_data = [{"date": f"2026-06-{i:02d}", "close": 100.0} for i in range(1, 22)]
+        
+        tz = ZoneInfo("America/New_York")
+        eod_time = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz) # 3:50 PM ET
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
+             patch("execution_agent.get_live_price", return_value=98.0), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
+             patch("execution_agent.run_etf_parking"), \
+             patch("execution_agent.execute_sell") as mock_sell, \
+             patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
+             patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
+             patch("execution_agent.EXIT_MA_WINDOW", 21), \
+             patch("execution_agent.EXIT_MA_BUFFER_PCT", 0.01), \
+             patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
+             patch("execution_agent.datetime") as mock_datetime:
+             
+            mock_datetime.datetime.now.return_value = eod_time
+            mock_datetime.date.today.return_value = eod_time.date()
+            
+            execution_agent.monitor_portfolio_intraday(ib)
+            
+            mock_sell.assert_called_once()
+            args, kwargs = mock_sell.call_args
+            assert args[2] == "AAPL"
+            assert "EMA-21 Exit" in args[8]
+
+    def test_ma_exit_does_not_trigger_within_buffer(self):
+        """Price is below MA but within buffer -> no exit."""
+        pos = make_position("AAPL", buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"])
+        mock_trade = MagicMock()
+        mock_trade.contract.symbol = "AAPL"
+        mock_trade.order.action = "SELL"
+        mock_trade.orderStatus.status = "Submitted"
+        ib.openTrades.return_value = [mock_trade]
+
+        # MA is 100.0, threshold is 99.0. Current price 99.5 is below MA but above threshold.
+        hist_data = [{"date": f"2026-06-{i:02d}", "close": 100.0} for i in range(1, 22)]
+        tz = ZoneInfo("America/New_York")
+        eod_time = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
+             patch("execution_agent.get_live_price", return_value=99.5), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
+             patch("execution_agent.run_etf_parking"), \
+             patch("execution_agent.execute_sell") as mock_sell, \
+             patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
+             patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
+             patch("execution_agent.EXIT_MA_WINDOW", 21), \
+             patch("execution_agent.EXIT_MA_BUFFER_PCT", 0.01), \
+             patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
+             patch("execution_agent.datetime") as mock_datetime:
+             
+            mock_datetime.datetime.now.return_value = eod_time
+            mock_datetime.date.today.return_value = eod_time.date()
+            
+            execution_agent.monitor_portfolio_intraday(ib)
+            mock_sell.assert_not_called()
+
+    def test_ma_exit_skipped_outside_eod_window(self):
+        """Outside 3:45-4:00 PM and EOD_ONLY is enabled -> no exit."""
+        pos = make_position("AAPL", buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"])
+        mock_trade = MagicMock()
+        mock_trade.contract.symbol = "AAPL"
+        mock_trade.order.action = "SELL"
+        mock_trade.orderStatus.status = "Submitted"
+        ib.openTrades.return_value = [mock_trade]
+
+        hist_data = [{"date": f"2026-06-{i:02d}", "close": 100.0} for i in range(1, 22)]
+        tz = ZoneInfo("America/New_York")
+        midday = datetime.datetime(2026, 6, 20, 11, 30, tzinfo=tz) # 11:30 AM ET
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
+             patch("execution_agent.get_live_price", return_value=95.0), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
+             patch("execution_agent.run_etf_parking"), \
+             patch("execution_agent.execute_sell") as mock_sell, \
+             patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
+             patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
+             patch("execution_agent.EXIT_MA_WINDOW", 21), \
+             patch("execution_agent.EXIT_MA_BUFFER_PCT", 0.01), \
+             patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
+             patch("execution_agent.datetime") as mock_datetime:
+             
+            mock_datetime.datetime.now.return_value = midday
+            mock_datetime.date.today.return_value = midday.date()
+            
+            execution_agent.monitor_portfolio_intraday(ib)
+            mock_sell.assert_not_called()
+
+    def test_ma_exit_failsafe_on_fmp_error(self):
+        """FMP historical fetch returns empty -> no exit and no crash."""
+        pos = make_position("AAPL", buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"])
+        mock_trade = MagicMock()
+        mock_trade.contract.symbol = "AAPL"
+        mock_trade.order.action = "SELL"
+        mock_trade.orderStatus.status = "Submitted"
+        ib.openTrades.return_value = [mock_trade]
+
+        tz = ZoneInfo("America/New_York")
+        eod_time = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.fetch_historical_closes_with_dates", return_value=[]), \
+             patch("execution_agent.get_live_price", return_value=95.0), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
+             patch("execution_agent.run_etf_parking"), \
+             patch("execution_agent.execute_sell") as mock_sell, \
+             patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
+             patch("execution_agent.datetime") as mock_datetime:
+             
+            mock_datetime.datetime.now.return_value = eod_time
+            mock_datetime.date.today.return_value = eod_time.date()
+            
+            execution_agent.monitor_portfolio_intraday(ib)
+            mock_sell.assert_not_called() # Failsafe prevents sell
+
