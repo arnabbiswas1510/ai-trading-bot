@@ -234,6 +234,56 @@ def get_trades():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/trades/retro")
+def get_trades_retro():
+    try:
+        trades = db.get_trade_history()
+        fmp = FMPClient()
+        
+        # Get unique tickers to fetch live prices efficiently
+        unique_tickers = list({t["ticker"] for t in trades})
+        
+        # Fetch current prices for each unique ticker
+        live_prices = {}
+        if fmp.is_configured():
+            for ticker in unique_tickers:
+                try:
+                    quote = fmp.get_quote(ticker)
+                    if quote and "price" in quote:
+                        live_prices[ticker] = float(quote["price"])
+                except Exception as ex:
+                    print(f"Error fetching live price for retro ticker {ticker}: {ex}")
+                    
+        retro_data = []
+        for trade in trades:
+            ticker = trade["ticker"]
+            current_price = live_prices.get(ticker, trade["sell_price"])
+            sell_price = trade["sell_price"]
+            shares = trade["shares"]
+            
+            perf_since_sale = ((current_price / sell_price) - 1.0) * 100.0
+            opportunity_cost = (current_price - sell_price) * shares
+            
+            # If the stock dropped post-sale, we saved capital!
+            if perf_since_sale <= -3.0:
+                verdict = "Saved Capital"
+            elif perf_since_sale >= 3.0:
+                verdict = "Sold Too Early"
+            else:
+                verdict = "Flat"
+                
+            retro_data.append({
+                **trade,
+                "current_price": current_price,
+                "perf_since_sale": round(perf_since_sale, 2),
+                "opportunity_cost": round(opportunity_cost, 2),
+                "verdict": verdict
+            })
+            
+        return retro_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/breakouts")
 def get_breakouts():
     try:
