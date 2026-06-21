@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, ChevronRight, X, ArrowUpRight, ShoppingCart, HelpCircle } from 'lucide-react';
+import { Play, Sparkles, ChevronRight, X, ArrowUpRight, ShoppingCart, HelpCircle, AlertCircle } from 'lucide-react';
 import StockChart from './StockChart';
 
 export default function ScreenerView({ results, onRunScan, loading, onBuyStock }) {
@@ -101,6 +101,14 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
 
       {/* Screener Results Table */}
       <div className="card">
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+          <Sparkles size={20} color="var(--accent-primary)" />
+          CAN SLIM Watchlist & Screener
+        </h3>
+        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+          Weekly fundamental screening scans the S&P 500 and active market leaders (YoY EPS growth &gt; 18%, annual CAGR &gt; 10%, inst. holders &gt; 5) to rank the top 90 Watchlist. Retained stocks show duration badges (2w, 3w), while dropped ones are rotated out and pruned after 8 weeks.
+        </p>
+
         {watchlist.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
             <Sparkles size={40} strokeWidth={1} style={{ marginBottom: '1.25rem', color: 'var(--accent-primary)' }} />
