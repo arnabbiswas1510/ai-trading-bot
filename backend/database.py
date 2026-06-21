@@ -211,6 +211,8 @@ def get_screener_results():
                 "score_m": score_m,
                 "total_score": total_score,
                 "change_status": change_status,
+                "weeks_retained": int(row.get("weeks_retained") or 1),
+                "first_seen_at": row.get("first_seen_at"),
                 "details": {
                     "current_price": 0.0,
                     "c_growth_yoy": round(q_eps * 100.0, 1),
@@ -232,7 +234,7 @@ def get_screener_results():
         # Tickers in last week's snapshot that didn't make this week's cut
         removed_tickers = sorted(prev_tickers - curr_tickers) if prev_tickers else []
 
-        return {"watchlist": results, "removed": removed_tickers}
+        return {"watchlist": results, "removed": removed_tickers, "total_screened": len(results)}
     except Exception as e:
         print(f"Error getting screener results from Supabase: {e}")
         return {"watchlist": [], "removed": []}

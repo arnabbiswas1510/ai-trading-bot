@@ -5,6 +5,7 @@ import StockChart from './StockChart';
 export default function ScreenerView({ results, onRunScan, loading, onBuyStock }) {
   const watchlist = Array.isArray(results) ? results : (results?.watchlist || []);
   const removedList = Array.isArray(results) ? [] : (results?.removed || []);
+  const totalScreened = results?.total_screened ?? watchlist.length;
 
   const [selectedStock, setSelectedStock] = useState(null);
   const [chartData, setChartData] = useState([]);
@@ -108,7 +109,13 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
           </div>
         ) : (
           <>
-            <div className="table-container">
+            {/* Stock count */}
+            <div style={{ marginBottom: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{totalScreened}</span> stocks screened
+              {removedList.length > 0 && (
+                <span style={{ marginLeft: '0.75rem', color: 'var(--color-down)' }}>· {removedList.length} dropped this week</span>
+              )}
+            </div>
               <table>
                 <thead>
                   <tr>
@@ -132,9 +139,26 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                     >
                       <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '1.05rem' }}>
                         <span style={{ verticalAlign: 'middle' }}>{stock.ticker}</span>
-                        {stock.change_status === "NEW" && (
+                        {/* weeks_retained badge — show +NEW only on true first appearance */}
+                        {stock.weeks_retained > 1 ? (
+                          <span style={{
+                            display: 'inline-block',
+                            marginLeft: '0.4rem',
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '4px',
+                            fontSize: '0.62rem',
+                            fontWeight: 800,
+                            color: '#f59e0b',
+                            background: 'rgba(245,158,11,0.12)',
+                            border: '1px solid rgba(245,158,11,0.35)',
+                            letterSpacing: '0.04em',
+                            verticalAlign: 'middle',
+                          }}>
+                            {stock.weeks_retained}w
+                          </span>
+                        ) : stock.change_status === 'NEW' ? (
                           <span className="badge-new-pulse">+ NEW</span>
-                        )}
+                        ) : null}
                       </td>
                     <td style={{ textAlign: 'center' }}>
                       <span 
