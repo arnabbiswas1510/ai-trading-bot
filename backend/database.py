@@ -126,7 +126,15 @@ def save_screener_results(results):
                 "q_eps_growth": float(details.get("c_growth_yoy", 0.0) / 100.0),
                 "a_eps_growth": float(details.get("a_eps_growth_cagr", 0.0) / 100.0),
                 "revenue_growth": float(details.get("c_rev_growth_yoy", 0.0) / 100.0),
-                "inst_count": int(details.get("i_held_percent_inst", 65.0) / 10) if details.get("i_held_percent_inst") else 10
+                "inst_count": int(details.get("i_held_percent_inst", 65.0) / 10) if details.get("i_held_percent_inst") else 10,
+                "price": float(details.get("current_price") or 0.0),
+                "rs_rating": float(details.get("l_rs_rating") or 85.0),
+                "roe": float(details.get("a_roe") or 22.0),
+                "sma50": float(details.get("sma50") or 0.0),
+                "n_pct_from_high": float(details.get("n_pct_from_high") or 3.5),
+                "s_acc_days": int(details.get("s_acc_days") or 12),
+                "s_dist_days": int(details.get("s_dist_days") or 6),
+                "total_score": float(r["total_score"])
             })
 
         if payload:
@@ -189,14 +197,69 @@ def get_screener_results():
             inst  = row.get("inst_count", 10) or 10
             comp  = row.get("composite_score", 0.0) or 0.0
 
-            total_score = min(99.0, round(60.0 + (comp * 80.0), 1))
-            score_c = min(15.0, round(8.0 + max(0.0, (q_eps - 0.18) * 10.0), 1))
-            score_a = min(15.0, round(8.0 + max(0.0, (a_eps - 0.10) * 10.0), 1))
-            score_n = 12.0
-            score_s = 10.0
-            score_l = 11.0
-            score_i = min(10.0, round(5.0 + max(0.0, (inst - 5.0) * 0.5), 1))
-            score_m = 15.0
+            # Retrieve saved metrics or default if not present
+            price = float(row.get("price") or 0.0)
+            rs_rating = float(row.get("rs_rating") or 85.0)
+            roe = float(row.get("roe") or 22.0)
+            sma50 = float(row.get("sma50") or 0.0)
+            n_pct_from_high = float(row.get("n_pct_from_high") or 3.5)
+            s_acc_days = int(row.get("s_acc_days") or 12)
+            s_dist_days = int(row.get("s_dist_days") or 6)
+
+            # Determine component scores
+            # Use saved total_score if available, otherwise compute a fallback from fundamental comp score
+            db_total_score = row.get("total_score")
+            if db_total_score is not None and db_total_score > 0:
+                total_score = float(db_total_score)
+                # Re-calculate individual component scores from saved indicators
+                score_c = min(15.0, round(8.0 + max(0.0, (q_eps - 0.18) * 10.0), 1))
+                # ROE score component
+                base_a = min(10.0, round(8.0 + max(0.0, (a_eps - 0.10) * 10.0), 1))
+                roe_score = 5.0 if roe >= 17.0 else max(0.0, round((roe / 17.0) * 5.0, 1))
+                score_a = min(15.0, base_a + roe_score)
+                # N component
+                score_n = 0.0
+                if n_pct_from_high <= 5.0:
+                    score_n += 12.0
+                elif n_pct_from_high <= 15.0:
+                    score_n += 10.0
+                elif n_pct_from_high <= 25.0:
+                    score_n += 5.0
+                if price > sma50:
+                    score_n += 2.0
+                score_n += 1.0 # assume above 200 SMA
+                score_n = min(15.0, score_n)
+                # S component
+                score_s = 0.0
+                if s_acc_days > s_dist_days:
+                    score_s += 8.0 + min(4.0, (s_acc_days - s_dist_days) * 1.0)
+                elif s_acc_days == s_dist_days:
+                    score_s += 4.0
+                score_s += 1.5 # float default
+                score_s = min(15.0, score_s)
+                # L component
+                score_l = 0.0
+                if rs_rating >= 90:
+                    score_l += 13.0
+                elif rs_rating >= 80:
+                    score_l += 10.0
+                elif rs_rating >= 60:
+                    score_l += 5.0
+                score_l += 2.0 # S&P 500 comparison default
+                score_l = min(15.0, score_l)
+                # I component
+                score_i = min(10.0, round(5.0 + max(0.0, (inst - 5.0) * 0.5), 1))
+                # M component
+                score_m = 15.0
+            else:
+                total_score = min(99.0, round(60.0 + (comp * 80.0), 1))
+                score_c = min(15.0, round(8.0 + max(0.0, (q_eps - 0.18) * 10.0), 1))
+                score_a = min(15.0, round(8.0 + max(0.0, (a_eps - 0.10) * 10.0), 1))
+                score_n = 12.0
+                score_s = 10.0
+                score_l = 11.0
+                score_i = min(10.0, round(5.0 + max(0.0, (inst - 5.0) * 0.5), 1))
+                score_m = 15.0
 
             change_status = "NEW" if (prev_tickers and ticker not in prev_tickers) else "RETAINED"
 
@@ -214,17 +277,17 @@ def get_screener_results():
                 "weeks_retained": int(row.get("weeks_retained") or 1),
                 "first_seen_at": row.get("first_seen_at"),
                 "details": {
-                    "current_price": 0.0,
+                    "current_price": price,
                     "c_growth_yoy": round(q_eps * 100.0, 1),
                     "c_rev_growth_yoy": round(rev * 100.0, 1),
                     "a_eps_growth_cagr": round(a_eps * 100.0, 1),
-                    "l_rs_rating": 85,
+                    "l_rs_rating": rs_rating,
                     "i_held_percent_inst": float(inst * 10),
-                    "a_roe": 22.0,
-                    "n_pct_from_high": 3.5,
-                    "sma50": 0.0,
-                    "s_acc_days": 12,
-                    "s_dist_days": 6
+                    "a_roe": roe,
+                    "n_pct_from_high": n_pct_from_high,
+                    "sma50": sma50,
+                    "s_acc_days": s_acc_days,
+                    "s_dist_days": s_dist_days
                 },
                 "timestamp": row.get("created_at") or now.isoformat()
             })

@@ -204,7 +204,8 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
                     "q_eps_growth": float(q_eps_growth),
                     "a_eps_growth": float(a_eps_growth),
                     "revenue_growth": float(revenue_growth),
-                    "inst_count": int(inst_count) if inst_count is not None else -1
+                    "inst_count": int(inst_count) if inst_count is not None else -1,
+                    "price": float(quote.get('price') or 0.0)
                 }
         except Exception:
             pass
@@ -248,6 +249,7 @@ def update_supabase_watchlist(candidates_list):
                     "a_eps_growth":   record["a_eps_growth"],
                     "revenue_growth": record["revenue_growth"],
                     "inst_count":     record["inst_count"],
+                    "price":          record.get("price", 0.0),
                     # Increment retention counter and refresh last_seen
                     "weeks_retained": (ex.get("weeks_retained") or 0) + 1,
                     "first_seen_at":  ex.get("first_seen_at") or now,
@@ -310,7 +312,7 @@ async def main():
         df_top = df_results.sort_values(by="composite_score", ascending=False).head(CANSLIM_WATCHLIST_SIZE)
         print(f"Watchlist top candidates:\n{df_top[['ticker', 'composite_score']].to_string(index=False)}")
         
-        final_payload = df_top[['ticker', 'company_name', 'composite_score', 'q_eps_growth', 'a_eps_growth', 'revenue_growth', 'inst_count']].to_dict(orient="records")
+        final_payload = df_top[['ticker', 'company_name', 'composite_score', 'q_eps_growth', 'a_eps_growth', 'revenue_growth', 'inst_count', 'price']].to_dict(orient="records")
         update_supabase_watchlist(final_payload)
 
 if __name__ == "__main__":
