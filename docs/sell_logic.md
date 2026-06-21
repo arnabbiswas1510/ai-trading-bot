@@ -216,6 +216,28 @@ if current_price >= profit_target and not is_power_hold:
 
 ---
 
+## Check 4 — Moving Average Support Breach
+
+```python
+if EXIT_MA_TRIGGER_ENABLED:
+    # If EOD_ONLY is enabled, only runs between 3:45 PM and 4:00 PM ET
+    if not EXIT_MA_EOD_ONLY or (now.hour == 15 and now.minute >= 45):
+        ma_val = get_ma_value(ticker, current_price, EXIT_MA_TYPE, EXIT_MA_WINDOW)
+        if ma_val is not None:
+            threshold = ma_val * (1 - EXIT_MA_BUFFER_PCT)
+            if current_price < threshold:
+                execute_sell(..., reason=f"EMA-21 Exit...")
+```
+
+**How it works:**
+- **Trigger Condition:** Sells the stock if the current price falls below its moving average (EMA-21 by default) minus the buffer.
+- **Whipsaw Protection:** 
+  - **EOD-Only Checking:** If `EXIT_MA_EOD_ONLY` is enabled, the exit is only evaluated near the market close (3:45–4:00 PM Eastern Time), ignoring intraday whipsaws/noise.
+  - **Buffer Percentage:** Introduces a buffer (default 1.0%, `EXIT_MA_BUFFER_PCT=0.01`) below the moving average price before triggering the exit.
+- **Failsafe**: If the Financial Modeling Prep (FMP) historical EOD API fails or returns no history, the bot fails safe and does not trigger an exit.
+
+---
+
 ## Sell Trigger Priority
 
 | Priority | Trigger | Condition | Power Hold Override? |
@@ -224,6 +246,7 @@ if current_price >= profit_target and not is_power_hold:
 | Pre-pass | Stale Rotation | days ≥ 15 AND gain < 3% AND full AND fresh trigger | Exempt |
 | 1 | Trailing Stop Loss | `price <= high_water_mark × 0.93` | No — always fires |
 | 2 | 25% Profit Target | `price >= buy × 1.25` | Yes — suspended during hold |
+| 3 | Moving Average Breach | `price < MA * (1 - Buffer)` (EOD only) | No — EMA-21 support check |
 | — | Power Hold Activation | 20% gain in ≤21 days | Suspends profit target for 8 weeks |
 
 ---
@@ -344,6 +367,10 @@ Check 1: price <= high_water_mark * 0.93 (trailing stop)?
     ▼
 Check 2: price >= profit_target (entry * 1.25) AND NOT power_hold?
     └─ YES → execute_sell("25% Profit Target") → run_etf_parking()
+    │
+    ▼
+Check 3: price < EMA-21 * 0.99 (EOD only)?
+    └─ YES → execute_sell("EMA-21 Exit...") → run_etf_parking()
     │
     ▼
 (No exit — hold)
