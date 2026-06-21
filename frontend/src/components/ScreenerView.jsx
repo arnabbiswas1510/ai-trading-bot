@@ -209,7 +209,6 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                   ))}
                 </tbody>
               </table>
-            </div>
 
             {/* Watchlist Rotations (Removed Candidates) */}
             {removedList.length > 0 && (
