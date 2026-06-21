@@ -570,6 +570,26 @@ def get_momentum_triggers():
         print(f"Error getting momentum triggers from Supabase: {e}")
         return {"breakouts": [], "removed": []}
 
+def get_historical_triggers(days: int = 30) -> list:
+    """Fetch all daily_triggers and momentum_triggers from the last N days."""
+    try:
+        client = get_supabase_client()
+        cutoff_date = (datetime.date.today() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+        
+        # Query daily_triggers
+        daily_res = client.table("daily_triggers").select("*").gte("triggered_at", cutoff_date).execute()
+        daily = [{**row, "type": "Primary CANSLIM"} for row in (daily_res.data or [])]
+        
+        # Query momentum_triggers
+        momentum_res = client.table("momentum_triggers").select("*").gte("triggered_at", cutoff_date).execute()
+        momentum = [{**row, "type": "Momentum Relaxed"} for row in (momentum_res.data or [])]
+        
+        # Combine and return
+        return daily + momentum
+    except Exception as e:
+        print(f"Error fetching historical triggers: {e}")
+        return []
+
 def reset_portfolio():
     """
     Resets the LOCAL paper-trading state only (SQLite settings).

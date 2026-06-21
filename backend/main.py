@@ -291,6 +291,75 @@ def get_breakouts():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/breakouts/retro")
+def get_breakouts_retro():
+    try:
+        # Fetch historical triggers from database (past 30 days)
+        triggers = db.get_historical_triggers(30)
+        positions = db.get_positions()
+        history = db.get_trade_history()
+        
+        skipped_triggers = []
+        for trigger in triggers:
+            # Check if this trigger was bought
+            is_active = any(p["ticker"] == trigger["ticker"] for p in positions)
+            was_traded = False
+            for h in history:
+                if h["ticker"] == trigger["ticker"]:
+                    try:
+                        t_dt = datetime.datetime.strptime(trigger["triggered_at"], "%Y-%m-%d").date()
+                        h_dt = datetime.datetime.fromisoformat(h["buy_date"].replace('Z', '+00:00')).date()
+                        if abs((t_dt - h_dt).days) <= 3:
+                            was_traded = True
+                            break
+                    except Exception:
+                        pass
+            
+            if not (is_active or was_traded):
+                skipped_triggers.append(trigger)
+                
+        # Fetch live prices for unique skipped tickers
+        unique_tickers = list({t["ticker"] for t in skipped_triggers})
+        live_prices = {}
+        fmp = FMPClient()
+        if fmp.is_configured():
+            for ticker in unique_tickers:
+                try:
+                    quote = fmp.get_quote(ticker)
+                    if quote and "price" in quote:
+                        live_prices[ticker] = float(quote["price"])
+                except Exception as ex:
+                    print(f"Error fetching live price for missed trigger {ticker}: {ex}")
+                    
+        retro_data = []
+        for trigger in skipped_triggers:
+            ticker = trigger["ticker"]
+            trigger_price = float(trigger["close_price"])
+            current_price = live_prices.get(ticker, trigger_price)
+            
+            perf_since_trigger = ((current_price / trigger_price) - 1.0) * 100.0
+            
+            # Verdicts
+            if perf_since_trigger >= 5.0:
+                verdict = "Missed Winner"
+            elif perf_since_trigger <= -5.0:
+                verdict = "Fakeout Avoided"
+            else:
+                verdict = "Flat"
+                
+            retro_data.append({
+                **trigger,
+                "current_price": current_price,
+                "perf_since_trigger": round(perf_since_trigger, 2),
+                "verdict": verdict
+            })
+            
+        # Sort newest triggers first
+        retro_data.sort(key=lambda x: x["triggered_at"], reverse=True)
+        return retro_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/momentum")
 def get_momentum():
     try:
