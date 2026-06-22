@@ -49,18 +49,14 @@ def get_supabase_client() -> Client:
         supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
     return supabase_client
 
-def get_watchlist_from_supabase():
+def get_watchlist_from_supabase(tv_exchange):
     try:
         client = get_supabase_client()
-        # Fetch the most recent run's timestamp
-        timestamps_res = client.table("watchlist").select("created_at").order("created_at", desc=True).limit(1).execute()
-        if not timestamps_res.data:
-            return []
-        latest_ts = timestamps_res.data[0]["created_at"]
-        response = client.table("watchlist").select("ticker").eq("created_at", latest_ts).execute()
-        return [row['ticker'] for row in response.data]
+        # Fetch all watchlist rows for the given exchange
+        response = client.table("watchlist").select("*").eq("tv_exchange", tv_exchange).execute()
+        return response.data or []
     except Exception as e:
-        print(f"❌ Failed to fetch watchlist from Supabase: {e}")
+        print(f"❌ Failed to fetch watchlist from Supabase for {tv_exchange}: {e}")
         raise e
 
 def fetch_with_retry_sync(url, retries=3, backoff=1.0):
@@ -82,7 +78,10 @@ def fetch_with_retry_sync(url, retries=3, backoff=1.0):
             time.sleep(backoff * (2 ** i))
     return None
 
-def check_technical_breakout(ticker):
+def check_technical_breakout(row):
+    ticker = row['ticker']
+    fmp_ticker = row.get('fmp_ticker', ticker)
+    
     try:
         # Request EOD stable data for the past 380 calendar days to guarantee 252+ trading days
         to_date = datetime.date.today()
@@ -91,18 +90,18 @@ def check_technical_breakout(ticker):
         from_str = from_date.strftime("%Y-%m-%d")
         to_str = to_date.strftime("%Y-%m-%d")
         
-        url = f"{FMP_BASE_URL}/stable/historical-price-eod/full?symbol={ticker}&from={from_str}&to={to_str}&apikey={FMP_API_KEY}"
+        url = f"{FMP_BASE_URL}/api/v3/historical-price-full/{fmp_ticker}?from={from_str}&to={to_str}&apikey={FMP_API_KEY}"
         response = fetch_with_retry_sync(url)
         
         if response is None or response.status_code != 200:
-            print(f"⚠️ FMP API error ({response.status_code if response else 'failed'}) for {ticker}")
+            print(f"⚠️ FMP API error ({response.status_code if response else 'failed'}) for {fmp_ticker}")
             return None
             
         data = response.json()
-        if not data or not isinstance(data, list):
+        if not data or 'historical' not in data:
             return None
             
-        df = pd.DataFrame(data)
+        df = pd.DataFrame(data['historical'])
         df['date'] = pd.to_datetime(df['date'])
         df = df.sort_values('date', ascending=True).reset_index(drop=True)
         
@@ -136,6 +135,10 @@ def check_technical_breakout(ticker):
             pivot_dist = ((current_close / rolling_high) - 1.0) * 100.0 if rolling_high > 0 else 0.0
             return {
                 "ticker": ticker,
+                "fmp_ticker": fmp_ticker,
+                "tv_exchange": row.get("tv_exchange"),
+                "ib_exchange": row.get("ib_exchange"),
+                "currency": row.get("currency"),
                 "close_price": float(round(current_close, 2)),
                 "volume_surge": float(round(volume_surge_ratio, 2)),
                 "sma_50": float(round(sma_50, 2)),
@@ -143,7 +146,7 @@ def check_technical_breakout(ticker):
                 "pivot_distance_pct": float(round(pivot_dist, 2))
             }
     except Exception as e:
-        print(f"❌ Error processing technical indicators for {ticker}: {e}")
+        print(f"❌ Error processing technical indicators for {fmp_ticker}: {e}")
     return None
 
 def write_triggers_to_supabase(triggers):
@@ -165,27 +168,35 @@ def write_triggers_to_supabase(triggers):
         print(f"❌ Failed to log breakout signals: {e}")
         raise e
 
-if __name__ == "__main__":
+def run_technical_screener(tv_exchange="NASDAQ"):
+    """
+    Runs the technical EOD screener for a specific global exchange.
+    """
     if not FMP_API_KEY or not SUPABASE_URL or not SUPABASE_KEY:
         print("❌ Missing environment variables. Please check FMP_API_KEY, SUPABASE_URL, and SUPABASE_KEY.")
-        exit(1)
+        return
 
     try:
-        print("⏳ Synchronizing cloud fundamental watchlist data...")
-        watchlist = get_watchlist_from_supabase()
+        print(f"⏳ Synchronizing cloud fundamental watchlist data for {tv_exchange}...")
+        watchlist_rows = get_watchlist_from_supabase(tv_exchange)
         
-        if not watchlist:
-            print("💭 Target tracking watchlist is empty or could not be retrieved.")
+        if not watchlist_rows:
+            print(f"💭 Target tracking watchlist for {tv_exchange} is empty or could not be retrieved.")
         else:
-            print(f"🔍 Analyzing {len(watchlist)} assets for volume breakouts...")
+            print(f"🔍 Analyzing {len(watchlist_rows)} assets on {tv_exchange} for volume breakouts...")
             active_triggers = []
-            for ticker in watchlist:
-                trigger_data = check_technical_breakout(ticker)
+            for row in watchlist_rows:
+                trigger_data = check_technical_breakout(row)
                 if trigger_data:
-                    print(f"🔥 Breakout detected for {ticker}! Price: ${trigger_data['close_price']}, Volume Surge: {trigger_data['volume_surge']}x")
+                    print(f"🔥 Breakout detected for {row['ticker']} ({tv_exchange})! Price: {trigger_data['close_price']}, Volume Surge: {trigger_data['volume_surge']}x")
                     active_triggers.append(trigger_data)
                     
             write_triggers_to_supabase(active_triggers)
     except Exception as e:
-        notifier.notify_exception("main block — technical_screener.py", e)
+        notifier.notify_exception(f"run_technical_screener for {tv_exchange}", e)
         raise
+
+if __name__ == "__main__":
+    # Test execution for US markets
+    run_technical_screener("NASDAQ")
+    run_technical_screener("NYSE")

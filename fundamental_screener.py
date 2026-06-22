@@ -1,232 +1,175 @@
 import os
-import asyncio
+import sys
 import datetime
-import httpx
+import asyncio
+import requests
 import pandas as pd
 from supabase import create_client, Client
 from telegram_notifier import TelegramNotifier
+import time
+import yfinance as yf
+from dotenv import load_dotenv
+import warnings
 
-# Sourced safely from environment variables
-raw_api_key = os.environ.get("FMP_API_KEY")
-API_KEY = raw_api_key.strip().strip("'\"") if raw_api_key else None
+warnings.filterwarnings("ignore", category=FutureWarning)
+sys.stdout.reconfigure(encoding='utf-8')
+load_dotenv('.env')
 
-raw_supabase_url = os.environ.get("SUPABASE_URL")
-SUPABASE_URL = raw_supabase_url.strip().strip("'\"") if raw_supabase_url else None
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().strip("'\"")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip().strip("'\"")
 
-raw_supabase_key = os.environ.get("SUPABASE_KEY")
-if raw_supabase_key:
-    cleaned_key = raw_supabase_key.strip().strip("'\"")
-    if cleaned_key != raw_supabase_key:
-        print("⚠️ SUPABASE_KEY environment variable had leading/trailing whitespace, newlines, or quotes which were stripped.")
-    SUPABASE_KEY = cleaned_key
-else:
-    SUPABASE_KEY = None
-BASE_URL = "https://financialmodelingprep.com"
-
-# ── Fundamental screener configuration (set in .env) ──────────────────────────
-CANSLIM_MIN_Q_EPS_GROWTH  = float(os.environ.get("CANSLIM_MIN_Q_EPS_GROWTH", 0.18))
-CANSLIM_MIN_A_EPS_GROWTH  = float(os.environ.get("CANSLIM_MIN_A_EPS_GROWTH", 0.10))
-CANSLIM_MIN_INST_HOLDERS  = int(os.environ.get("CANSLIM_MIN_INST_HOLDERS", 5))
+CANSLIM_MIN_Q_EPS_GROWTH  = float(os.environ.get("CANSLIM_MIN_Q_EPS_GROWTH", 0.15))
+CANSLIM_MIN_A_EPS_GROWTH  = float(os.environ.get("CANSLIM_MIN_A_EPS_GROWTH", 0.15))
 CANSLIM_WATCHLIST_SIZE    = int(os.environ.get("CANSLIM_WATCHLIST_SIZE", 90))
 WATCHLIST_PRUNE_DAYS      = int(os.environ.get("WATCHLIST_PRUNE_DAYS", 56))
-API_CONCURRENCY           = int(os.environ.get("API_CONCURRENCY", 10))
 
-# ── Telegram notifications ─────────────────────────────────────────────────────
+MIN_PRICE = 10.0
+MIN_AVG_VOLUME = 100000
+
 notifier = TelegramNotifier(
     bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
     chat_ids=os.environ.get("TELEGRAM_CHAT_IDS", "").split(",")
 )
 
-# Lazy Initialize Supabase Client
 supabase_client: Client = None
-
 def get_supabase_client() -> Client:
     global supabase_client
     if supabase_client is None:
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY environment variables.")
         supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
     return supabase_client
 
-async def fetch_with_retry(client: httpx.AsyncClient, url: str, retries: int = 3, backoff: float = 1.0):
-    for i in range(retries):
-        try:
-            res = await client.get(url, timeout=10)
-            if res.status_code == 200:
-                return res
-            elif res.status_code == 429:
-                sleep_time = backoff * (2 ** i)
-                print(f"⚠️ Rate limited (429) on FMP API. Retrying in {sleep_time}s...")
-                await asyncio.sleep(sleep_time)
+def get_filtered_technical_candidates() -> dict:
+    """
+    Fetches the entire US equity market via the Nasdaq Screener API,
+    applies the technical price/volume filters locally, and returns
+    a dictionary of valid {ticker: {'price': float, 'name': str}}.
+    """
+    print("🔄 Fetching and pre-filtering total US equity market via Nasdaq API...")
+    url = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=25&offset=0&download=true"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.nasdaq.com",
+        "Referer": "https://www.nasdaq.com/"
+    }
+    
+    valid_tickers = {}
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            rows = data.get('data', {}).get('rows', [])
+            print(f"📥 Downloaded {len(rows)} raw tickers from Nasdaq.")
+            
+            for row in rows:
+                try:
+                    symbol = str(row.get('symbol', '')).strip()
+                    name = str(row.get('name', '')).strip()
+                    if not symbol or '^' in symbol or '/' in symbol:
+                        continue
+                        
+                    price_str = str(row.get('lastsale', '')).replace('$', '').replace(',', '')
+                    vol_str = str(row.get('volume', '')).replace(',', '')
+                    
+                    price = float(price_str) if price_str else 0.0
+                    volume = float(vol_str) if vol_str else 0.0
+                    
+                    if price >= MIN_PRICE and volume >= MIN_AVG_VOLUME:
+                        valid_tickers[symbol] = {
+                            'price': price,
+                            'name': name
+                        }
+                except Exception:
+                    pass
+            print(f"✅ Technical filter complete. Reduced {len(rows)} to {len(valid_tickers)} candidates.")
+        else:
+            print(f"❌ Failed to fetch from Nasdaq: {response.status_code}")
+    except Exception as e:
+        print(f"❌ Exception fetching from Nasdaq: {e}")
+        
+    return valid_tickers
+
+def calculate_yfinance_growth(ticker: str, price: float, name: str):
+    """
+    Uses yfinance to sequentially fetch income statements and calculate EPS growth.
+    """
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        
+        # 1. Quarterly Growth
+        q_stmt = ticker_obj.quarterly_income_stmt
+        if q_stmt is None or q_stmt.empty:
+            return None
+            
+        q_eps_growth = 0.0
+        revenue_growth = 0.0
+        
+        # 'Basic EPS' or 'Diluted EPS'
+        eps_row = None
+        if 'Basic EPS' in q_stmt.index:
+            eps_row = q_stmt.loc['Basic EPS']
+        elif 'Diluted EPS' in q_stmt.index:
+            eps_row = q_stmt.loc['Diluted EPS']
+            
+        if eps_row is not None and len(eps_row) >= 2:
+            curr_eps = float(eps_row.iloc[0])
+            prev_eps = float(eps_row.iloc[1])
+            if prev_eps != 0:
+                q_eps_growth = (curr_eps - prev_eps) / abs(prev_eps)
             else:
-                return res
-        except Exception as e:
-            if i == retries - 1:
-                raise e
-            await asyncio.sleep(backoff * (2 ** i))
+                q_eps_growth = 1.0 if curr_eps > 0 else 0.0
+        else:
+            return None
+
+        # 2. Annual Growth
+        a_stmt = ticker_obj.income_stmt
+        if a_stmt is None or a_stmt.empty:
+            return None
+            
+        a_eps_growth = 0.0
+        a_eps_row = None
+        if 'Basic EPS' in a_stmt.index:
+            a_eps_row = a_stmt.loc['Basic EPS']
+        elif 'Diluted EPS' in a_stmt.index:
+            a_eps_row = a_stmt.loc['Diluted EPS']
+            
+        if a_eps_row is not None and len(a_eps_row) >= 2:
+            curr_a_eps = float(a_eps_row.iloc[0])
+            prev_a_eps = float(a_eps_row.iloc[1])
+            if prev_a_eps != 0:
+                a_eps_growth = (curr_a_eps - prev_a_eps) / abs(prev_a_eps)
+            else:
+                a_eps_growth = 1.0 if curr_a_eps > 0 else 0.0
+        else:
+            return None
+
+        # Core CANSLIM EPS thresholds
+        if q_eps_growth > CANSLIM_MIN_Q_EPS_GROWTH and a_eps_growth > CANSLIM_MIN_A_EPS_GROWTH:
+            composite_score = (q_eps_growth * 0.6) + (a_eps_growth * 0.4)
+            return {
+                "ticker": ticker,
+                "company_name": name,
+                "composite_score": float(composite_score),
+                "q_eps_growth": float(q_eps_growth),
+                "a_eps_growth": float(a_eps_growth),
+                "revenue_growth": 0.0, # Not strictly requiring revenue right now
+                "inst_count": -1,      # Dropped institutional requirement as agreed
+                "price": float(price)
+            }
+    except Exception as e:
+        # Silently ignore yfinance parsing errors for individual tickers
+        pass
     return None
 
-# Pre-defined fallback list of high-liquidity growth stock candidates (Top S&P 500 and tech leaders)
-FALLBACK_TICKERS = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "LLY", "AVGO", "JPM",
-    "V", "UNH", "MA", "XOM", "HD", "PG", "COST", "JNJ", "ORCL", "ABBV", "BAC",
-    "MRK", "NFLX", "CVX", "AMD", "CRM", "PEP", "ADBE", "TMO", "WMT", "WFC", "KO",
-    "DIS", "ACN", "CSCO", "QCOM", "LIN", "PM", "GE", "INTC", "TXN", "MS", "INTU",
-    "AMGN", "ISRG", "CAT", "SPGI", "IBM", "HON", "AXP", "GS", "COP", "BKNG",
-    "AMAT", "PLTR", "LRCX", "TJX", "ADI", "MDLZ", "MDT", "VRTX", "CI", "C",
-    "SBUX", "ADP", "SYK", "REGN", "ANET", "DE", "EL", "CB", "MMC", "GILD",
-    "PANW", "TMUS", "MU", "CRWD", "BSX", "LMT", "SMCI", "CELH", "COIN", "ELF",
-    "MSTR", "DKNG", "ON", "ARM", "SOFI", "HOOD", "BABA", "PDD",
-    # Additional high-growth leaders and liquid market candidates:
-    "UBER", "ABNB", "SNOW", "PANW", "WDAY", "DDOG", "NET", "CRWD", "MELI", "SE",
-    "SHOP", "SQ", "COIN", "MAR", "HLT", "RCL", "CCL", "NCLH", "CMG", "SHW",
-    "PH", "ETN", "GEHC", "MCK", "COR", "CAH", "CNC", "HUM", "BSX", "SYK",
-    "EW", "DXCM", "ABT", "ISRG", "MDT", "A", "KEYS", "FTNT", "FSLR", "ENPH",
-    "ANET", "MCHP", "MPWR", "ON", "NXPI", "ADI", "KLAC", "LRCX", "ASML", "TSM"
-]
-
-async def get_sp500_tickers(client: httpx.AsyncClient):
-    print("Attempting to fetch S&P 500 constituents from FMP...")
-    url = f"{BASE_URL}/stable/sp500-constituent?apikey={API_KEY}"
-    try:
-        response = await fetch_with_retry(client, url)
-        if response and response.status_code == 200:
-            data = response.json()
-            if isinstance(data, list) and len(data) > 0 and 'symbol' in data[0]:
-                symbols = [company['symbol'] for company in data if 'symbol' in company]
-                print(f"✅ Successfully retrieved {len(symbols)} S&P 500 constituents via API.")
-                return symbols
-        
-        # If API returns 402 (restricted) or 403, proceed to fallback
-        print(f"⚠️ S&P 500 API returned status {response.status_code if response else 'failed'}. Initiating active list fallback...")
-    except Exception as e:
-        print(f"⚠️ Error fetching S&P 500 constituents: {e}. Initiating active list fallback...")
-
-    # Fallback: Query /stable/most-actives and combine with our hardcoded list
-    tickers_set = set(FALLBACK_TICKERS)
-    try:
-        active_url = f"{BASE_URL}/stable/most-actives?apikey={API_KEY}"
-        active_res = await fetch_with_retry(client, active_url)
-        if active_res and active_res.status_code == 200:
-            active_data = active_res.json()
-            if isinstance(active_data, list):
-                active_symbols = [item['symbol'] for item in active_data if isinstance(item, dict) and item.get('symbol')]
-                tickers_set.update(active_symbols)
-                print(f"✅ Merged {len(active_symbols)} active symbols into screening pool.")
-    except Exception as ex:
-        print(f"⚠️ Failed to fetch most-actives endpoint: {ex}")
-
-    return sorted(list(tickers_set))
-
-async def fetch_institutional_holder_count(ticker: str, client: httpx.AsyncClient) -> int | None:
-    """
-    Returns the number of distinct institutional holders for a ticker using FMP v3.
-    Returns None if the endpoint is restricted or unavailable (caller should treat as
-    'filter inactive' rather than failing the ticker).
-    Threshold used by CANSLIM screener: > 5 institutional holders.
-    """
-    url = f"https://financialmodelingprep.com/api/v3/institutional-holder/{ticker}?apikey={API_KEY}"
-    try:
-        res = await fetch_with_retry(client, url)
-        if res is None:
-            return None
-        if res.status_code in (402, 403):
-            print(f"⚠️ Institutional holder endpoint restricted (HTTP {res.status_code}). Skipping I-filter for {ticker}.")
-            return None
-        if res.status_code != 200:
-            return None
-        data = res.json()
-        if not isinstance(data, list):
-            return None
-        # Filter out any error-message dicts; count distinct holder names
-        holders = [h for h in data if isinstance(h, dict) and h.get("holder")]
-        return len(holders)
-    except Exception as e:
-        print(f"⚠️ Could not fetch institutional holder count for {ticker}: {e}")
-        return None
-
-async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, semaphore: asyncio.Semaphore):
-
-    async with semaphore:
-        try:
-            growth_url = f"{BASE_URL}/stable/financial-growth?symbol={ticker}&limit=4&apikey={API_KEY}"
-            quote_url = f"{BASE_URL}/stable/quote?symbol={ticker}&apikey={API_KEY}"
-            
-            # Run API calls in parallel for this symbol
-            growth_task = fetch_with_retry(client, growth_url)
-            quote_task = fetch_with_retry(client, quote_url)
-
-            growth_res, quote_res = await asyncio.gather(
-                growth_task, quote_task, return_exceptions=True
-            )
-
-            if (isinstance(growth_res, Exception) or growth_res is None or growth_res.status_code != 200 or
-                isinstance(quote_res, Exception) or quote_res is None or quote_res.status_code != 200):
-                return None
-
-            growth_data = growth_res.json()
-            quote_data = quote_res.json()
-
-            if not isinstance(growth_data, list) or len(growth_data) == 0:
-                return None
-            if not isinstance(quote_data, list) or len(quote_data) == 0:
-                return None
-
-            latest_growth = growth_data[0]
-            quote = quote_data[0]
-
-            q_eps_growth = latest_growth.get('epsgrowth', 0)
-            a_eps_growth = latest_growth.get('threeYNetIncomeGrowthPerShare', 0)
-            revenue_growth = latest_growth.get('revenueGrowth', 0)
-
-            # Ensure numeric conversion
-            try:
-                q_eps_growth = float(q_eps_growth) if q_eps_growth is not None else 0.0
-                a_eps_growth = float(a_eps_growth) if a_eps_growth is not None else 0.0
-                revenue_growth = float(revenue_growth) if revenue_growth is not None else 0.0
-            except ValueError:
-                q_eps_growth = 0.0
-                a_eps_growth = 0.0
-                revenue_growth = 0.0
-
-            # Fetch real institutional holder count from FMP v3 endpoint
-            inst_count = await fetch_institutional_holder_count(ticker, client)
-
-            # Core CANSLIM thresholds (all configurable via .env)
-            # If inst_count is None the endpoint is restricted — skip the I-filter rather than silently passing all
-            inst_filter_passed = (inst_count is None) or (inst_count > CANSLIM_MIN_INST_HOLDERS)
-            if q_eps_growth > CANSLIM_MIN_Q_EPS_GROWTH and a_eps_growth > CANSLIM_MIN_A_EPS_GROWTH and inst_filter_passed:
-                composite_score = (q_eps_growth * 0.6) + (a_eps_growth * 0.4)
-                return {
-                    "ticker": ticker,
-                    "company_name": quote.get('name', 'Unknown'),
-                    "composite_score": float(composite_score),
-                    "q_eps_growth": float(q_eps_growth),
-                    "a_eps_growth": float(a_eps_growth),
-                    "revenue_growth": float(revenue_growth),
-                    "inst_count": int(inst_count) if inst_count is not None else -1,
-                    "price": float(quote.get('price') or 0.0)
-                }
-        except Exception:
-            pass
-        return None
-
 def update_supabase_watchlist(candidates_list):
-    """
-    Upsert-based watchlist writer (single row per ticker).
-
-    - First appearance  → INSERT with weeks_retained=1, first_seen_at=now
-    - Retained ticker   → UPDATE scores + increment weeks_retained + set last_seen_at=now
-    - Dropped ticker    → row stays untouched until the 8-week prune removes it
-    - Prune             → DELETE rows whose last_seen_at is older than WATCHLIST_PRUNE_DAYS
-    """
+    if not candidates_list:
+        return
+        
     try:
         db_client = get_supabase_client()
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-
         incoming_tickers = {r["ticker"] for r in candidates_list}
 
-        # Fetch existing rows for tickers in this week's list
         existing_res = db_client.table("watchlist") \
             .select("ticker, weeks_retained, first_seen_at") \
             .in_("ticker", list(incoming_tickers)) \
@@ -242,7 +185,6 @@ def update_supabase_watchlist(candidates_list):
                 ex = existing_map[ticker]
                 updates.append({
                     "ticker":         ticker,
-                    # Refresh fundamental scores with latest run's data
                     "company_name":   record.get("company_name", "Unknown"),
                     "composite_score": record["composite_score"],
                     "q_eps_growth":   record["q_eps_growth"],
@@ -250,7 +192,6 @@ def update_supabase_watchlist(candidates_list):
                     "revenue_growth": record["revenue_growth"],
                     "inst_count":     record["inst_count"],
                     "price":          record.get("price", 0.0),
-                    # Increment retention counter and refresh last_seen
                     "weeks_retained": (ex.get("weeks_retained") or 0) + 1,
                     "first_seen_at":  ex.get("first_seen_at") or now,
                     "last_seen_at":   now,
@@ -265,59 +206,61 @@ def update_supabase_watchlist(candidates_list):
                 })
 
         if inserts:
-            print(f"📥 Inserting {len(inserts)} new ticker(s) into watchlist...")
             db_client.table("watchlist").insert(inserts).execute()
-
         if updates:
-            print(f"🔄 Upserting {len(updates)} retained ticker(s) (scores + weeks_retained)...")
             db_client.table("watchlist").upsert(updates, on_conflict="ticker").execute()
 
-        # Prune tickers that haven't appeared in the last WATCHLIST_PRUNE_DAYS days
-        prune_threshold = (
-            datetime.datetime.now(datetime.timezone.utc)
-            - datetime.timedelta(days=WATCHLIST_PRUNE_DAYS)
-        ).isoformat()
+        prune_threshold = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=WATCHLIST_PRUNE_DAYS)).isoformat()
         db_client.table("watchlist").delete().lt("last_seen_at", prune_threshold).execute()
 
-        print(f"✅ Watchlist upserted: {len(inserts)} new, {len(updates)} updated. "
-              f"Pruned tickers absent for >{WATCHLIST_PRUNE_DAYS} days.")
+        print(f"✅ Watchlist upserted successfully. Pruned tickers absent for >{WATCHLIST_PRUNE_DAYS} days.")
     except Exception as e:
         print(f"❌ Database update error: {e}")
         raise e
 
-async def main():
-    if not API_KEY or not SUPABASE_URL or not SUPABASE_KEY:
-        print("❌ Missing environment variables. Please check FMP_API_KEY, SUPABASE_URL, and SUPABASE_KEY.")
+def main():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("❌ Missing environment variables.")
         return
 
-    print("🚀 Running S&P 500 Fundamental Screening Pipeline...")
+    print("🚀 Running Hybrid Screener (Nasdaq Technicals + Sequential Yahoo Fundamentals)...")
     
-    # Configure concurrency limit to avoid overwhelming the API
-    semaphore = asyncio.Semaphore(API_CONCURRENCY)
+    valid_tickers_map = get_filtered_technical_candidates()
+    if not valid_tickers_map:
+        return
+        
+    valid_tickers = list(valid_tickers_map.keys())
     
-    async with httpx.AsyncClient() as client:
-        tickers = await get_sp500_tickers(client)
-        print(f"Screening pool size: {len(tickers)} tickers. Scanning...")
+    passed_candidates = []
+    
+    print(f"📈 Processing {len(valid_tickers)} candidates through Yahoo Finance sequentially...")
+    
+    for idx, ticker in enumerate(valid_tickers):
+        if idx % 50 == 0:
+            print(f"  > Scanning {idx}/{len(valid_tickers)}...")
+            
+        data = valid_tickers_map[ticker]
+        result = calculate_yfinance_growth(ticker, data['price'], data['name'])
         
-        tasks = [analyze_canslim_fundamentals(ticker, client, semaphore) for ticker in tickers]
-        results = await asyncio.gather(*tasks)
-        
-    passed_candidates = [r for r in results if r is not None]
+        if result:
+            passed_candidates.append(result)
+            print(f"  🌟 FOUND BREAKOUT: {ticker} (Score: {result['composite_score']:.2f})")
+            
+        # Protective sleep to avoid IP shadow ban
+        time.sleep(1.5)
+
     df_results = pd.DataFrame(passed_candidates)
-    
     if df_results.empty:
-        print("❌ Zero assets matched qualifications this week.")
+        print("❌ Zero assets matched qualifications.")
     else:
-        # Sort and take top 90
         df_top = df_results.sort_values(by="composite_score", ascending=False).head(CANSLIM_WATCHLIST_SIZE)
-        print(f"Watchlist top candidates:\n{df_top[['ticker', 'composite_score']].to_string(index=False)}")
-        
-        final_payload = df_top[['ticker', 'company_name', 'composite_score', 'q_eps_growth', 'a_eps_growth', 'revenue_growth', 'inst_count', 'price']].to_dict(orient="records")
+        print(f"Final watchlist candidates ({len(df_top)}):\n{df_top[['ticker', 'composite_score']].to_string(index=False)}")
+        final_payload = df_top.to_dict(orient="records")
         update_supabase_watchlist(final_payload)
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except Exception as e:
         notifier.notify_exception("main() — fundamental_screener.py", e)
         raise
