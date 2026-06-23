@@ -4,79 +4,74 @@
 
 The fundamental screening system has **two layers**:
 
-1. **Pipeline Screener** (`fundamental_screener.py`) — runs on a schedule (weekly), scans the full S&P 500 + active stocks universe, and produces a top-90 watchlist stored in Supabase.
-2. **CANSLIM Scoring Engine** (`backend/screener.py`) — scores individual tickers from the watchlist across all 7 CANSLIM dimensions using FMP financial data.
+1. **Pipeline Screener** (`csv_watchdog.py`) — A robust local file watchdog that monitors a dropzone folder for TradingView CSV exports. It parses the raw data and updates the Supabase watchlist.
+2. **CANSLIM Scoring Engine** (`backend/screener.py`) — Scores individual tickers from the watchlist across all 7 CANSLIM dimensions using FMP financial data for the frontend UI.
 
 ---
 
-## Layer 1 — Pipeline Screener (`fundamental_screener.py`)
+## Layer 1 — Pipeline Screener (`csv_watchdog.py`)
+
+*(Note: The old API-based `fundamental_screener.py` workflow has been deprecated in favor of this highly reliable manual-drop system to avoid API rate limits and improve data accuracy).*
 
 ### Ticker Universe Construction
 
 ```
-Primary source: FMP /stable/sp500-constituent  (full S&P 500, ~503 tickers)
-Fallback:       FMP /stable/most-actives  +  FALLBACK_TICKERS hardcoded list
+Primary source: TradingView "Stock Screener" CSV Export
+Dropzone Path:  /home/dietpi/docker/config/qbittorrent/downloads/tv_fileDrop
 ```
 
-**Hardcoded fallback** (`FALLBACK_TICKERS`) contains ~120 pre-selected high-liquidity growth leaders (AAPL, MSFT, NVDA, AMZN, etc.) merged with the most-actives feed when the S&P 500 endpoint is restricted (HTTP 402/403).
+You manually screen stocks in TradingView using your custom CAN SLIM filters, ensure the required fundamental columns are visible in the table, and export to CSV. You drop this CSV into the dropzone.
 
-### CANSLIM Threshold Screening (`analyze_canslim_fundamentals`)
+### CSV Watchdog Parsing Logic
 
-For each ticker, two FMP endpoints are called **in parallel**:
-- `GET /stable/financial-growth?symbol={ticker}&limit=4` → EPS growth data
-- `GET /stable/quote?symbol={ticker}` → price/company name
+The `csv_watchdog.py` script listens for new `.csv` files. When a file is dropped, it parses the data using a robust `parse_tv_number()` function that converts TradingView shorthand strings (e.g., `43.22M`, `1.28B`, `88.44%`) into raw mathematical floats and integers.
 
-**Pass criteria (all must be true):**
+**Extracted Fields:**
+- `Analyst rating` -> `analyst_rating`
+- `EPS dil growth Quarterly QoQ` -> `q_eps_growth`
+- `Revenue growth TTM YoY` -> `revenue_growth`
+- `Float` -> `float_shares` (Used as a proxy for Supply / Institutional Sponsorship)
+- `ROE TTM` -> `roe`
+- `Earnings per share diluted growth %, TTM YoY` -> `a_eps_growth`
+- `Market capitalization` -> Used to calculate `company_size`
 
-| Metric | Field | Threshold |
-|--------|-------|-----------|
-| Quarterly EPS Growth | `epsgrowth` (most recent quarter) | **> 18%** |
-| Annual EPS Growth | `threeYNetIncomeGrowthPerShare` | **> 10%** |
-| Institutional Sponsorship | Distinct institutional holder count (FMP `/api/v3/institutional-holder/{ticker}`) | **> 5** |
-
-> **Graceful degradation:** If the FMP institutional-holder endpoint returns HTTP 402/403 (plan restriction),
-> `inst_count` is set to `None` and the I-filter is **skipped** (the ticker can still pass on C + A alone).
-> When skipped, `inst_count` is stored as `-1` in Supabase as a sentinel value.
-> This is a conscious tradeoff: better to include borderline names than to silently grant a free pass to everything.
-
-### Composite Score Formula
-
-```python
-composite_score = (q_eps_growth × 0.6) + (a_eps_growth × 0.4)
-```
-
-Weights quarterly (current) growth at 60% and annual growth at 40%, consistent with CANSLIM's emphasis on **current** earnings momentum.
+**Company Size Categorization:**
+- **Large Cap:** >= $10 Billion
+- **Mid Cap:** >= $2 Billion and < $10 Billion
+- **Small Cap:** < $2 Billion
 
 ### Ranking & Persistence
 
-- Results sorted descending by `composite_score`
-- Top **90** candidates written to Supabase `watchlist` table
-- Entries older than **56 days (8 weeks)** are pruned on each run
+- The watchdog uses an **Upsert** strategy on the Supabase `watchlist` table.
+- **New Stocks:** Inserted with `weeks_retained = 1` and `first_seen_at = now`.
+- **Retained Stocks:** The metrics are updated, `weeks_retained` increments by 1, and `last_seen_at` updates.
+- **Dropped Stocks:** Left untouched until the 8-week (56 days) pruning job cleans them up.
 
 **Supabase `watchlist` schema:**
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `ticker` | text | Stock symbol |
-| `company_name` | text | Company name from FMP quote |
-| `composite_score` | float | Weighted EPS score |
-| `q_eps_growth` | float | Current quarterly EPS growth (decimal) |
-| `a_eps_growth` | float | 3-year annual EPS growth (decimal) |
-| `revenue_growth` | float | Revenue YoY growth (decimal) |
-| `inst_count` | int | Institutional holder count (currently hardcoded = 10) |
-| `created_at` | timestamp | Auto-set by Supabase |
-
-### Concurrency & Rate Limiting
-
-- Semaphore: **10 concurrent requests** max (`asyncio.Semaphore(10)`)
-- Retry logic: **3 attempts** with exponential backoff (1s → 2s → 4s)
-- HTTP 429 (rate limit): auto-retries with backoff
+| `company_name` | text | Company name from TradingView |
+| `company_size` | varchar | Large, Mid, or Small |
+| `q_eps_growth` | float | Current quarterly EPS growth |
+| `a_eps_growth` | float | 3-year annual EPS growth |
+| `revenue_growth` | float | Revenue YoY growth |
+| `roe` | float | Return on Equity TTM |
+| `float_shares` | bigint | Shares float (proxy for Supply) |
+| `analyst_rating` | varchar | TradingView Analyst Rating |
+| `created_at` | timestamp | Audit trail persistence |
+| `first_seen_at`| timestamp | Date first entered the watchlist |
+| `last_seen_at` | timestamp | Date last seen in a CSV drop |
+| `weeks_retained`| int | Number of consecutive weeks screened |
 
 ---
 
 ## Layer 2 — Full CANSLIM Scoring Engine (`backend/screener.py`)
 
-Scores each watchlist ticker against all 7 CANSLIM dimensions. Max total score = **100 points**.
+*(This layer provides the fundamental scorecard for the React UI `ScreenerView.jsx`)*
+
+Scores each watchlist ticker against all 7 CANSLIM dimensions using the FastAPI backend and SQLite `trading_bot.db`. Max total score = **100 points**.
 
 ### M — Market Direction (Max 15 pts)
 
@@ -229,17 +224,19 @@ Source: FMP institutional holdings, computed as % of shares outstanding
 ## Data Flow
 
 ```
-Weekly Cron
+TradingView CSV Export
     │
     ▼
-fundamental_screener.py
-    ├── Fetch S&P 500 tickers (FMP)
-    ├── Parallel async scan: EPS growth + quote (max 10 concurrent)
-    ├── Filter: q_eps > 18% AND a_eps > 10%
-    ├── Score: composite = q_eps*0.6 + a_eps*0.4
-    ├── Rank top 90
-    └── Write to Supabase watchlist table
+Dropzone Folder (/home/dietpi/.../tv_fileDrop)
+    │
+    ▼
+csv_watchdog.py (Watchdog Listener)
+    ├── Parses TradingView CSV
+    ├── Converts M/B shorthands to mathematical numbers
+    ├── Calculates Large/Mid/Small company_size
+    ├── Merges with existing Supabase watchlist state (Upsert)
+    └── Increments weeks_retained logic
             │
             ▼
-        [Watchlist ready for technical screening]
+        [Watchlist ready for technical screening and React UI]
 ```
