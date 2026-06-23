@@ -357,7 +357,7 @@ export default function DashboardView({ data, marketData, trades }) {
                   <th>Trail Stop</th>
                   <th>Profit Target</th>
                   <th>Profit/Loss ($)</th>
-                  <th>Return (%)</th>
+                  <th>Buy Date</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -402,8 +402,8 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                           {pos.pnl >= 0 ? '+' : ''}{formatCurrency(pos.pnl)}
                         </td>
-                        <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
-                          {pos.pnl >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(2)}%
+                        <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          {formatDate(pos.buy_date)}
                         </td>
                         {/* Status badge */}
                         <td>
@@ -458,6 +458,7 @@ export default function DashboardView({ data, marketData, trades }) {
                   <th>Shares</th>
                   <th>Buy Price</th>
                   <th>Sell Price</th>
+                  <th>Buy Date</th>
                   <th>Sell Date</th>
                   <th>P&L ($)</th>
                   <th>Return (%)</th>
@@ -472,7 +473,13 @@ export default function DashboardView({ data, marketData, trades }) {
                     <td>{formatCurrency(trade.buy_price)}</td>
                     <td>{formatCurrency(trade.sell_price)}</td>
                     <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                      {trade.sell_date.split(' ')[0]}
+                      {formatDate(trade.buy_date)}
+                    </td>
+                    <td 
+                      style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'help' }}
+                      title={trade.buy_date && trade.sell_date ? `Held For: ${Math.floor((new Date(trade.sell_date) - new Date(trade.buy_date)) / (1000 * 60 * 60 * 24))} Days` : ''}
+                    >
+                      {formatDate(trade.sell_date)}
                     </td>
                     <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                       {trade.profit_loss >= 0 ? '+' : ''}{formatCurrency(trade.profit_loss)}
