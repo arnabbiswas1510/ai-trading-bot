@@ -275,7 +275,7 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                   </span>
                 </h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                  Last Scanned: {new Date(selectedStock.timestamp).toLocaleTimeString()}
+                  Last Scanned: {new Date(selectedStock.timestamp).toLocaleTimeString()} | Rating: <span style={{fontWeight: 600, color: 'var(--text-primary)'}}>{selectedStock.details.analyst_rating || 'N/A'}</span>
                 </p>
               </div>
               <button className="drawer-close" onClick={() => setSelectedStock(null)}>
@@ -340,7 +340,7 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                 <div style={{ flex: 1, marginLeft: '1.5rem' }}>
                   <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Supply and Demand</div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Accumulation vs Distribution: {selectedStock.details.s_acc_days} / {selectedStock.details.s_dist_days} days
+                    Accumulation vs Distribution: {selectedStock.details.s_acc_days} / {selectedStock.details.s_dist_days} days | Float: {selectedStock.details.float_shares ? (selectedStock.details.float_shares / 1000000).toFixed(1) + 'M' : 'N/A'}
                   </div>
                 </div>
                 <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{selectedStock.score_s} / 15</span>

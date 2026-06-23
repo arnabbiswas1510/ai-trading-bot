@@ -287,7 +287,10 @@ def get_screener_results():
                     "n_pct_from_high": n_pct_from_high,
                     "sma50": sma50,
                     "s_acc_days": s_acc_days,
-                    "s_dist_days": s_dist_days
+                    "s_dist_days": s_dist_days,
+                    "company_size": row.get("company_size"),
+                    "analyst_rating": row.get("analyst_rating"),
+                    "float_shares": int(row.get("float_shares") or 0)
                 },
                 "timestamp": row.get("created_at") or now.isoformat()
             })

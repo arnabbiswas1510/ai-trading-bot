@@ -40,12 +40,14 @@ services:
       - "8000:8000"
     volumes:
       - bot-data:/app/data
+      - /home/dietpi/docker/config/qbittorrent/downloads/tv_fileDrop:/app/dropzone
     restart: unless-stopped
     environment:
       - DB_PATH=/app/data/trading_bot.db
       - FMP_API_KEY=${FMP_API_KEY}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
+      - CSV_DROPZONE_PATH=/app/dropzone
     networks:
       - trading_bridge
 
