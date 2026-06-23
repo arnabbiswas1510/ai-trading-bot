@@ -22,7 +22,7 @@ import datetime
 from zoneinfo import ZoneInfo
 from supabase import create_client
 from ib_insync import IB, Stock, MarketOrder
-from execution_agent import place_oca_bracket
+from execution_agent import place_oca_bracket, get_etf_positions, liquidate_etf_positions
 from telegram_notifier import TelegramNotifier
 
 # ── Load .env if present (for local runs) ─────────────────────────────────────
@@ -126,6 +126,18 @@ def main():
     except Exception as e:
         print(f"❌ Failed to connect to IBKR Gateway: {e}")
         sys.exit(1)
+
+    if triggers:
+        new_trigger_count = sum(1 for t in triggers if t["ticker"] not in held)
+        etf_to_sell = get_etf_positions(client)
+        if etf_to_sell and new_trigger_count > 0:
+            sell_count = min(len(etf_to_sell), new_trigger_count)
+            print(f"\n✈️  Pre-flight: liquidating {sell_count} ETF parking position(s) for {new_trigger_count} incoming trigger(s)...")
+            liquidate_etf_positions(ib, client, etf_to_sell[:sell_count],
+                f"Pre-flight liquidation: freeing slot for {new_trigger_count} new trigger(s)")
+            # Refresh held after ETF sell
+            positions  = client.table("portfolio_positions").select("*").execute().data or []
+            held       = [p["ticker"] for p in positions]
 
     available_cash = get_available_cash(ib)
     print(f"Available cash: ${available_cash:,.2f}")
