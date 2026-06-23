@@ -6,6 +6,9 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
   const watchlist = Array.isArray(results) ? results : (results?.watchlist || []);
   const removedList = Array.isArray(results) ? [] : (results?.removed || []);
   const totalScreened = results?.total_screened ?? watchlist.length;
+  const largeCount = watchlist.filter(s => s.company_size === 'Large').length;
+  const midCount = watchlist.filter(s => s.company_size === 'Mid').length;
+  const smallCount = watchlist.filter(s => s.company_size === 'Small').length;
 
   const [selectedStock, setSelectedStock] = useState(null);
   const [chartData, setChartData] = useState([]);
@@ -119,7 +122,7 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
           <>
             {/* Stock count */}
             <div style={{ marginBottom: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{totalScreened}</span> stocks screened
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{totalScreened}</span> stocks screened ({largeCount} Large, {midCount} Mid, {smallCount} Small)
               {removedList.length > 0 && (
                 <span style={{ marginLeft: '0.75rem', color: 'var(--color-down)' }}>· {removedList.length} dropped this week</span>
               )}
@@ -167,6 +170,23 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                         ) : stock.change_status === 'NEW' ? (
                           <span className="badge-new-pulse">+ NEW</span>
                         ) : null}
+                        {stock.company_size && (
+                          <span style={{
+                            display: 'inline-block',
+                            marginLeft: '0.4rem',
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '4px',
+                            fontSize: '0.62rem',
+                            fontWeight: 700,
+                            color: stock.company_size === 'Large' ? '#3b82f6' : stock.company_size === 'Mid' ? '#8b5cf6' : '#10b981',
+                            background: stock.company_size === 'Large' ? 'rgba(59,130,246,0.12)' : stock.company_size === 'Mid' ? 'rgba(139,92,246,0.12)' : 'rgba(16,185,129,0.12)',
+                            border: `1px solid ${stock.company_size === 'Large' ? 'rgba(59,130,246,0.35)' : stock.company_size === 'Mid' ? 'rgba(139,92,246,0.35)' : 'rgba(16,185,129,0.35)'}`,
+                            textTransform: 'uppercase',
+                            verticalAlign: 'middle',
+                          }}>
+                            {stock.company_size}
+                          </span>
+                        )}
                       </td>
                     <td style={{ textAlign: 'center' }}>
                       <span 
