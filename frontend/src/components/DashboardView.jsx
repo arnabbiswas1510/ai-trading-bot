@@ -356,8 +356,8 @@ export default function DashboardView({ data, marketData, trades }) {
                   <th>Current Price</th>
                   <th>Trail Stop</th>
                   <th>Profit Target</th>
-                  <th>Market Value</th>
-                  <th>Return</th>
+                  <th>Profit/Loss ($)</th>
+                  <th>Return (%)</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -399,9 +399,11 @@ export default function DashboardView({ data, marketData, trades }) {
                         }}>
                           {formatCurrency(pos.profit_target)}
                         </td>
-                        <td>{formatCurrency(pos.value)}</td>
                         <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
-                          {pos.pnl >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(2)}% ({formatCurrency(pos.pnl)})
+                          {pos.pnl >= 0 ? '+' : ''}{formatCurrency(pos.pnl)}
+                        </td>
+                        <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                          {pos.pnl >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(2)}%
                         </td>
                         {/* Status badge */}
                         <td>
