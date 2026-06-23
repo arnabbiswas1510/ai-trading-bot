@@ -2,12 +2,10 @@ import os
 import time
 import csv
 import datetime
-from dotenv import load_dotenv
 from supabase import create_client, Client
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-load_dotenv()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 DROPZONE_PATH = os.environ.get("CSV_DROPZONE_PATH", "/home/dietpi/docker/config/qbittorrent/downloads/tv_fileDrop")
