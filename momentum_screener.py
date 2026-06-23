@@ -22,6 +22,7 @@ import requests
 import pandas as pd
 from supabase import create_client, Client
 from telegram_notifier import TelegramNotifier
+from zoneinfo import ZoneInfo
 
 # ── Credentials ────────────────────────────────────────────────────────────────
 raw_api_key    = os.environ.get("FMP_API_KEY")
@@ -232,6 +233,9 @@ def check_technical_breakout_with_thresholds(ticker: str,
                 and vol_ratio >= vol_surge_min
                 and close >= rolling_high * pivot_proximity):
             pivot_dist = ((close / rolling_high) - 1.0) * 100.0 if rolling_high > 0 else 0.0
+            
+            today_ny = datetime.datetime.now(ZoneInfo("America/New_York")).date().strftime("%Y-%m-%d")
+            
             return {
                 "ticker":             ticker,
                 "close_price":        float(round(close, 2)),
@@ -239,6 +243,7 @@ def check_technical_breakout_with_thresholds(ticker: str,
                 "sma_50":             float(round(sma_50, 2)),
                 "rolling_high_52w":   float(round(rolling_high, 2)),
                 "pivot_distance_pct": float(round(pivot_dist, 2)),
+                "triggered_at":       today_ny,
             }
     except Exception as e:
         print(f"⚠️ Technical error for {ticker}: {e}")
