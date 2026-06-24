@@ -31,6 +31,12 @@ jobs:
         SUPABASE_URL: "https://test.supabase.co"
         SUPABASE_KEY: "test_key"
 
+    - name: Execute TradingView Fundamental Screener
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: python tv_api_screener.py
+
     - name: Execute Technical Filter
       env:
         FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
