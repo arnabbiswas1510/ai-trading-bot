@@ -58,7 +58,16 @@ def get_watchlist_from_supabase():
         if not timestamps_res.data:
             return []
         latest_ts = timestamps_res.data[0]["created_at"]
-        response = client.table("watchlist").select("ticker").eq("created_at", latest_ts).execute()
+        
+        # Check if the watchlist was populated today
+        latest_date = datetime.datetime.fromisoformat(latest_ts.replace('Z', '+00:00')).date()
+        today = datetime.datetime.now(datetime.timezone.utc).date()
+        
+        if latest_date != today:
+            print(f"⚠️ Watchlist was last updated on {latest_date}, not today ({today}). Aborting technical screener to prevent stale data.")
+            return []
+            
+        response = client.table("watchlist").select("ticker").execute()
         return [row['ticker'] for row in response.data]
     except Exception as e:
         print(f"❌ Failed to fetch watchlist from Supabase: {e}")

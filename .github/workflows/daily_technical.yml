@@ -1,13 +1,16 @@
 name: Daily CANSLIM Technical Screener
 
 on:
-  schedule:
-    - cron: '30 22 * * 1-5' # Mon-Fri at 22:30 UTC (6:30 PM EST)
+  workflow_run:
+    workflows: ["Daily CANSLIM Fundamental Screener"]
+    types:
+      - completed
   workflow_dispatch:
 
 jobs:
   detect-breakouts:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
     - name: Checkout Code Repository
       uses: actions/checkout@v4
