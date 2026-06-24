@@ -1,16 +1,13 @@
-name: Daily CANSLIM Technical Screener
+name: Daily CANSLIM Trading Bot Screener
 
 on:
-  workflow_run:
-    workflows: ["Daily CANSLIM Fundamental Screener"]
-    types:
-      - completed
+  schedule:
+    - cron: '0 22 * * 1-5' # Mon-Fri at 22:00 UTC (6:00 PM EST)
   workflow_dispatch:
 
 jobs:
-  detect-breakouts:
+  run-screeners:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
     - name: Checkout Code Repository
       uses: actions/checkout@v4
@@ -27,12 +24,19 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run Unit Tests
-      run: pytest tests/ -v --tb=short -q
+      run: pytest tests/ -v --tb=short -q > pytest_output.txt || (cat pytest_output.txt && exit 1)
       env:
         # Tests run offline with mocks — no real credentials needed
         FMP_API_KEY: "test_key"
         SUPABASE_URL: "https://test.supabase.co"
         SUPABASE_KEY: "test_key"
+
+    - name: Upload Test Output
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pytest-output
+        path: pytest_output.txt
 
     - name: Execute TradingView Fundamental Screener
       env:
