@@ -150,8 +150,8 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                     >
                       <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '1.05rem' }}>
                         <span style={{ verticalAlign: 'middle' }}>{stock.ticker}</span>
-                        {/* weeks_retained badge — show +NEW only on true first appearance */}
-                        {stock.weeks_retained > 1 ? (
+                        {/* retention_period badge — show +NEW only on true first appearance */}
+                        {stock.retention_period && stock.retention_period !== '1d' ? (
                           <span style={{
                             display: 'inline-block',
                             marginLeft: '0.4rem',
@@ -165,7 +165,7 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                             letterSpacing: '0.04em',
                             verticalAlign: 'middle',
                           }}>
-                            {stock.weeks_retained}w
+                            {stock.retention_period}
                           </span>
                         ) : stock.change_status === 'NEW' ? (
                           <span className="badge-new-pulse">+ NEW</span>

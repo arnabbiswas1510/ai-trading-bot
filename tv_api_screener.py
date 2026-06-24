@@ -147,41 +147,43 @@ def run_screener():
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    # 1. Fetch existing watchlist to preserve 'weeks_retained' and 'first_seen_at'
+    from retention_helper import increment_retention
+
+    # 1. Fetch existing watchlist to preserve retention_period
     print("[*] Querying existing watchlist...")
     incoming_tickers = [r["ticker"] for r in records]
     
     existing_map = {}
     for i in range(0, len(incoming_tickers), 100):
         chunk = incoming_tickers[i:i+100]
-        res = supabase.table("watchlist").select("ticker, weeks_retained, created_at, first_seen_at").in_("ticker", chunk).execute()
+        res = supabase.table("watchlist").select("ticker, retention_period").in_("ticker", chunk).execute()
         for row in (res.data or []):
             existing_map[row["ticker"]] = row
 
-    upserts = []
+    inserts = []
     for r in records:
         t = r["ticker"]
         if t in existing_map:
             # Stock is retained
-            r["weeks_retained"] = existing_map[t].get("weeks_retained", 0) + 1
-            r["created_at"] = existing_map[t].get("created_at")
-            r["first_seen_at"] = existing_map[t].get("first_seen_at", now)
+            r["retention_period"] = increment_retention(existing_map[t].get("retention_period"))
         else:
             # Brand new stock
-            r["weeks_retained"] = 1
-            r["created_at"] = now
-            r["first_seen_at"] = now
+            r["retention_period"] = "1d"
             
-        r["last_seen_at"] = now
-        upserts.append(r)
+        r["created_at"] = now
+        inserts.append(r)
 
-    # 2. Upsert the fresh data
-    print(f"[*] Upserting {len(upserts)} records into Supabase...")
-    for i in range(0, len(upserts), 100):
-        chunk = upserts[i:i+100]
-        supabase.table("watchlist").upsert(chunk, on_conflict="ticker").execute()
+    # 2. Truncate table
+    print("[*] Truncating watchlist table...")
+    supabase.table("watchlist").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()
 
-    print("[+] Upsert complete!")
+    # 3. Insert the fresh data
+    print(f"[*] Inserting {len(inserts)} records into Supabase...")
+    for i in range(0, len(inserts), 100):
+        chunk = inserts[i:i+100]
+        supabase.table("watchlist").insert(chunk).execute()
+
+    print("[+] Replace complete!")
 
 if __name__ == "__main__":
     run_screener()

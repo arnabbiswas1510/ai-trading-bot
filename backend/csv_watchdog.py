@@ -118,6 +118,8 @@ def process_csv(filepath):
 
         print(f"[*] Parsed {len(records)} stocks. Querying existing watchlist...")
         
+        from retention_helper import increment_retention
+
         # 2. Fetch existing watchlist to check retention
         # We process in chunks if there are too many, but 265 is fine for a single IN query
         incoming_tickers = [r["ticker"] for r in records]
@@ -125,38 +127,35 @@ def process_csv(filepath):
         existing_map = {}
         for i in range(0, len(incoming_tickers), 100):
             chunk = incoming_tickers[i:i+100]
-            existing_res = supabase.table("watchlist").select("ticker, weeks_retained, created_at, first_seen_at").in_("ticker", chunk).execute()
+            existing_res = supabase.table("watchlist").select("ticker, retention_period").in_("ticker", chunk).execute()
             for row in (existing_res.data or []):
                 existing_map[row["ticker"]] = row
 
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         
-        upserts = []
+        inserts = []
         for r in records:
             t = r["ticker"]
             if t in existing_map:
-                # Stock exists, increment weeks_retained
-                r["weeks_retained"] = existing_map[t].get("weeks_retained", 0) + 1
-                r["created_at"] = existing_map[t].get("created_at") # Audit trail persistence
-                r["first_seen_at"] = existing_map[t].get("first_seen_at", now)
+                r["retention_period"] = increment_retention(existing_map[t].get("retention_period"))
             else:
-                # Brand new stock
-                r["weeks_retained"] = 1
-                r["created_at"] = now
-                r["first_seen_at"] = now
+                r["retention_period"] = "1d"
                 
-            r["last_seen_at"] = now
-            upserts.append(r)
+            r["created_at"] = now
+            inserts.append(r)
 
-        # 3. Upsert
-        print(f"[*] Upserting {len(upserts)} records into Supabase...")
+        # 3. Truncate table
+        print("[*] Truncating watchlist table...")
+        supabase.table("watchlist").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()
+
+        # 4. Insert
+        print(f"[*] Inserting {len(inserts)} records into Supabase...")
         
-        # Batch upsert in chunks to avoid payload limits
-        for i in range(0, len(upserts), 100):
-            chunk = upserts[i:i+100]
-            supabase.table("watchlist").upsert(chunk, on_conflict="ticker").execute()
+        for i in range(0, len(inserts), 100):
+            chunk = inserts[i:i+100]
+            supabase.table("watchlist").insert(chunk).execute()
             
-        print("[+] Upsert complete! UI badges are preserved.")
+        print("[+] Replacement complete! UI badges are preserved.")
         
         # 4. Delete the file
         try:

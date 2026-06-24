@@ -274,8 +274,7 @@ def get_screener_results():
                 "score_m": score_m,
                 "total_score": total_score,
                 "change_status": change_status,
-                "weeks_retained": int(row.get("weeks_retained") or 1),
-                "first_seen_at": row.get("first_seen_at"),
+                "retention_period": row.get("retention_period") or "1d",
                 "details": {
                     "current_price": price,
                     "c_growth_yoy": round(q_eps * 100.0, 1),

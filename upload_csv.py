@@ -49,7 +49,6 @@ def upload_to_supabase():
                 "a_eps_growth": a_eps_growth,    # Real value from CSV
                 "revenue_growth": 25.0,          # Not in CSV
                 "inst_count": 100,               # Not in CSV
-                "weeks_retained": 1,
                 "tv_exchange": "NASDAQ", 
                 "ib_exchange": "SMART",
                 "currency": "USD",
@@ -68,6 +67,26 @@ def upload_to_supabase():
         
     supabase: Client = create_client(url, key)
     
+    from retention_helper import increment_retention
+    
+    # 1. Fetch existing retention periods
+    print("[*] Fetching existing retention periods...")
+    incoming_tickers = [r["ticker"] for r in records]
+    
+    existing_map = {}
+    for i in range(0, len(incoming_tickers), 100):
+        chunk = incoming_tickers[i:i+100]
+        res = supabase.table("watchlist").select("ticker, retention_period").in_("ticker", chunk).execute()
+        for row in (res.data or []):
+            existing_map[row["ticker"]] = row
+
+    for r in records:
+        t = r["ticker"]
+        if t in existing_map:
+            r["retention_period"] = increment_retention(existing_map[t].get("retention_period"))
+        else:
+            r["retention_period"] = "1d"
+
     print("[*] Clearing old watchlist in Supabase...")
     supabase.table("watchlist").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()
     

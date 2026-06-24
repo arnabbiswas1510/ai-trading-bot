@@ -157,15 +157,25 @@ def write_triggers_to_supabase(triggers):
         return
     try:
         client = get_supabase_client()
+        from retention_helper import increment_retention
+        
+        print("[*] Querying existing daily triggers...")
+        existing_res = client.table("daily_triggers").select("ticker, retention_period").execute()
+        existing_map = {row["ticker"]: row for row in (existing_res.data or [])}
+
+        for t in triggers:
+            ticker = t["ticker"]
+            if ticker in existing_map:
+                t["retention_period"] = increment_retention(existing_map[ticker].get("retention_period"))
+            else:
+                t["retention_period"] = "1d"
+
+        print("🧹 Truncating daily_triggers table...")
+        client.table("daily_triggers").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()
+        
         print(f"📤 Pushing {len(triggers)} breakouts to 'daily_triggers'...")
         client.table("daily_triggers").insert(triggers).execute()
-        print("✅ Breakouts recorded successfully.")
-        
-        # Prune daily triggers older than 56 days (8 weeks)
-        print("🧹 Pruning breakout triggers older than 8 weeks (56 days) from Supabase...")
-        prune_threshold = (datetime.date.today() - datetime.timedelta(days=TRIGGER_PRUNE_DAYS)).strftime("%Y-%m-%d")
-        client.table("daily_triggers").delete().lt("triggered_at", prune_threshold).execute()
-        print("✅ Pruning of daily_triggers completed successfully.")
+        print("✅ Breakouts replaced successfully.")
     except Exception as e:
         print(f"❌ Failed to log breakout signals: {e}")
         raise e

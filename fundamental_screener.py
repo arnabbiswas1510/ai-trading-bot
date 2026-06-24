@@ -227,60 +227,45 @@ def update_supabase_watchlist(candidates_list):
         incoming_tickers = {r["ticker"] for r in candidates_list}
 
         # Fetch existing rows for tickers in this week's list
+        from retention_helper import increment_retention
         existing_res = db_client.table("watchlist") \
-            .select("ticker, weeks_retained, first_seen_at") \
+            .select("ticker, retention_period") \
             .in_("ticker", list(incoming_tickers)) \
             .execute()
         existing_map = {row["ticker"]: row for row in (existing_res.data or [])}
 
         inserts = []
-        updates = []
 
         for record in candidates_list:
             ticker = record["ticker"]
             if ticker in existing_map:
                 ex = existing_map[ticker]
-                updates.append({
-                    "ticker":         ticker,
-                    # Refresh fundamental scores with latest run's data
-                    "company_name":   record.get("company_name", "Unknown"),
-                    "composite_score": record["composite_score"],
-                    "q_eps_growth":   record["q_eps_growth"],
-                    "a_eps_growth":   record["a_eps_growth"],
-                    "revenue_growth": record["revenue_growth"],
-                    "inst_count":     record["inst_count"],
-                    "price":          record.get("price", 0.0),
-                    # Increment retention counter and refresh last_seen
-                    "weeks_retained": (ex.get("weeks_retained") or 0) + 1,
-                    "first_seen_at":  ex.get("first_seen_at") or now,
-                    "last_seen_at":   now,
-                    "created_at":     now,
-                })
+                retention = increment_retention(ex.get("retention_period"))
             else:
-                inserts.append({
-                    **record,
-                    "weeks_retained": 1,
-                    "first_seen_at":  now,
-                    "last_seen_at":   now,
-                })
+                retention = "1d"
+            
+            inserts.append({
+                "ticker":         ticker,
+                "company_name":   record.get("company_name", "Unknown"),
+                "composite_score": record["composite_score"],
+                "q_eps_growth":   record["q_eps_growth"],
+                "a_eps_growth":   record["a_eps_growth"],
+                "revenue_growth": record["revenue_growth"],
+                "inst_count":     record["inst_count"],
+                "price":          record.get("price", 0.0),
+                "retention_period": retention,
+                "created_at":     now,
+            })
+
+        # Truncate and replace
+        print(f"🧹 Truncating watchlist table...")
+        db_client.table("watchlist").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()
 
         if inserts:
-            print(f"📥 Inserting {len(inserts)} new ticker(s) into watchlist...")
+            print(f"📥 Inserting {len(inserts)} ticker(s) into watchlist...")
             db_client.table("watchlist").insert(inserts).execute()
 
-        if updates:
-            print(f"🔄 Upserting {len(updates)} retained ticker(s) (scores + weeks_retained)...")
-            db_client.table("watchlist").upsert(updates, on_conflict="ticker").execute()
-
-        # Prune tickers that haven't appeared in the last WATCHLIST_PRUNE_DAYS days
-        prune_threshold = (
-            datetime.datetime.now(datetime.timezone.utc)
-            - datetime.timedelta(days=WATCHLIST_PRUNE_DAYS)
-        ).isoformat()
-        db_client.table("watchlist").delete().lt("last_seen_at", prune_threshold).execute()
-
-        print(f"✅ Watchlist upserted: {len(inserts)} new, {len(updates)} updated. "
-              f"Pruned tickers absent for >{WATCHLIST_PRUNE_DAYS} days.")
+        print(f"✅ Watchlist replaced with {len(inserts)} tickers.")
     except Exception as e:
         print(f"❌ Database update error: {e}")
         raise e
