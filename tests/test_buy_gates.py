@@ -1,3 +1,4 @@
+from zoneinfo import ZoneInfo
 """
 test_buy_gates.py — Tests for all 7 buy gates in run_market_open_buys().
 
@@ -162,7 +163,7 @@ class TestGate4CoolingOff:
             daily_triggers=[make_trigger("NVDA")],
             portfolio=[],
             # Simulate a sell within the last 3 days
-            trade_history_recent=[{"ticker": "NVDA", "sell_date": datetime.date.today().isoformat()}],
+            trade_history_recent=[{"ticker": "NVDA", "sell_date": datetime.datetime.now(ZoneInfo('America/New_York')).date().isoformat()}],
         )
         ib = make_ib_mock()
         _run_buys(ib, supabase)

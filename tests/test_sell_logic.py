@@ -211,7 +211,7 @@ class TestProfitTarget:
     def test_profit_target_blocked_by_active_power_hold(self):
         """Power hold active → profit target LimitOrder was already cancelled.
         Python confirms execute_sell is not called from monitor."""
-        expiry = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+        expiry = (datetime.datetime.now(ZoneInfo('America/New_York')).date() + datetime.timedelta(days=30)).isoformat()
         pos = make_position("MSFT", buy_price=100.0, profit_target=125.0,
                             is_power_hold=True, power_hold_expiry=expiry)
         supabase = make_supabase_mock(portfolio=[pos])
@@ -295,7 +295,7 @@ class TestPowerHold:
 
     def test_power_hold_deactivated_after_expiry(self):
         """today ≥ power_hold_expiry → is_power_hold deactivated in Supabase."""
-        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        yesterday = (datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=1)).isoformat()
         pos = make_position("TSLA", buy_price=100.0, is_power_hold=True,
                             power_hold_expiry=yesterday)
         supabase = make_supabase_mock(portfolio=[pos])
@@ -318,7 +318,7 @@ class TestPowerHold:
 
     def test_power_hold_stays_active_before_expiry(self):
         """today < power_hold_expiry → Power Hold remains active."""
-        future = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+        future = (datetime.datetime.now(ZoneInfo('America/New_York')).date() + datetime.timedelta(days=30)).isoformat()
         pos = make_position("TSLA", buy_price=100.0, is_power_hold=True,
                             power_hold_expiry=future)
         supabase = make_supabase_mock(portfolio=[pos])
@@ -384,7 +384,7 @@ class TestPowerHold:
         """When Power Hold expires, place_oca_bracket() is called without
         is_power_hold=True, which means BOTH the trailing stop AND the 25%
         limit sell are re-placed (full OCA bracket restored)."""
-        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        yesterday = (datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=1)).isoformat()
         pos = make_position("TSLA", buy_price=100.0, is_power_hold=True,
                             power_hold_expiry=yesterday)
         supabase = make_supabase_mock(portfolio=[pos])
@@ -540,7 +540,7 @@ class TestStaleRotation:
 
     def test_stale_rotation_exempts_power_hold_positions(self):
         """Power Hold positions must NOT be stale-rotated."""
-        future_expiry = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+        future_expiry = (datetime.datetime.now(ZoneInfo('America/New_York')).date() + datetime.timedelta(days=30)).isoformat()
         portfolio = [
             make_position("PH_STOCK", days_ago=20, is_power_hold=True,
                           power_hold_expiry=future_expiry),

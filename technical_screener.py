@@ -95,7 +95,7 @@ def fetch_with_retry_sync(url, retries=3, backoff=1.0):
 def check_technical_breakout(ticker):
     try:
         # Request EOD stable data for the past 380 calendar days to guarantee 252+ trading days
-        to_date = datetime.date.today()
+        to_date = datetime.datetime.now(ZoneInfo('America/New_York')).date()
         from_date = to_date - datetime.timedelta(days=FMP_HISTORY_DAYS)
         
         from_str = from_date.strftime("%Y-%m-%d")

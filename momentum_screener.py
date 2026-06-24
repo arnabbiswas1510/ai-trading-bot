@@ -74,7 +74,7 @@ def get_supabase_client() -> Client:
 def count_daily_triggers_today() -> int:
     """How many daily_triggers rows exist for today? Used to decide if we run."""
     client = get_supabase_client()
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.now(ZoneInfo('America/New_York')).date().isoformat()
     res = client.table("daily_triggers").select("ticker", count="exact").eq("triggered_at", today).execute()
     return res.count if res.count is not None else len(res.data or [])
 
@@ -184,7 +184,7 @@ def check_technical_breakout_with_thresholds(ticker: str,
     with configurable thresholds for the two-pass momentum strategy.
     """
     try:
-        to_date   = datetime.date.today()
+        to_date   = datetime.datetime.now(ZoneInfo('America/New_York')).date()
         from_date = to_date - datetime.timedelta(days=FMP_HISTORY_DAYS)
         url = (f"{FMP_BASE_URL}/stable/historical-price-eod/full"
                f"?symbol={ticker}&from={from_date}&to={to_date}&apikey={API_KEY}")
@@ -258,7 +258,7 @@ def write_momentum_triggers(triggers: list[dict]) -> None:
     print(f"📤 Writing {len(triggers)} momentum triggers to Supabase...")
     client.table("momentum_triggers").insert(triggers).execute()
 
-    prune_cutoff = (datetime.date.today() - datetime.timedelta(days=MOMENTUM_TRIGGER_PRUNE_DAYS)).isoformat()
+    prune_cutoff = (datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=MOMENTUM_TRIGGER_PRUNE_DAYS)).isoformat()
     client.table("momentum_triggers").delete().lt("triggered_at", prune_cutoff).execute()
     print("✅ momentum_triggers written and pruned.")
 

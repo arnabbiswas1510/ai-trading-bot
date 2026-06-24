@@ -1,3 +1,4 @@
+from zoneinfo import ZoneInfo
 """
 conftest.py — Shared pytest fixtures and test helpers for the trading bot test suite.
 
@@ -93,7 +94,7 @@ def make_trigger(ticker: str,
                  days_ago: int = 0) -> dict:
     """Factory for a daily_triggers / momentum_triggers Supabase row."""
     triggered_at = (
-        datetime.date.today() - datetime.timedelta(days=days_ago)
+        datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=days_ago)
     ).isoformat()
     return {
         "ticker": ticker,

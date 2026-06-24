@@ -1,3 +1,4 @@
+from zoneinfo import ZoneInfo
 import sqlite3
 import json
 import os
@@ -574,7 +575,7 @@ def get_historical_triggers(days: int = 30) -> list:
     """Fetch all daily_triggers and momentum_triggers from the last N days."""
     try:
         client = get_supabase_client()
-        cutoff_date = (datetime.date.today() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+        cutoff_date = (datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
         
         # Query daily_triggers
         daily_res = client.table("daily_triggers").select("*").gte("triggered_at", cutoff_date).execute()

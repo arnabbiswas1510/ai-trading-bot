@@ -99,7 +99,7 @@ def fetch_historical_closes_with_dates(ticker: str, window: int) -> list:
     """Fetch historical daily close prices and dates from FMP (oldest first)."""
     # Fetch window * 4 + 20 calendar days to guarantee sufficient trading days
     lookback_days = window * 4 + 20
-    to_date = datetime.date.today()
+    to_date = datetime.datetime.now(ZoneInfo('America/New_York')).date()
     from_date = to_date - datetime.timedelta(days=lookback_days)
     url = ("https://financialmodelingprep.com/stable/historical-price-eod/full"
            f"?symbol={ticker}&from={from_date}&to={to_date}"
@@ -594,7 +594,7 @@ def is_market_bullish() -> bool:
     if not MARKET_DIRECTION_FILTER_ENABLED:
         return True
     try:
-        to_date   = datetime.date.today()
+        to_date   = datetime.datetime.now(ZoneInfo('America/New_York')).date()
         from_date = to_date - datetime.timedelta(days=MARKET_DIRECTION_SMA_WINDOW + 100)
         url = ("https://financialmodelingprep.com/stable/historical-price-eod/full"
                f"?symbol={MARKET_DIRECTION_TICKER}&from={from_date}&to={to_date}"
