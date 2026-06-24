@@ -2,7 +2,7 @@ name: Daily CANSLIM Technical Screener
 
 on:
   schedule:
-    - cron: '0 22 * * 1-5' # Mon-Fri at 22:00 UTC (6:00 PM EST)
+    - cron: '30 22 * * 1-5' # Mon-Fri at 22:30 UTC (6:30 PM EST)
   workflow_dispatch:
 
 jobs:
