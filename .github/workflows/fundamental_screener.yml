@@ -43,4 +43,11 @@ jobs:
         FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-      run: python fundamental_screener.py
+      run: python fundamental_screener.py > fundamental_output.txt 2>&1 || (cat fundamental_output.txt && exit 1)
+
+    - name: Upload Fundamental Output
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fundamental-output
+        path: fundamental_output.txt
