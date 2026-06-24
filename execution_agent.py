@@ -618,8 +618,9 @@ def is_market_bullish() -> bool:
         print(f"⚠️ Market direction check failed: {e}. Defaulting to BULL.")
         return True
 
-def liquidate_etf_positions(ib: IB, client: Client, etf_positions: list, reason: str) -> None:
-    """Sells ETF parking positions and archives them to trade_history via execute_sell."""
+def liquidate_etf_positions(ib: IB, client: Client, etf_positions: list, reason: str) -> int:
+    """Sells ETF parking positions and archives them to trade_history via execute_sell. Returns count of successfully liquidated positions."""
+    success_count = 0
     for pos in etf_positions:
         ticker    = pos["ticker"]
         shares    = int(pos["shares"])
@@ -631,8 +632,11 @@ def liquidate_etf_positions(ib: IB, client: Client, etf_positions: list, reason:
         current_price = get_live_price(ticker)
         if current_price <= 0:
             current_price = buy_price
-        execute_sell(ib, client, ticker, shares, buy_price, buy_date,
+        success = execute_sell(ib, client, ticker, shares, buy_price, buy_date,
                      pos.get("buy_reason", "ETF Parking"), current_price, reason)
+        if success:
+            success_count += 1
+    return success_count
 
 def run_etf_parking(ib: IB, client: Client) -> None:
     """
@@ -770,8 +774,10 @@ def run_market_open_buys(ib: IB):
         if etf_to_sell and new_trigger_count > 0:
             sell_count = min(len(etf_to_sell), new_trigger_count)
             print(f"✈️  Pre-flight: liquidating {sell_count} ETF parking position(s) for {new_trigger_count} incoming trigger(s)...")
-            liquidate_etf_positions(ib, client, etf_to_sell[:sell_count],
+            liquidated = liquidate_etf_positions(ib, client, etf_to_sell[:sell_count],
                 f"Pre-flight liquidation: freeing slot for {new_trigger_count} new trigger(s)")
+            if liquidated < sell_count:
+                print(f"⚠️  Only liquidated {liquidated}/{sell_count} ETF(s). Buy capacity will be restricted.")
             # Refresh holdings after ETF sell
             holdings = client.table("portfolio_positions").select("*").execute().data or []
             active_tickers = [h["ticker"] for h in holdings]
@@ -796,7 +802,7 @@ def run_market_open_buys(ib: IB):
             
         # Size the position as an equal share of remaining capital across unfilled slots
         # Use refreshed holdings (not portfolio_res) since pre-flight ETF sell may have run
-        stock_held_count = sum(1 for h in holdings if h.get("buy_source") != "etf_parking")
+        stock_held_count = len(holdings)
         remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
         available_cash = get_available_cash(ib)
         print(f"💰 Available Cash Balance in IBKR: ${available_cash:,.2f}")
@@ -806,7 +812,7 @@ def run_market_open_buys(ib: IB):
         # Double check active holdings size again (in case we bought one earlier in this loop)
         portfolio_res = client.table("portfolio_positions").select("*").execute()
         holdings = portfolio_res.data or []
-        if sum(1 for p in portfolio_res.data if p.get("buy_source") != "etf_parking") >= MAX_POSITIONS:
+        if len(holdings) >= MAX_POSITIONS:
             print(f"🚫 Portfolio capacity ({MAX_POSITIONS} stocks) reached during loop. Skipping further buys.")
             break
 
@@ -953,8 +959,10 @@ def run_market_open_buys(ib: IB):
         if etf_to_sell and new_m_count > 0:
             sell_count = min(len(etf_to_sell), new_m_count)
             print(f"✈️  Momentum pre-flight: liquidating {sell_count} ETF position(s) for {new_m_count} momentum trigger(s)...")
-            liquidate_etf_positions(ib, client, etf_to_sell[:sell_count],
+            liquidated = liquidate_etf_positions(ib, client, etf_to_sell[:sell_count],
                 f"Pre-flight: freeing slot for {new_m_count} momentum trigger(s)")
+            if liquidated < sell_count:
+                print(f"⚠️  Only liquidated {liquidated}/{sell_count} ETF(s). Buy capacity will be restricted.")
             portfolio_res = client.table("portfolio_positions").select("*").execute()
 
     for trigger in momentum_triggers_list:
@@ -962,7 +970,7 @@ def run_market_open_buys(ib: IB):
 
         # Refresh portfolio state each iteration
         portfolio_res = client.table("portfolio_positions").select("*").execute()
-        if sum(1 for p in portfolio_res.data if p.get("buy_source") != "etf_parking") >= MAX_POSITIONS:
+        if len(portfolio_res.data or []) >= MAX_POSITIONS:
             break
         if ticker in active_tickers:
             continue
@@ -983,7 +991,7 @@ def run_market_open_buys(ib: IB):
             print(f"🚫 Insufficient cash for momentum buy of {ticker}. Stopping cascade.")
             break
 
-        remaining_slots = max(1, MAX_POSITIONS - len(portfolio_res.data))
+        remaining_slots = max(1, MAX_POSITIONS - len(portfolio_res.data or []))
         position_size   = available_cash / remaining_slots
 
         current_price = get_live_price(ticker)
@@ -1374,7 +1382,7 @@ def monitor_portfolio_intraday(ib: IB):
                             run_etf_parking(ib, client)
                         continue
 
-def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float, buy_date, buy_reason: str, current_price: float, reason: str):
+def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float, buy_date, buy_reason: str, current_price: float, reason: str) -> bool:
     """Executes a market sell order on IBKR and archives the transaction in Supabase.
 
     CRITICAL INVARIANT: Supabase position is ONLY deleted after confirming via
@@ -1394,7 +1402,12 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         trade = ib.placeOrder(contract, order)
         
         print(f"   Placing market sell order for {shares} shares of {ticker}...")
-        ib.sleep(5)  # Give order time to fill or be rejected
+        
+        # Wait up to 30 seconds for fill
+        for _ in range(15):
+            ib.sleep(2)
+            if trade.orderStatus.status == 'Filled':
+                break
 
         # ── CRITICAL: verify fill via ib.portfolio() BEFORE touching Supabase ──
         # MarketOrders can be cancelled (e.g. paper-trading no live market data)
@@ -1411,7 +1424,7 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
                 ib.cancelOrder(trade.order)
             except Exception:
                 pass
-            return  # ← EXIT WITHOUT DELETING FROM SUPABASE
+            return False  # ← EXIT WITHOUT DELETING FROM SUPABASE
 
         # Sell confirmed — position is gone from IBKR
         fill_price = trade.orderStatus.avgFillPrice if trade.orderStatus else 0.0
@@ -1444,10 +1457,12 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
             ticker=ticker, shares=shares, buy_price=buy_price,
             buy_date=buy_date.isoformat(), fill_price=fill_price, reason=reason
         )
+        return True
         
     except Exception as e:
         print(f"❌ Error executing sell order for {ticker}: {e}")
         notifier.notify_exception(f"execute_sell({ticker}) — execution_agent.py", e)
+        return False
 
 def main_loop():
     """Main daemon loop running inside the Docker container."""
