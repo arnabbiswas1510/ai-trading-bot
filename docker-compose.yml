@@ -24,10 +24,9 @@ services:
     restart: unless-stopped
     depends_on:
       - ib-gateway
+    env_file:
+      - .env
     environment:
-      - FMP_API_KEY=${FMP_API_KEY}
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
       - IB_GATEWAY_HOST=ib-gateway
       - IB_GATEWAY_PORT=4004
     networks:
@@ -42,11 +41,10 @@ services:
       - bot-data:/app/data
       - /home/dietpi/docker/config/qbittorrent/downloads/tv_fileDrop:/app/dropzone
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       - DB_PATH=/app/data/trading_bot.db
-      - FMP_API_KEY=${FMP_API_KEY}
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
       - CSV_DROPZONE_PATH=/app/dropzone
     networks:
       - trading_bridge
