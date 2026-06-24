@@ -276,7 +276,7 @@ Runs the full cascade (daily_triggers → momentum_triggers → ETF parking) wit
 
 | Table | Key Columns | Purpose | Retention |
 |-------|------------|---------|---------|
-| `watchlist` | `ticker`, `composite_score`, `q_eps_growth` | Fundamental screener top-N output | 56 days rolling |
+| `watchlist` | `ticker`, `q_eps_growth`, `a_eps_growth`, `price` | Fundamental screener top-N output | 56 days rolling |
 | `daily_triggers` | `ticker`, `triggered_at`, `volume_surge`, `pivot_distance_pct` | CANSLIM breakout signals | 56 days rolling |
 | `momentum_triggers` | `ticker`, `triggered_at`, `volume_surge`, `pivot_distance_pct` | Secondary relaxed breakout signals | 56 days rolling |
 | `portfolio_positions` | `ticker`, `buy_price`, `high_water_mark`, `profit_target`, `is_power_hold`, **`buy_source`** | Open positions ledger | Until sell/close |

@@ -122,11 +122,9 @@ def save_screener_results(results):
             payload.append({
                 "ticker": r["ticker"],
                 "company_name": details.get("company_name") or r.get("company_name") or "Unknown",
-                "composite_score": float(r["total_score"] / 100.0),
                 "q_eps_growth": float(details.get("c_growth_yoy", 0.0) / 100.0),
                 "a_eps_growth": float(details.get("a_eps_growth_cagr", 0.0) / 100.0),
                 "revenue_growth": float(details.get("c_rev_growth_yoy", 0.0) / 100.0),
-                "inst_count": int(details.get("i_held_percent_inst", 65.0) / 10) if details.get("i_held_percent_inst") else 10,
                 "price": float(details.get("current_price") or 0.0),
                 "rs_rating": float(details.get("l_rs_rating") or 85.0),
                 "roe": float(details.get("a_roe") or 22.0),
@@ -194,8 +192,8 @@ def get_screener_results():
             q_eps = row.get("q_eps_growth", 0.0) or 0.0
             a_eps = row.get("a_eps_growth", 0.0) or 0.0
             rev   = row.get("revenue_growth", 0.0) or 0.0
-            inst  = row.get("inst_count", 10) or 10
-            comp  = row.get("composite_score", 0.0) or 0.0
+            inst  = 10
+            comp  = 0.0
 
             # Retrieve saved metrics or default if not present
             price = float(row.get("price") or 0.0)

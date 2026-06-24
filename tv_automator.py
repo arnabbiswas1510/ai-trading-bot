@@ -157,11 +157,9 @@ def sync_watchlist():
         records.append({
             "ticker": t,
             "company_name": t,
-            "composite_score": 99,
             "q_eps_growth": 25.0,
             "a_eps_growth": 25.0,
             "revenue_growth": 25.0,
-            "inst_count": 100,
             "tv_exchange": "NASDAQ", # Defaulting to US for now
             "ib_exchange": "SMART",
             "currency": "USD",

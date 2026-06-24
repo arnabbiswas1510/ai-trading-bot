@@ -46,11 +46,10 @@ def _row(ticker: str, created_at: str, score: float = 0.5) -> dict:
     return {
         "ticker": ticker,
         "created_at": created_at,
-        "composite_score": score,
+        "total_score": score * 100.0,
         "q_eps_growth": 0.25,
         "a_eps_growth": 0.15,
         "revenue_growth": 0.10,
-        "inst_count": 8,
         "company_name": ticker,
     }
 
@@ -361,7 +360,7 @@ class TestGetScreenerResults:
 
     @patch("database.get_supabase_client")
     def test_results_sorted_by_score_descending(self, mock_get_client):
-        """Watchlist must be returned in descending composite_score order."""
+        """Watchlist must be returned in descending total_score order."""
         import database
 
         client = MagicMock()
@@ -408,9 +407,9 @@ class TestUpdateSupabaseWatchlistWeekly:
     """
 
     def _make_candidates(self, tickers=("AAPL", "NVDA")) -> list[dict]:
-        return [{"ticker": t, "company_name": t, "composite_score": 0.8,
+        return [{"ticker": t, "company_name": t,
                  "q_eps_growth": 0.3, "a_eps_growth": 0.2,
-                 "revenue_growth": 0.15, "inst_count": 9}
+                 "revenue_growth": 0.15}
                 for t in tickers]
 
     def _make_mock_with_existing(self, existing_tickers: list[str]) -> MagicMock:

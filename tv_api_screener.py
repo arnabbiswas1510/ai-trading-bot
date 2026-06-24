@@ -128,20 +128,21 @@ def run_screener():
             company_size = "Small"
             
         records.append({
-            "ticker": ticker,
-            "company_name": row[1] or ticker,
-            "q_eps_growth": float(row[2] or 0),
-            "a_eps_growth": float(row[3] or 0),
-            "revenue_growth": float(row[4] or 0),
-            "analyst_rating": get_rating_text(row[5]),
-            "float_shares": int(row[6] or 0),
-            "roe": float(row[7] or 0),
-            "company_size": company_size,
-            "tv_exchange": exchange,
-            "ib_exchange": "SMART",
-            "currency": "USD",
-            "fmp_ticker": ticker 
-        })
+                "ticker": ticker,
+                "company_name": row[1] or ticker,
+                "q_eps_growth": float(row[2] or 0),
+                "a_eps_growth": float(row[3] or 0),
+                "revenue_growth": float(row[4] or 0),
+                "analyst_rating": get_rating_text(row[5]),
+                "float_shares": int(row[6] or 0),
+                "roe": float(row[7] or 0),
+                "company_size": company_size,
+                "price": float(row[9] or 0),
+                "tv_exchange": exchange,
+                "ib_exchange": "SMART",
+                "currency": "USD",
+                "fmp_ticker": ticker 
+            })
 
     print("[*] Connecting to Supabase...")
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)

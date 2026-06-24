@@ -60,11 +60,9 @@ def tradingview_webhook():
                 "price": float(item.get("price", 0.0)),
                 "volume": float(item.get("volume", 0.0)),
                 "avg_volume": float(item.get("avg_volume", 0.0)),
-                "composite_score": float(item.get("composite_score", 0.0)),
                 "q_eps_growth": float(item.get("q_eps_growth", 0.0)),
                 "a_eps_growth": float(item.get("a_eps_growth", 0.0)),
                 "revenue_growth": float(item.get("revenue_growth", 0.0)),
-                "inst_count": int(item.get("inst_count", 0)),
                 "last_seen_at": item.get("time", now),
                 "weeks_retained": 1,
                 "first_seen_at": item.get("time", now)

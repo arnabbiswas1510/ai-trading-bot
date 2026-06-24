@@ -44,11 +44,9 @@ def upload_to_supabase():
             records.append({
                 "ticker": ticker,
                 "company_name": company_name,
-                "composite_score": 99,           # Not in CSV
                 "q_eps_growth": 25.0,            # Not in CSV
                 "a_eps_growth": a_eps_growth,    # Real value from CSV
                 "revenue_growth": 25.0,          # Not in CSV
-                "inst_count": 100,               # Not in CSV
                 "tv_exchange": "NASDAQ", 
                 "ib_exchange": "SMART",
                 "currency": "USD",

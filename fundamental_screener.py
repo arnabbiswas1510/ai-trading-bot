@@ -196,15 +196,12 @@ async def analyze_canslim_fundamentals(ticker: str, client: httpx.AsyncClient, s
             # If inst_count is None the endpoint is restricted — skip the I-filter rather than silently passing all
             inst_filter_passed = (inst_count is None) or (inst_count > CANSLIM_MIN_INST_HOLDERS)
             if q_eps_growth > CANSLIM_MIN_Q_EPS_GROWTH and a_eps_growth > CANSLIM_MIN_A_EPS_GROWTH and inst_filter_passed:
-                composite_score = (q_eps_growth * 0.6) + (a_eps_growth * 0.4)
                 return {
                     "ticker": ticker,
                     "company_name": quote.get('name', 'Unknown'),
-                    "composite_score": float(composite_score),
                     "q_eps_growth": float(q_eps_growth),
                     "a_eps_growth": float(a_eps_growth),
                     "revenue_growth": float(revenue_growth),
-                    "inst_count": int(inst_count) if inst_count is not None else -1,
                     "price": float(quote.get('price') or 0.0)
                 }
         except Exception:
@@ -247,11 +244,9 @@ def update_supabase_watchlist(candidates_list):
             inserts.append({
                 "ticker":         ticker,
                 "company_name":   record.get("company_name", "Unknown"),
-                "composite_score": record["composite_score"],
                 "q_eps_growth":   record["q_eps_growth"],
                 "a_eps_growth":   record["a_eps_growth"],
                 "revenue_growth": record["revenue_growth"],
-                "inst_count":     record["inst_count"],
                 "price":          record.get("price", 0.0),
                 "retention_period": retention,
                 "created_at":     now,
@@ -294,10 +289,10 @@ async def main():
         print("❌ Zero assets matched qualifications this week.")
     else:
         # Sort and take top 90
-        df_top = df_results.sort_values(by="composite_score", ascending=False).head(CANSLIM_WATCHLIST_SIZE)
-        print(f"Watchlist top candidates:\n{df_top[['ticker', 'composite_score']].to_string(index=False)}")
+        df_top = df_results.sort_values(by="q_eps_growth", ascending=False).head(CANSLIM_WATCHLIST_SIZE)
+        print(f"Watchlist top candidates:\n{df_top[['ticker', 'q_eps_growth']].to_string(index=False)}")
         
-        final_payload = df_top[['ticker', 'company_name', 'composite_score', 'q_eps_growth', 'a_eps_growth', 'revenue_growth', 'inst_count', 'price']].to_dict(orient="records")
+        final_payload = df_top[['ticker', 'company_name', 'q_eps_growth', 'a_eps_growth', 'revenue_growth', 'price']].to_dict(orient="records")
         update_supabase_watchlist(final_payload)
 
 if __name__ == "__main__":
