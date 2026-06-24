@@ -802,7 +802,7 @@ def run_market_open_buys(ib: IB):
             
         # Size the position as an equal share of remaining capital across unfilled slots
         # Use refreshed holdings (not portfolio_res) since pre-flight ETF sell may have run
-        stock_held_count = len(holdings)
+        stock_held_count = len([h for h in holdings if h.get("buy_source") != "etf_parking"])
         remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
         available_cash = get_available_cash(ib)
         print(f"💰 Available Cash Balance in IBKR: ${available_cash:,.2f}")
@@ -812,7 +812,8 @@ def run_market_open_buys(ib: IB):
         # Double check active holdings size again (in case we bought one earlier in this loop)
         portfolio_res = client.table("portfolio_positions").select("*").execute()
         holdings = portfolio_res.data or []
-        if len(holdings) >= MAX_POSITIONS:
+        stock_held_count_loop = len([h for h in holdings if h.get("buy_source") != "etf_parking"])
+        if stock_held_count_loop >= MAX_POSITIONS:
             print(f"🚫 Portfolio capacity ({MAX_POSITIONS} stocks) reached during loop. Skipping further buys.")
             break
 

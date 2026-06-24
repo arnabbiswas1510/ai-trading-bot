@@ -393,21 +393,18 @@ class TestGetScreenerResults:
         tickers = [r["ticker"] for r in result["watchlist"]]
         assert tickers[0] == "HIGH_SCORE"
         assert tickers[-1] == "LOW_SCORE"
-
-
 # ---------------------------------------------------------------------------
 # Tests for update_supabase_watchlist (fundamental_screener.py)
 # Updated for upsert model: SELECT existing → INSERT new → UPSERT retained → prune
 # ---------------------------------------------------------------------------
 
 class TestUpdateSupabaseWatchlistWeekly:
-    """Guards the fundamental screener's upsert-based watchlist behaviour.
+    """Guards the fundamental screener's truncate-based watchlist behaviour.
 
     Contract:
       - SELECT existing rows by ticker to identify new vs retained
-      - INSERT brand-new tickers with weeks_retained=1
-      - UPSERT retained tickers (increment weeks_retained, refresh scores)
-      - DELETE (prune) rows with last_seen_at older than WATCHLIST_PRUNE_DAYS
+      - Truncate table
+      - INSERT all tickers with computed retention_period
     """
 
     def _make_candidates(self, tickers=("AAPL", "NVDA")) -> list[dict]:
@@ -420,21 +417,19 @@ class TestUpdateSupabaseWatchlistWeekly:
         """Return a Supabase mock where the given tickers already exist in the DB."""
         client = MagicMock()
         existing_rows = [
-            {"ticker": t, "weeks_retained": 2, "first_seen_at": "2026-06-07T00:00:00+00:00"}
+            {"ticker": t, "retention_period": "2d"}
             for t in existing_tickers
         ]
         # SELECT ... .in_(...) → existing rows
         client.table.return_value.select.return_value \
             .in_.return_value.execute.return_value.data = existing_rows
         client.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        client.table.return_value.upsert.return_value.execute.return_value = MagicMock()
-        client.table.return_value.delete.return_value.lt.return_value \
-            .execute.return_value = MagicMock()
+        client.table.return_value.delete.return_value.neq.return_value.execute.return_value = MagicMock()
         return client
 
     @patch("fundamental_screener.get_supabase_client")
-    def test_new_tickers_are_inserted_not_upserted(self, mock_get_client):
-        """Tickers absent from DB must go through insert(), not upsert()."""
+    def test_watchlist_update_happy_path(self, mock_get_client):
+        """Must insert tickers into watchlist."""
         import fundamental_screener
 
         client = self._make_mock_with_existing([])
@@ -449,8 +444,8 @@ class TestUpdateSupabaseWatchlistWeekly:
         assert {r["ticker"] for r in inserted} == {"AAPL", "NVDA"}
 
     @patch("fundamental_screener.get_supabase_client")
-    def test_new_tickers_get_weeks_retained_one(self, mock_get_client):
-        """Newly inserted tickers must start with weeks_retained=1."""
+    def test_new_tickers_get_retention_period_1d(self, mock_get_client):
+        """Newly inserted tickers must start with retention_period='1d'."""
         import fundamental_screener
 
         client = self._make_mock_with_existing([])
@@ -460,11 +455,11 @@ class TestUpdateSupabaseWatchlistWeekly:
 
         inserted = client.table.return_value.insert.call_args[0][0]
         tsla = next(r for r in inserted if r["ticker"] == "TSLA")
-        assert tsla["weeks_retained"] == 1
+        assert tsla["retention_period"] == "1d"
 
     @patch("fundamental_screener.get_supabase_client")
-    def test_retained_tickers_are_upserted_with_incremented_count(self, mock_get_client):
-        """Tickers already in DB (weeks_retained=2) must be upserted with weeks_retained=3."""
+    def test_retained_tickers_get_incremented_retention(self, mock_get_client):
+        """Tickers already in DB (retention_period='2d') must be inserted with '3d'."""
         import fundamental_screener
 
         client = self._make_mock_with_existing(["AAPL"])
@@ -472,36 +467,14 @@ class TestUpdateSupabaseWatchlistWeekly:
 
         fundamental_screener.update_supabase_watchlist(self._make_candidates(("AAPL",)))
 
-        client.table.return_value.upsert.assert_called_once()
-        upserted = client.table.return_value.upsert.call_args[0][0]
-        aapl = next(r for r in upserted if r["ticker"] == "AAPL")
-        assert aapl["weeks_retained"] == 3  # was 2, incremented to 3
-
-    @patch("fundamental_screener.get_supabase_client")
-    def test_mixed_new_and_retained_routed_correctly(self, mock_get_client):
-        """AAPL retained → upsert; NVDA new → insert. Routing must be correct."""
-        import fundamental_screener
-
-        client = self._make_mock_with_existing(["AAPL"])
-        mock_get_client.return_value = client
-
-        fundamental_screener.update_supabase_watchlist(
-            self._make_candidates(("AAPL", "NVDA"))
-        )
-
         client.table.return_value.insert.assert_called_once()
         inserted = client.table.return_value.insert.call_args[0][0]
-        assert any(r["ticker"] == "NVDA" for r in inserted)
-        assert not any(r["ticker"] == "AAPL" for r in inserted)
-
-        client.table.return_value.upsert.assert_called_once()
-        upserted = client.table.return_value.upsert.call_args[0][0]
-        assert any(r["ticker"] == "AAPL" for r in upserted)
-        assert not any(r["ticker"] == "NVDA" for r in upserted)
+        aapl = next(r for r in inserted if r["ticker"] == "AAPL")
+        assert aapl["retention_period"] == "3d"  # was 2d, incremented to 3d
 
     @patch("fundamental_screener.get_supabase_client")
-    def test_prune_uses_last_seen_at_not_created_at(self, mock_get_client):
-        """Prune must delete by last_seen_at (not created_at) to respect upsert model."""
+    def test_truncate_is_called_before_insert(self, mock_get_client):
+        """Truncate must be called to respect the daily reset model."""
         import fundamental_screener
 
         client = self._make_mock_with_existing([])
@@ -510,8 +483,4 @@ class TestUpdateSupabaseWatchlistWeekly:
         fundamental_screener.update_supabase_watchlist(self._make_candidates())
 
         delete_mock = client.table.return_value.delete.return_value
-        delete_mock.lt.assert_called_once()
-        lt_args = delete_mock.lt.call_args[0]
-        assert lt_args[0] == "last_seen_at", (
-            f"Prune must filter on last_seen_at (upsert model), got: {lt_args[0]}"
-        )
+        delete_mock.neq.assert_called_once_with("ticker", "DUMMY_NEVER_MATCH")

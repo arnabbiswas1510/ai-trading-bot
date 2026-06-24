@@ -43,7 +43,7 @@ def _run_buys(ib, supabase_mock, live_price=105.0, available_cash=20_000.0,
          patch("execution_agent.is_market_bullish", return_value=is_bullish), \
          patch("execution_agent.notifier"), \
          patch("execution_agent.run_etf_parking"), \
-         patch("execution_agent.liquidate_etf_positions"), \
+         patch("execution_agent.liquidate_etf_positions", return_value=999), \
          patch("execution_agent.execute_sell"):
         execution_agent.run_market_open_buys(ib)
     return ib
