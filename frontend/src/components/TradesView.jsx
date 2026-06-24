@@ -14,7 +14,6 @@ export default function TradesView({ trades }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-        <>
           {/* Summary Metrics */}
           <div className="metrics-grid">
             <div className="card metric-card">

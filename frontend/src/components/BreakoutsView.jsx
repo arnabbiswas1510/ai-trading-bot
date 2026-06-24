@@ -97,7 +97,6 @@ export default function BreakoutsView({ breakouts, momentum }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-        <>
           {/* Execution strategy banner */}
           <div className="market-banner" style={{ borderLeftColor: 'var(--accent-secondary)', background: 'linear-gradient(to right, rgba(139, 92, 246, 0.1), transparent)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -164,7 +163,6 @@ export default function BreakoutsView({ breakouts, momentum }) {
               </>
             )}
           </div>
-        </>
 
 
     </div>
