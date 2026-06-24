@@ -26,6 +26,7 @@ try:
         for row in response.data:
             print("-" * 40)
             print(f"Ticker:         {row.get('ticker')}")
+            print(f"Created At:     {row.get('created_at')}")
             print(f"Company Name:   {row.get('company_name')}")
             print(f"Size:           {row.get('company_size')}")
             print(f"Analyst Rating: {row.get('analyst_rating')}")

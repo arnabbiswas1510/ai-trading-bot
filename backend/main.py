@@ -239,6 +239,20 @@ def get_trades():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/cash_flows")
+def get_cash_flows():
+    try:
+        return db.get_cash_flows()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/account_balances")
+def get_account_balances():
+    try:
+        return db.get_account_balances()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/trades/retro")
 def get_trades_retro():
     try:

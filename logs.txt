@@ -1,0 +1,15 @@
+==================================================
+       CANSLIM Local Trade Execution Agent        
+==================================================
+Connecting to IB Gateway at ib-gateway:4004...
+❌ Failed to connect to IBKR Gateway: 
+   Ensure the ib-gateway container is running and API ports are open.
+==================================================
+       CANSLIM Local Trade Execution Agent        
+==================================================
+Connecting to IB Gateway at ib-gateway:4004...
+✅ Connected to IBKR Gateway successfully!
+🔄 Running IBKR ↔ Supabase reconciliation...
+   ⚠️  IBKR returned empty portfolio but Supabase has 2 position(s) — skipping reconcile to prevent false deletion. Will retry next cycle.
+🔍 Running Intraday Portfolio Monitoring...
+📊 Market direction [SPY]: $737.11 vs SMA200 $689.30 → BULL ↑

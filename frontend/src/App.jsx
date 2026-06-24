@@ -7,7 +7,8 @@ import {
   TrendingUp,
   Cpu,
   History,
-  Activity
+  Activity,
+  LineChart
 } from 'lucide-react';
 
 import DashboardView from './components/DashboardView';
@@ -16,6 +17,7 @@ import BacktesterView from './components/BacktesterView';
 import SettingsView from './components/SettingsView';
 import TradesView from './components/TradesView';
 import BreakoutsView from './components/BreakoutsView';
+import ReturnsView from './components/ReturnsView';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -162,6 +164,8 @@ export default function App() {
         return <TradesView trades={tradeHistory} />;
       case 'breakouts':
         return <BreakoutsView breakouts={breakouts} momentum={momentumTriggers} />;
+      case 'performance':
+        return <ReturnsView trades={tradeHistory} />;
       case 'settings':
         return (
           <SettingsView 
@@ -234,6 +238,15 @@ export default function App() {
           </li>
           <li>
             <div 
+              className={`nav-item ${currentView === 'performance' ? 'active' : ''}`}
+              onClick={() => setCurrentView('performance')}
+            >
+              <LineChart />
+              <span>Performance</span>
+            </div>
+          </li>
+          <li>
+            <div 
               className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
               onClick={() => setCurrentView('settings')}
             >
@@ -264,6 +277,7 @@ export default function App() {
             {currentView === 'breakouts' && "Technical breakout alerts and daily triggers monitored by the execution agent."}
             {currentView === 'backtester' && "Simulate technical breakout entries and automated exits on historical ranges."}
             {currentView === 'history' && "Comprehensive history of all completed buying and selling transactions."}
+            {currentView === 'performance' && "Time-Weighted Returns, cash flows, and exact portfolio growth."}
             {currentView === 'settings' && "Manage trading budgets, risk constraints, and active ticker watchlists."}
           </p>
         </header>

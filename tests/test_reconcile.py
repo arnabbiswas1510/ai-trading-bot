@@ -71,7 +71,7 @@ class TestReconcileCase1:
             execution_agent.reconcile_with_ibkr(ib)
 
         # get_live_price should have been called for the fallback
-        mock_price.assert_called_with("NVDA")
+        mock_price.assert_any_call("NVDA")
 
 
 class TestReconcileCase2:
@@ -181,14 +181,12 @@ class TestReconcileCase4:
         # Either upsert was called (change ≥ $1) OR it's a first-write scenario
         # — both are valid "sync" outcomes. Check Supabase was touched.
         upsert_called = supabase.table("account_balances").upsert.called
-        insert_called = supabase.table("account_balances").insert.called
-        assert upsert_called or insert_called, (
-            "Expected account_balances to be updated when cash changes by $2,000"
+        assert upsert_called, (
+            "Expected account_balances to be updated with snapshots"
         )
 
-    def test_case4_cash_sync_skipped_when_change_less_than_1_dollar(self):
-        """Change < $1 → no redundant write to account_balances."""
-        # Stored balance = $10,000.00, new balance = $10,000.50 → change = $0.50 → skip
+    def test_case4_cash_sync_writes_daily_snapshots(self):
+        """New logic: write daily snapshots for cash, positions_value, total_value."""
         supabase = make_supabase_mock(portfolio=[], cash_balance=10_000.00)
         ib = make_ib_mock()
 
@@ -197,7 +195,22 @@ class TestReconcileCase4:
              patch("execution_agent.get_available_cash", return_value=10_000.50):
             execution_agent.reconcile_with_ibkr(ib)
 
-        supabase.table("account_balances").upsert.assert_not_called()
+        assert supabase.table("account_balances").upsert.call_count >= 3
+        
+    def test_case4_detects_deposits(self):
+        """A cash jump > $500 inserts into cash_flows."""
+        supabase = make_supabase_mock(portfolio=[], cash_balance=10_000.00)
+        ib = make_ib_mock()
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.get_live_price", return_value=100.0), \
+             patch("execution_agent.get_available_cash", return_value=11_000.00):
+            execution_agent.reconcile_with_ibkr(ib)
+
+        supabase.table("cash_flows").insert.assert_called_once()
+        insert_args = supabase.table("cash_flows").insert.call_args[0][0]
+        assert insert_args["amount"] == 1000.0
+        assert insert_args["description"] == "Auto-detected Deposit"
 
 
 class TestReconcileUsesPortfolioNotPositions:

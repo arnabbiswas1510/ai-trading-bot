@@ -195,8 +195,21 @@ def make_supabase_mock(
 
         elif name == "account_balances":
             bal_data = [{"value": str(cash_balance)}] if cash_balance else []
-            t.select.return_value.eq.return_value.execute.return_value.data = bal_data
+            # We chain select().eq().order().limit().execute()
+            m_select = MagicMock()
+            m_eq = MagicMock()
+            m_order = MagicMock()
+            m_limit = MagicMock()
+            m_limit.execute.return_value.data = bal_data
+            m_order.limit.return_value = m_limit
+            m_eq.order.return_value = m_order
+            m_eq.execute.return_value.data = bal_data # in case order isn't used
+            m_select.eq.return_value = m_eq
+            t.select.return_value = m_select
             t.upsert.return_value.execute.return_value = MagicMock()
+
+        elif name == "cash_flows":
+            t.insert.return_value.execute.return_value = MagicMock()
 
         _cache[name] = t
         return t

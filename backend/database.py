@@ -609,5 +609,24 @@ def reset_portfolio():
     set_setting("cash_balance", initial)
     print("[reset_portfolio] Local paper-trading state reset. Supabase tables were NOT touched.")
 
+def get_cash_flows():
+    try:
+        client = get_supabase_client()
+        res = client.table("cash_flows").select("*").order("date", desc=True).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Error getting cash flows from Supabase: {e}")
+        return []
+
+def get_account_balances():
+    try:
+        client = get_supabase_client()
+        # Fetch historical values for TWR charting
+        res = client.table("account_balances").select("*").order("date", desc=True).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Error getting account balances from Supabase: {e}")
+        return []
+
 # Initialize database on load
 init_db()

@@ -354,6 +354,7 @@ def reconcile_with_ibkr(ib: IB):
 
     candidates_to_delete = supabase_tickers - ib_tickers
     changes = 0
+    net_trade_cash = 0.0
 
     # ── Case 1: In Supabase but NOT in IBKR ─────────────────────────────────
     # IBKR is the single source of truth: it manages trailing stops and limit
@@ -441,6 +442,7 @@ def reconcile_with_ibkr(ib: IB):
                 buy_date=buy_date
             )
             changes += 1
+            net_trade_cash += (sell_price * shares)
         except Exception as e:
             print(f"        ❌ DB error reconciling close for {ticker}: {e}")
 
@@ -476,6 +478,7 @@ def reconcile_with_ibkr(ib: IB):
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"        ✅ Added to Supabase: {shares} shares @ ${avg_cost} | SL: ${stop_loss} | PT: ${profit_target}")
             changes += 1
+            net_trade_cash -= (avg_cost * shares)
         except Exception as e:
             print(f"        ❌ DB error adding {ticker} to Supabase: {e}")
 
@@ -497,34 +500,68 @@ def reconcile_with_ibkr(ib: IB):
     else:
         print(f"   🔄 Reconciliation complete — {changes} correction(s) applied.")
 
-    # ── Case 4: Sync live IBKR cash balance to Supabase ─────────────────────
-    # The backend derives cash dynamically (initial + realized_pnl - open_cost)
-    # which doesn't account for deposits, withdrawals, commissions, or dividends.
-    # We write the real IBKR CashBalance here so the backend can use it directly.
-    # Only upsert if the balance has changed by more than $1 to avoid redundant writes.
+    # ── Case 4: Sync live IBKR cash balance to Supabase & Detect Deposits ───
     try:
         ibkr_cash = get_available_cash(ib)
         if ibkr_cash > 0:
             new_balance = round(ibkr_cash, 2)
+            tz = ZoneInfo("America/New_York")
+            today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
 
             # Read current stored value before writing
             stored_balance = None
             try:
-                res = client.table("account_balances").select("value").eq("key", "ibkr_cash_balance").execute()
+                res = client.table("account_balances").select("value").eq("key", "ibkr_cash_balance").order("date", desc=True).limit(1).execute()
                 if res.data:
                     stored_balance = float(res.data[0]["value"])
             except Exception:
                 pass  # If read fails, proceed with write
 
-            if stored_balance is None or abs(new_balance - stored_balance) > 1.00:
-                client.table("account_balances").upsert(
-                    {"key": "ibkr_cash_balance", "value": new_balance},
-                    on_conflict="key"
-                ).execute()
-                change_str = f" (was ${stored_balance:,.2f})" if stored_balance is not None else " (first write)"
-                print(f"   💰 Cash balance synced from IBKR: ${new_balance:,.2f}{change_str}")
-            else:
-                print(f"   💰 Cash balance unchanged (${new_balance:,.2f}) — skipping write.")
+            # Detect external deposits. We use the net_trade_cash accumulated above.
+            if stored_balance is not None:
+                expected_cash = stored_balance + net_trade_cash
+                cash_diff = new_balance - expected_cash
+                
+                if cash_diff > 500.0:
+                    print(f"   💸 External deposit detected! Expected: ${expected_cash:,.2f}, Actual: ${new_balance:,.2f} (+${cash_diff:,.2f})")
+                    client.table("cash_flows").insert({
+                        "date": today_str,
+                        "amount": cash_diff,
+                        "description": "Auto-detected Deposit"
+                    }).execute()
+                elif cash_diff < -500.0:
+                    print(f"   💸 External withdrawal detected! Expected: ${expected_cash:,.2f}, Actual: ${new_balance:,.2f} (${cash_diff:,.2f})")
+                    client.table("cash_flows").insert({
+                        "date": today_str,
+                        "amount": cash_diff,
+                        "description": "Auto-detected Withdrawal"
+                    }).execute()
+
+            # Always record today's snapshot
+            client.table("account_balances").upsert(
+                {"date": today_str, "key": "ibkr_cash_balance", "value": new_balance},
+            ).execute()
+            
+            # Also record positions value and total value for TWR
+            positions_value = 0.0
+            for ticker, p in ib_map.items():
+                price = get_live_price(ticker)
+                if price <= 0:
+                    price = float(p.averageCost)
+                positions_value += int(p.position) * price
+
+            total_value = new_balance + positions_value
+
+            client.table("account_balances").upsert(
+                {"date": today_str, "key": "ibkr_positions_value", "value": round(positions_value, 2)},
+            ).execute()
+            client.table("account_balances").upsert(
+                {"date": today_str, "key": "ibkr_total_value", "value": round(total_value, 2)},
+            ).execute()
+
+            change_str = f" (was ${stored_balance:,.2f})" if stored_balance is not None else " (first write)"
+            print(f"   💰 Cash balance synced from IBKR: ${new_balance:,.2f}{change_str}")
+            print(f"   📊 Portfolio Value snapshot: Cash ${new_balance:,.2f} + Positions ${positions_value:,.2f} = Total ${total_value:,.2f}")
         else:
             print("   ⚠️  IBKR cash balance returned 0 or negative — skipping cash sync.")
     except Exception as e:
