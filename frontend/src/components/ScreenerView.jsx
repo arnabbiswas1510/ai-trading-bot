@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import useSortableTable from '../hooks/useSortableTable';
 import { Play, Sparkles, ChevronRight, X, ArrowUpRight, ShoppingCart, HelpCircle, AlertCircle } from 'lucide-react';
 import StockChart from './StockChart';
 
@@ -9,8 +10,10 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
   const largeCount = watchlist.filter(s => s.details?.company_size === 'Large').length;
   const midCount = watchlist.filter(s => s.details?.company_size === 'Mid').length;
   const smallCount = watchlist.filter(s => s.details?.company_size === 'Small').length;
-
   const [selectedStock, setSelectedStock] = useState(null);
+  const { items: sortedWatchlist, requestSort: requestSortWatchlist, getSortIcon: getSortIconWatchlist } = useSortableTable(watchlist, 'score_total', 'desc');
+  const { items: sortedRemoved, requestSort: requestSortRemoved, getSortIcon: getSortIconRemoved } = useSortableTable(removedList, 'score_total', 'desc');
+
   const [chartData, setChartData] = useState([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [sharesToBuy, setSharesToBuy] = useState(10);

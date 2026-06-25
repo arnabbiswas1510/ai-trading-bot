@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { History, TrendingUp, TrendingDown, Award, Calendar, AlertCircle, ShieldAlert, Sparkles, Activity } from 'lucide-react';
 
 export default function TradesView({ trades }) {
+  const { items: sortedTrades, requestSort, getSortIcon } = useSortableTable(trades, \'sell_date\', \'desc\');
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   };
@@ -76,16 +77,17 @@ export default function TradesView({ trades }) {
                 <table>
                   <thead>
                     <tr>
-                      <th>Ticker</th>
-                      <th>Shares</th>
-                      <th>Buy Price / Date</th>
-                      <th>Sell Price / Date</th>
-                      <th>Buy Reason</th>
-                      <th>P&L ($)</th>
-                      <th>Return (%)</th>
-                      <th>Exit Trigger</th>
+                      <th onClick={() => requestSort('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIcon('ticker')}</th>
+                      <th onClick={() => requestSort('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIcon('shares')}</th>
+                      <th onClick={() => requestSort('buy_price')} style={{ cursor: 'pointer' }}>Buy Price / Date{getSortIcon('buy_price')}</th>
+                      <th onClick={() => requestSort('sell_price')} style={{ cursor: 'pointer' }}>Sell Price / Date{getSortIcon('sell_price')}</th>
+                      <th onClick={() => requestSort('buy_source')} style={{ cursor: 'pointer' }}>Buy Reason{getSortIcon('buy_source')}</th>
+                      <th onClick={() => requestSort('profit_loss')} style={{ cursor: 'pointer' }}>P&L ($){getSortIcon('profit_loss')}</th>
+                      <th onClick={() => requestSort('percent_return')} style={{ cursor: 'pointer' }}>Return (%){getSortIcon('percent_return')}</th>
+                      <th onClick={() => requestSort('exit_reason')} style={{ cursor: 'pointer' }}>Exit Trigger{getSortIcon('exit_reason')}</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {trades.map((trade) => {
                       const buyDateStr = trade.buy_date ? trade.buy_date.split('T')[0] : 'N/A';

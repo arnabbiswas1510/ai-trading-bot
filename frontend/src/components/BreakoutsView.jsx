@@ -12,15 +12,16 @@ function BreakoutTable({ list }) {
       <table>
         <thead>
           <tr>
-            <th>Ticker</th>
-            <th>Trigger Date</th>
-            <th>Close Price</th>
-            <th>Volume Surge</th>
-            <th>50-day SMA</th>
-            <th>52-week High</th>
-            <th>Pivot Dist</th>
+            <th onClick={() => requestSort('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIcon('ticker')}</th>
+            <th onClick={() => requestSort('triggered_at')} style={{ cursor: 'pointer' }}>Trigger Date{getSortIcon('triggered_at')}</th>
+            <th onClick={() => requestSort('close_price')} style={{ cursor: 'pointer' }}>Close Price{getSortIcon('close_price')}</th>
+            <th onClick={() => requestSort('volume_surge')} style={{ cursor: 'pointer' }}>Volume Surge{getSortIcon('volume_surge')}</th>
+            <th onClick={() => requestSort('sma_50')} style={{ cursor: 'pointer' }}>50-day SMA{getSortIcon('sma_50')}</th>
+            <th onClick={() => requestSort('rolling_high_52w')} style={{ cursor: 'pointer' }}>52-week High{getSortIcon('rolling_high_52w')}</th>
+            <th onClick={() => requestSort('pivot_distance_pct')} style={{ cursor: 'pointer' }}>Pivot Dist{getSortIcon('pivot_distance_pct')}</th>
           </tr>
         </thead>
+
         <tbody>
           {list.map((b, index) => {
             const volSurge   = b.volume_surge ? parseFloat(b.volume_surge).toFixed(2) : 'N/A';

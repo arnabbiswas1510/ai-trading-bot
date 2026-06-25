@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import useSortableTable from '../hooks/useSortableTable';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -229,8 +230,13 @@ export default function DashboardView({ data, marketData, trades }) {
     total_trades: 0
   };
   
+
   const positions = data?.positions || [];
   const recentTrades = trades?.slice(0, 5) || [];
+
+  const { items: sortedPositions, requestSort: requestSortPos, getSortIcon: getSortIconPos } = useSortableTable(positions, 'ticker', 'asc');
+  const { items: sortedTrades, requestSort: requestSortTrades, getSortIcon: getSortIconTrades } = useSortableTable(recentTrades, 'sell_date', 'desc');
+
 
   const getMarketClass = () => {
     if (!marketData) return '';
@@ -350,19 +356,20 @@ export default function DashboardView({ data, marketData, trades }) {
               <thead>
                 <tr>
                   <th style={{ width: '1.5rem' }}></th>{/* chevron */}
-                  <th>Ticker</th>
-                  <th>Shares</th>
-                  <th>Buy Price</th>
-                  <th>Current Price</th>
-                  <th>Trail Stop</th>
-                  <th>Profit Target</th>
-                  <th>Profit/Loss ($)</th>
-                  <th>Buy Date</th>
+                  <th onClick={() => requestSortPos('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIconPos('ticker')}</th>
+                  <th onClick={() => requestSortPos('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIconPos('shares')}</th>
+                  <th onClick={() => requestSortPos('buy_price')} style={{ cursor: 'pointer' }}>Buy Price{getSortIconPos('buy_price')}</th>
+                  <th onClick={() => requestSortPos('current_price')} style={{ cursor: 'pointer' }}>Current Price{getSortIconPos('current_price')}</th>
+                  <th onClick={() => requestSortPos(p => (p.current_price || p.buy_price) * p.shares)} style={{ cursor: 'pointer' }}>Market Value{getSortIconPos(p => (p.current_price || p.buy_price) * p.shares)}</th>
+                  <th onClick={() => requestSortPos('trail_stop')} style={{ cursor: 'pointer' }}>Trail Stop{getSortIconPos('trail_stop')}</th>
+                  <th onClick={() => requestSortPos('profit_target')} style={{ cursor: 'pointer' }}>Profit Target{getSortIconPos('profit_target')}</th>
+                  <th onClick={() => requestSortPos('pnl')} style={{ cursor: 'pointer' }}>Profit/Loss ($){getSortIconPos('pnl')}</th>
+                  <th onClick={() => requestSortPos('buy_date')} style={{ cursor: 'pointer' }}>Buy Date{getSortIconPos('buy_date')}</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {positions.map((pos) => {
+                {sortedPositions.map((pos) => {
                   const days = daysHeld(pos.buy_date);
                   const badge = getStatusBadge(pos, days);
                   const isOpen = expandedRow === pos.ticker;
@@ -384,7 +391,8 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{pos.ticker}</td>
                         <td>{pos.shares}</td>
                         <td>{formatCurrency(pos.buy_price)}</td>
-                        <td>{formatCurrency(pos.current_price)}</td>
+                                                <td>{formatCurrency(pos.current_price)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency((pos.current_price || pos.buy_price) * pos.shares)}</td>
                         {/* Trail Stop: red, from high_water_mark */}
                         <td style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
                           {formatCurrency(trailStop)}
@@ -454,19 +462,19 @@ export default function DashboardView({ data, marketData, trades }) {
             <table>
               <thead>
                 <tr>
-                  <th>Ticker</th>
-                  <th>Shares</th>
-                  <th>Buy Price</th>
-                  <th>Sell Price</th>
-                  <th>Buy Date</th>
-                  <th>Sell Date</th>
-                  <th>P&L ($)</th>
-                  <th>Return (%)</th>
-                  <th>Exit Reason</th>
+                  <th onClick={() => requestSortTrades('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIconTrades('ticker')}</th>
+                  <th onClick={() => requestSortTrades('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIconTrades('shares')}</th>
+                  <th onClick={() => requestSortTrades('buy_price')} style={{ cursor: 'pointer' }}>Buy Price{getSortIconTrades('buy_price')}</th>
+                  <th onClick={() => requestSortTrades('sell_price')} style={{ cursor: 'pointer' }}>Sell Price{getSortIconTrades('sell_price')}</th>
+                  <th onClick={() => requestSortTrades('buy_date')} style={{ cursor: 'pointer' }}>Buy Date{getSortIconTrades('buy_date')}</th>
+                  <th onClick={() => requestSortTrades('sell_date')} style={{ cursor: 'pointer' }}>Sell Date{getSortIconTrades('sell_date')}</th>
+                  <th onClick={() => requestSortTrades('profit_loss')} style={{ cursor: 'pointer' }}>P&L ($){getSortIconTrades('profit_loss')}</th>
+                  <th onClick={() => requestSortTrades('percent_return')} style={{ cursor: 'pointer' }}>Return (%){getSortIconTrades('percent_return')}</th>
+                  <th onClick={() => requestSortTrades('exit_reason')} style={{ cursor: 'pointer' }}>Exit Reason{getSortIconTrades('exit_reason')}</th>
                 </tr>
               </thead>
               <tbody>
-                {recentTrades.map((trade) => (
+                {sortedTrades.map((trade) => (
                   <tr key={trade.id}>
                     <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{trade.ticker}</td>
                     <td>{trade.shares}</td>
