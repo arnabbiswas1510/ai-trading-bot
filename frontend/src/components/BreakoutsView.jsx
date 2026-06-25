@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import useSortableTable from '../hooks/useSortableTable';
 import { Activity, AlertCircle, Calendar, Zap, TrendingUp, History, ShieldAlert, Sparkles, TrendingDown } from 'lucide-react';
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
 function BreakoutTable({ list }) {
+  const { items: sortedList, requestSort, getSortIcon } = useSortableTable(list, 'triggered_at', 'desc');
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
@@ -23,7 +25,7 @@ function BreakoutTable({ list }) {
         </thead>
 
         <tbody>
-          {list.map((b, index) => {
+          {sortedList.map((b, index) => {
             const volSurge   = b.volume_surge ? parseFloat(b.volume_surge).toFixed(2) : 'N/A';
             const isHighSurge = b.volume_surge && parseFloat(b.volume_surge) >= 2.0;
 

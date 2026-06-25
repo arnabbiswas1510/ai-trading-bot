@@ -133,19 +133,19 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
               <table>
                 <thead>
                   <tr>
-                    <th>Ticker</th>
-                    <th style={{ textAlign: 'center' }}>Total Score</th>
+                    <th onClick={() => requestSortWatchlist('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIconWatchlist('ticker')}</th>
+                    <th onClick={() => requestSortWatchlist('total_score')} style={{ textAlign: 'center', cursor: 'pointer' }}>Total Score{getSortIconWatchlist('total_score')}</th>
                     <th style={{ textAlign: 'center' }}>CAN SLIM Health</th>
-                    <th>Price</th>
-                    <th>YoY EPS Growth (C)</th>
-                    <th>Ann CAGR (A)</th>
-                    <th>RS Rating (L)</th>
-                    <th>Inst % (I)</th>
+                    <th onClick={() => requestSortWatchlist(s => s.details?.current_price)} style={{ cursor: 'pointer' }}>Price{getSortIconWatchlist(s => s.details?.current_price)}</th>
+                    <th onClick={() => requestSortWatchlist(s => s.details?.c_growth_yoy)} style={{ cursor: 'pointer' }}>YoY EPS Growth (C){getSortIconWatchlist(s => s.details?.c_growth_yoy)}</th>
+                    <th onClick={() => requestSortWatchlist(s => s.details?.a_eps_growth_cagr)} style={{ cursor: 'pointer' }}>Ann CAGR (A){getSortIconWatchlist(s => s.details?.a_eps_growth_cagr)}</th>
+                    <th onClick={() => requestSortWatchlist(s => s.details?.l_rs_rating)} style={{ cursor: 'pointer' }}>RS Rating (L){getSortIconWatchlist(s => s.details?.l_rs_rating)}</th>
+                    <th onClick={() => requestSortWatchlist(s => s.details?.i_held_percent_inst)} style={{ cursor: 'pointer' }}>Inst % (I){getSortIconWatchlist(s => s.details?.i_held_percent_inst)}</th>
                     <th style={{ width: '40px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {watchlist.map((stock) => (
+                  {sortedWatchlist.map((stock) => (
                     <tr 
                       key={stock.ticker} 
                       onClick={() => setSelectedStock(stock)}

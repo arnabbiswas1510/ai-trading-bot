@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import useSortableTable from '../hooks/useSortableTable';
 import { History, TrendingUp, TrendingDown, Award, Calendar, AlertCircle, ShieldAlert, Sparkles, Activity } from 'lucide-react';
 
 export default function TradesView({ trades }) {
@@ -89,7 +90,7 @@ export default function TradesView({ trades }) {
                   </thead>
 
                   <tbody>
-                    {trades.map((trade) => {
+                    {sortedTrades.map((trade) => {
                       const buyDateStr = trade.buy_date ? trade.buy_date.split('T')[0] : 'N/A';
                       const sellDateStr = trade.sell_date ? trade.sell_date.split('T')[0] : 'N/A';
                       
