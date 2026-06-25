@@ -192,12 +192,13 @@ def TrailingStopOrder(action: str, totalQuantity: float,
 
 def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
                       profit_target_pct: float, stop_loss_pct: float,
-                      is_power_hold: bool = False) -> str:
+                      submit_limit_order: bool = False,
+                      high_water_mark: float = None) -> str:
     """
     Places a GTC OCA bracket for an open stock position:
       • TrailingStopOrder  — trails {stop_loss_pct}% below the high-water mark.
       • LimitOrder         — sells at +{profit_target_pct}% from buy_price.
-                             Omitted during Power Hold (position exempt from target).
+                             Omitted during the initial 21-day Power Hold qualification window.
 
     Both orders share the same OCA group so IBKR cancels one when the other fills.
     Returns the OCA group name (informational).
@@ -206,13 +207,18 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
     oca_group = f"OCA_{contract.symbol}_{int(_time.time())}"
 
     # Trailing stop — IBKR adjusts the stop level as price climbs
+    trail_stop_price = None
+    if high_water_mark:
+        trail_stop_price = round(high_water_mark * (1 - stop_loss_pct), 2)
+        
     stop = TrailingStopOrder('SELL', shares, trailingPercent=round(stop_loss_pct * 100, 2),
+                             trailStopPrice=trail_stop_price,
                              ocaGroup=oca_group, ocaType=1)
     stop.tif = 'GTC'
     ib.placeOrder(contract, stop)
     print(f"   🛡️  IBKR trailing stop placed: {stop_loss_pct*100:.0f}% trail (OCA: {oca_group})")
 
-    if not is_power_hold:
+    if submit_limit_order:
         profit_target = round(buy_price * (1 + profit_target_pct), 2)
         limit = LimitOrder('SELL', shares, profit_target,
                            ocaGroup=oca_group, ocaType=1)
@@ -623,6 +629,59 @@ def run_market_open_buys(ib: IB):
         print(f"❌ Failed to fetch portfolio positions: {e}")
         return
 
+    # ── Pre-pass: Stale Position Rotation ────────────────────────────────────────
+    # Before checking MAX_POSITIONS, if portfolio is full AND we have fresh triggers,
+    # sell the worst sideways position to free up a slot.
+    fresh_triggers = [t["ticker"] for t in triggers if t["ticker"] not in active_tickers]
+    if len(holdings) >= MAX_POSITIONS and fresh_triggers:
+        stale_candidates = []
+        for p in holdings:
+            if bool(p.get("is_power_hold")):
+                continue  # Power Hold positions are exempt
+            try:
+                bd = datetime.datetime.fromisoformat(p["buy_date"].replace('Z', '+00:00'))
+                days = (datetime.datetime.now(datetime.timezone.utc) - bd).days
+                bp = float(p["buy_price"])
+                lp = get_live_price(p["ticker"])
+                if lp <= 0:
+                    continue
+                gain = (lp / bp) - 1.0
+                if days >= STALE_HOLD_DAYS and gain < STALE_HOLD_MAX_GAIN:
+                    stale_candidates.append((gain, lp, days, p))
+            except Exception:
+                continue
+
+        if stale_candidates:
+            stale_candidates.sort(key=lambda x: (1, x[0]))
+            worst_gain, worst_price, worst_days, worst_pos = stale_candidates[0]
+            replacement = fresh_triggers[0]
+            gain_pct = worst_gain * 100.0
+            wticker = worst_pos["ticker"]
+            wshares = int(worst_pos["shares"])
+            wbuy_price = float(worst_pos["buy_price"])
+            wbuy_date = datetime.datetime.fromisoformat(worst_pos["buy_date"].replace('Z', '+00:00'))
+            wbuy_reason = worst_pos.get("buy_reason", "Unknown")
+            reason = (
+                f"Stale Rotation — held {worst_days}d, "
+                f"only {gain_pct:+.1f}% gain. "
+                f"Freeing slot for: {replacement}"
+            )
+            print(f"♻️  Stale Rotation: {wticker} ({worst_days}d, {gain_pct:+.1f}%) "
+                  f"→ slot freed for {replacement}")
+            cancel_ticker_sell_orders(ib, wticker)
+            ib.sleep(1)
+            execute_sell(ib, client, wticker, wshares, wbuy_price,
+                         wbuy_date, wbuy_reason, worst_price, reason)
+            
+            # Refresh positions
+            try:
+                portfolio_res = client.table("portfolio_positions").select("*").execute()
+                holdings = portfolio_res.data
+                active_tickers = [h["ticker"] for h in holdings]
+            except Exception as e:
+                print(f"❌ Failed to refresh portfolio positions after rotation: {e}")
+                return
+
     # Check portfolio cap.
     stock_holdings = holdings
     if len(stock_holdings) >= MAX_POSITIONS:
@@ -817,70 +876,6 @@ def monitor_portfolio_intraday(ib: IB):
     ib_map_monitor = {p.contract.symbol: p for p in ib.portfolio()}
     ib_tickers = list(ib_map_monitor.keys())
 
-    # ── Pre-pass: Stale Position Rotation ────────────────────────────────────────
-    # Before entering the per-position loop, identify ALL stale candidates and pick
-    # the single worst performer. This ensures we always rotate the weakest position
-    # rather than whichever happens to appear first in the Supabase results.
-    # Rotation only fires when: portfolio is full AND a fresh trigger exists today.
-    if len(positions) >= MAX_POSITIONS:
-        active_tickers_now = [p["ticker"] for p in positions]
-        fresh_triggers = get_fresh_triggers_today(client, active_tickers_now)
-        if fresh_triggers:
-            stale_candidates = []
-            for p in positions:
-                if bool(p.get("is_power_hold")):
-                    continue  # Power Hold positions are exempt
-                try:
-                    bd = datetime.datetime.fromisoformat(p["buy_date"].replace('Z', '+00:00'))
-                    days = (datetime.datetime.now(datetime.timezone.utc) - bd).days
-                    bp = float(p["buy_price"])
-                    lp = get_live_price(p["ticker"])
-                    if lp <= 0:
-                        continue
-                    gain = (lp / bp) - 1.0
-                    if days >= STALE_HOLD_DAYS and gain < STALE_HOLD_MAX_GAIN:
-                        stale_candidates.append((gain, lp, days, p))
-                except Exception:
-                    continue
-
-            if stale_candidates:
-                # Sort: CANSLIM daily_triggers
-                # (highest quality — sell last).
-                stale_candidates.sort(key=lambda x: (
-                    1,
-                    x[0]  # gain ascending within each group
-                ))
-                worst_gain, worst_price, worst_days, worst_pos = stale_candidates[0]
-                replacement = fresh_triggers[0]
-                gain_pct = worst_gain * 100.0
-                wticker = worst_pos["ticker"]
-                wshares = int(worst_pos["shares"])
-                wbuy_price = float(worst_pos["buy_price"])
-                wbuy_date = datetime.datetime.fromisoformat(
-                    worst_pos["buy_date"].replace('Z', '+00:00'))
-                wbuy_reason = worst_pos.get("buy_reason", "Unknown")
-                reason = (
-                    f"Stale Rotation — held {worst_days}d, "
-                    f"only {gain_pct:+.1f}% gain. "
-                    f"Freeing slot for: {replacement}"
-                )
-                print(f"♻️  Stale Rotation: {wticker} ({worst_days}d, {gain_pct:+.1f}%) "
-                      f"→ slot freed for {replacement}")
-                # Cancel IBKR OCA orders before placing explicit stale rotation sell
-                cancel_ticker_sell_orders(ib, wticker)
-                ib.sleep(1)
-                execute_sell(ib, client, wticker, wshares, wbuy_price,
-                             wbuy_date, wbuy_reason, worst_price, reason)
-                # execute_sell() already calls notifier.notify_sell() internally
-
-                # Refresh positions list after rotation sell before entering main loop
-                try:
-                    positions = client.table("portfolio_positions").select("*").execute().data
-                    ib_map_monitor = {p.contract.symbol: p for p in ib.portfolio()}
-                    ib_tickers = list(ib_map_monitor.keys())
-                except Exception:
-                    pass
-
     for pos in positions:
 
         ticker = pos["ticker"]
@@ -930,6 +925,10 @@ def monitor_portfolio_intraday(ib: IB):
         # Uses the stored oca_group to check for the EXACT order pair rather
         # than any sell order — prevents double-placement if openTrades() is
         # briefly stale right after a new buy.
+        
+        days_held = (datetime.datetime.now(datetime.timezone.utc) - buy_date).days
+        should_have_limit = days_held > POWER_HOLD_DAYS_LIMIT and not is_power_hold
+        
         _stored_oca = pos.get("oca_group")
         _open_sells = [
             t for t in ib.openTrades()
@@ -937,34 +936,38 @@ def monitor_portfolio_intraday(ib: IB):
             and t.order.action == 'SELL'
             and t.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')
         ]
+        
+        expected_orders = 2 if should_have_limit else 1
+        
         if _stored_oca:
             # Precise check: look for our specific OCA group
             _matching_oca = [t for t in _open_sells if t.order.ocaGroup == _stored_oca]
-            _needs_heal = len(_matching_oca) == 0
+            _needs_heal = len(_matching_oca) < expected_orders
         else:
             # No stored group yet (old position or Power Hold standalone trail)
-            # — fall back to: any active sell order means we're covered
-            _needs_heal = len(_open_sells) == 0
+            _needs_heal = len(_open_sells) < expected_orders
 
         if _needs_heal:
             _heal_label = f"OCA group '{_stored_oca}'" if _stored_oca else "SELL orders"
-            print(f"   🔧 {ticker}: No matching {_heal_label} in IBKR — re-placing bracket (self-healing).")
+            print(f"   🔧 {ticker}: Missing limit order or {_heal_label} in IBKR — re-placing bracket (self-healing).")
             try:
+                cancel_ticker_sell_orders(ib, ticker)
+                ib.sleep(1)
                 _heal_contract = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_heal_contract)
                 _new_oca = place_oca_bracket(ib, _heal_contract, shares, buy_price,
                                              PROFIT_TARGET_PCT, STOP_LOSS_PCT,
-                                             is_power_hold=is_power_hold)
+                                             submit_limit_order=should_have_limit,
+                                             high_water_mark=high_water_mark)
                 # Update stored group so next cycle checks the new pair
                 client.table("portfolio_positions").update(
-                    {"oca_group": _new_oca if not is_power_hold else None}
+                    {"oca_group": _new_oca}
                 ).eq("ticker", ticker).execute()
             except Exception as _heal_err:
                 print(f"   ⚠️ Self-healing OCA placement failed for {ticker}: {_heal_err}")
 
         # 1. 8-Week Power Holding Rule Check
         # If stock surges 20%+ in less than 21 days from purchase
-        days_held = (datetime.datetime.now(datetime.timezone.utc) - buy_date).days
         if not is_power_hold and current_price >= (buy_price * (1 + POWER_HOLD_GAIN_TRIGGER)) and days_held <= POWER_HOLD_DAYS_LIMIT:
             print(f"🔥 Power Hold Triggered for {ticker}! Surged {POWER_HOLD_GAIN_TRIGGER*100:.0f}% in {days_held} days.")
             tz = ZoneInfo("America/New_York")
@@ -981,18 +984,18 @@ def monitor_portfolio_intraday(ib: IB):
                     ticker=ticker, gain_pct=gain_pct, days_held=days_held,
                     expiry_date=expiry_date, stop_loss=trailing_stop
                 )
-                # Cancel OCA bracket (trailing stop + limit sell) and re-place
-                # only the trailing stop — power hold exempts from profit target.
+                # Cancel OCA bracket and re-place only the trailing stop 
+                # using the high_water_mark to preserve the trail.
                 cancel_ticker_sell_orders(ib, ticker)
                 ib.sleep(1)
                 _ph_contract = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_ph_contract)
                 _ph_stop = TrailingStopOrder('SELL', shares,
-                                             trailingPercent=STOP_LOSS_PCT * 100)
+                                             trailingPercent=STOP_LOSS_PCT * 100,
+                                             trailStopPrice=round(high_water_mark * (1 - STOP_LOSS_PCT), 2))
                 _ph_stop.tif = 'GTC'
                 ib.placeOrder(_ph_contract, _ph_stop)
                 # Clear oca_group: standalone trailing stop has no OCA pair.
-                # Self-healing will fall back to "any active SELL order" check.
                 client.table("portfolio_positions").update(
                     {"oca_group": None}
                 ).eq("ticker", ticker).execute()
@@ -1021,7 +1024,9 @@ def monitor_portfolio_intraday(ib: IB):
                     _exp_contract = Stock(ticker, 'SMART', 'USD')
                     ib.qualifyContracts(_exp_contract)
                     _exp_oca = place_oca_bracket(ib, _exp_contract, shares, buy_price,
-                                                 PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                                                 PROFIT_TARGET_PCT, STOP_LOSS_PCT,
+                                                 submit_limit_order=True,
+                                                 high_water_mark=high_water_mark)
                     # Record the new OCA group so self-healing tracks the right pair.
                     client.table("portfolio_positions").update(
                         {"oca_group": _exp_oca}
@@ -1176,16 +1181,14 @@ def main_loop():
                     time.sleep(900)
                     continue
 
-                # 1. Market Open Buy Window: 9:30 AM – 10:30 AM, runs ONCE per day.
-                # Widened from 9:45 to 10:30 so the agent does not miss the window
-                # when the pre-market hourly sleep crosses 9:30 AM (e.g. sleep starts
-                # at 9:02 AM and wakes at 10:02 AM — the original 9:30-9:45 window
-                # would never be reached).
-                is_buy_window = (
+                is_market_open = (
                     (now.hour == 9 and now.minute >= 30)
-                    or (now.hour == 10 and now.minute <= 30)
+                    or (10 <= now.hour < 16)
                 )
-                if is_buy_window and _buy_ran_today != today_str:
+
+                # 1. Daily Buy Check (No Window Restriction)
+                # Ensure the buy check happens exactly once per day during market hours.
+                if is_market_open and _buy_ran_today != today_str:
                     _buy_ran_today = today_str
                     reconcile_with_ibkr(ib)   # Sync before placing any new buys
                     run_market_open_buys(ib)
@@ -1193,7 +1196,7 @@ def main_loop():
                     continue
 
                 # 2. Intraday monitoring during market hours
-                if (now.hour == 9 and now.minute > 45) or (10 <= now.hour < 16):
+                if is_market_open:
                     reconcile_with_ibkr(ib)   # Sync every 15 min — catches manual TWS trades
                     monitor_portfolio_intraday(ib)
                     time.sleep(900)
