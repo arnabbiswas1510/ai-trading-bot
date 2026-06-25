@@ -52,10 +52,6 @@ EXIT_MA_BUFFER_PCT       = float(os.getenv("EXIT_MA_BUFFER_PCT", 0.01))
 EXIT_MA_EOD_ONLY         = os.getenv("EXIT_MA_EOD_ONLY", "true").lower() == "true"
 
 
-# ── ETF Cash Parking / CANSLIM ‘M’ (Market Direction) filter ──────────────────
-ETF_PARKING_ENABLED             = os.getenv("ETF_PARKING_ENABLED", "true").lower() == "true"
-ETF_PARKING_TICKER              = os.getenv("ETF_PARKING_TICKER", "QQQ")
-ETF_PARKING_MAX_SLOTS           = int(os.getenv("ETF_PARKING_MAX_SLOTS", 4))
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
 MARKET_DIRECTION_TICKER         = os.getenv("MARKET_DIRECTION_TICKER", "SPY")
@@ -563,27 +559,11 @@ def reconcile_with_ibkr(ib: IB):
         print(f"   ❌ Could not sync cash balance from IBKR: {e}")
 
 
-def get_etf_positions(client: Client) -> list:
-    """Returns portfolio_positions rows tagged as ETF parking (buy_source='etf_parking')."""
-    try:
-        res = client.table("portfolio_positions").select("*").eq("buy_source", "etf_parking").execute()
-        return res.data or []
-    except Exception:
-        return []
-
-def get_stock_positions(client: Client) -> list:
-    """Returns portfolio_positions rows that are real stock positions (not ETF parking)."""
-    try:
-        res = client.table("portfolio_positions").select("*").neq("buy_source", "etf_parking").execute()
-        return res.data or []
-    except Exception:
-        return []
-
 def is_market_bullish() -> bool:
     """
     CANSLIM 'M' (Market Direction) filter.
     Returns True  if MARKET_DIRECTION_TICKER (SPY) is above its SMA{window} — bull market.
-    Returns False if below — bear market: idle slots hold pure cash, ETF parking liquidated.
+    Returns False if below — bear market: idle slots hold pure cash.
     Fails open (returns True) to avoid unintended cash locks if the API is unavailable.
     """
     if not MARKET_DIRECTION_FILTER_ENABLED:
@@ -612,114 +592,6 @@ def is_market_bullish() -> bool:
     except Exception as e:
         print(f"⚠️ Market direction check failed: {e}. Defaulting to BULL.")
         return True
-
-def liquidate_etf_positions(ib: IB, client: Client, etf_positions: list, reason: str) -> int:
-    """Sells ETF parking positions and archives them to trade_history via execute_sell. Returns count of successfully liquidated positions."""
-    success_count = 0
-    for pos in etf_positions:
-        ticker    = pos["ticker"]
-        shares    = int(pos["shares"])
-        buy_price = float(pos["buy_price"])
-        try:
-            buy_date = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
-        except Exception:
-            buy_date = datetime.datetime.now(datetime.timezone.utc)
-        current_price = get_live_price(ticker)
-        if current_price <= 0:
-            current_price = buy_price
-        success = execute_sell(ib, client, ticker, shares, buy_price, buy_date,
-                     pos.get("buy_reason", "ETF Parking"), current_price, reason)
-        if success:
-            success_count += 1
-    return success_count
-
-def run_etf_parking(ib: IB, client: Client) -> None:
-    """
-    Parks idle portfolio slots in ETF_PARKING_TICKER (QQQ) during confirmed bull markets.
-    Bear market (SPY < SMA200): liquidates any existing ETF positions and holds pure cash.
-    Called after every buy/sell cycle to keep idle cash appropriately deployed.
-    """
-    if not ETF_PARKING_ENABLED:
-        return
-
-    bullish       = is_market_bullish()
-    etf_positions = get_etf_positions(client)
-
-    # ── Bear market: liquidate all ETF positions, hold cash ───────────────────
-    if not bullish:
-        if etf_positions:
-            print(f"🐻 Bear market confirmed. Liquidating {len(etf_positions)} ETF position(s) — holding cash.")
-            liquidate_etf_positions(ib, client, etf_positions,
-                f"Bear market: {MARKET_DIRECTION_TICKER} below SMA{MARKET_DIRECTION_SMA_WINDOW}. Holding cash.")
-        else:
-            print("🐻 Bear market. Idle slots held as pure cash.")
-        return
-
-    # ── Bull market: park idle slots in ETF ──────────────────────────────────
-    stock_count   = len(get_stock_positions(client))
-    etf_count     = len(etf_positions)
-    empty_slots   = MAX_POSITIONS - stock_count - etf_count
-    slots_to_park = min(empty_slots, ETF_PARKING_MAX_SLOTS)
-
-    if slots_to_park <= 0:
-        return
-    if etf_count > 0:
-        print(f"   ℹ️ {ETF_PARKING_TICKER} already parked ({etf_positions[0]['shares']} shares). Skipping re-park.")
-        return
-
-    available_cash = get_available_cash(ib)
-    etf_price      = get_live_price(ETF_PARKING_TICKER)
-    if etf_price <= 0 or available_cash < MIN_POSITION_SIZE:
-        print(f"   ⚠️ Cannot park in {ETF_PARKING_TICKER}: price=${etf_price:.2f}, cash=${available_cash:,.0f}.")
-        return
-
-    shares = int(available_cash / etf_price)
-    if shares <= 0:
-        return
-
-    print(f"🅴 Parking {slots_to_park} idle slot(s) → {shares} shares of {ETF_PARKING_TICKER} @ ~${etf_price:.2f}...")
-    try:
-        contract = Stock(ETF_PARKING_TICKER, "SMART", "USD")
-        ib.qualifyContracts(contract)
-        order = MarketOrder("BUY", shares)
-        ib.placeOrder(contract, order)
-        ib.sleep(5)
-
-        ib_map = {p.contract.symbol: p for p in ib.portfolio()}
-        if ETF_PARKING_TICKER not in ib_map:
-            ib.sleep(3)
-            ib_map = {p.contract.symbol: p for p in ib.portfolio()}
-
-        if ETF_PARKING_TICKER in ib_map:
-            ib_pos        = ib_map[ETF_PARKING_TICKER]
-            fill_price    = round(ib_pos.averageCost, 2)
-            actual_shares = int(ib_pos.position)
-            client.table("portfolio_positions").insert({
-                "ticker":          ETF_PARKING_TICKER,
-                "shares":          actual_shares,
-                "buy_price":       fill_price,
-                "high_water_mark": fill_price,
-                "stop_loss":       round(fill_price * 0.85, 2),   # informational only — not enforced
-                "profit_target":   round(fill_price * 1.25, 2),   # informational only — not enforced
-                "buy_reason":      (f"ETF Parking: {slots_to_park} idle slot(s) — "
-                                    f"bull market ({MARKET_DIRECTION_TICKER} > "
-                                    f"SMA{MARKET_DIRECTION_SMA_WINDOW})"),
-                "buy_source":      "etf_parking",
-                "is_power_hold":   False,
-            }).execute()
-            print(f"   ✅ Parked {actual_shares} shares of {ETF_PARKING_TICKER} @ ${fill_price:.2f}")
-            notifier.notify_buy(
-                ticker=ETF_PARKING_TICKER, shares=actual_shares, fill_price=fill_price,
-                stop_loss=round(fill_price * 0.85, 2),
-                profit_target=round(fill_price * 1.25, 2),
-                volume_surge=0.0, pivot_dist_pct=0.0,
-                slot_used=stock_count + 1, max_slots=MAX_POSITIONS
-            )
-        else:
-            print(f"   ⚠️ {ETF_PARKING_TICKER} not found in IBKR portfolio after order. Reconcile will sync.")
-    except Exception as e:
-        print(f"   ❌ ETF parking buy failed: {e}")
-
 
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
@@ -751,30 +623,11 @@ def run_market_open_buys(ib: IB):
         print(f"❌ Failed to fetch portfolio positions: {e}")
         return
 
-    # Check portfolio cap — only count stock positions (ETF parking positions
-    # are liquid and will be sold pre-flight to free slots for new triggers).
-    stock_holdings = [h for h in holdings if h.get("buy_source") != "etf_parking"]
+    # Check portfolio cap.
+    stock_holdings = holdings
     if len(stock_holdings) >= MAX_POSITIONS:
         print(f"❌ Portfolio is fully invested with {len(stock_holdings)} stock positions. Standing down.")
-        # Still run ETF parking check in case market direction changed
-        if ETF_PARKING_ENABLED:
-            run_etf_parking(ib, client)
         return
-
-    # ── Pre-flight: sell ETF parking positions to free cash for incoming triggers ──
-    if ETF_PARKING_ENABLED and triggers:
-        new_trigger_count = sum(1 for t in triggers if t["ticker"] not in active_tickers)
-        etf_to_sell = get_etf_positions(client)
-        if etf_to_sell and new_trigger_count > 0:
-            sell_count = min(len(etf_to_sell), new_trigger_count)
-            print(f"✈️  Pre-flight: liquidating {sell_count} ETF parking position(s) for {new_trigger_count} incoming trigger(s)...")
-            liquidated = liquidate_etf_positions(ib, client, etf_to_sell[:sell_count],
-                f"Pre-flight liquidation: freeing slot for {new_trigger_count} new trigger(s)")
-            if liquidated < sell_count:
-                print(f"⚠️  Only liquidated {liquidated}/{sell_count} ETF(s). Buy capacity will be restricted.")
-            # Refresh holdings after ETF sell
-            holdings = client.table("portfolio_positions").select("*").execute().data or []
-            active_tickers = [h["ticker"] for h in holdings]
 
     for trigger in triggers:
         ticker = trigger["ticker"]
@@ -795,8 +648,7 @@ def run_market_open_buys(ib: IB):
             print(f"   ⚠️ Cooling-off check failed for {ticker}: {cool_err} — allowing buy.")
             
         # Size the position as an equal share of remaining capital across unfilled slots
-        # Use refreshed holdings (not portfolio_res) since pre-flight ETF sell may have run
-        stock_held_count = len([h for h in holdings if h.get("buy_source") != "etf_parking"])
+        stock_held_count = len(holdings)
         remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
         available_cash = get_available_cash(ib)
         print(f"💰 Available Cash Balance in IBKR: ${available_cash:,.2f}")
@@ -806,7 +658,7 @@ def run_market_open_buys(ib: IB):
         # Double check active holdings size again (in case we bought one earlier in this loop)
         portfolio_res = client.table("portfolio_positions").select("*").execute()
         holdings = portfolio_res.data or []
-        stock_held_count_loop = len([h for h in holdings if h.get("buy_source") != "etf_parking"])
+        stock_held_count_loop = len(holdings)
         if stock_held_count_loop >= MAX_POSITIONS:
             print(f"🚫 Portfolio capacity ({MAX_POSITIONS} stocks) reached during loop. Skipping further buys.")
             break
@@ -922,9 +774,7 @@ def run_market_open_buys(ib: IB):
 
 
 
-    # ── Park remaining idle slots in ETF (bull market) or hold cash (bear market) ──
-    if ETF_PARKING_ENABLED:
-        run_etf_parking(ib, client)
+
 
 def get_fresh_triggers_today(client: Client, active_tickers: list) -> list:
     """
@@ -948,15 +798,7 @@ def monitor_portfolio_intraday(ib: IB):
     print("🔍 Running Intraday Portfolio Monitoring...")
     client = get_supabase_client()
 
-    # ── Bear market check: liquidate ETF parking if SPY < SMA200 ─────────────
-    # Runs once per 15-min cycle. is_market_bullish() is fast (~50ms, one FMP call).
-    if ETF_PARKING_ENABLED:
-        if not is_market_bullish():
-            etf_positions = get_etf_positions(client)
-            if etf_positions:
-                print(f"🐻 Bear market in monitoring cycle. Liquidating {len(etf_positions)} ETF position(s).")
-                liquidate_etf_positions(ib, client, etf_positions,
-                    f"Bear market: {MARKET_DIRECTION_TICKER} below SMA{MARKET_DIRECTION_SMA_WINDOW}. Holding cash.")
+
 
     try:
         portfolio_res = client.table("portfolio_positions").select("*").execute()
@@ -988,8 +830,6 @@ def monitor_portfolio_intraday(ib: IB):
             for p in positions:
                 if bool(p.get("is_power_hold")):
                     continue  # Power Hold positions are exempt
-                if p.get("buy_source") == "etf_parking":
-                    continue  # ETF parking handled separately by run_etf_parking()
                 try:
                     bd = datetime.datetime.fromisoformat(p["buy_date"].replace('Z', '+00:00'))
                     days = (datetime.datetime.now(datetime.timezone.utc) - bd).days
@@ -1004,10 +844,9 @@ def monitor_portfolio_intraday(ib: IB):
                     continue
 
             if stale_candidates:
-                # Sort: etf_parking first (liquid cash), then CANSLIM daily_triggers
+                # Sort: CANSLIM daily_triggers
                 # (highest quality — sell last).
                 stale_candidates.sort(key=lambda x: (
-                    0 if x[3].get("buy_source") == "etf_parking" else
                     1,
                     x[0]  # gain ascending within each group
                 ))
@@ -1033,9 +872,7 @@ def monitor_portfolio_intraday(ib: IB):
                 execute_sell(ib, client, wticker, wshares, wbuy_price,
                              wbuy_date, wbuy_reason, worst_price, reason)
                 # execute_sell() already calls notifier.notify_sell() internally
-                # Re-park the freed slot in ETF (bull market) or hold cash (bear market)
-                if ETF_PARKING_ENABLED:
-                    run_etf_parking(ib, client)
+
                 # Refresh positions list after rotation sell before entering main loop
                 try:
                     positions = client.table("portfolio_positions").select("*").execute().data
@@ -1048,10 +885,7 @@ def monitor_portfolio_intraday(ib: IB):
 
         ticker = pos["ticker"]
 
-        # Skip ETF parking positions — they have their own buy/sell lifecycle
-        # managed by run_etf_parking() and liquidate_etf_positions().
-        if pos.get("buy_source") == "etf_parking":
-            continue
+
 
         shares = int(pos["shares"])
         buy_price = float(pos["buy_price"])
@@ -1223,8 +1057,7 @@ def monitor_portfolio_intraday(ib: IB):
                         )
                         print(f"🚨 {ticker} breached Moving Average exit! {reason}")
                         execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
-                        if ETF_PARKING_ENABLED:
-                            run_etf_parking(ib, client)
+
                         continue
 
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float, buy_date, buy_reason: str, current_price: float, reason: str) -> bool:
@@ -1236,7 +1069,7 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
     """
     try:
         # Cancel any open OCA orders (trailing stop + limit) before placing
-        # explicit sell (stale rotation, ETF liquidation) to avoid duplicate fills.
+        # explicit sell (stale rotation) to avoid duplicate fills.
         cancel_ticker_sell_orders(ib, ticker)
         ib.sleep(1)
 

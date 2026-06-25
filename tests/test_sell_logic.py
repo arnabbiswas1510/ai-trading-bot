@@ -57,7 +57,6 @@ def _run_monitor(ib, supabase_mock, live_prices: dict | None = None,
     with patch("execution_agent.supabase", supabase_mock), \
          patch("execution_agent.get_live_price", side_effect=_price), \
          patch("execution_agent.is_market_bullish", return_value=is_bullish), \
-         patch("execution_agent.run_etf_parking"), \
          patch("execution_agent.place_oca_bracket") as mock_oca, \
          patch("execution_agent.cancel_ticker_sell_orders"), \
          patch("execution_agent.execute_sell") as mock_sell:
@@ -152,7 +151,6 @@ class TestHighWaterMark:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=115.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell"):
             execution_agent.monitor_portfolio_intraday(ib)
 
@@ -174,7 +172,6 @@ class TestHighWaterMark:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=115.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell"):
             execution_agent.monitor_portfolio_intraday(ib)
 
@@ -234,7 +231,6 @@ class TestPowerHold:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=121.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.place_oca_bracket"), \
              patch("execution_agent.cancel_ticker_sell_orders"), \
              patch("execution_agent.execute_sell"):
@@ -258,7 +254,6 @@ class TestPowerHold:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=121.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.place_oca_bracket"), \
              patch("execution_agent.cancel_ticker_sell_orders"), \
              patch("execution_agent.execute_sell"):
@@ -281,7 +276,6 @@ class TestPowerHold:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=115.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell"):
             execution_agent.monitor_portfolio_intraday(ib)
 
@@ -304,7 +298,6 @@ class TestPowerHold:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=110.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell"):
             execution_agent.monitor_portfolio_intraday(ib)
 
@@ -327,7 +320,6 @@ class TestPowerHold:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=110.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell"):
             execution_agent.monitor_portfolio_intraday(ib)
 
@@ -351,7 +343,6 @@ class TestPowerHold:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=121.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.place_oca_bracket"), \
              patch("execution_agent.cancel_ticker_sell_orders") as mock_cancel, \
              patch("execution_agent.execute_sell"):
@@ -393,7 +384,6 @@ class TestPowerHold:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=110.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.place_oca_bracket") as mock_oca, \
              patch("execution_agent.cancel_ticker_sell_orders"), \
              patch("execution_agent.execute_sell"):
@@ -458,7 +448,6 @@ class TestStaleRotation:
                  "AAPL": 100.0, "MSFT": 100.0, "NVDA": 100.0, "AMZN": 100.0
              }.get(t, 100.0)), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.get_fresh_triggers_today", return_value=["TSLA"]):
             execution_agent.monitor_portfolio_intraday(ib)
@@ -480,7 +469,6 @@ class TestStaleRotation:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.get_fresh_triggers_today", return_value=["TSLA"]):
             execution_agent.monitor_portfolio_intraday(ib)
@@ -496,7 +484,6 @@ class TestStaleRotation:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.get_fresh_triggers_today", return_value=[]):
             execution_agent.monitor_portfolio_intraday(ib)
@@ -528,7 +515,6 @@ class TestStaleRotation:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", side_effect=lambda t: prices.get(t, 100.0)), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell", side_effect=capture_sell), \
              patch("execution_agent.get_fresh_triggers_today", return_value=["NEWCOMER"]):
             execution_agent.monitor_portfolio_intraday(ib)
@@ -598,7 +584,6 @@ class TestMovingAverageExits:
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
              patch("execution_agent.get_live_price", return_value=98.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
@@ -637,7 +622,6 @@ class TestMovingAverageExits:
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
              patch("execution_agent.get_live_price", return_value=99.5), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
@@ -671,7 +655,6 @@ class TestMovingAverageExits:
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
              patch("execution_agent.get_live_price", return_value=95.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
@@ -704,7 +687,6 @@ class TestMovingAverageExits:
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=[]), \
              patch("execution_agent.get_live_price", return_value=95.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.datetime") as mock_datetime:

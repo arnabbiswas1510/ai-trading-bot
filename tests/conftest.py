@@ -129,8 +129,7 @@ def make_supabase_mock(
     portfolio = portfolio or []
     trade_history_recent = trade_history_recent or []
 
-    etf_positions = [p for p in portfolio if p.get("buy_source") == "etf_parking"]
-    stock_positions = [p for p in portfolio if p.get("buy_source") != "etf_parking"]
+    stock_positions = portfolio
 
     # Cache: same table name → same mock object. Required for post-call assertions.
     _cache: dict[str, MagicMock] = {}
