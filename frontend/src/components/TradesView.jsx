@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { History, TrendingUp, TrendingDown, Award, Calendar, AlertCircle, ShieldAlert, Sparkles, Activity } from 'lucide-react';
 
 export default function TradesView({ trades }) {
-  const { items: sortedTrades, requestSort, getSortIcon } = useSortableTable(trades, \'sell_date\', \'desc\');
+  const { items: sortedTrades, requestSort, getSortIcon } = useSortableTable(trades, 'sell_date', 'desc');
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   };
