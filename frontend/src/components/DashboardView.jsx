@@ -112,7 +112,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             <div style={valueStyle('var(--text-primary)')}>{days} days held</div>
             <div style={noteStyle}>
               Bought {formatDate(pos.buy_date)}<br />
-              Source: {pos.buy_source === 'momentum_triggers' ? 'Momentum' : 'CANSLIM Breakout'}<br />
+              Source: CANSLIM Breakout<br />
               Entry: {formatCurrency(pos.buy_price)} · High: {formatCurrency(pos.high_water_mark || pos.buy_price)}
             </div>
           </div>

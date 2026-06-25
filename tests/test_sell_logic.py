@@ -503,40 +503,7 @@ class TestStaleRotation:
 
         mock_sell.assert_not_called()
 
-    def test_stale_sort_sells_momentum_before_canslim(self):
-        """
-        Stale sort: etf_parking(0) < momentum_triggers(1) < daily_triggers(2).
-        When both a momentum and a CANSLIM position are stale, momentum is sold first.
-        """
-        portfolio = [
-            make_position("STALE_CANSLIM", buy_source="daily_triggers", days_ago=20, buy_price=100.0),
-            make_position("STALE_MOM", buy_source="momentum_triggers", days_ago=20, buy_price=100.0),
-            make_position("FRESH1", days_ago=2),
-            make_position("FRESH2", days_ago=2),
-        ]
-        supabase = make_supabase_mock(portfolio=portfolio)
-        ib = make_ib_mock(symbols=["STALE_CANSLIM", "STALE_MOM", "FRESH1", "FRESH2"])
 
-        sold_tickers = []
-
-        def capture_sell(ib_, client, ticker, *args, **kwargs):
-            sold_tickers.append(ticker)
-
-        prices = {"STALE_CANSLIM": 100.0, "STALE_MOM": 100.0, "FRESH1": 100.0, "FRESH2": 100.0}
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", side_effect=lambda t: prices.get(t, 100.0)), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.run_etf_parking"), \
-             patch("execution_agent.execute_sell", side_effect=capture_sell), \
-             patch("execution_agent.get_fresh_triggers_today", return_value=["NEWCOMER"]):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        # The first (and only) stale rotation sell should be the momentum position
-        if sold_tickers:
-            assert sold_tickers[0] == "STALE_MOM", (
-                f"Expected STALE_MOM to be sold first (lower quality), got {sold_tickers[0]}"
-            )
 
     def test_stale_rotation_exempts_power_hold_positions(self):
         """Power Hold positions must NOT be stale-rotated."""

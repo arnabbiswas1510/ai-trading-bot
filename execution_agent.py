@@ -51,11 +51,6 @@ EXIT_MA_WINDOW           = int(os.getenv("EXIT_MA_WINDOW", 21))
 EXIT_MA_BUFFER_PCT       = float(os.getenv("EXIT_MA_BUFFER_PCT", 0.01))
 EXIT_MA_EOD_ONLY         = os.getenv("EXIT_MA_EOD_ONLY", "true").lower() == "true"
 
-# ── Momentum (secondary) screener thresholds ──────────────────────────────────
-MOMENTUM_MIN_Q_EPS_GROWTH  = float(os.getenv("MOMENTUM_MIN_Q_EPS_GROWTH", 0.10))
-MOMENTUM_MIN_INST_HOLDERS  = int(os.getenv("MOMENTUM_MIN_INST_HOLDERS", 3))
-MOMENTUM_VOLUME_SURGE_MIN  = float(os.getenv("MOMENTUM_VOLUME_SURGE_MIN", 1.20))
-MOMENTUM_PIVOT_PROXIMITY   = float(os.getenv("MOMENTUM_PIVOT_PROXIMITY", 0.95))
 
 # ── ETF Cash Parking / CANSLIM ‘M’ (Market Direction) filter ──────────────────
 ETF_PARKING_ENABLED             = os.getenv("ETF_PARKING_ENABLED", "true").lower() == "true"
@@ -746,7 +741,6 @@ def run_market_open_buys(ib: IB):
 
     if not triggers:
         print(f"😴 No primary breakouts in the last {TRIGGER_LOOKBACK_DAYS} days.")
-        # Don't return — fall through to momentum_triggers cascade below
         
     # Get current holdings in portfolio_positions
     try:
@@ -926,156 +920,7 @@ def run_market_open_buys(ib: IB):
             print(f"❌ Failed to execute order for {ticker}: {order_err}")
             notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
 
-    # ── Momentum cascade: fill remaining slots from momentum_triggers ──────────
-    # Only runs if daily_triggers didn't fill all STOCK slots.
-    # momentum_triggers positions are tagged buy_source='momentum_triggers'.
-    portfolio_res = client.table("portfolio_positions").select("*").execute()
-    stock_count = sum(1 for p in portfolio_res.data if p.get("buy_source") != "etf_parking")
-    if stock_count >= MAX_POSITIONS:
-        if ETF_PARKING_ENABLED:
-            run_etf_parking(ib, client)
-        return  # fully invested with real stocks
 
-    print(f"\n⚡ Cascading to momentum_triggers ({MAX_POSITIONS - stock_count} slot(s) remaining)...")
-    try:
-        momentum_res = client.table("momentum_triggers").select("*") \
-                             .gte("triggered_at", recent_date).execute()
-        momentum_triggers_list = momentum_res.data or []
-    except Exception as e:
-        print(f"❌ Failed to fetch momentum_triggers: {e}")
-        return
-
-    if not momentum_triggers_list:
-        print(f"😴 No momentum triggers in the last {TRIGGER_LOOKBACK_DAYS} days either. Cash stays idle.")
-        # ── Park remaining idle slots in ETF (bull market) or hold cash (bear market) ──
-        if ETF_PARKING_ENABLED:
-            run_etf_parking(ib, client)
-        return
-
-    # ── Momentum pre-flight: sell ETF parking to free cash for incoming triggers ──
-    if ETF_PARKING_ENABLED:
-        m_active = [p["ticker"] for p in portfolio_res.data]
-        new_m_count = sum(1 for t in momentum_triggers_list if t["ticker"] not in m_active)
-        etf_to_sell = get_etf_positions(client)
-        if etf_to_sell and new_m_count > 0:
-            sell_count = min(len(etf_to_sell), new_m_count)
-            print(f"✈️  Momentum pre-flight: liquidating {sell_count} ETF position(s) for {new_m_count} momentum trigger(s)...")
-            liquidated = liquidate_etf_positions(ib, client, etf_to_sell[:sell_count],
-                f"Pre-flight: freeing slot for {new_m_count} momentum trigger(s)")
-            if liquidated < sell_count:
-                print(f"⚠️  Only liquidated {liquidated}/{sell_count} ETF(s). Buy capacity will be restricted.")
-            portfolio_res = client.table("portfolio_positions").select("*").execute()
-
-    for trigger in momentum_triggers_list:
-        ticker = trigger["ticker"]
-
-        # Refresh portfolio state each iteration
-        portfolio_res = client.table("portfolio_positions").select("*").execute()
-        if len(portfolio_res.data or []) >= MAX_POSITIONS:
-            break
-        if ticker in active_tickers:
-            continue
-
-        # Cooling-off check
-        try:
-            cooling_cutoff = (today_ny - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
-            sell_check = client.table("trade_history").select("ticker") \
-                               .eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
-            if sell_check.data:
-                print(f"   ⏳ {ticker} [momentum] in cooling-off. Skipping.")
-                continue
-        except Exception:
-            pass
-
-        available_cash = get_available_cash(ib)
-        if available_cash < MIN_POSITION_SIZE:
-            print(f"🚫 Insufficient cash for momentum buy of {ticker}. Stopping cascade.")
-            break
-
-        remaining_slots = max(1, MAX_POSITIONS - len(portfolio_res.data or []))
-        position_size   = available_cash / remaining_slots
-
-        current_price = get_live_price(ticker)
-        if current_price <= 0:
-            current_price = float(trigger["close_price"])
-
-        # Pivot extension gate applies equally to momentum picks
-        pivot_price   = float(trigger["close_price"])
-        extension_pct = (current_price - pivot_price) / pivot_price if pivot_price > 0 else 0
-        if extension_pct > MAX_PIVOT_EXTENSION:
-            print(f"   ⛔ {ticker} [momentum] {extension_pct*100:.1f}% above pivot — extended. Skip.")
-            continue
-        print(f"   ✅ {ticker} [momentum] within buy zone: {extension_pct*100:.1f}% above pivot")
-
-        shares = int(position_size / current_price)
-        if shares <= 0:
-            continue
-
-        try:
-            contract = Stock(ticker, "SMART", "USD")
-            ib.qualifyContracts(contract)
-            order    = MarketOrder("BUY", shares)
-            ib.placeOrder(contract, order)
-            ib.sleep(5)
-
-            # Verify via ib.portfolio() to avoid ghost positions from Error 10349
-            ib_map = {p.contract.symbol: p for p in ib.portfolio()}
-            if ticker not in ib_map:
-                ib.sleep(3)
-                ib_map = {p.contract.symbol: p for p in ib.portfolio()}
-
-            if ticker not in ib_map:
-                print(f"   ⚠️ {ticker} [momentum] not found in IBKR portfolio after 8s. Skipping insert.")
-                notifier.notify_buy_failure(ticker=ticker, shares=shares,
-                    error="Not confirmed in IBKR portfolio after 8s")
-                continue
-
-            ib_pos        = ib_map[ticker]
-            fill_price    = round(ib_pos.averageCost, 2)
-            actual_shares = int(ib_pos.position)
-            stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)
-            profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
-
-            client.table("portfolio_positions").insert({
-                "ticker":          ticker,
-                "shares":          actual_shares,
-                "buy_price":       fill_price,
-                "buy_reason":      f"Momentum Breakout [momentum_triggers]: Vol Surge {trigger['volume_surge']}x",
-                "buy_source":      "momentum_triggers",
-                "stop_loss":       stop_loss,
-                "profit_target":   profit_target,
-                "is_power_hold":   False,
-                "high_water_mark": fill_price,
-            }).execute()
-
-            # Place IBKR GTC OCA bracket: trailing stop + limit sell at profit target.
-            # Store OCA group so self-healing can verify the exact order pair.
-            try:
-                _oca_group = place_oca_bracket(ib, contract, actual_shares, fill_price,
-                                               PROFIT_TARGET_PCT, STOP_LOSS_PCT)
-                client.table("portfolio_positions").update(
-                    {"oca_group": _oca_group}
-                ).eq("ticker", ticker).execute()
-            except Exception as _oca_err:
-                print(f"   ⚠️ OCA bracket placement failed for {ticker}: {_oca_err} "
-                      f"— self-healing will re-place on next monitor cycle.")
-
-            print(f"✅ [Momentum] Bought {actual_shares} shares of {ticker} @ ${fill_price:.2f}")
-
-            portfolio_res_new = client.table("portfolio_positions").select("ticker").execute()
-            slot_used = len(portfolio_res_new.data) if portfolio_res_new.data else 1
-            notifier.notify_buy(
-                ticker=ticker, shares=shares, fill_price=fill_price,
-                stop_loss=stop_loss, profit_target=profit_target,
-                volume_surge=float(trigger.get("volume_surge", 0)),
-                pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
-                slot_used=slot_used, max_slots=MAX_POSITIONS
-            )
-            active_tickers.append(ticker)
-
-        except Exception as order_err:
-            print(f"❌ Momentum order failed for {ticker}: {order_err}")
-            notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
 
     # ── Park remaining idle slots in ETF (bull market) or hold cash (bear market) ──
     if ETF_PARKING_ENABLED:
@@ -1159,12 +1004,11 @@ def monitor_portfolio_intraday(ib: IB):
                     continue
 
             if stale_candidates:
-                # Sort: etf_parking first (liquid cash), then momentum_triggers,
-                # then CANSLIM daily_triggers (highest quality — sell last).
+                # Sort: etf_parking first (liquid cash), then CANSLIM daily_triggers
+                # (highest quality — sell last).
                 stale_candidates.sort(key=lambda x: (
                     0 if x[3].get("buy_source") == "etf_parking" else
-                    1 if x[3].get("buy_source") == "momentum_triggers" else
-                    2,
+                    1,
                     x[0]  # gain ascending within each group
                 ))
                 worst_gain, worst_price, worst_days, worst_pos = stale_candidates[0]

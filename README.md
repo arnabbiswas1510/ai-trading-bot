@@ -25,9 +25,7 @@ Idle portfolio slots are parked in QQQ during bull markets and held as cash duri
 │  EPS growth filter     │        │  buys() — 5-step cascade:           │
 │  Composite scoring     │        │   ① Sell ETF slots for triggers     │
 │  Top 90 → Supabase     │        │   ② Buy daily_triggers (CANSLIM)   │
-│  watchlist table       │        │   ③ Sell ETF for momentum triggers  │
-└────────────┬───────────┘        │   ④ Buy momentum_triggers           │
-             │                    │   ⑤ Park idle slots → QQQ / cash   │
+│  watchlist table       │        └────────────┬───────────┘                     │                    │   ③ Park idle slots → QQQ / cash   │
              ▼                    │                                     │
 ┌────────────────────────┐        │  9:45 AM–4 PM → monitor_portfolio_ │
 │  TECHNICAL SCREENER    │        │  intraday() — 4-phase sell logic    │
@@ -40,17 +38,9 @@ Idle portfolio slots are parked in QQQ during bull markets and held as cash duri
 │  → daily_triggers      │    ┌──────────────────▼──────────────────────┐
 └────────────────────────┘    │            SUPABASE DATABASE            │
              │                │  watchlist · daily_triggers             │
-             ▼                │  momentum_triggers                      │
-┌────────────────────────┐    │  portfolio_positions · trade_history    │
-│  MOMENTUM SCREENER     │───►│  account_balances                       │
-│  momentum_screener.py  │    └─────────────────────────────────────────┘
-│  (daily cron, 2-pass)  │
-│                        │
-│  Relaxed fundamentals  │
-│  Pass 1: standard tech │
-│  Pass 2: relaxed tech  │
-│  → momentum_triggers   │
-└────────────────────────┘
+             ▼                                              │  portfolio_positions · trade_history    │
+                              │  account_balances                       │
+                              └─────────────────────────────────────────┘
 ```
 
 ---
@@ -78,8 +68,7 @@ Idle portfolio slots are parked in QQQ during bull markets and held as cash duri
 |----------|---------------|-------------|
 | [Fundamental Screener](docs/fundamental_screener.md) | `fundamental_screener.py`, `backend/screener.py` | CANSLIM 7-dimension scoring, watchlist pipeline, EPS thresholds |
 | [Technical Triggers](docs/technical_triggers.md) | `technical_screener.py` | Breakout detection: SMA-50, volume surge, 52-week high proximity |
-| [Momentum Screener](docs/momentum_screener.md) | `momentum_screener.py` | Secondary relaxed screener, two-pass logic, momentum_triggers table |
-| [Buy Logic](docs/buy_logic.md) | `execution_agent.py` → `run_market_open_buys()` | 5-step cascade: primary → momentum → ETF parking; position sizing |
+| [Buy Logic](docs/buy_logic.md) | `execution_agent.py` → `run_market_open_buys()` | cascade: primary → ETF parking; position sizing |
 | [Sell Logic](docs/sell_logic.md) | `execution_agent.py` → `monitor_portfolio_intraday()` | Bear market exit, stale rotation, stop-loss, profit target, Power Hold |
 
 ---
@@ -100,7 +89,7 @@ Idle portfolio slots are parked in QQQ during bull markets and held as cash duri
 
 ## Buy Rules
 
-Buys execute at **9:30–9:45 AM ET** via `run_market_open_buys()`. The function runs a **5-step cascade**: primary CANSLIM triggers → momentum triggers → ETF cash parking. Every trigger passes these gates — all must pass for an order to be placed:
+Buys execute at **9:30–9:45 AM ET** via `run_market_open_buys()`. The function runs a **cascade**: primary CANSLIM triggers → ETF cash parking. Every trigger passes these gates — all must pass for an order to be placed:
 
 | # | Gate | Logic | Config |
 |---|------|-------|--------|
@@ -203,16 +192,6 @@ All strategy parameters are set in `.env`. Defaults are shown — override any v
 | `FMP_HISTORY_DAYS` | `380` | Calendar days of EOD data fetched from FMP per ticker |
 | `TRIGGER_PRUNE_DAYS` | `56` | Days to retain daily_trigger rows in Supabase |
 
-### Momentum Secondary Screener (`momentum_screener.py`)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MOMENTUM_MIN_Q_EPS_GROWTH` | `0.10` | Relaxed quarterly EPS threshold (vs 18% CANSLIM) |
-| `MOMENTUM_MIN_INST_HOLDERS` | `3` | Relaxed institutional holder minimum (vs 5 CANSLIM) |
-| `MOMENTUM_VOLUME_SURGE_MIN` | `1.20` | Pass 2 relaxed volume surge (vs 1.40 primary) |
-| `MOMENTUM_PIVOT_PROXIMITY` | `0.95` | Pass 2 relaxed proximity — within 5% of 52w high |
-| `MOMENTUM_TRIGGER_PRUNE_DAYS` | `56` | Days to retain momentum_trigger rows in Supabase |
-
 ### ETF Cash Parking / Market Direction Filter
 
 | Variable | Default | Description |
@@ -240,13 +219,10 @@ python fundamental_screener.py
 # 3. Run the technical screener (daily, after market close)
 python technical_screener.py
 
-# 4. Run the momentum screener (daily, after market close — after technical_screener)
-python momentum_screener.py
-
-# 5. Run the execution agent daemon (during market hours)
+# 4. Run the execution agent daemon (during market hours)
 python execution_agent.py
 
-# 6. Mock-sell a position for testing (no IBKR connection needed)
+# 5. Mock-sell a position for testing (no IBKR connection needed)
 python execution_agent.py --mock-sell AAPL --price 195.50 --reason "Test exit"
 ```
 
@@ -268,7 +244,7 @@ Key services in `docker-compose.yml`:
 docker exec -it execution-agent python force_buy.py
 ```
 
-Runs the full cascade (daily_triggers → momentum_triggers → ETF parking) with Y/N confirmation per buy.
+Runs the full cascade (daily_triggers → ETF parking) with Y/N confirmation per buy.
 
 ---
 
@@ -278,14 +254,12 @@ Runs the full cascade (daily_triggers → momentum_triggers → ETF parking) wit
 |-------|------------|---------|---------|
 | `watchlist` | `ticker`, `q_eps_growth`, `a_eps_growth`, `price` | Fundamental screener top-N output | 56 days rolling |
 | `daily_triggers` | `ticker`, `triggered_at`, `volume_surge`, `pivot_distance_pct` | CANSLIM breakout signals | 56 days rolling |
-| `momentum_triggers` | `ticker`, `triggered_at`, `volume_surge`, `pivot_distance_pct` | Secondary relaxed breakout signals | 56 days rolling |
 | `portfolio_positions` | `ticker`, `buy_price`, `high_water_mark`, `profit_target`, `is_power_hold`, **`buy_source`** | Open positions ledger | Until sell/close |
 | `trade_history` | `ticker`, `buy_price`, `sell_price`, `sell_date`, `sell_reason`, `profit_loss` | Closed trade audit log | Permanent |
 | `account_balances` | `key`, `value` | IBKR cash balance sync (single row: `ibkr_cash_balance`) | Live upsert |
 
 **`portfolio_positions.buy_source` values:**
 - `"daily_triggers"` — CANSLIM primary breakout
-- `"momentum_triggers"` — secondary relaxed screener
 - `"etf_parking"` — QQQ idle-slot position (displaceable, not monitored for stop/profit)
 
 ---
@@ -313,7 +287,6 @@ The component docs are stored as **Knowledge Items** in the AI assistant's knowl
 |--------|--------------|
 | Modify `fundamental_screener.py` | `fundamental_screener.md` |
 | Modify `technical_screener.py` | `technical_triggers.md` |
-| Modify `momentum_screener.py` | `momentum_screener.md` |
 | Modify `run_market_open_buys()` in `execution_agent.py` | `buy_logic.md` |
 | Modify `monitor_portfolio_intraday()` or `execute_sell()` | `sell_logic.md` |
 | Add `.env` variables | `README.md` Configuration Reference section |

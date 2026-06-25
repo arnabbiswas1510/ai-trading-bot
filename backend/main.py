@@ -264,13 +264,6 @@ def get_breakouts():
 
 
 
-@app.get("/api/momentum")
-def get_momentum():
-    try:
-        return db.get_momentum_triggers()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/api/backtest")
 def run_backtest_simulation(req: BacktestRequest):
     try:

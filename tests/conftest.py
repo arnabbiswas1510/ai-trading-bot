@@ -92,7 +92,7 @@ def make_trigger(ticker: str,
                  volume_surge: float = 1.5,
                  pivot_distance_pct: float = -0.5,
                  days_ago: int = 0) -> dict:
-    """Factory for a daily_triggers / momentum_triggers Supabase row."""
+    """Factory for a daily_triggers Supabase row."""
     triggered_at = (
         datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=days_ago)
     ).isoformat()
@@ -109,7 +109,6 @@ def make_trigger(ticker: str,
 
 def make_supabase_mock(
     daily_triggers: list | None = None,
-    momentum_triggers: list | None = None,
     portfolio: list | None = None,
     trade_history_recent: list | None = None,
     cash_balance: float | None = None,
@@ -127,7 +126,6 @@ def make_supabase_mock(
         with patch("execution_agent.supabase", client): ...
     """
     daily_triggers = daily_triggers or []
-    momentum_triggers = momentum_triggers or []
     portfolio = portfolio or []
     trade_history_recent = trade_history_recent or []
 
@@ -149,8 +147,6 @@ def make_supabase_mock(
             t.insert.return_value.execute.return_value = MagicMock()
             t.delete.return_value.lt.return_value.execute.return_value = MagicMock()
 
-        elif name == "momentum_triggers":
-            t.select.return_value.gte.return_value.execute.return_value.data = momentum_triggers
             t.insert.return_value.execute.return_value = MagicMock()
             t.delete.return_value.lt.return_value.execute.return_value = MagicMock()
 

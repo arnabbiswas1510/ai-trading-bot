@@ -309,29 +309,4 @@ class TestPositionSizing:
         assert order.totalQuantity == 100
 
 
-# ── Momentum cascade ──────────────────────────────────────────────────────────
 
-class TestMomentumCascade:
-
-    def test_momentum_cascade_runs_when_no_daily_triggers(self):
-        """Cascade: no daily_triggers → falls through to momentum_triggers."""
-        supabase = make_supabase_mock(
-            daily_triggers=[],
-            momentum_triggers=[make_trigger("SOFI", close_price=100.0)],
-            portfolio=[],
-        )
-        ib = make_ib_mock(symbols=["SOFI"])
-        _run_buys(ib, supabase, live_price=100.0)
-        ib.placeOrder.assert_called()  # BUY + OCA bracket = 3 placeOrder calls
-
-    def test_momentum_cascade_skips_when_slots_full(self):
-        """Cascade: daily_triggers filled all 4 stock slots → momentum skipped."""
-        portfolio = [make_position(t) for t in ["AAPL", "MSFT", "NVDA", "AMZN"]]
-        supabase = make_supabase_mock(
-            daily_triggers=[],
-            momentum_triggers=[make_trigger("SOFI")],
-            portfolio=portfolio,
-        )
-        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "AMZN"])
-        _run_buys(ib, supabase)
-        ib.placeOrder.assert_not_called()

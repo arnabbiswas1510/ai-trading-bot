@@ -86,14 +86,12 @@ function RemovedTags({ list, label }) {
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 
-export default function BreakoutsView({ breakouts, momentum }) {
+export default function BreakoutsView({ breakouts }) {
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
   const tier1List    = Array.isArray(breakouts) ? breakouts : (breakouts?.breakouts || []);
   const tier1Removed = Array.isArray(breakouts) ? [] : (breakouts?.removed || []);
-  const tier2List    = Array.isArray(momentum)  ? momentum  : (momentum?.breakouts  || []);
-  const tier2Removed = Array.isArray(momentum)  ? [] : (momentum?.removed  || []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -133,33 +131,6 @@ export default function BreakoutsView({ breakouts, momentum }) {
               <>
                 <BreakoutTable list={tier1List} />
                 <RemovedTags list={tier1Removed} label="Daily Breakout Rotations (Removed)" />
-              </>
-            )}
-          </div>
-
-          {/* ── Tier 2: Momentum Breakout Triggers ─────────────────────────────── */}
-          <div className="card" style={{ borderColor: 'rgba(251, 191, 36, 0.2)', background: 'linear-gradient(135deg, rgba(251,191,36,0.03) 0%, transparent 60%)' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-              <Zap size={20} color="#f59e0b" />
-              Tier 2 — Momentum Breakout Triggers
-              <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', fontWeight: 500, color: '#92400e', background: 'rgba(251,191,36,0.15)', padding: '0.15rem 0.55rem', borderRadius: '999px' }}>
-                Relaxed Thresholds
-              </span>
-            </h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-              Secondary breakouts — only activated when Tier 1 fills fewer than the max position slots. Uses relaxed fundamentals (EPS ≥ 10%, ≥ 3 inst. holders) and relaxed technicals (volume surge ≥ 1.2×, pivot proximity ≥ 95%). Lower-conviction gap-fill signals.
-            </p>
-
-            {tier2List.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-                <TrendingUp size={36} strokeWidth={1} style={{ marginBottom: '1rem', color: 'var(--text-muted)' }} />
-                <p style={{ fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>No Tier 2 momentum triggers</p>
-                <p style={{ fontSize: '0.85rem' }}>Momentum screener only runs when Tier 1 fills fewer than the max position cap.</p>
-              </div>
-            ) : (
-              <>
-                <BreakoutTable list={tier2List} />
-                <RemovedTags list={tier2Removed} label="Momentum Trigger Rotations (Removed)" />
               </>
             )}
           </div>
