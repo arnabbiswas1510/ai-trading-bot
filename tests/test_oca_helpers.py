@@ -48,7 +48,8 @@ class TestPlaceOcaBracket:
 
         execution_agent.place_oca_bracket(
             ib, contract, shares=100, buy_price=200.0,
-            profit_target_pct=0.25, stop_loss_pct=0.07
+            profit_target_pct=0.25, stop_loss_pct=0.07,
+            submit_limit_order=True
         )
 
         assert ib.placeOrder.call_count == 2, (
@@ -106,7 +107,7 @@ class TestPlaceOcaBracket:
         execution_agent.place_oca_bracket(
             ib, contract, shares=80, buy_price=400.0,
             profit_target_pct=0.25, stop_loss_pct=0.07,
-            is_power_hold=True
+            submit_limit_order=False
         )
 
         assert ib.placeOrder.call_count == 1, (
@@ -134,7 +135,8 @@ class TestPlaceOcaBracket:
         # $150 buy, 25% target → $187.50
         execution_agent.place_oca_bracket(
             ib, contract, shares=30, buy_price=150.0,
-            profit_target_pct=0.25, stop_loss_pct=0.07
+            profit_target_pct=0.25, stop_loss_pct=0.07,
+            submit_limit_order=True
         )
 
         # Select limit order by orderType='LMT' (all Order objects have lmtPrice attr

@@ -193,7 +193,8 @@ def TrailingStopOrder(action: str, totalQuantity: float,
 def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
                       profit_target_pct: float, stop_loss_pct: float,
                       submit_limit_order: bool = False,
-                      high_water_mark: float = None) -> str:
+                      high_water_mark: float = None,
+                      parent_order_id: int = None) -> str:
     """
     Places a GTC OCA bracket for an open stock position:
       • TrailingStopOrder  — trails {stop_loss_pct}% below the high-water mark.
@@ -214,6 +215,8 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
     stop = TrailingStopOrder('SELL', shares, trailingPercent=round(stop_loss_pct * 100, 2),
                              trailStopPrice=trail_stop_price,
                              ocaGroup=oca_group, ocaType=1)
+    if parent_order_id:
+        stop.parentId = parent_order_id
     stop.tif = 'GTC'
     ib.placeOrder(contract, stop)
     print(f"   🛡️  IBKR trailing stop placed: {stop_loss_pct*100:.0f}% trail (OCA: {oca_group})")
@@ -222,6 +225,8 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
         profit_target = round(buy_price * (1 + profit_target_pct), 2)
         limit = LimitOrder('SELL', shares, profit_target,
                            ocaGroup=oca_group, ocaType=1)
+        if parent_order_id:
+            limit.parentId = parent_order_id
         limit.tif = 'GTC'
         ib.placeOrder(contract, limit)
         print(f"   💰 IBKR limit sell placed: ${profit_target:.2f} "
@@ -316,6 +321,16 @@ def reconcile_with_ibkr(ib: IB):
         # populated on connection whereas positions() relies on a subscription
         # that may not have fired yet, causing false "in sync" results.
         ib_raw = ib.portfolio()
+        # Check for short positions and alert
+        for p in ib_raw:
+            if p.contract.secType == "STK" and int(p.position) < 0:
+                msg = f"🚨 SHORT POSITION DETECTED: {p.contract.symbol} has {int(p.position)} shares. Close this immediately in TWS!"
+                print(msg)
+                try:
+                    notifier.notify_error(msg)
+                except Exception:
+                    pass
+
         # Only include equity positions with a positive share count
         ib_map = {
             p.contract.symbol: p
@@ -757,7 +772,7 @@ def run_market_open_buys(ib: IB):
             contract = Stock(ticker, 'SMART', 'USD')
             ib.qualifyContracts(contract)
             order = MarketOrder('BUY', shares)
-            ib.placeOrder(contract, order)
+            trade = ib.placeOrder(contract, order)
 
             # Verify fill via ib.portfolio() (NOT trade.orderStatus) to avoid ghost
             # positions from Error 10349 (IB cancels-and-resubmits on TIF change).
@@ -803,7 +818,8 @@ def run_market_open_buys(ib: IB):
             # exact order pair (prevents double-placement if openTrades() is briefly stale).
             try:
                 _oca_group = place_oca_bracket(ib, contract, actual_shares, fill_price,
-                                               PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                                               PROFIT_TARGET_PCT, STOP_LOSS_PCT,
+                                               parent_order_id=trade.order.orderId)
                 client.table("portfolio_positions").update(
                     {"oca_group": _oca_group}
                 ).eq("ticker", ticker).execute()

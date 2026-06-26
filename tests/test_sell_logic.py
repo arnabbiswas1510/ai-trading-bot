@@ -554,7 +554,8 @@ class TestMovingAverageCalculations:
         with patch("execution_agent.datetime") as mock_date:
             tz = ZoneInfo("America/New_York")
             mock_date.date.today.return_value = datetime.date(2026, 6, 20)
-            mock_date.datetime.now.return_value = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
+            mock_date.datetime.now.side_effect = lambda *args, **kwargs: datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
+            mock_date.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
             
             val = execution_agent.get_ma_value("AAPL", 104.0, "SMA", 2)
             assert val == 103.0
@@ -592,8 +593,11 @@ class TestMovingAverageExits:
              patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
              patch("execution_agent.datetime") as mock_datetime:
              
-            mock_datetime.datetime.now.return_value = eod_time
+            mock_datetime.datetime.now.side_effect = lambda *args, **kwargs: eod_time
             mock_datetime.date.today.return_value = eod_time.date()
+            mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
+            mock_datetime.timezone = datetime.timezone
+            mock_datetime.timedelta = datetime.timedelta
             
             execution_agent.monitor_portfolio_intraday(ib)
             
@@ -630,8 +634,11 @@ class TestMovingAverageExits:
              patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
              patch("execution_agent.datetime") as mock_datetime:
              
-            mock_datetime.datetime.now.return_value = eod_time
+            mock_datetime.datetime.now.side_effect = lambda *args, **kwargs: eod_time
             mock_datetime.date.today.return_value = eod_time.date()
+            mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
+            mock_datetime.timezone = datetime.timezone
+            mock_datetime.timedelta = datetime.timedelta
             
             execution_agent.monitor_portfolio_intraday(ib)
             mock_sell.assert_not_called()
@@ -663,8 +670,12 @@ class TestMovingAverageExits:
              patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
              patch("execution_agent.datetime") as mock_datetime:
              
-            mock_datetime.datetime.now.return_value = midday
+            mock_datetime.datetime.now.side_effect = lambda *args, **kwargs: midday
             mock_datetime.date.today.return_value = midday.date()
+            mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
+            mock_datetime.timezone = datetime.timezone
+            mock_datetime.timedelta = datetime.timedelta
+            mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
             
             execution_agent.monitor_portfolio_intraday(ib)
             mock_sell.assert_not_called()
@@ -691,8 +702,11 @@ class TestMovingAverageExits:
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.datetime") as mock_datetime:
              
-            mock_datetime.datetime.now.return_value = eod_time
+            mock_datetime.datetime.now.side_effect = lambda *args, **kwargs: eod_time
             mock_datetime.date.today.return_value = eod_time.date()
+            mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
+            mock_datetime.timezone = datetime.timezone
+            mock_datetime.timedelta = datetime.timedelta
             
             execution_agent.monitor_portfolio_intraday(ib)
             mock_sell.assert_not_called() # Failsafe prevents sell

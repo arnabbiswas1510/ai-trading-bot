@@ -222,7 +222,8 @@ def main():
                 # double-place on the next monitor cycle.
                 try:
                     _oca = place_oca_bracket(ib, contract, actual_shares, fill_price,
-                                             PROFIT_TARGET_PCT, STOP_LOSS_PCT)
+                                             PROFIT_TARGET_PCT, STOP_LOSS_PCT,
+                                             parent_order_id=trade.order.orderId)
                     client.table("portfolio_positions").update(
                         {"oca_group": _oca}
                     ).eq("ticker", ticker).execute()
