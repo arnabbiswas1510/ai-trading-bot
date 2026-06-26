@@ -391,8 +391,12 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{pos.ticker}</td>
                         <td>{pos.shares}</td>
                         <td>{formatCurrency(pos.buy_price)}</td>
-                                                <td>{formatCurrency(pos.current_price)}</td>
-                        <td style={{ fontWeight: 600 }}>{formatCurrency((pos.current_price || pos.buy_price) * pos.shares)}</td>
+                        <td style={{ color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                          {formatCurrency(pos.current_price)}
+                        </td>
+                        <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                          {formatCurrency((pos.current_price || pos.buy_price) * pos.shares)}
+                        </td>
                         {/* Trail Stop: red, from high_water_mark */}
                         <td style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
                           {formatCurrency(trailStop)}
