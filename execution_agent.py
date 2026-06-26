@@ -221,6 +221,7 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
     if parent_order_id:
         stop.parentId = parent_order_id
     stop.tif = 'GTC'
+    stop.account = ib.managedAccounts()[0]
     ib.placeOrder(contract, stop)
     print(f"   🛡️  IBKR trailing stop placed: {stop_loss_pct*100:.0f}% trail (OCA: {oca_group})")
 
@@ -231,6 +232,7 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
         if parent_order_id:
             limit.parentId = parent_order_id
         limit.tif = 'GTC'
+        limit.account = ib.managedAccounts()[0]
         ib.placeOrder(contract, limit)
         print(f"   💰 IBKR limit sell placed: ${profit_target:.2f} "
               f"(+{profit_target_pct*100:.0f}%) (OCA: {oca_group})")
@@ -788,6 +790,7 @@ def run_market_open_buys(ib: IB):
             contract = Stock(ticker, 'SMART', 'USD')
             ib.qualifyContracts(contract)
             order = MarketOrder('BUY', shares)
+            order.account = ib.managedAccounts()[0]
             trade = ib.placeOrder(contract, order)
 
             # Verify fill via ib.portfolio() (NOT trade.orderStatus) to avoid ghost
@@ -1031,6 +1034,7 @@ def monitor_portfolio_intraday(ib: IB):
                                              trailingPercent=STOP_LOSS_PCT * 100,
                                              trailStopPrice=round(high_water_mark * (1 - STOP_LOSS_PCT), 2))
                 _ph_stop.tif = 'GTC'
+                _ph_stop.account = ib.managedAccounts()[0]
                 ib.placeOrder(_ph_contract, _ph_stop)
                 # Clear oca_group: standalone trailing stop has no OCA pair.
                 client.table("portfolio_positions").update(
@@ -1121,6 +1125,7 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         contract = Stock(ticker, 'SMART', 'USD')
         ib.qualifyContracts(contract)
         order = MarketOrder('SELL', shares)
+        order.account = ib.managedAccounts()[0]
         trade = ib.placeOrder(contract, order)
         
         print(f"   Placing market sell order for {shares} shares of {ticker}...")
