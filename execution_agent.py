@@ -83,6 +83,7 @@ def get_live_price(ticker: str) -> float:
             if isinstance(data, list) and len(data) > 0:
                 return float(data[0].get("price", 0))
     except Exception as e:
+        notifier.notify_exception(f"get_live_price() — execution_agent.py", e)
         print(f"❌ Error fetching price for {ticker} from FMP: {e}")
     return 0.0
 
@@ -107,6 +108,7 @@ def fetch_historical_closes_with_dates(ticker: str, window: int) -> list:
         else:
             print(f"⚠️ FMP historical API returned status code {r.status_code} for {ticker}.")
     except Exception as e:
+        notifier.notify_exception(f"fetch_historical_closes_with_dates() — execution_agent.py", e)
         print(f"❌ Error fetching historical prices for {ticker} from FMP: {e}")
     return []
 
@@ -163,6 +165,7 @@ def get_available_cash(ib: IB) -> float:
             if av.tag == "TotalCashValue" and av.currency == "USD":
                 return float(av.value)
     except Exception as e:
+        notifier.notify_exception(f"get_available_cash() — execution_agent.py", e)
         print(f"❌ Error querying cash balance from IBKR: {e}")
     return 0.0
 
@@ -295,6 +298,7 @@ def handle_mock_sell(ticker: str, price: float, reason: str):
         print(f"✅ Mock sale complete! Ticker {ticker} removed and logged to trade_history.")
         print(f"   Return: {percent_return}% | PnL: ${profit_loss:.2f}")
     except Exception as e:
+        notifier.notify_exception(f"handle_mock_sell() — execution_agent.py", e)
         print(f"❌ Database error during mock sale execution: {e}")
         sys.exit(1)
 
@@ -338,6 +342,7 @@ def reconcile_with_ibkr(ib: IB):
             if p.contract.secType == "STK" and int(p.position) > 0
         }
     except Exception as e:
+        notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
         print(f"❌ Could not fetch IBKR positions during reconciliation: {e}")
         return
 
@@ -348,6 +353,7 @@ def reconcile_with_ibkr(ib: IB):
         res = client.table("portfolio_positions").select("*").execute()
         supabase_positions = res.data or []
     except Exception as e:
+        notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
         print(f"❌ Could not fetch Supabase positions during reconciliation: {e}")
         return
 
@@ -394,6 +400,7 @@ def reconcile_with_ibkr(ib: IB):
                 sell_price_source = f"IBKR fill (execId {sell_fills[0].execution.execId})"
                 has_sld_fill = True
         except Exception as ex:
+            notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", ex)
             print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex}")
 
         # If no SLD fill (e.g. manual TWS close), do a single double-check
@@ -456,6 +463,7 @@ def reconcile_with_ibkr(ib: IB):
             changes += 1
             net_trade_cash += (sell_price * shares)
         except Exception as e:
+            notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
             print(f"        ❌ DB error reconciling close for {ticker}: {e}")
 
     # ── Case 2: In IBKR but NOT in Supabase (manual buy / opened in TWS) ───
@@ -492,6 +500,7 @@ def reconcile_with_ibkr(ib: IB):
             changes += 1
             net_trade_cash -= (avg_cost * shares)
         except Exception as e:
+            notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
             print(f"        ❌ DB error adding {ticker} to Supabase: {e}")
 
     # ── Case 3: In both, but share count mismatch (partial fill / adjustment)
@@ -505,6 +514,7 @@ def reconcile_with_ibkr(ib: IB):
                 print(f"        ✅ Updated to {ib_shares} shares.")
                 changes += 1
             except Exception as e:
+                notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
                 print(f"        ❌ DB error updating shares for {ticker}: {e}")
 
     if changes == 0:
@@ -577,6 +587,7 @@ def reconcile_with_ibkr(ib: IB):
         else:
             print("   ⚠️  IBKR cash balance returned 0 or negative — skipping cash sync.")
     except Exception as e:
+        notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
         print(f"   ❌ Could not sync cash balance from IBKR: {e}")
 
 
@@ -611,6 +622,7 @@ def is_market_bullish() -> bool:
               f"→ {'BULL ↑' if bullish else 'BEAR ↓'}")
         return bullish
     except Exception as e:
+        notifier.notify_exception(f"is_market_bullish() — execution_agent.py", e)
         print(f"⚠️ Market direction check failed: {e}. Defaulting to BULL.")
         return True
 
@@ -629,6 +641,7 @@ def run_market_open_buys(ib: IB):
         triggers_res = client.table("daily_triggers").select("*").gte("triggered_at", recent_date).execute()
         triggers = triggers_res.data
     except Exception as e:
+        notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", e)
         print(f"❌ Failed to fetch daily triggers: {e}")
         return
 
@@ -641,6 +654,7 @@ def run_market_open_buys(ib: IB):
         holdings = portfolio_res.data
         active_tickers = [h["ticker"] for h in holdings]
     except Exception as e:
+        notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", e)
         print(f"❌ Failed to fetch portfolio positions: {e}")
         return
 
@@ -694,6 +708,7 @@ def run_market_open_buys(ib: IB):
                 holdings = portfolio_res.data
                 active_tickers = [h["ticker"] for h in holdings]
             except Exception as e:
+                notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", e)
                 print(f"❌ Failed to refresh portfolio positions after rotation: {e}")
                 return
 
@@ -719,6 +734,7 @@ def run_market_open_buys(ib: IB):
                 print(f"   ⏳ {ticker} sold within last {COOLING_OFF_DAYS} days — cooling-off period active. Skipping.")
                 continue
         except Exception as cool_err:
+            notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", cool_err)
             print(f"   ⚠️ Cooling-off check failed for {ticker}: {cool_err} — allowing buy.")
             
         # Size the position as an equal share of remaining capital across unfilled slots
@@ -824,6 +840,7 @@ def run_market_open_buys(ib: IB):
                     {"oca_group": _oca_group}
                 ).eq("ticker", ticker).execute()
             except Exception as _oca_err:
+                notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", _oca_err)
                 print(f"   ⚠️ OCA bracket placement failed for {ticker}: {_oca_err} "
                       f"— self-healing will re-place on next monitor cycle.")
             
@@ -844,6 +861,7 @@ def run_market_open_buys(ib: IB):
             holdings = portfolio_res.data or []
             
         except Exception as order_err:
+            notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", order_err)
             print(f"❌ Failed to execute order for {ticker}: {order_err}")
             notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
 
@@ -879,6 +897,7 @@ def monitor_portfolio_intraday(ib: IB):
         portfolio_res = client.table("portfolio_positions").select("*").execute()
         positions = portfolio_res.data
     except Exception as e:
+        notifier.notify_exception(f"monitor_portfolio_intraday() — execution_agent.py", e)
         print(f"❌ Failed to fetch portfolio positions: {e}")
         return
 
@@ -927,6 +946,7 @@ def monitor_portfolio_intraday(ib: IB):
                     {"high_water_mark": high_water_mark}
                 ).eq("ticker", ticker).execute()
             except Exception as e:
+                notifier.notify_exception(f"monitor_portfolio_intraday() — execution_agent.py", e)
                 print(f"   ⚠️ Could not update high_water_mark for {ticker}: {e}")
 
         trailing_stop = round(high_water_mark * (1 - STOP_LOSS_PCT), 2)
@@ -980,6 +1000,7 @@ def monitor_portfolio_intraday(ib: IB):
                     {"oca_group": _new_oca}
                 ).eq("ticker", ticker).execute()
             except Exception as _heal_err:
+                notifier.notify_exception(f"monitor_portfolio_intraday() — execution_agent.py", _heal_err)
                 print(f"   ⚠️ Self-healing OCA placement failed for {ticker}: {_heal_err}")
 
         # 1. 8-Week Power Holding Rule Check
@@ -1017,6 +1038,7 @@ def monitor_portfolio_intraday(ib: IB):
                 ).eq("ticker", ticker).execute()
                 print(f"   🛡️  Trailing stop re-placed (no 25% limit during Power Hold).")
             except Exception as e:
+                notifier.notify_exception(f"monitor_portfolio_intraday() — execution_agent.py", e)
                 print(f"   ❌ Failed to update power hold state: {e}")
 
         # If power hold has expired, deactivate it
@@ -1049,6 +1071,7 @@ def monitor_portfolio_intraday(ib: IB):
                     ).eq("ticker", ticker).execute()
                     print(f"   💰 OCA bracket re-placed (trailing stop + 25% limit) after Power Hold expiry.")
                 except Exception as e:
+                    notifier.notify_exception(f"monitor_portfolio_intraday() — execution_agent.py", e)
                     print(f"   ❌ Failed to reset power hold state: {e}")
 
         # Stop-loss and profit-target enforcement removed from code.
@@ -1175,6 +1198,7 @@ def main_loop():
         ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
         print("✅ Connected to IBKR Gateway successfully!")
     except Exception as e:
+        notifier.notify_exception(f"main_loop() — execution_agent.py", e)
         print(f"❌ Failed to connect to IBKR Gateway: {e}")
         print("   Ensure the ib-gateway container is running and API ports are open.")
         sys.exit(1)
