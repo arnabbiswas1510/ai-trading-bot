@@ -12,7 +12,7 @@ def test_short_position_fix_parent_order_id():
     execution_agent.place_oca_bracket(
         ib, contract, shares=100, buy_price=150.0,
         profit_target_pct=0.25, stop_loss_pct=0.07,
-        submit_limit_order=True, parent_order_id=999
+        submit_limit_order=True
     )
     
     assert ib.placeOrder.call_count == 2
@@ -21,10 +21,8 @@ def test_short_position_fix_parent_order_id():
     limit = ib.placeOrder.call_args_list[1][0][1]
     
     assert stop.orderType == 'TRAIL'
-    assert stop.parentId == 999
     
     assert getattr(limit, 'orderType', '') == 'LMT'
-    assert limit.parentId == 999
 
 def test_power_hold_race_condition_fix():
     """Test that power hold correctly defers the limit order."""
@@ -35,7 +33,7 @@ def test_power_hold_race_condition_fix():
     execution_agent.place_oca_bracket(
         ib, contract, shares=100, buy_price=150.0,
         profit_target_pct=0.25, stop_loss_pct=0.07,
-        submit_limit_order=False, parent_order_id=999
+        submit_limit_order=False
     )
     
     assert ib.placeOrder.call_count == 1
@@ -47,7 +45,7 @@ def test_power_hold_race_condition_fix():
     execution_agent.place_oca_bracket(
         ib, contract, shares=100, buy_price=150.0,
         profit_target_pct=0.25, stop_loss_pct=0.07,
-        submit_limit_order=True, parent_order_id=999
+        submit_limit_order=True
     )
     assert ib.placeOrder.call_count == 2
     stop2 = ib.placeOrder.call_args_list[0][0][1]

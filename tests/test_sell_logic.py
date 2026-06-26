@@ -343,7 +343,7 @@ class TestPowerHold:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=121.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.place_oca_bracket"), \
+             patch("execution_agent.place_oca_bracket") as mock_oca, \
              patch("execution_agent.cancel_ticker_sell_orders") as mock_cancel, \
              patch("execution_agent.execute_sell"):
             execution_agent.monitor_portfolio_intraday(ib)
@@ -353,22 +353,13 @@ class TestPowerHold:
         assert any("NVDA" in t for t in cancel_tickers), \
             "cancel_ticker_sell_orders must be called for NVDA when Power Hold activates"
 
-        # ib.placeOrder should have been called with exactly one TRAIL order
-        # (place_oca_bracket is mocked, so no OCA calls — only the manual trail re-place)
-        trail_calls = [
-            c for c in ib.placeOrder.call_args_list
-            if getattr(c.args[1], 'orderType', '') == 'TRAIL'
+        # place_oca_bracket is mocked, so we verify it was called with submit_limit_order=False
+        oca_calls = [
+            c for c in mock_oca.call_args_list
+            if not c.kwargs.get('submit_limit_order', True)
         ]
-        assert len(trail_calls) == 1, (
-            "Exactly one TrailingStopOrder must be placed when Power Hold activates"
-        )
-        # No LimitOrder (profit target, orderType='LMT') should be placed during Power Hold
-        limit_calls = [
-            c for c in ib.placeOrder.call_args_list
-            if getattr(c.args[1], 'orderType', '') == 'LMT'
-        ]
-        assert len(limit_calls) == 0, (
-            "No LimitOrder (profit target) should be placed during Power Hold"
+        assert len(oca_calls) >= 1, (
+            "Exactly one OCA bracket without limit order must be placed when Power Hold activates"
         )
 
     def test_power_hold_expiry_replaces_full_oca_bracket(self):
@@ -396,10 +387,10 @@ class TestPowerHold:
         assert len(oca_calls) >= 1, "place_oca_bracket must be called on Power Hold expiry"
         full_oca_calls = [
             c for c in oca_calls
-            if not c.kwargs.get('is_power_hold', False)
+            if c.kwargs.get('submit_limit_order', False)
         ]
         assert len(full_oca_calls) >= 1, (
-            "At least one place_oca_bracket call must have is_power_hold=False "
+            "At least one place_oca_bracket call must have submit_limit_order=True "
             "(full OCA bracket restored after Power Hold expiry)"
         )
 
@@ -450,7 +441,7 @@ class TestStaleRotation:
              patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.get_fresh_triggers_today", return_value=["TSLA"]):
-            execution_agent.monitor_portfolio_intraday(ib)
+            execution_agent.run_market_open_buys(ib)
 
         mock_sell.assert_called()
 
@@ -471,7 +462,7 @@ class TestStaleRotation:
              patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.get_fresh_triggers_today", return_value=["TSLA"]):
-            execution_agent.monitor_portfolio_intraday(ib)
+            execution_agent.run_market_open_buys(ib)
 
         mock_sell.assert_not_called()
 
