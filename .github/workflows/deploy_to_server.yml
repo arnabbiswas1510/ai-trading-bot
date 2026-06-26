@@ -19,7 +19,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          port: ${{ secrets.DEPLOY_PORT }}
+          port: 2222
           timeout: 120s
           script: |
             cd /home/dietpi/docker/ai-trading-bot
