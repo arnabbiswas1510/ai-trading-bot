@@ -62,6 +62,19 @@ notifier = TelegramNotifier(
     chat_ids=os.getenv("TELEGRAM_CHAT_IDS", "").split(",")
 )
 
+# Global unhandled exception hook
+def global_exception_handler(exctype, value, tb):
+    if issubclass(exctype, KeyboardInterrupt):
+        sys.__excepthook__(exctype, value, tb)
+        return
+    import traceback
+    tb_str = "".join(traceback.format_exception(exctype, value, tb))
+    print(f"CRITICAL: Unhandled exception caught by global hook:\n{tb_str}")
+    notifier.notify_exception("GLOBAL UNCAUGHT EXCEPTION", value)
+    sys.__excepthook__(exctype, value, tb)
+
+sys.excepthook = global_exception_handler
+
 # Initialize Supabase client
 supabase: Client = None
 

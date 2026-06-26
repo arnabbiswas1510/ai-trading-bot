@@ -245,7 +245,8 @@ class TelegramNotifier:
 
         self._exception_cache[error_key] = now
 
-        error_str = str(error)[:300]  # Truncate very long error messages
+        import html
+        error_str = html.escape(str(error)[:300])  # Truncate and escape HTML to prevent Telegram 400 errors
         msg = (
             f"⚠️ <b>TRADING BOT EXCEPTION</b>\n"
             f"\n"
