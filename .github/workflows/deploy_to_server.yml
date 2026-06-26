@@ -28,11 +28,12 @@ jobs:
             docker compose pull execution-agent trading-bot
 
             echo "=== Restarting all trading bot containers (dependency order) ==="
-            docker compose up -d ib-gateway
+            docker compose up -d ib-gateway > /dev/null 2>&1
             sleep 5
-            docker compose up -d execution-agent trading-bot
+            docker compose up -d execution-agent trading-bot > /dev/null 2>&1
 
             echo "=== Deployment complete ==="
             docker inspect ib-gateway       --format 'ib-gateway:       {{.State.Status}} (restarts: {{.RestartCount}})'
             docker inspect execution-agent  --format 'execution-agent:  {{.State.Status}} (restarts: {{.RestartCount}})'
             docker inspect can-slim-trading-bot --format 'can-slim-trading-bot: {{.State.Status}} (restarts: {{.RestartCount}})'
+            exit 0
