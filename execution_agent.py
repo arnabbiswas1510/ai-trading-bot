@@ -1194,7 +1194,7 @@ def main_loop():
                     print("🎯 Force buy sentinel detected — running run_market_open_buys NOW")
                     reconcile_with_ibkr(ib)
                     run_market_open_buys(ib)
-                    time.sleep(900)
+                    ib.sleep(900)
                     continue
 
                 is_market_open = (
@@ -1208,19 +1208,19 @@ def main_loop():
                     _buy_ran_today = today_str
                     reconcile_with_ibkr(ib)   # Sync before placing any new buys
                     run_market_open_buys(ib)
-                    time.sleep(900)
+                    ib.sleep(900)
                     continue
 
                 # 2. Intraday monitoring during market hours
                 if is_market_open:
                     reconcile_with_ibkr(ib)   # Sync every 15 min — catches manual TWS trades
                     monitor_portfolio_intraday(ib)
-                    time.sleep(900)
+                    ib.sleep(900)
                     continue
 
             # Outside market hours: check once an hour
             print(f"😴 Market is closed. Checking in 1 hour... (Current Time: {now.strftime('%H:%M:%S')})")
-            time.sleep(3600)
+            ib.sleep(3600)
             
         except KeyboardInterrupt:
             print("\nShutting down execution agent.")
@@ -1229,7 +1229,7 @@ def main_loop():
         except Exception as loop_err:
             print(f"❌ Error in main execution loop: {loop_err}")
             notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
-            time.sleep(60)
+            ib.sleep(60)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CANSLIM Local execution agent CLI.")
