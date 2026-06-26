@@ -1191,6 +1191,25 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         notifier.notify_exception(f"execute_sell({ticker}) — execution_agent.py", e)
         return False
 
+
+def has_bought_today(client, today_str: str) -> bool:
+    """Checks Supabase to see if any confirmed trades were placed today."""
+    try:
+        # Check active portfolio positions for any buys today
+        res = client.table("portfolio_positions").select("buy_date").gte("buy_date", today_str).execute()
+        if res.data:
+            return True
+        # Check trade history in case a position was bought and stopped out same day
+        res = client.table("trade_history").select("buy_date").gte("buy_date", today_str).execute()
+        if res.data:
+            return True
+        return False
+    except Exception as e:
+        notifier.notify_exception("has_bought_today() — execution_agent.py", e)
+        # Default to True on DB error to prevent accidental spam / duplicate runs
+        print(f"❌ Error checking DB for today's buys: {e}. Assuming True.")
+        return True
+
 def main_loop():
     """Main daemon loop running inside the Docker container."""
     print("==================================================")
@@ -1207,8 +1226,6 @@ def main_loop():
         print(f"❌ Failed to connect to IBKR Gateway: {e}")
         print("   Ensure the ib-gateway container is running and API ports are open.")
         sys.exit(1)
-        
-    _buy_ran_today: str = ""   # tracks date string of last successful buy run
 
     while True:
         try:
@@ -1232,9 +1249,9 @@ def main_loop():
                 )
 
                 # 1. Daily Buy Check (No Window Restriction)
-                # Ensure the buy check happens exactly once per day during market hours.
-                if is_market_open and _buy_ran_today != today_str:
-                    _buy_ran_today = today_str
+                # Ensure the buy check continues running intraday until a successful buy occurs
+                # (or portfolio is full). This naturally creates an intraday failsafe.
+                if is_market_open and not has_bought_today(get_supabase_client(), today_str):
                     reconcile_with_ibkr(ib)   # Sync before placing any new buys
                     run_market_open_buys(ib)
                     ib.sleep(900)
