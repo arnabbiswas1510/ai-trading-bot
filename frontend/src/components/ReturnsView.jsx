@@ -53,11 +53,14 @@ export default function ReturnsView({ trades }) {
   const processedData = useMemo(() => {
     if (!balances || balances.length === 0) return { chartData: [], kpis: null };
 
-    // 1. Group balances by date
+    // 1. Group balances by date (new schema: date is PK, values are columns)
     const dailyBalances = {};
     balances.forEach(b => {
-      if (!dailyBalances[b.date]) dailyBalances[b.date] = {};
-      dailyBalances[b.date][b.key] = parseFloat(b.value);
+      dailyBalances[b.date] = {
+        ibkr_cash_balance: parseFloat(b.ibkr_cash_balance || 0),
+        ibkr_positions_value: parseFloat(b.ibkr_positions_value || 0),
+        ibkr_total_value: parseFloat(b.ibkr_total_value || 0)
+      };
     });
 
     // 2. Sort dates chronologically

@@ -388,7 +388,7 @@ export default function DashboardView({ data, marketData, trades }) {
                             ? <ChevronDown size={14} />
                             : <ChevronRight size={14} />}
                         </td>
-                        <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{pos.ticker}</td>
+                        <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>{pos.ticker}</td>
                         <td>{pos.shares}</td>
                         <td>{formatCurrency(pos.buy_price)}</td>
                         <td style={{ color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>

@@ -172,9 +172,9 @@ def get_portfolio():
         cash = computed_cash  # default
         try:
             supabase = db.get_supabase_client()
-            res = supabase.table("account_balances").select("value").eq("key", "ibkr_cash_balance").execute()
-            if res.data:
-                cash = float(res.data[0]["value"])
+            res = supabase.table("account_balances").select("ibkr_cash_balance").order("date", desc=True).limit(1).execute()
+            if res.data and res.data[0].get("ibkr_cash_balance") is not None:
+                cash = float(res.data[0]["ibkr_cash_balance"])
         except Exception:
             pass  # silently fall back to computed value
 
