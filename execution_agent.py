@@ -196,8 +196,7 @@ def TrailingStopOrder(action: str, totalQuantity: float,
 def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
                       profit_target_pct: float, stop_loss_pct: float,
                       submit_limit_order: bool = False,
-                      high_water_mark: float = None,
-                      parent_order_id: int = None) -> str:
+                      high_water_mark: float = None) -> str:
     """
     Places a GTC OCA bracket for an open stock position:
       • TrailingStopOrder  — trails {stop_loss_pct}% below the high-water mark.
@@ -218,8 +217,6 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
     stop = TrailingStopOrder('SELL', shares, trailingPercent=round(stop_loss_pct * 100, 2),
                              trailStopPrice=trail_stop_price,
                              ocaGroup=oca_group, ocaType=1)
-    if parent_order_id:
-        stop.parentId = parent_order_id
     stop.tif = 'GTC'
     stop.account = ib.managedAccounts()[0]
     ib.placeOrder(contract, stop)
@@ -229,8 +226,6 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
         profit_target = round(buy_price * (1 + profit_target_pct), 2)
         limit = LimitOrder('SELL', shares, profit_target,
                            ocaGroup=oca_group, ocaType=1)
-        if parent_order_id:
-            limit.parentId = parent_order_id
         limit.tif = 'GTC'
         limit.account = ib.managedAccounts()[0]
         ib.placeOrder(contract, limit)
@@ -758,16 +753,42 @@ def run_market_open_buys(ib: IB):
             print(f"⚠️ Price of {ticker} (${current_price:.2f}) is too high for the computed position size (${position_size:,.0f}). Skipping.")
             continue
             
-        # Place order on IBKR
+        # Place Atomic Bracket Order on IBKR (Marketable Limit)
         try:
             contract = Stock(ticker, 'SMART', 'USD')
             ib.qualifyContracts(contract)
-            order = MarketOrder('BUY', shares)
-            order.account = ib.managedAccounts()[0]
-            trade = ib.placeOrder(contract, order)
+            
+            # Marketable Limit Order (1% slippage buffer above ask) to guarantee fast fill
+            # while satisfying IBKR's strict constraint that Trailing Stops can only be attached to Limit orders.
+            limit_price = round(current_price * 1.01, 2)
+            parent = LimitOrder('BUY', shares, limit_price)
+            parent.orderId = ib.client.getReqId()
+            parent.tif = 'GTC'
+            parent.account = ib.managedAccounts()[0]
+            parent.transmit = False
 
-            # Verify fill via ib.portfolio() (NOT trade.orderStatus) to avoid ghost
-            # positions from Error 10349 (IB cancels-and-resubmits on TIF change).
+            # Child 1: Profit Target (Limit Sell)
+            profit_target = round(current_price * (1 + PROFIT_TARGET_PCT), 2)
+            takeProfit = LimitOrder('SELL', shares, profit_target)
+            takeProfit.orderId = ib.client.getReqId()
+            takeProfit.parentId = parent.orderId
+            takeProfit.tif = 'GTC'
+            takeProfit.account = ib.managedAccounts()[0]
+            takeProfit.transmit = False
+
+            # Child 2: Trailing Stop
+            stopLoss = TrailingStopOrder('SELL', shares, trailingPercent=round(STOP_LOSS_PCT * 100, 2))
+            stopLoss.orderId = ib.client.getReqId()
+            stopLoss.parentId = parent.orderId
+            stopLoss.tif = 'GTC'
+            stopLoss.account = ib.managedAccounts()[0]
+            stopLoss.transmit = True
+
+            print(f"   Submitting native atomic bracket for {ticker}...")
+            ib.placeOrder(contract, parent)
+            ib.placeOrder(contract, takeProfit)
+            ib.placeOrder(contract, stopLoss)
+
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
             ib.sleep(5)
             ib_map = {p.contract.symbol: p for p in ib.portfolio()}
@@ -776,7 +797,8 @@ def run_market_open_buys(ib: IB):
                 ib_map = {p.contract.symbol: p for p in ib.portfolio()}
 
             if ticker not in ib_map:
-                print(f"   ⚠️ {ticker} not found in IBKR portfolio after 8s — order may not have filled. Skipping Supabase insert.")
+                print(f"   ⚠️ {ticker} not found in IBKR portfolio after 8s — order may not have filled. Cancelling and skipping.")
+                ib.cancelOrder(parent)
                 notifier.notify_buy_failure(ticker=ticker, shares=shares,
                     error="Not confirmed in IBKR portfolio after 8s")
                 continue
@@ -785,7 +807,10 @@ def run_market_open_buys(ib: IB):
             fill_price = round(ib_pos.averageCost, 2)
             actual_shares = int(ib_pos.position)
             
-            # Record position in Supabase
+            # The bracket uses internal IBKR grouping, but we track the OCA string from the child
+            # in case we need to self-heal later. For native brackets, we don't have a custom OCA group string.
+            # We will use "NATIVE_BRACKET_" to denote it wasn't a custom group.
+            
             position_data = {
                 "ticker":          ticker,
                 "shares":          actual_shares,
@@ -795,28 +820,15 @@ def run_market_open_buys(ib: IB):
                 "stop_loss":       round(fill_price * (1 - STOP_LOSS_PCT), 2),
                 "profit_target":   round(fill_price * (1 + PROFIT_TARGET_PCT), 2),
                 "is_power_hold":   False,
-                "high_water_mark": fill_price
+                "high_water_mark": fill_price,
+                "oca_group":       "NATIVE_BRACKET"
             }
             
             client.table("portfolio_positions").insert(position_data).execute()
-            stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)
-            profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
+            stop_loss_val = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+            profit_target_val = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
-            print(f"   Stop-Loss: ${stop_loss} | Profit Target: ${profit_target}")
-
-            # Place IBKR GTC OCA bracket: trailing stop + limit sell at profit target.
-            # We omit parent_order_id because attaching GTC Trailing Stops to DAY Market Orders 
-            # causes IBKR rejection (Error 328) and cancels the parent.
-            try:
-                _oca_group = place_oca_bracket(ib, contract, actual_shares, fill_price,
-                                               PROFIT_TARGET_PCT, STOP_LOSS_PCT)
-                client.table("portfolio_positions").update(
-                    {"oca_group": _oca_group}
-                ).eq("ticker", ticker).execute()
-            except Exception as _oca_err:
-                notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", _oca_err)
-                print(f"   ⚠️ OCA bracket placement failed for {ticker}: {_oca_err} "
-                      f"— self-healing will re-place on next monitor cycle.")
+            print(f"   Stop-Loss: ${stop_loss_val} | Profit Target: ${profit_target_val}")
             
             # Notify all configured Telegram recipients
             portfolio_res = client.table("portfolio_positions").select("ticker").execute()
@@ -949,12 +961,12 @@ def monitor_portfolio_intraday(ib: IB):
         
         expected_orders = 2 if should_have_limit else 1
         
-        if _stored_oca:
-            # Precise check: look for our specific OCA group
+        if _stored_oca and _stored_oca != "NATIVE_BRACKET":
+            # Precise check: look for our specific standalone OCA group
             _matching_oca = [t for t in _open_sells if t.order.ocaGroup == _stored_oca]
             _needs_heal = len(_matching_oca) < expected_orders
         else:
-            # No stored group yet (old position or Power Hold standalone trail)
+            # Native bracket or no stored group: just count open sells
             _needs_heal = len(_open_sells) < expected_orders
 
         if _needs_heal:
@@ -995,21 +1007,23 @@ def monitor_portfolio_intraday(ib: IB):
                     ticker=ticker, gain_pct=gain_pct, days_held=days_held,
                     expiry_date=expiry_date, stop_loss=trailing_stop
                 )
-                # Cancel OCA bracket and re-place only the trailing stop 
-                # using the high_water_mark to preserve the trail.
-                cancel_ticker_sell_orders(ib, ticker)
-                ib.sleep(1)
-                _ph_contract = Stock(ticker, 'SMART', 'USD')
-                ib.qualifyContracts(_ph_contract)
-                _ph_stop = TrailingStopOrder('SELL', shares,
-                                             trailingPercent=STOP_LOSS_PCT * 100,
-                                             trailStopPrice=round(high_water_mark * (1 - STOP_LOSS_PCT), 2))
-                _ph_stop.tif = 'GTC'
-                _ph_stop.account = ib.managedAccounts()[0]
-                ib.placeOrder(_ph_contract, _ph_stop)
-                # Clear oca_group: standalone trailing stop has no OCA pair.
+                # Power Hold activated: Cancel ONLY the Limit (Profit Target) order!
+                # We leave the GTC Trailing Stop active to preserve the high water mark.
+                cancelled = 0
+                for trade in ib.openTrades():
+                    if (trade.contract.symbol == ticker
+                            and trade.order.action == 'SELL'
+                            and trade.order.orderType == 'LMT'
+                            and trade.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')):
+                        try:
+                            ib.cancelOrder(trade.order)
+                            cancelled += 1
+                        except Exception:
+                            pass
+                print(f"   🗑️  Cancelled {cancelled} Profit Target Limit order(s) for Power Hold.")
+                
                 client.table("portfolio_positions").update(
-                    {"oca_group": None}
+                    {"oca_group": "NATIVE_BRACKET"}
                 ).eq("ticker", ticker).execute()
                 print(f"   🛡️  Trailing stop re-placed (no 25% limit during Power Hold).")
             except Exception as e:
@@ -1031,7 +1045,8 @@ def monitor_portfolio_intraday(ib: IB):
                         "is_power_hold": False,
                         "power_hold_expiry": None
                     }).eq("ticker", ticker).execute()
-                    # Re-place full OCA bracket: trailing stop + 25% limit sell.
+                    # Re-place full OCA bracket using self-healing helper
+                    # because the parent order is gone.
                     cancel_ticker_sell_orders(ib, ticker)
                     ib.sleep(1)
                     _exp_contract = Stock(ticker, 'SMART', 'USD')
@@ -1040,7 +1055,6 @@ def monitor_portfolio_intraday(ib: IB):
                                                  PROFIT_TARGET_PCT, STOP_LOSS_PCT,
                                                  submit_limit_order=True,
                                                  high_water_mark=high_water_mark)
-                    # Record the new OCA group so self-healing tracks the right pair.
                     client.table("portfolio_positions").update(
                         {"oca_group": _exp_oca}
                     ).eq("ticker", ticker).execute()
