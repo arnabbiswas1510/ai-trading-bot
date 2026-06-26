@@ -321,6 +321,44 @@ def reconcile_with_ibkr(ib: IB):
     print("🔄 Running IBKR ↔ Supabase reconciliation...")
     client = get_supabase_client()
 
+    # ── Sync live IBKR cash balance to Supabase (Do this FIRST) ────────
+    try:
+        ibkr_cash = get_available_cash(ib)
+        if ibkr_cash > 0:
+            new_balance = round(ibkr_cash, 2)
+            tz = ZoneInfo("America/New_York")
+            today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
+
+            # Always record today's snapshot
+            client.table("account_balances").upsert(
+                {"date": today_str, "key": "ibkr_cash_balance", "value": new_balance},
+            ).execute()
+            
+            # Also record positions value and total value for TWR
+            ib_port = []
+            try: ib_port = ib.portfolio()
+            except Exception: pass
+            
+            positions_value = 0.0
+            for p in ib_port:
+                if p.contract.secType == "STK" and int(p.position) > 0:
+                    price = get_live_price(p.contract.symbol)
+                    if price <= 0: price = float(p.averageCost)
+                    positions_value += int(p.position) * price
+
+            total_value = new_balance + positions_value
+
+            client.table("account_balances").upsert(
+                {"date": today_str, "key": "ibkr_positions_value", "value": round(positions_value, 2)},
+            ).execute()
+            client.table("account_balances").upsert(
+                {"date": today_str, "key": "ibkr_total_value", "value": round(total_value, 2)},
+            ).execute()
+            print(f"   💰 Cash balance synced from IBKR: ${new_balance:,.2f}")
+    except Exception as e:
+        notifier.notify_exception("reconcile_with_ibkr() cash sync — execution_agent.py", e)
+        print(f"   ❌ Could not sync cash balance from IBKR: {e}")
+
     # ── Fetch IBKR positions ────────────────────────────────────────────────
     try:
         # Use ib.portfolio() instead of ib.positions(): portfolio() is always
@@ -524,73 +562,8 @@ def reconcile_with_ibkr(ib: IB):
     else:
         print(f"   🔄 Reconciliation complete — {changes} correction(s) applied.")
 
-    # ── Case 4: Sync live IBKR cash balance to Supabase & Detect Deposits ───
-    try:
-        ibkr_cash = get_available_cash(ib)
-        if ibkr_cash > 0:
-            new_balance = round(ibkr_cash, 2)
-            tz = ZoneInfo("America/New_York")
-            today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
-
-            # Read current stored value before writing
-            stored_balance = None
-            try:
-                res = client.table("account_balances").select("value").eq("key", "ibkr_cash_balance").order("date", desc=True).limit(1).execute()
-                if res.data:
-                    stored_balance = float(res.data[0]["value"])
-            except Exception:
-                pass  # If read fails, proceed with write
-
-            # Detect external deposits. We use the net_trade_cash accumulated above.
-            if stored_balance is not None:
-                expected_cash = stored_balance + net_trade_cash
-                cash_diff = new_balance - expected_cash
-                
-                if cash_diff > 500.0:
-                    print(f"   💸 External deposit detected! Expected: ${expected_cash:,.2f}, Actual: ${new_balance:,.2f} (+${cash_diff:,.2f})")
-                    client.table("cash_flows").insert({
-                        "date": today_str,
-                        "amount": cash_diff,
-                        "description": "Auto-detected Deposit"
-                    }).execute()
-                elif cash_diff < -500.0:
-                    print(f"   💸 External withdrawal detected! Expected: ${expected_cash:,.2f}, Actual: ${new_balance:,.2f} (${cash_diff:,.2f})")
-                    client.table("cash_flows").insert({
-                        "date": today_str,
-                        "amount": cash_diff,
-                        "description": "Auto-detected Withdrawal"
-                    }).execute()
-
-            # Always record today's snapshot
-            client.table("account_balances").upsert(
-                {"date": today_str, "key": "ibkr_cash_balance", "value": new_balance},
-            ).execute()
-            
-            # Also record positions value and total value for TWR
-            positions_value = 0.0
-            for ticker, p in ib_map.items():
-                price = get_live_price(ticker)
-                if price <= 0:
-                    price = float(p.averageCost)
-                positions_value += int(p.position) * price
-
-            total_value = new_balance + positions_value
-
-            client.table("account_balances").upsert(
-                {"date": today_str, "key": "ibkr_positions_value", "value": round(positions_value, 2)},
-            ).execute()
-            client.table("account_balances").upsert(
-                {"date": today_str, "key": "ibkr_total_value", "value": round(total_value, 2)},
-            ).execute()
-
-            change_str = f" (was ${stored_balance:,.2f})" if stored_balance is not None else " (first write)"
-            print(f"   💰 Cash balance synced from IBKR: ${new_balance:,.2f}{change_str}")
-            print(f"   📊 Portfolio Value snapshot: Cash ${new_balance:,.2f} + Positions ${positions_value:,.2f} = Total ${total_value:,.2f}")
-        else:
-            print("   ⚠️  IBKR cash balance returned 0 or negative — skipping cash sync.")
-    except Exception as e:
-        notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
-        print(f"   ❌ Could not sync cash balance from IBKR: {e}")
+    # Cash sync moved to top of function
+    pass
 
 
 def is_market_bullish() -> bool:
@@ -832,13 +805,11 @@ def run_market_open_buys(ib: IB):
             print(f"   Stop-Loss: ${stop_loss} | Profit Target: ${profit_target}")
 
             # Place IBKR GTC OCA bracket: trailing stop + limit sell at profit target.
-            # IBKR manages both orders server-side — no stop/target polling needed in code.
-            # Store the OCA group name in Supabase so self-healing can verify the
-            # exact order pair (prevents double-placement if openTrades() is briefly stale).
+            # We omit parent_order_id because attaching GTC Trailing Stops to DAY Market Orders 
+            # causes IBKR rejection (Error 328) and cancels the parent.
             try:
                 _oca_group = place_oca_bracket(ib, contract, actual_shares, fill_price,
-                                               PROFIT_TARGET_PCT, STOP_LOSS_PCT,
-                                               parent_order_id=trade.order.orderId)
+                                               PROFIT_TARGET_PCT, STOP_LOSS_PCT)
                 client.table("portfolio_positions").update(
                     {"oca_group": _oca_group}
                 ).eq("ticker", ticker).execute()
