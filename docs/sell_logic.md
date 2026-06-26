@@ -8,11 +8,10 @@ Sell decisions are made by two functions:
 1. `monitor_portfolio_intraday(ib)` — runs every 15 minutes during market hours, enforces exits
 2. `execute_sell(ib, client, ticker, ...)` — the actual sell execution called by the monitor
 
-Each 15-min cycle runs **four phases**:
+Each 15-min cycle runs **three phases**:
 1. **Pre-pass 0** — Bear market check: liquidate ETF parking if SPY < SMA200
-2. **Pre-pass 1** — Stale rotation: free the lowest-quality sideways slot for a fresh trigger
-3. **Per-position loop** — Power Hold, trailing stop, profit target (ETF positions skipped)
-4. **Re-park** — `run_etf_parking()` called after every sell to immediately redeploy freed cash
+2. **Per-position loop** — Power Hold, trailing stop, profit target (ETF positions skipped)
+3. **Re-park** — `run_etf_parking()` called after every sell to immediately redeploy freed cash
 
 ---
 
@@ -55,60 +54,11 @@ if ETF_PARKING_ENABLED:
 
 ---
 
-## Phase 1 — Stale Position Rotation Pre-pass
+## Phase 1 — Stale Position Rotation (Migrated)
 
-Before the per-position loop, the bot scans all holdings for **non-performing positions** and rotates
-out the single worst-quality performer if a better opportunity exists.
-
-### Trigger Conditions (all must be true)
-
-```python
-if len(positions) >= MAX_POSITIONS         # Portfolio at capacity
-        and fresh_triggers_today:          # Real replacement exists in daily_triggers
-    # Scan stale candidates...
-```
-
-### Stale Candidate Criteria
-
-```python
-if (days_held >= STALE_HOLD_DAYS          # default: 15 days
-        and gain_from_entry < STALE_HOLD_MAX_GAIN   # default: < 3%
-        and not is_power_hold             # Power Hold positions exempt
-        and buy_source != "etf_parking"): # ETF parking handled by run_etf_parking()
-    stale_candidates.append(...)
-```
-
-### Sort Priority — Lowest Quality Exits First
-
-```python
-stale_candidates.sort(key=lambda x: (
-    0 if x[3].get("buy_source") == "etf_parking" else      # ETF parking first (never reached — excluded above)
-    1 if x[3].get("buy_source") == "momentum_triggers" else # then momentum
-    2,                                                       # then CANSLIM primary (sell last)
-    x[0]   # gain ascending within each group
-))
-```
-
-Only **one position is sold per cycle**. The next worst exits in a subsequent cycle after a replacement fills the freed slot.
-
-### After Stale Rotation Sell
-
-```python
-execute_sell(...)
-if ETF_PARKING_ENABLED:
-    run_etf_parking(ib, client)   # Immediately re-park freed slot (bull→QQQ, bear→cash)
-# Refresh positions and IBKR tickers before per-position loop
-positions    = client.table("portfolio_positions").select("*").execute().data
-ib_map       = {p.contract.symbol: p for p in ib.portfolio()}
-ib_tickers   = list(ib_map.keys())
-```
-
-### Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `STALE_HOLD_DAYS` | `15` | Min days held before eligible for rotation |
-| `STALE_HOLD_MAX_GAIN` | `0.03` | Max gain (decimal) qualifying as "sideways" |
+> [!NOTE]
+> The Stale Position Rotation logic has been **migrated** to `run_market_open_buys` in `buy_logic.md`. 
+> It now runs as a pre-flight check before attempting new buys, rather than as a standalone phase during intraday monitoring.
 
 ---
 
@@ -163,7 +113,7 @@ if not is_power_hold and current_price >= (buy_price * (1 + POWER_HOLD_GAIN_TRIG
 | Days since purchase | <= 21 days | `POWER_HOLD_DAYS_LIMIT=21` |
 | Hold duration | 8 weeks | `POWER_HOLD_DURATION_WEEKS=8` |
 
-**Effect:** The 25% profit target is **suspended** for 8 weeks. Stop-loss remains active.
+**Effect:** The 25% profit target limit order is **deferred** for 8 weeks (or if already placed, it is canceled and only the trailing stop remains). The limit order is dynamically re-added by the self-healing routine once Power Hold expires. Stop-loss remains active.
 
 **Expiry:**
 ```python
@@ -243,7 +193,6 @@ if EXIT_MA_TRIGGER_ENABLED:
 | Priority | Trigger | Condition | Power Hold Override? |
 |----------|---------|-----------|---------------------|
 | Phase 0 | Bear market ETF exit | SPY < SMA200 → liquidate ETF parking | N/A (ETF only) |
-| Pre-pass | Stale Rotation | days ≥ 15 AND gain < 3% AND full AND fresh trigger | Exempt |
 | 1 | Trailing Stop Loss | `price <= high_water_mark × 0.93` | No — always fires |
 | 2 | 25% Profit Target | `price >= buy × 1.25` | Yes — suspended during hold |
 | 3 | Moving Average Breach | `price < MA * (1 - Buffer)` (EOD only) | No — EMA-21 support check |
@@ -330,15 +279,6 @@ reconcile_with_ibkr()  [ib.portfolio() — catches manual TWS closes]
 PHASE 0: Bear market check
     ├─ SPY > SMA200? → BULL, continue
     └─ SPY < SMA200? → BEAR → liquidate all ETF parking positions → hold cash
-    │
-    ▼
-PHASE 1: Stale Rotation pre-pass
-    ├─ Portfolio not full? → Skip
-    ├─ No fresh daily_triggers today? → Skip
-    ├─ Collect stale candidates (days ≥ 15, gain < 3%, not Power Hold, not ETF)
-    ├─ None qualify? → Skip
-    └─ Sort: momentum_triggers → daily_triggers (worst gain first within group)
-       → sell single worst → run_etf_parking() → refresh positions
     │
     ▼
 PHASE 2: For each position in portfolio_positions:

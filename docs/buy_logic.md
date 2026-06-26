@@ -4,28 +4,29 @@
 
 **File:** `execution_agent.py` — function `run_market_open_buys(ib: IB)`
 
-Executes at **market open (9:30–9:45 AM ET, Mon–Fri)**. Runs a 5-step cascade:
+Executes at **market open (9:30–9:45 AM ET, Mon–Fri)** and acts as a **failsafe** throughout the day if a daily buy has not already occurred. Runs a 6-step cascade:
 1. Liquidate ETF parking positions to free cash for incoming CANSLIM triggers
-2. Buy from `daily_triggers` (primary CANSLIM breakouts)
-3. Liquidate remaining ETF slots for incoming momentum triggers
-4. Buy from `momentum_triggers` (secondary relaxed screener) if slots remain
-5. Park any still-empty slots in `QQQ` (bull market) or hold cash (bear market)
+2. Stale Rotation (free the lowest-quality sideways slot for a fresh trigger)
+3. Buy from `daily_triggers` (primary CANSLIM breakouts)
+4. Liquidate remaining ETF slots for incoming momentum triggers
+5. Buy from `momentum_triggers` (secondary relaxed screener) if slots remain
+6. Park any still-empty slots in `QQQ` (bull market) or hold cash (bear market)
 
 ---
 
 ## Execution Timing
 
-The main daemon loop triggers buys only within a precise window:
+The main daemon loop triggers buys at the market open window, but a **failsafe check** ensures that a daily buy occurs unconditionally at some point during the day if there is a buy opportunity and available capital, ignoring the strict 9:30–9:45 window.
 
 ```python
-if now.hour == 9 and 30 <= now.minute <= 45:
+if (now.hour == 9 and 30 <= now.minute <= 45) or daily_failsafe_check():
     reconcile_with_ibkr(ib)   # Sync portfolio state first
     run_market_open_buys(ib)
     time.sleep(900)            # Sleep 15 min to prevent duplicate runs
 ```
 
-- Runs **once per market open**
-- `reconcile_with_ibkr()` always runs first — uses `ib.portfolio()` (not `ib.positions()`) to ensure Supabase reflects actual IBKR holdings
+- Runs **once per market open** (plus anytime the daily failsafe kicks in)
+- `reconcile_with_ibkr()` always runs first — uses `ib.portfolio()` (not `ib.positions()`) to ensure Supabase reflects actual IBKR holdings and detects unintended short positions.
 
 ---
 
@@ -74,7 +75,32 @@ Only enough ETF positions are sold to match the number of incoming triggers.
 
 ---
 
-## Step 4 — Per-Trigger Checks (primary CANSLIM loop)
+## Step 4 — Stale Position Rotation
+
+Before processing `daily_triggers`, the bot scans all holdings for **non-performing positions** and rotates
+out the single worst-quality performer if a better opportunity exists and the portfolio is full.
+
+### Trigger Conditions (all must be true)
+```python
+if len(stock_holdings) >= MAX_POSITIONS         # Portfolio at capacity
+        and fresh_triggers_today:               # Real replacement exists in daily_triggers
+    # Scan stale candidates...
+```
+
+### Stale Candidate Criteria
+```python
+if (days_held >= STALE_HOLD_DAYS          # default: 15 days
+        and gain_from_entry < STALE_HOLD_MAX_GAIN   # default: < 3%
+        and not is_power_hold             # Power Hold positions exempt
+        and buy_source != "etf_parking"): # ETF parking handled by run_etf_parking()
+    stale_candidates.append(...)
+```
+
+Only **one position is sold per cycle**. The next worst exits in a subsequent cycle after a replacement fills the freed slot.
+
+---
+
+## Step 5 — Per-Trigger Checks (primary CANSLIM loop)
 
 For each trigger from `daily_triggers`:
 
@@ -110,7 +136,7 @@ if available_cash < MIN_POSITION_SIZE:
 
 ---
 
-## Step 5 — Position Sizing
+## Step 6 — Position Sizing
 
 ```python
 stock_held_count = sum(1 for h in holdings if h.get("buy_source") != "etf_parking")
@@ -124,7 +150,7 @@ Example: `$20,000 cash, 2 remaining stock slots → $10,000 per position`
 
 ---
 
-## Step 6 — Pivot Extension Gate (O'Neil Buy Zone)
+## Step 7 — Pivot Extension Gate (O'Neil Buy Zone)
 
 ```python
 pivot_price   = float(trigger["close_price"])    # Price at breakout candle
@@ -138,7 +164,7 @@ Prevents buying a stock that has already run more than 5% beyond its pivot. Crit
 
 ---
 
-## Step 7 — IBKR Market Order & Fill Verification
+## Step 8 — IBKR Market Order & Fill Verification
 
 ```python
 contract = Stock(ticker, 'SMART', 'USD')
@@ -172,9 +198,17 @@ actual_shares = int(ib_pos.position)
 
 ---
 
-## Step 8 — Stop/Target Initialization & Supabase Record
+## Step 9 — Stop/Target Initialization & Supabase Record
 
 ```python
+# The exit orders are attached directly to the parent buy order's ID
+place_oca_bracket(
+    ib, contract, actual_shares, fill_price,
+    PROFIT_TARGET_PCT, STOP_LOSS_PCT,
+    submit_limit_order=not is_power_hold,
+    parent_order_id=trade.order.orderId
+)
+
 stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)      # default: fill * 0.93
 profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)  # default: fill * 1.25
 
@@ -200,7 +234,7 @@ portfolio_positions.insert({
 
 ---
 
-## Step 9 — Momentum Cascade (if stock slots remain)
+## Step 10 — Momentum Cascade (if stock slots remain)
 
 After the primary loop, if stock slots are still empty:
 
@@ -227,7 +261,7 @@ See [Momentum Screener](momentum_screener.md) for details on how `momentum_trigg
 
 ---
 
-## Step 10 — ETF Cash Parking
+## Step 11 — ETF Cash Parking
 
 After all buy attempts (primary + momentum), if stock slots are still empty:
 
@@ -280,6 +314,9 @@ Load portfolio → stock-only cap check
     │
     ▼
 PRE-FLIGHT: sell ETF slots for incoming triggers
+    │
+    ▼
+Stale Rotation: sell 1 sideways stock if portfolio full and triggers exist
     │
     ▼
 For each daily_trigger:
