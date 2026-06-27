@@ -63,3 +63,16 @@ class TestGate1StockSlots:
         _run_buys(ib, supabase)
         ib.placeOrder.assert_not_called()
 
+
+class TestAIRatingSorting:
+    def test_buys_highest_ai_rated_trigger_first(self):
+        portfolio = [make_position(t) for t in ['AAPL', 'MSFT', 'NVDA']]
+        t_tsla = make_trigger('TSLA', close_price=100.0); t_tsla['ai_rating'] = 50
+        t_meta = make_trigger('META', close_price=100.0); t_meta['ai_rating'] = 95
+        t_amzn = make_trigger('AMZN', close_price=100.0); t_amzn['ai_rating'] = None
+        supabase = make_supabase_mock(daily_triggers=[t_tsla, t_meta, t_amzn], portfolio=portfolio)
+        ib = make_ib_mock(symbols=['AAPL', 'MSFT', 'NVDA', 'META'])
+        _run_buys(ib, supabase)
+        first_contract = ib.placeOrder.call_args_list[0][0][0]
+        assert first_contract.symbol == 'META'
+

@@ -159,3 +159,7 @@ A ticker must pass **all three** to generate a trigger. There is no scoring or r
 | HTTP 429 rate limit | Exponential backoff retry (up to 3x) |
 | Zero avg volume | `volume_surge_ratio` defaults to 0 (fails condition) |
 | No breakouts found | DB insert skipped, log message only |
+
+## Step 4: AI Breakout Evaluation
+After basic technical thresholds are met, an AI Evaluator (using OpenAI's LLM) scores each breakout on a scale of 0-100 based on CANSLIM principles (combining EPS growth, volume surge, and pivot proximity). The bot will prioritize buying breakouts with the highest ai_rating.
+

@@ -298,3 +298,7 @@ To ensure docs stay accurate:
 - Mention doc updates when requesting code changes
 - Or periodically ask: *"Are the trading bot docs still accurate?"* — the assistant will
   re-read the source files and flag any drift.
+
+## OpenAI Integration
+The bot uses OpenAI (requires `OPENAI_API_KEY`) to evaluate and rank technical breakouts according to CANSLIM fundamentals before the market opens.
+
