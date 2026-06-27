@@ -40,6 +40,17 @@ def fetch_daily_triggers():
         print(f"❌ Failed to fetch daily triggers: {e}")
         return []
 
+def fetch_watchlist_data(tickers):
+    if not tickers:
+        return {}
+    print(f"[*] Fetching fundamental data for {len(tickers)} breakouts...")
+    try:
+        res = client.table("watchlist").select("ticker, q_eps_growth, a_eps_growth, revenue_growth, roe, analyst_rating, company_size").in_("ticker", tickers).execute()
+        return {row["ticker"]: row for row in res.data}
+    except Exception as e:
+        print(f"❌ Failed to fetch watchlist data: {e}")
+        return {}
+
 def update_trigger_rating(ticker, rating):
     try:
         client.table("daily_triggers").update({"ai_rating": rating}).eq("ticker", ticker).execute()
@@ -54,6 +65,10 @@ def main():
 
     history = fetch_trade_history()
     
+    # Fetch fundamentals
+    tickers = [t["ticker"] for t in triggers]
+    fundamentals = fetch_watchlist_data(tickers)
+    
     # Format history for context
     history_text = "Recent closed trades:\n"
     if history:
@@ -65,7 +80,15 @@ def main():
     # Format breakouts for context
     breakouts_text = "Today's Breakouts:\n"
     for t in triggers:
-        breakouts_text += f"- {t['ticker']}: Price=${t.get('close_price')}, VolSurge={t.get('volume_surge')}x, Dist from Pivot={t.get('pivot_distance_pct')}%\n"
+        ticker = t["ticker"]
+        f_data = fundamentals.get(ticker, {})
+        
+        breakouts_text += (
+            f"- {ticker}: Price=${t.get('close_price')}, VolSurge={t.get('volume_surge')}x, "
+            f"Dist from Pivot={t.get('pivot_distance_pct')}%, "
+            f"Q-EPS Growth={f_data.get('q_eps_growth', 'N/A')}%, A-EPS Growth={f_data.get('a_eps_growth', 'N/A')}%, "
+            f"Rev Growth={f_data.get('revenue_growth', 'N/A')}%, ROE={f_data.get('roe', 'N/A')}%, Size={f_data.get('company_size', 'N/A')}\n"
+        )
 
     prompt = f"""
 You are an expert AI trading system specializing in the CANSLIM strategy and swing trading breakouts.
