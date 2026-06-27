@@ -621,6 +621,8 @@ def run_market_open_buys(ib: IB):
     try:
         triggers_res = client.table("daily_triggers").select("*").gte("triggered_at", recent_date).execute()
         triggers = triggers_res.data
+        # Sort triggers by ai_rating (descending). Use 0 for any missing/null ratings.
+        triggers.sort(key=lambda x: x.get("ai_rating") or 0, reverse=True)
     except Exception as e:
         notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", e)
         print(f"❌ Failed to fetch daily triggers: {e}")
