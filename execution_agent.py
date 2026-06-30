@@ -803,17 +803,17 @@ def run_market_open_buys(ib: IB):
             ib.placeOrder(contract, stopLoss)
 
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
-            ib.sleep(5)
-            ib_map = {p.contract.symbol: p for p in ib.portfolio()}
-            if ticker not in ib_map:
-                ib.sleep(3)  # one more wait
+            for _ in range(15):
+                ib.sleep(1)
                 ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+                if ticker in ib_map:
+                    break
 
             if ticker not in ib_map:
-                print(f"   ⚠️ {ticker} not found in IBKR portfolio after 8s — order may not have filled. Cancelling and skipping.")
+                print(f"   ⚠️ {ticker} not found in IBKR portfolio after 15s — order may not have filled. Cancelling and skipping.")
                 ib.cancelOrder(parent)
                 notifier.notify_buy_failure(ticker=ticker, shares=shares,
-                    error="Not confirmed in IBKR portfolio after 8s")
+                    error="Not confirmed in IBKR portfolio after 15s")
                 continue
 
             ib_pos = ib_map[ticker]

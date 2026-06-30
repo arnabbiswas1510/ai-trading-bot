@@ -191,13 +191,11 @@ def main():
             # Wait for fill — IBKR sometimes shows 'Cancelled' briefly when
             # it replaces an order due to TIF preset change (Error 10349).
             # Verify by checking the actual portfolio instead of trade status.
-            ib.sleep(5)
-
-            # Check if the position now exists in IBKR portfolio
-            ib_positions = {p.contract.symbol: p for p in ib.portfolio()}
-            if ticker not in ib_positions:
-                ib.sleep(3)  # one more wait
+            for _ in range(15):
+                ib.sleep(1)
                 ib_positions = {p.contract.symbol: p for p in ib.portfolio()}
+                if ticker in ib_positions:
+                    break
 
             if ticker in ib_positions:
                 ib_pos = ib_positions[ticker]
@@ -244,7 +242,7 @@ def main():
                 bought += 1
                 held.append(ticker)
             else:
-                print(f"   ⚠️ {ticker}: order placed but not detected in IBKR portfolio after 8s.")
+                print(f"   ⚠️ {ticker}: order placed but not detected in IBKR portfolio after 15s.")
                 print(f"      The execution-agent's reconcile_with_ibkr() will sync it on the next cycle.")
 
         except Exception as e:
