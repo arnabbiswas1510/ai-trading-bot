@@ -355,6 +355,7 @@ def reconcile_with_ibkr(ib: IB):
             client.table("account_balances").upsert(
                 {
                     "date": today_str,
+                    "key": "ibkr_cash_balance",
                     "ibkr_cash_balance": new_balance,
                     "ibkr_positions_value": round(positions_value, 2),
                     "ibkr_total_value": round(total_value, 2)
@@ -486,6 +487,10 @@ def reconcile_with_ibkr(ib: IB):
         profit_loss = round((sell_price - buy_price) * shares, 2)
         percent_return = round(((sell_price / buy_price) - 1.0) * 100.0, 2)
 
+        sell_reason = "Manual close in IBKR (reconciled)"
+        if has_sld_fill:
+            sell_reason = "IBKR order filled (reconciled)"
+
         trade_log = {
             "ticker": ticker,
             "shares": shares,
@@ -493,24 +498,33 @@ def reconcile_with_ibkr(ib: IB):
             "buy_date": buy_date,
             "buy_reason": buy_reason,
             "sell_price": sell_price,
-            "sell_reason": "Manual close in IBKR (reconciled)",
+            "sell_reason": sell_reason,
             "profit_loss": profit_loss,
             "percent_return": percent_return,
         }
         try:
+            # Delete from portfolio FIRST, independently of trade history
             client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
-            client.table("trade_history").insert(trade_log).execute()
-            print(f"        ✅ Removed from portfolio, logged to history. PnL: ${profit_loss:+.2f} ({percent_return:+.2f}%)")
-            notifier.notify_manual_close(
-                ticker=ticker, shares=shares, buy_price=buy_price,
-                sell_price=sell_price, sell_price_source=sell_price_source,
-                buy_date=buy_date
-            )
             changes += 1
+            print(f"        ✅ Removed {ticker} from Supabase portfolio.")
+            
+            try:
+                # Then try to insert to trade_history
+                client.table("trade_history").insert(trade_log).execute()
+                print(f"        ✅ Logged to history. PnL: ${profit_loss:+.2f} ({percent_return:+.2f}%)")
+                notifier.notify_manual_close(
+                    ticker=ticker, shares=shares, buy_price=buy_price,
+                    sell_price=sell_price, sell_price_source=sell_price_source,
+                    buy_date=buy_date
+                )
+            except Exception as e:
+                notifier.notify_exception(f"reconcile_with_ibkr() (trade_history insert) — execution_agent.py", e)
+                print(f"        ❌ DB error adding {ticker} to trade_history: {e}")
+                
             net_trade_cash += (sell_price * shares)
         except Exception as e:
-            notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
-            print(f"        ❌ DB error reconciling close for {ticker}: {e}")
+            notifier.notify_exception(f"reconcile_with_ibkr() (portfolio delete) — execution_agent.py", e)
+            print(f"        ❌ DB error removing {ticker} from portfolio: {e}")
 
     # ── Case 2: In IBKR but NOT in Supabase (manual buy / opened in TWS) ───
     for ticker in ib_tickers - supabase_tickers:

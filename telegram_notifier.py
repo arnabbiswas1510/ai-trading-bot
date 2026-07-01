@@ -55,13 +55,15 @@ class TelegramNotifier:
             return
         for chat_id in self.chat_ids:
             try:
-                requests.post(
+                r = requests.post(
                     self._url,
                     data={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
                     timeout=5
                 )
-            except Exception:
-                pass  # Notification failures must never affect trading
+                if r.status_code != 200:
+                    print(f"Telegram API Error ({r.status_code}): {r.text}")
+            except Exception as e:
+                print(f"Telegram Network Error: {e}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # Trade Event Notifications
