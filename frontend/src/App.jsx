@@ -214,15 +214,6 @@ export default function App() {
           </li>
           <li>
             <div 
-              className={`nav-item ${currentView === 'backtester' ? 'active' : ''}`}
-              onClick={() => setCurrentView('backtester')}
-            >
-              <BarChart2 />
-              <span>Backtester</span>
-            </div>
-          </li>
-          <li>
-            <div 
               className={`nav-item ${currentView === 'history' ? 'active' : ''}`}
               onClick={() => setCurrentView('history')}
             >
@@ -237,6 +228,15 @@ export default function App() {
             >
               <LineChart />
               <span>Performance</span>
+            </div>
+          </li>
+          <li>
+            <div 
+              className={`nav-item ${currentView === 'backtester' ? 'active' : ''}`}
+              onClick={() => setCurrentView('backtester')}
+            >
+              <BarChart2 />
+              <span>Backtester</span>
             </div>
           </li>
           <li>
