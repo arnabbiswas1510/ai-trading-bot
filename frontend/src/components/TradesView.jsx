@@ -8,6 +8,49 @@ export default function TradesView({ trades }) {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   };
 
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      
+      const hh = String(date.getHours()).padStart(2, '0');
+      const min = String(date.getMinutes()).padStart(2, '0');
+      
+      return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  const getCleanExitReason = (raw, pctReturn) => {
+    if (!raw) return 'Manual Close';
+    const lower = raw.toLowerCase();
+    
+    if (lower.includes('ema-21') || lower.includes('exit ma')) {
+      return 'EMA-21 Exit';
+    }
+    if (lower.includes('force sell') || lower.includes('user request')) {
+      return 'Manual Force Sell';
+    }
+    if (lower.includes('manual close')) {
+      return 'Manual Close';
+    }
+    if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
+      if (pctReturn >= 24.0) {
+        return 'Profit Target';
+      } else {
+        return 'Trailing Stop Loss';
+      }
+    }
+    
+    return raw;
+  };
+
   // Stats from full trade history (history view)
   const totalTrades = trades.length;
   const wins = trades.filter(t => t.profit_loss > 0).length;
@@ -82,17 +125,17 @@ export default function TradesView({ trades }) {
                       <th onClick={() => requestSort('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIcon('shares')}</th>
                       <th onClick={() => requestSort('buy_price')} style={{ cursor: 'pointer' }}>Buy Price / Date{getSortIcon('buy_price')}</th>
                       <th onClick={() => requestSort('sell_price')} style={{ cursor: 'pointer' }}>Sell Price / Date{getSortIcon('sell_price')}</th>
-                      <th onClick={() => requestSort('buy_source')} style={{ cursor: 'pointer' }}>Buy Reason{getSortIcon('buy_source')}</th>
                       <th onClick={() => requestSort('profit_loss')} style={{ cursor: 'pointer' }}>P&L ($){getSortIcon('profit_loss')}</th>
                       <th onClick={() => requestSort('percent_return')} style={{ cursor: 'pointer' }}>Return (%){getSortIcon('percent_return')}</th>
-                      <th onClick={() => requestSort('exit_reason')} style={{ cursor: 'pointer' }}>Exit Trigger{getSortIcon('exit_reason')}</th>
+                      <th onClick={() => requestSort('exit_reason')} style={{ cursor: 'pointer' }}>Exit Reason{getSortIcon('exit_reason')}</th>
                     </tr>
                   </thead>
 
                   <tbody>
                     {sortedTrades.map((trade) => {
-                      const buyDateStr = trade.buy_date ? trade.buy_date.split('T')[0] : 'N/A';
-                      const sellDateStr = trade.sell_date ? trade.sell_date.split('T')[0] : 'N/A';
+                      const buyDateStr = formatDateTime(trade.buy_date);
+                      const sellDateStr = formatDateTime(trade.sell_date);
+                      const cleanExitReason = getCleanExitReason(trade.exit_reason, trade.percent_return);
                       
                       return (
                         <tr key={trade.id}>
@@ -112,9 +155,6 @@ export default function TradesView({ trades }) {
                               <Calendar size={10} /> {sellDateStr}
                             </div>
                           </td>
-                          <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={trade.buy_reason}>
-                            {trade.buy_reason || 'N/A'}
-                          </td>
                           <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                             {trade.profit_loss >= 0 ? '+' : ''}{formatCurrency(trade.profit_loss)}
                           </td>
@@ -122,8 +162,11 @@ export default function TradesView({ trades }) {
                             {trade.percent_return.toFixed(2)}%
                           </td>
                           <td>
-                            <span className={`badge ${trade.exit_reason === '25% Profit Target' || trade.exit_reason === 'Profit Target' ? 'badge-success' : trade.exit_reason === '7% Stop Loss' || trade.exit_reason === 'Stop Loss' ? 'badge-danger' : 'badge-warning'}`}>
-                              {trade.exit_reason}
+                            <span 
+                              className={`badge ${cleanExitReason === 'Profit Target' ? 'badge-success' : cleanExitReason === 'Trailing Stop Loss' ? 'badge-danger' : 'badge-warning'}`}
+                              title={trade.exit_reason}
+                            >
+                              {cleanExitReason}
                             </span>
                           </td>
                         </tr>

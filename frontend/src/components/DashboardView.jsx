@@ -38,6 +38,30 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function getCleanExitReason(raw, pctReturn) {
+  if (!raw) return 'Manual Close';
+  const lower = raw.toLowerCase();
+  
+  if (lower.includes('ema-21') || lower.includes('exit ma')) {
+    return 'EMA-21 Exit';
+  }
+  if (lower.includes('force sell') || lower.includes('user request')) {
+    return 'Manual Force Sell';
+  }
+  if (lower.includes('manual close')) {
+    return 'Manual Close';
+  }
+  if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
+    if (pctReturn >= 24.0) {
+      return 'Profit Target';
+    } else {
+      return 'Trailing Stop Loss';
+    }
+  }
+  
+  return raw;
+}
+
 // Derive the most urgent status badge for the compact column
 function getStatusBadge(pos, days) {
   const gain = (pos.current_price / pos.buy_price) - 1.0;
@@ -505,9 +529,17 @@ export default function DashboardView({ data, marketData, trades }) {
                       {trade.percent_return.toFixed(2)}%
                     </td>
                     <td>
-                      <span className={`badge ${trade.exit_reason === 'Profit Target' ? 'badge-success' : trade.exit_reason === 'Stop Loss' ? 'badge-danger' : 'badge-warning'}`}>
-                        {trade.exit_reason}
-                      </span>
+                      {(() => {
+                        const cleanExitReason = getCleanExitReason(trade.exit_reason, trade.percent_return);
+                        return (
+                          <span 
+                            className={`badge ${cleanExitReason === 'Profit Target' ? 'badge-success' : cleanExitReason === 'Trailing Stop Loss' ? 'badge-danger' : 'badge-warning'}`}
+                            title={trade.exit_reason}
+                          >
+                            {cleanExitReason}
+                          </span>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}
