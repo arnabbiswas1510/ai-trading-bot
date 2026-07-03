@@ -24,6 +24,10 @@ jobs:
           script: |
             cd /home/dietpi/docker/ai-trading-bot
 
+            echo "=== Pulling latest repository code ==="
+            git fetch --all
+            git reset --hard origin/main
+
             echo "=== Pulling latest images ==="
             docker compose pull execution-agent trading-bot
 
