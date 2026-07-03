@@ -134,7 +134,7 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                 <thead>
                   <tr>
                     <th onClick={() => requestSortWatchlist('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIconWatchlist('ticker')}</th>
-                    <th onClick={() => requestSortWatchlist('total_score')} style={{ textAlign: 'center', cursor: 'pointer' }}>Total Score{getSortIconWatchlist('total_score')}</th>
+                    <th onClick={() => requestSortWatchlist(s => s.details?.analyst_rating)} style={{ textAlign: 'center', cursor: 'pointer' }}>Analyst Rating{getSortIconWatchlist(s => s.details?.analyst_rating)}</th>
                     <th style={{ textAlign: 'center' }}>CAN SLIM Health</th>
                     <th onClick={() => requestSortWatchlist(s => s.details?.current_price)} style={{ cursor: 'pointer' }}>Price{getSortIconWatchlist(s => s.details?.current_price)}</th>
                     <th onClick={() => requestSortWatchlist(s => s.details?.c_growth_yoy)} style={{ cursor: 'pointer' }}>YoY EPS Growth (C){getSortIconWatchlist(s => s.details?.c_growth_yoy)}</th>
@@ -195,14 +195,14 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                       <span 
                         style={{ 
                           fontFamily: 'var(--font-display)', 
-                          fontWeight: 800, 
-                          fontSize: '1.1rem',
-                          color: getScoreColor(stock.total_score)
+                          fontWeight: 700, 
+                          color: stock.details?.analyst_rating?.toLowerCase().includes('strong buy') ? '#10b981' : 
+                                 stock.details?.analyst_rating?.toLowerCase().includes('buy') ? '#34d399' :
+                                 stock.details?.analyst_rating?.toLowerCase().includes('sell') ? '#f43f5e' : 'var(--text-secondary)'
                         }}
                       >
-                        {stock.total_score}
+                        {stock.details?.analyst_rating || 'N/A'}
                       </span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>/100</span>
                     </td>
                     <td style={{ display: 'flex', justifyContent: 'center', gap: '4px', verticalAlign: 'middle', padding: '1rem 0' }}>
                       {['C', 'A', 'N', 'S', 'L', 'I', 'M'].map(letter => {
