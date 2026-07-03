@@ -497,7 +497,8 @@ def get_daily_triggers():
                 "pivot_distance_pct": row["pivot_distance_pct"],
                 "triggered_at": row["triggered_at"],
                 "change_status": change_status,
-                "retention_period": row.get("retention_period") or "1d"
+                "retention_period": row.get("retention_period") or "1d",
+                "ai_rating": row.get("ai_rating")
             })
             
         removed_tickers = list(prev_tickers - curr_tickers) if prev_tickers else []

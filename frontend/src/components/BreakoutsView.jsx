@@ -15,6 +15,7 @@ function BreakoutTable({ list }) {
         <thead>
           <tr>
             <th onClick={() => requestSort('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIcon('ticker')}</th>
+            <th onClick={() => requestSort('ai_rating')} style={{ cursor: 'pointer' }}>AI Rating{getSortIcon('ai_rating')}</th>
             <th onClick={() => requestSort('triggered_at')} style={{ cursor: 'pointer' }}>Trigger Date{getSortIcon('triggered_at')}</th>
             <th onClick={() => requestSort('close_price')} style={{ cursor: 'pointer' }}>Close Price{getSortIcon('close_price')}</th>
             <th onClick={() => requestSort('volume_surge')} style={{ cursor: 'pointer' }}>Volume Surge{getSortIcon('volume_surge')}</th>
@@ -33,7 +34,7 @@ function BreakoutTable({ list }) {
               <tr key={b.ticker + '-' + index}>
                 <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '1.05rem' }}>
                   <span style={{ verticalAlign: 'middle' }}>{b.ticker}</span>
-                  {b.retention_period && b.retention_period !== '1d' ? (
+                  {b.retention_period && b.retention_period !== '1d' && (
                     <span style={{
                       display: 'inline-block',
                       marginLeft: '0.4rem',
@@ -49,9 +50,20 @@ function BreakoutTable({ list }) {
                     }}>
                       {b.retention_period}
                     </span>
-                  ) : (b.retention_period === '1d' || b.change_status === 'NEW') ? (
-                    <span className="badge-new-pulse">+ NEW</span>
-                  ) : null}
+                  )}
+                </td>
+                <td style={{ fontWeight: 600 }}>
+                  {b.ai_rating !== undefined && b.ai_rating !== null ? (
+                    <span style={{ 
+                      color: b.ai_rating >= 75 ? '#10b981' : b.ai_rating >= 50 ? '#f59e0b' : '#f43f5e',
+                      fontFamily: 'var(--font-display)',
+                      fontWeight: 800
+                    }}>
+                      {b.ai_rating}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  )}
                 </td>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
