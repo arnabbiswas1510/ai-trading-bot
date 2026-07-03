@@ -45,6 +45,9 @@ function getCleanExitReason(raw, pctReturn) {
   if (lower.includes('ema-21') || lower.includes('exit ma')) {
     return 'EMA-21 Exit';
   }
+  if (lower.includes('stale rotation')) {
+    return 'Stale Rotation';
+  }
   if (lower.includes('force sell') || lower.includes('user request')) {
     return 'Manual Force Sell';
   }
@@ -53,13 +56,39 @@ function getCleanExitReason(raw, pctReturn) {
   }
   if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
     if (pctReturn >= 24.0) {
-      return 'Profit Target';
+      return 'Profit Target (+25%)';
     } else {
-      return 'Trailing Stop Loss';
+      return 'Stop Loss (-7%)';
     }
   }
   
   return raw;
+}
+
+function getDetailedExitTooltip(raw, pctReturn) {
+  if (!raw) return `Manual close at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
+  const lower = raw.toLowerCase();
+  
+  if (lower.includes('ema-21') || lower.includes('exit ma')) {
+    return raw;
+  }
+  if (lower.includes('stale rotation')) {
+    return raw;
+  }
+  if (lower.includes('force sell') || lower.includes('user request')) {
+    return `Manual Force Sell executed at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
+  }
+  if (lower.includes('manual close')) {
+    return `Manual Close on IBKR reconciled at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
+  }
+  if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
+    if (pctReturn >= 24.0) {
+      return `Profit Target Filled (+25.0% target) with final return of +${pctReturn.toFixed(2)}%`;
+    } else {
+      return `Trailing Stop Loss Triggered (-7.0% stop) with final return of ${pctReturn.toFixed(2)}%`;
+    }
+  }
+  return `${raw} (${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}%)`;
 }
 
 // Derive the most urgent status badge for the compact column
@@ -531,10 +560,11 @@ export default function DashboardView({ data, marketData, trades }) {
                     <td>
                       {(() => {
                         const cleanExitReason = getCleanExitReason(trade.exit_reason, trade.percent_return);
+                        const detailedExitTooltip = getDetailedExitTooltip(trade.exit_reason, trade.percent_return);
                         return (
                           <span 
-                            className={`badge ${cleanExitReason === 'Profit Target' ? 'badge-success' : cleanExitReason === 'Trailing Stop Loss' ? 'badge-danger' : 'badge-warning'}`}
-                            title={trade.exit_reason}
+                            className={`badge ${cleanExitReason.includes('Profit Target') ? 'badge-success' : cleanExitReason.includes('Stop Loss') ? 'badge-danger' : 'badge-warning'}`}
+                            title={detailedExitTooltip}
                           >
                             {cleanExitReason}
                           </span>
