@@ -223,6 +223,7 @@ export default function DashboardView({ data, marketData, trades }) {
     initial_balance: 100000.0,
     cash_balance: 100000.0,
     portfolio_value: 100000.0,
+    invested_value: 0.0,
     unrealized_pnl: 0.0,
     total_pnl: 0.0,
     total_pnl_pct: 0.0,
@@ -232,6 +233,7 @@ export default function DashboardView({ data, marketData, trades }) {
   
 
   const positions = data?.positions || [];
+  const investedValue = positions.reduce((sum, pos) => sum + (pos.current_price || pos.buy_price) * pos.shares, 0);
   const recentTrades = trades?.slice(0, 5) || [];
 
   const { items: sortedPositions, requestSort: requestSortPos, getSortIcon: getSortIconPos } = useSortableTable(positions, 'ticker', 'asc');
@@ -280,16 +282,19 @@ export default function DashboardView({ data, marketData, trades }) {
       <div className="metrics-grid">
         <div className="card metric-card">
           <div className="metric-header">
-            <span>Portfolio Value</span>
+            <span>Invested Portfolio Value</span>
             <div className="metric-icon-wrap" style={{ color: 'var(--accent-primary)' }}>
               <Briefcase size={16} />
             </div>
           </div>
-          <div className="metric-value">{formatCurrency(summary.portfolio_value)}</div>
-          <div className={`metric-change ${summary.total_pnl >= 0 ? 'up' : 'down'}`}>
-            {summary.total_pnl >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-            <span>{summary.total_pnl_pct.toFixed(2)}% ({formatCurrency(summary.total_pnl)})</span>
+          <div className="metric-value">
+            {formatCurrency(summary.invested_value ?? investedValue)}
           </div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+            {summary.portfolio_value > 0 
+              ? `${(((summary.invested_value ?? investedValue) / summary.portfolio_value) * 100).toFixed(1)}% of total portfolio (${formatCurrency(summary.portfolio_value)})`
+              : `0.0% of total portfolio (${formatCurrency(0)})`}
+          </span>
         </div>
 
         <div className="card metric-card">

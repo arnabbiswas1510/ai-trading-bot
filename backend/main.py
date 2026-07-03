@@ -210,6 +210,7 @@ def get_portfolio():
         unrealized_pnl = portfolio_value - (cash + sum(pos['shares'] * pos['buy_price'] for pos in positions))
         total_pnl = portfolio_value - initial
         total_pnl_pct = (portfolio_value / initial - 1.0) * 100.0
+        invested_value = portfolio_value - cash
         
         win_rate = 0.0
         if history:
@@ -221,6 +222,7 @@ def get_portfolio():
                 "initial_balance": round(initial, 2),
                 "cash_balance": round(cash, 2),
                 "portfolio_value": round(portfolio_value, 2),
+                "invested_value": round(invested_value, 2),
                 "unrealized_pnl": round(unrealized_pnl, 2),
                 "total_pnl": round(total_pnl, 2),
                 "total_pnl_pct": round(total_pnl_pct, 2),
