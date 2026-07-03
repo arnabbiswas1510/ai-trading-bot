@@ -23,7 +23,7 @@ def fetch_trade_history():
     print("[*] Fetching recent trade history...")
     try:
         # We look at recently closed trades to provide context
-        res = client.table("trade_history").select("ticker, entry_price, exit_price, exit_date, reason, return_pct").order("exit_date", desc=True).limit(30).execute()
+        res = client.table("trade_history").select("ticker, buy_price, sell_price, sell_date, sell_reason, percent_return").order("sell_date", desc=True).limit(30).execute()
         return res.data
     except Exception as e:
         print(f"⚠️ Failed to fetch trade history: {e}")
@@ -73,7 +73,7 @@ def main():
     history_text = "Recent closed trades:\n"
     if history:
         for t in history:
-            history_text += f"- {t['ticker']}: {t.get('return_pct', 0.0):.2f}% return (Reason: {t.get('reason', 'N/A')})\n"
+            history_text += f"- {t['ticker']}: {t.get('percent_return', 0.0):.2f}% return (Reason: {t.get('sell_reason', 'N/A')})\n"
     else:
         history_text += "No recent trades available yet.\n"
 
