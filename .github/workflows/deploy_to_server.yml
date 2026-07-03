@@ -27,6 +27,9 @@ jobs:
             echo "=== Pulling latest images ==="
             docker compose pull execution-agent trading-bot
 
+            echo "=== Removing old container instances to prevent name conflicts ==="
+            docker compose rm -fs execution-agent trading-bot
+
             echo "=== Restarting all trading bot containers (dependency order) ==="
             docker compose up -d ib-gateway > /dev/null 2>&1
             sleep 5
