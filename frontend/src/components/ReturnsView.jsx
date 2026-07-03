@@ -26,7 +26,10 @@ export default function ReturnsView({ trades }) {
   const [loading, setLoading] = useState(true);
   
   // Date range filters
-  const [dateRange, setDateRange] = useState('YTD'); // '1M', '3M', 'YTD', 'ALL'
+  const [dateRange, setDateRange] = useState('YTD'); // '1M', '3M', 'YTD', 'ALL', 'CUSTOM'
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [returnType, setReturnType] = useState('TWR'); // 'TWR' vs 'SIMPLE'
 
   useEffect(() => {
     const fetchData = async () => {
@@ -53,7 +56,7 @@ export default function ReturnsView({ trades }) {
   const processedData = useMemo(() => {
     if (!balances || balances.length === 0) return { chartData: [], kpis: null };
 
-    // 1. Group balances by date (new schema: date is PK, values are columns)
+    // 1. Group balances by date
     const dailyBalances = {};
     balances.forEach(b => {
       dailyBalances[b.date] = {
@@ -91,8 +94,7 @@ export default function ReturnsView({ trades }) {
       netDeposits += flowToday;
       investedCapital += flowToday;
 
-      // Calculate Daily Return for TWR
-      // R_t = (Value_today - Flow_today) / Value_yesterday - 1
+      // Calculate Daily Return for TWR (excl. cash flows)
       let dailyReturn = 0;
       if (previousValue > 0) {
         dailyReturn = (todayTotal - flowToday) / previousValue - 1;
@@ -100,20 +102,31 @@ export default function ReturnsView({ trades }) {
 
       cumulativeTwrMultiplier *= (1 + dailyReturn);
 
+      // Simple Return (with cash deposits)
+      const simpleReturn = investedCapital > 0 ? ((todayTotal / investedCapital) - 1) * 100 : 0;
+      const twrReturn = (cumulativeTwrMultiplier - 1) * 100;
+
       chartData.push({
         date,
         totalValue: todayTotal,
         investedCapital: investedCapital,
-        twr: (cumulativeTwrMultiplier - 1) * 100,
+        twr: twrReturn,
+        simpleReturn: simpleReturn,
         flow: flowToday
       });
 
       previousValue = todayTotal;
     });
 
-    // Filter by dateRange
+    // Filter by dateRange or date pickers
     let filteredChartData = chartData;
-    if (dateRange !== 'ALL' && chartData.length > 0) {
+    if (fromDate || toDate) {
+      filteredChartData = chartData.filter(d => {
+        if (fromDate && d.date < fromDate) return false;
+        if (toDate && d.date > toDate) return false;
+        return true;
+      });
+    } else if (dateRange !== 'ALL' && chartData.length > 0) {
       const latestDate = new Date(chartData[chartData.length - 1].date);
       let cutoffDate = new Date();
       
@@ -126,7 +139,7 @@ export default function ReturnsView({ trades }) {
     }
 
     // Recompute KPIs for the filtered range
-    let startVal = 0, endVal = 0, rangeDeposits = 0, rangeTwr = 0;
+    let startVal = 0, endVal = 0, rangeDeposits = 0, rangeTwr = 0, rangeSimple = 0;
     if (filteredChartData.length > 0) {
       const startPoint = filteredChartData[0];
       const endPoint = filteredChartData[filteredChartData.length - 1];
@@ -134,13 +147,15 @@ export default function ReturnsView({ trades }) {
       startVal = startPoint.totalValue;
       endVal = endPoint.totalValue;
       
-      // We need to sum flows strictly within the filtered dates
       filteredChartData.forEach(d => rangeDeposits += d.flow);
 
       // Rebase TWR for the range
       const startMultiplier = (startPoint.twr / 100) + 1;
       const endMultiplier = (endPoint.twr / 100) + 1;
-      rangeTwr = ((endMultiplier / startMultiplier) - 1) * 100;
+      rangeTwr = startMultiplier > 0 ? ((endMultiplier / startMultiplier) - 1) * 100 : 0;
+
+      // Rebase Simple Return for the range (includes cash deposits)
+      rangeSimple = (startVal + rangeDeposits) > 0 ? ((endVal - startVal - rangeDeposits) / (startVal + rangeDeposits)) * 100 : 0;
     }
 
     const realizedPnL = trades ? trades.reduce((sum, t) => sum + parseFloat(t.profit_loss || 0), 0) : 0;
@@ -151,11 +166,11 @@ export default function ReturnsView({ trades }) {
         startingCapital: startVal,
         currentValue: endVal,
         netDeposits: rangeDeposits,
-        twr: rangeTwr,
+        roi: returnType === 'TWR' ? rangeTwr : rangeSimple,
         realizedPnL
       }
     };
-  }, [balances, cashFlows, dateRange, trades]);
+  }, [balances, cashFlows, dateRange, fromDate, toDate, returnType, trades]);
 
   if (loading) {
     return (
@@ -169,6 +184,10 @@ export default function ReturnsView({ trades }) {
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+      const dataPoint = payload[0].payload;
+      const displayReturn = returnType === 'TWR' ? dataPoint.twr : dataPoint.simpleReturn;
+      const returnLabel = returnType === 'TWR' ? 'TWR' : 'Simple ROI';
+
       return (
         <div style={{
           background: 'var(--bg-card)',
@@ -178,18 +197,32 @@ export default function ReturnsView({ trades }) {
           boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
         }}>
           <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: 'var(--text-primary)' }}>{label}</p>
-          {payload.map((p, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.25rem' }}>
-              <span style={{ color: p.color }}>{p.name}:</span>
-              <span style={{ fontWeight: 600 }}>
-                {p.name === 'TWR' ? `${p.value.toFixed(2)}%` : `$${p.value.toLocaleString(undefined, {minimumFractionDigits: 2})}`}
-              </span>
-            </div>
-          ))}
-          {payload[0] && payload[0].payload.flow !== 0 && (
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.25rem' }}>
+            <span style={{ color: 'var(--accent-primary)' }}>Total Value:</span>
+            <span style={{ fontWeight: 600 }}>
+              ${dataPoint.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.25rem' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Invested Capital:</span>
+            <span style={{ fontWeight: 600 }}>
+              ${dataPoint.investedCapital.toLocaleString(undefined, {minimumFractionDigits: 2})}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.25rem' }}>
+            <span style={{ color: '#10b981' }}>{returnLabel}:</span>
+            <span style={{ fontWeight: 600, color: displayReturn >= 0 ? 'var(--success-color)' : 'var(--danger-color)' }}>
+              {displayReturn >= 0 ? '+' : ''}{displayReturn.toFixed(2)}%
+            </span>
+          </div>
+
+          {dataPoint.flow !== 0 && (
             <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
-              <span style={{ color: payload[0].payload.flow > 0 ? 'var(--success-color)' : 'var(--danger-color)' }}>
-                {payload[0].payload.flow > 0 ? 'Deposit' : 'Withdrawal'}: ${Math.abs(payload[0].payload.flow).toLocaleString()}
+              <span style={{ color: dataPoint.flow > 0 ? 'var(--success-color)' : 'var(--danger-color)' }}>
+                {dataPoint.flow > 0 ? 'Deposit' : 'Withdrawal'}: ${Math.abs(dataPoint.flow).toLocaleString()}
               </span>
             </div>
           )}
@@ -202,26 +235,158 @@ export default function ReturnsView({ trades }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* Date Controls */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-        {['1M', '3M', 'YTD', 'ALL'].map(range => (
-          <button 
-            key={range}
-            onClick={() => setDateRange(range)}
-            style={{
-              padding: '0.4rem 1rem',
-              borderRadius: '20px',
-              border: `1px solid ${dateRange === range ? 'var(--accent-primary)' : 'var(--border-color)'}`,
-              background: dateRange === range ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-              color: dateRange === range ? 'var(--accent-primary)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontWeight: 500,
-              transition: 'all 0.2s'
-            }}
-          >
-            {range}
-          </button>
-        ))}
+      {/* Controls Bar (Date Filters & TWR/Simple Switch) */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        flexWrap: 'wrap',
+        gap: '1rem',
+        background: 'rgba(255, 255, 255, 0.01)',
+        padding: '0.85rem 1.25rem',
+        borderRadius: '12px',
+        border: '1px solid var(--border-color)'
+      }}>
+        {/* Toggle Switch */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Return Calculation:</span>
+          <div style={{
+            display: 'flex',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '20px',
+            padding: '2px'
+          }}>
+            <button
+              onClick={() => setReturnType('TWR')}
+              style={{
+                padding: '0.35rem 0.85rem',
+                borderRadius: '18px',
+                border: 'none',
+                background: returnType === 'TWR' ? 'var(--accent-primary)' : 'transparent',
+                color: returnType === 'TWR' ? '#ffffff' : 'var(--text-secondary)',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Time-Weighted (TWR)
+            </button>
+            <button
+              onClick={() => setReturnType('SIMPLE')}
+              style={{
+                padding: '0.35rem 0.85rem',
+                borderRadius: '18px',
+                border: 'none',
+                background: returnType === 'SIMPLE' ? 'var(--accent-primary)' : 'transparent',
+                color: returnType === 'SIMPLE' ? '#ffffff' : 'var(--text-secondary)',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Simple ROI
+            </button>
+          </div>
+        </div>
+
+        {/* Date Pickers & Range Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          {/* Custom Date Pickers */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>From:</span>
+              <input 
+                type="date"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setDateRange('CUSTOM');
+                }}
+                style={{
+                  padding: '0.35rem 0.5rem',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.82rem',
+                  outline: 'none'
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>To:</span>
+              <input 
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setDateRange('CUSTOM');
+                }}
+                style={{
+                  padding: '0.35rem 0.5rem',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.82rem',
+                  outline: 'none'
+                }}
+              />
+            </div>
+            {(fromDate || toDate) && (
+              <button
+                onClick={() => {
+                  setFromDate('');
+                  setToDate('');
+                  setDateRange('ALL');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--color-down)',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  marginLeft: '0.25rem'
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <div style={{ height: '18px', width: '1px', background: 'var(--border-color)' }}></div>
+
+          {/* Quick Ranges */}
+          <div style={{ display: 'flex', gap: '0.35rem' }}>
+            {['1M', '3M', 'YTD', 'ALL'].map(range => (
+              <button 
+                key={range}
+                onClick={() => {
+                  setDateRange(range);
+                  setFromDate('');
+                  setToDate('');
+                }}
+                style={{
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '20px',
+                  border: `1px solid ${dateRange === range ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                  background: dateRange === range ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                  color: dateRange === range ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s'
+                }}
+              >
+                {range}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* KPI Strip */}
@@ -244,9 +409,9 @@ export default function ReturnsView({ trades }) {
           icon={<Activity size={20} />}
         />
         <KpiCard 
-          title="True ROI (TWR %)" 
-          value={`${kpis?.twr >= 0 ? '+' : ''}${(kpis?.twr || 0).toFixed(2)}%`}
-          valueColor={kpis?.twr >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}
+          title={returnType === 'TWR' ? "True ROI (TWR %)" : "Simple ROI (%)"}
+          value={`${kpis?.roi >= 0 ? '+' : ''}${(kpis?.roi || 0).toFixed(2)}%`}
+          valueColor={kpis?.roi >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}
           icon={<Percent size={20} />}
         />
       </div>
