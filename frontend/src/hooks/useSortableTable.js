@@ -1,5 +1,11 @@
 import { useState, useMemo } from 'react';
 
+const getValueByPath = (obj, path) => {
+  if (!path) return undefined;
+  if (typeof path === 'function') return path(obj);
+  return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+};
+
 export default function useSortableTable(data, defaultSortKey = null, defaultDirection = 'desc') {
   const [sortConfig, setSortConfig] = useState({ key: defaultSortKey, direction: defaultDirection });
 
@@ -7,8 +13,8 @@ export default function useSortableTable(data, defaultSortKey = null, defaultDir
     let sortableItems = [...(data || [])];
     if (sortConfig.key !== null) {
       sortableItems.sort((a, b) => {
-        let aVal = typeof sortConfig.key === 'function' ? sortConfig.key(a) : a[sortConfig.key];
-        let bVal = typeof sortConfig.key === 'function' ? sortConfig.key(b) : b[sortConfig.key];
+        let aVal = getValueByPath(a, sortConfig.key);
+        let bVal = getValueByPath(b, sortConfig.key);
         
         if (aVal === bVal) return 0;
         

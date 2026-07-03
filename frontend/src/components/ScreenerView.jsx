@@ -134,13 +134,13 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                 <thead>
                   <tr>
                     <th onClick={() => requestSortWatchlist('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIconWatchlist('ticker')}</th>
-                    <th onClick={() => requestSortWatchlist(s => s.details?.analyst_rating)} style={{ textAlign: 'center', cursor: 'pointer' }}>Analyst Rating{getSortIconWatchlist(s => s.details?.analyst_rating)}</th>
+                    <th onClick={() => requestSortWatchlist('details.analyst_rating')} style={{ textAlign: 'center', cursor: 'pointer' }}>Analyst Rating{getSortIconWatchlist('details.analyst_rating')}</th>
                     <th style={{ textAlign: 'center' }}>CAN SLIM Health</th>
-                    <th onClick={() => requestSortWatchlist(s => s.details?.current_price)} style={{ cursor: 'pointer' }}>Price{getSortIconWatchlist(s => s.details?.current_price)}</th>
-                    <th onClick={() => requestSortWatchlist(s => s.details?.c_growth_yoy)} style={{ cursor: 'pointer' }}>YoY EPS Growth (C){getSortIconWatchlist(s => s.details?.c_growth_yoy)}</th>
-                    <th onClick={() => requestSortWatchlist(s => s.details?.a_eps_growth_cagr)} style={{ cursor: 'pointer' }}>Ann CAGR (A){getSortIconWatchlist(s => s.details?.a_eps_growth_cagr)}</th>
-                    <th onClick={() => requestSortWatchlist(s => s.details?.l_rs_rating)} style={{ cursor: 'pointer' }}>RS Rating (L){getSortIconWatchlist(s => s.details?.l_rs_rating)}</th>
-                    <th onClick={() => requestSortWatchlist(s => s.details?.i_held_percent_inst)} style={{ cursor: 'pointer' }}>Inst % (I){getSortIconWatchlist(s => s.details?.i_held_percent_inst)}</th>
+                    <th onClick={() => requestSortWatchlist('details.current_price')} style={{ cursor: 'pointer' }}>Price{getSortIconWatchlist('details.current_price')}</th>
+                    <th onClick={() => requestSortWatchlist('details.c_growth_yoy')} style={{ cursor: 'pointer' }}>YoY EPS Growth (C){getSortIconWatchlist('details.c_growth_yoy')}</th>
+                    <th onClick={() => requestSortWatchlist('details.a_eps_growth_cagr')} style={{ cursor: 'pointer' }}>Ann CAGR (A){getSortIconWatchlist('details.a_eps_growth_cagr')}</th>
+                    <th onClick={() => requestSortWatchlist('details.l_rs_rating')} style={{ cursor: 'pointer' }}>RS Rating (L){getSortIconWatchlist('details.l_rs_rating')}</th>
+                    <th onClick={() => requestSortWatchlist('details.i_held_percent_inst')} style={{ cursor: 'pointer' }}>Inst % (I){getSortIconWatchlist('details.i_held_percent_inst')}</th>
                     <th style={{ width: '40px' }}></th>
                   </tr>
                 </thead>

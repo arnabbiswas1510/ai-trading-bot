@@ -154,6 +154,92 @@ def save_screener_results(results):
     except Exception as e:
         print(f"Error saving screener results to Supabase: {e}")
 
+def _bg_update_fmp_cache(tickers):
+    try:
+        from fmp_client import FMPClient
+        import pandas as pd
+        import datetime
+        from screener import calculate_rs_scores
+
+        fmp = FMPClient()
+        if not fmp.is_configured():
+            return
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS fmp_cache (ticker TEXT PRIMARY KEY, rs_rating REAL, inst_held_percent REAL, last_updated TEXT)")
+        conn.commit()
+
+        # Only update missing tickers or those stale for more than 1 day
+        stale_cutoff = (datetime.datetime.now() - datetime.timedelta(days=1)).isoformat()
+        cursor.execute("SELECT ticker FROM fmp_cache WHERE last_updated >= ?", (stale_cutoff,))
+        fresh_tickers = {r["ticker"] for r in cursor.fetchall()}
+
+        missing_tickers = [t for t in tickers if t not in fresh_tickers]
+        if not missing_tickers:
+            conn.close()
+            return
+
+        print(f"[BG FMP Cache] Fetching fresh FMP data for {len(missing_tickers)} tickers...")
+
+        end_dt = datetime.datetime.now()
+        start_dt = end_dt - datetime.timedelta(days=365)
+        start_str = start_dt.strftime("%Y-%m-%d")
+        end_str = end_dt.strftime("%Y-%m-%d")
+
+        historical_data = {}
+        inst_percentages = {}
+
+        for t in missing_tickers:
+            try:
+                # 1. Fetch historical price series
+                df = fmp.get_historical_prices(t, start_str, end_str)
+                if not df.empty:
+                    historical_data[t] = df
+
+                # 2. Fetch quote to get shares outstanding
+                quote = fmp.get_quote(t)
+                market_cap = quote.get("marketCap") if quote else None
+                price = quote.get("price") if quote else None
+                shares_out = int(market_cap / price) if market_cap and price else None
+
+                if shares_out:
+                    inst_pct = fmp.get_institutional_holdings_percentage(t, shares_out)
+                    inst_percentages[t] = round(inst_pct, 1)
+                else:
+                    inst_percentages[t] = 0.0
+            except Exception as e:
+                print(f"[BG FMP Cache] Error getting FMP data for {t}: {e}")
+
+        # To rank RS ratings properly, we pass all historical data (including already cached ones)
+        all_historical_data = {}
+        for t in tickers:
+            if t in historical_data:
+                all_historical_data[t] = historical_data[t]
+            else:
+                try:
+                    df = fmp.get_historical_prices(t, start_str, end_str)
+                    if not df.empty:
+                        all_historical_data[t] = df
+                except Exception:
+                    pass
+
+        rs_ratings = calculate_rs_scores(tickers, all_historical_data)
+
+        # Write to cache
+        now_str = datetime.datetime.now().isoformat()
+        for t in missing_tickers:
+            rs_val = rs_ratings.get(t, 85.0)
+            inst_val = inst_percentages.get(t, 100.0)
+            cursor.execute("INSERT OR REPLACE INTO fmp_cache (ticker, rs_rating, inst_held_percent, last_updated) VALUES (?, ?, ?, ?)", (t, rs_val, inst_val, now_str))
+
+        conn.commit()
+        conn.close()
+        print(f"[BG FMP Cache] Cache successfully updated for {len(missing_tickers)} tickers.")
+    except Exception as e:
+        print(f"[BG FMP Cache] Error in background thread: {e}")
+
 def get_screener_results():
     try:
         client = get_supabase_client()
@@ -185,6 +271,20 @@ def get_screener_results():
         if not curr_rows:
             return {"watchlist": [], "removed": []}
 
+        # Initialize/Load sqlite FMP cache
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS fmp_cache (ticker TEXT PRIMARY KEY, rs_rating REAL, inst_held_percent REAL, last_updated TEXT)")
+        conn.commit()
+        cursor.execute("SELECT ticker, rs_rating, inst_held_percent FROM fmp_cache")
+        cache = {r["ticker"]: (r["rs_rating"], r["inst_held_percent"]) for r in cursor.fetchall()}
+        conn.close()
+
+        # Trigger background FMP update thread for missing/stale data
+        import threading
+        watchlist_tickers = [row["ticker"] for row in curr_rows]
+        threading.Thread(target=_bg_update_fmp_cache, args=(watchlist_tickers,), daemon=True).start()
+
         curr_tickers = set()
         results = []
         for row in curr_rows:
@@ -193,12 +293,15 @@ def get_screener_results():
             q_eps = row.get("q_eps_growth", 0.0) or 0.0
             a_eps = row.get("a_eps_growth", 0.0) or 0.0
             rev   = row.get("revenue_growth", 0.0) or 0.0
-            inst  = 10
+            
+            # Retrieve cached metrics
+            cached_rs, cached_inst_pct = cache.get(ticker, (85.0, 100.0))
+            inst = cached_inst_pct / 10.0
             comp  = 0.0
 
             # Retrieve saved metrics or default if not present
             price = float(row.get("price") or 0.0)
-            rs_rating = float(row.get("rs_rating") or 85.0)
+            rs_rating = cached_rs
             roe = float(row.get("roe") or 22.0)
             sma50 = float(row.get("sma50") or 0.0)
             n_pct_from_high = float(row.get("n_pct_from_high") or 3.5)
@@ -256,7 +359,19 @@ def get_screener_results():
                 score_a = min(15.0, round(8.0 + max(0.0, (a_eps - 0.10) * 10.0), 1))
                 score_n = 12.0
                 score_s = 10.0
-                score_l = 11.0
+                
+                # Dynamic L component score
+                score_l = 0.0
+                if rs_rating >= 90:
+                    score_l += 13.0
+                elif rs_rating >= 80:
+                    score_l += 10.0
+                elif rs_rating >= 60:
+                    score_l += 5.0
+                score_l += 2.0
+                score_l = min(15.0, score_l)
+                
+                # Dynamic I component score
                 score_i = min(10.0, round(5.0 + max(0.0, (inst - 5.0) * 0.5), 1))
                 score_m = 15.0
 
