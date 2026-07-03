@@ -33,9 +33,25 @@ function BreakoutTable({ list }) {
               <tr key={b.ticker + '-' + index}>
                 <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '1.05rem' }}>
                   <span style={{ verticalAlign: 'middle' }}>{b.ticker}</span>
-                  {b.change_status === 'NEW' && (
+                  {b.retention_period && b.retention_period !== '1d' ? (
+                    <span style={{
+                      display: 'inline-block',
+                      marginLeft: '0.4rem',
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '4px',
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      color: '#f59e0b',
+                      background: 'rgba(245,158,11,0.12)',
+                      border: '1px solid rgba(245,158,11,0.35)',
+                      letterSpacing: '0.04em',
+                      verticalAlign: 'middle',
+                    }}>
+                      {b.retention_period}
+                    </span>
+                  ) : (b.retention_period === '1d' || b.change_status === 'NEW') ? (
                     <span className="badge-new-pulse">+ NEW</span>
-                  )}
+                  ) : null}
                 </td>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>

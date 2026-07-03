@@ -170,7 +170,7 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
                           }}>
                             {stock.retention_period}
                           </span>
-                        ) : stock.change_status === 'NEW' ? (
+                        ) : (stock.retention_period === '1d' || stock.change_status === 'NEW') ? (
                           <span className="badge-new-pulse">+ NEW</span>
                         ) : null}
                         {stock.details?.company_size && (
