@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   ib-gateway:
-    image: ghcr.io/gnzsnz/ib-gateway:latest
+    image: ghcr.io/gnzsnz/ib-gateway:stable
     container_name: ib-gateway
     restart: unless-stopped
     ports:
