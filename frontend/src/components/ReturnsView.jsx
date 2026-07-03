@@ -29,6 +29,8 @@ export default function ReturnsView({ trades }) {
   const [dateRange, setDateRange] = useState('YTD'); // '1M', '3M', 'YTD', 'ALL', 'CUSTOM'
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [appliedFromDate, setAppliedFromDate] = useState('');
+  const [appliedToDate, setAppliedToDate] = useState('');
   const [returnType, setReturnType] = useState('TWR'); // 'TWR' vs 'SIMPLE'
 
   useEffect(() => {
@@ -120,10 +122,10 @@ export default function ReturnsView({ trades }) {
 
     // Filter by dateRange or date pickers
     let filteredChartData = chartData;
-    if (fromDate || toDate) {
+    if (appliedFromDate || appliedToDate) {
       filteredChartData = chartData.filter(d => {
-        if (fromDate && d.date < fromDate) return false;
-        if (toDate && d.date > toDate) return false;
+        if (appliedFromDate && d.date < appliedFromDate) return false;
+        if (appliedToDate && d.date > appliedToDate) return false;
         return true;
       });
     } else if (dateRange !== 'ALL' && chartData.length > 0) {
@@ -170,7 +172,7 @@ export default function ReturnsView({ trades }) {
         realizedPnL
       }
     };
-  }, [balances, cashFlows, dateRange, fromDate, toDate, returnType, trades]);
+  }, [balances, cashFlows, dateRange, appliedFromDate, appliedToDate, returnType, trades]);
 
   if (loading) {
     return (
@@ -235,76 +237,121 @@ export default function ReturnsView({ trades }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* Controls Bar (Date Filters & TWR/Simple Switch) */}
+      {/* Controls Bar */}
       <div style={{ 
         display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        flexWrap: 'wrap',
+        flexDirection: 'column',
         gap: '1rem',
         background: 'rgba(255, 255, 255, 0.01)',
-        padding: '0.85rem 1.25rem',
+        padding: '1.25rem',
         borderRadius: '12px',
-        border: '1px solid var(--border-color)'
+        border: '1px solid var(--border-color)',
+        marginBottom: '1rem'
       }}>
-        {/* Toggle Switch */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Return Calculation:</span>
-          <div style={{
-            display: 'flex',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '20px',
-            padding: '2px'
-          }}>
-            <button
-              onClick={() => setReturnType('TWR')}
-              style={{
-                padding: '0.35rem 0.85rem',
-                borderRadius: '18px',
-                border: 'none',
-                background: returnType === 'TWR' ? 'var(--accent-primary)' : 'transparent',
-                color: returnType === 'TWR' ? '#ffffff' : 'var(--text-secondary)',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Time-Weighted (TWR)
-            </button>
-            <button
-              onClick={() => setReturnType('SIMPLE')}
-              style={{
-                padding: '0.35rem 0.85rem',
-                borderRadius: '18px',
-                border: 'none',
-                background: returnType === 'SIMPLE' ? 'var(--accent-primary)' : 'transparent',
-                color: returnType === 'SIMPLE' ? '#ffffff' : 'var(--text-secondary)',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Simple ROI
-            </button>
+        {/* Row 1: Return Calculation Toggle & Quick Ranges */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
+          {/* Toggle Switch */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Return Calculation:</span>
+            <div style={{
+              display: 'flex',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '20px',
+              padding: '2px'
+            }}>
+              <button
+                onClick={() => setReturnType('TWR')}
+                style={{
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '18px',
+                  border: 'none',
+                  background: returnType === 'TWR' ? 'var(--accent-primary)' : 'transparent',
+                  color: returnType === 'TWR' ? '#ffffff' : 'var(--text-secondary)',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Time-Weighted (TWR)
+              </button>
+              <button
+                onClick={() => setReturnType('SIMPLE')}
+                style={{
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '18px',
+                  border: 'none',
+                  background: returnType === 'SIMPLE' ? 'var(--accent-primary)' : 'transparent',
+                  color: returnType === 'SIMPLE' ? '#ffffff' : 'var(--text-secondary)',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Simple ROI
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Ranges */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500, marginRight: '0.25rem' }}>Quick Period:</span>
+            {['1M', '3M', 'YTD', 'ALL'].map(range => (
+              <button 
+                key={range}
+                onClick={() => {
+                  setDateRange(range);
+                  setFromDate('');
+                  setToDate('');
+                  setAppliedFromDate('');
+                  setAppliedToDate('');
+                }}
+                style={{
+                  padding: '0.4rem 1.0rem',
+                  borderRadius: '20px',
+                  border: `1px solid ${dateRange === range ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                  background: dateRange === range ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                  color: dateRange === range ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  transition: 'all 0.2s'
+                }}
+              >
+                {range}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Date Pickers & Range Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          {/* Custom Date Pickers */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        {/* Separator line */}
+        <div style={{ height: '1px', background: 'var(--border-color)', width: '100%' }}></div>
+
+        {/* Row 2: Custom Date Filter with Apply Button */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Custom Date Range:</span>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>From:</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>From:</span>
               <input 
                 type="date"
                 value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  setDateRange('CUSTOM');
-                }}
+                onChange={(e) => setFromDate(e.target.value)}
                 style={{
                   padding: '0.35rem 0.5rem',
                   borderRadius: '6px',
@@ -316,15 +363,13 @@ export default function ReturnsView({ trades }) {
                 }}
               />
             </div>
+            
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>To:</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>To:</span>
               <input 
                 type="date"
                 value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value);
-                  setDateRange('CUSTOM');
-                }}
+                onChange={(e) => setToDate(e.target.value)}
                 style={{
                   padding: '0.35rem 0.5rem',
                   borderRadius: '6px',
@@ -336,11 +381,35 @@ export default function ReturnsView({ trades }) {
                 }}
               />
             </div>
-            {(fromDate || toDate) && (
+
+            <button
+              onClick={() => {
+                setAppliedFromDate(fromDate);
+                setAppliedToDate(toDate);
+                setDateRange('CUSTOM');
+              }}
+              style={{
+                padding: '0.35rem 1rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: 'var(--accent-primary)',
+                color: '#ffffff',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Apply Filter
+            </button>
+
+            {(fromDate || toDate || appliedFromDate || appliedToDate) && (
               <button
                 onClick={() => {
                   setFromDate('');
                   setToDate('');
+                  setAppliedFromDate('');
+                  setAppliedToDate('');
                   setDateRange('ALL');
                 }}
                 style={{
@@ -349,42 +418,12 @@ export default function ReturnsView({ trades }) {
                   color: 'var(--color-down)',
                   cursor: 'pointer',
                   fontSize: '0.8rem',
-                  fontWeight: 600,
-                  marginLeft: '0.25rem'
+                  fontWeight: 600
                 }}
               >
                 Clear
               </button>
             )}
-          </div>
-
-          <div style={{ height: '18px', width: '1px', background: 'var(--border-color)' }}></div>
-
-          {/* Quick Ranges */}
-          <div style={{ display: 'flex', gap: '0.35rem' }}>
-            {['1M', '3M', 'YTD', 'ALL'].map(range => (
-              <button 
-                key={range}
-                onClick={() => {
-                  setDateRange(range);
-                  setFromDate('');
-                  setToDate('');
-                }}
-                style={{
-                  padding: '0.35rem 0.85rem',
-                  borderRadius: '20px',
-                  border: `1px solid ${dateRange === range ? 'var(--accent-primary)' : 'var(--border-color)'}`,
-                  background: dateRange === range ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                  color: dateRange === range ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontSize: '0.8rem',
-                  fontWeight: 500,
-                  transition: 'all 0.2s'
-                }}
-              >
-                {range}
-              </button>
-            ))}
           </div>
         </div>
       </div>
