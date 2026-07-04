@@ -2,7 +2,7 @@ import os
 import requests
 from telegram_notifier import TelegramNotifier
 
-with open("c:/Users/arnab/OneDrive/Documents/agy/ai-trading-bot/.env") as f:
+with open(".env") as f:
     for line in f:
         if line.strip() and not line.strip().startswith("#"):
             parts = line.strip().split("=", 1)

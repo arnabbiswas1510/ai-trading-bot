@@ -355,7 +355,6 @@ def reconcile_with_ibkr(ib: IB):
             client.table("account_balances").upsert(
                 {
                     "date": today_str,
-                    "key": "ibkr_cash_balance",
                     "ibkr_cash_balance": new_balance,
                     "ibkr_positions_value": round(positions_value, 2),
                     "ibkr_total_value": round(total_value, 2)

@@ -1,7 +1,0 @@
-IBKR: ['MS']
-Supabase before: []
-Inserted MS: [{'ticker': 'MS', 'shares': 112, 'buy_price': 225.26, 'buy_date': '2026-06-11T09:35:00+00:00', 'buy_reason': 'Manual IBKR order (reconciled)', 'stop_loss': 209.49, 'profit_target': 281.57, 'is_power_hold': False, 'power_hold_expiry': None, 'high_water_mark': 225.26, 'buy_source': 'daily_triggers'}]
-Cash synced: $0.00  NetLiq: $102,497.08
-Final Supabase:
-  MS  shares=112  buy=$225.26  source=daily_triggers
-DONE

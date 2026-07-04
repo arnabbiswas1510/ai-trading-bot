@@ -11,8 +11,6 @@ import database as db
 import screener
 import backtester
 from fmp_client import FMPClient
-import threading
-from csv_watchdog import start_watchdog
 
 app = FastAPI(title="CAN SLIM Trading Bot API")
 
@@ -95,9 +93,6 @@ async def periodic_watchlist_scheduler():
 async def startup_event():
     # Start the periodic weekly check loop in the background
     asyncio.create_task(periodic_watchlist_scheduler())
-    
-    # Start the CSV Watchdog listener in the background
-    threading.Thread(target=start_watchdog, daemon=True).start()
 
 # -----------------
 # Routes
