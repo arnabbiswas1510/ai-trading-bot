@@ -30,10 +30,15 @@ MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))
 # Skip a buy if the computed position size falls below this floor (USD).
 MIN_POSITION_SIZE = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 # ── Stale position rotation ────────────────────────────────────────────────────
-# Days held before a sideways position is considered eligible for rotation.
-STALE_HOLD_DAYS = int(os.getenv("STALE_HOLD_DAYS", 15))
-# Maximum gain (decimal) that qualifies as "sideways". 0.03 = within 3% of entry.
-STALE_HOLD_MAX_GAIN = float(os.getenv("STALE_HOLD_MAX_GAIN", 0.03))
+# Days held before a position is eligible for opportunity-cost rotation.
+# On each market open, if the portfolio is full and a fresh breakout trigger
+# exists, the worst-performing eligible position is replaced by the trigger.
+STALE_HOLD_DAYS     = int(os.getenv("STALE_HOLD_DAYS", 15))
+# Maximum total-return from entry that qualifies as "not proving itself".
+# Stocks above this threshold are protected from rotation (default 10%).
+# Raised from 3% → 10% so that consolidating gainers aren't displaced;
+# only genuinely mediocre positions (below 10%) are eligible.
+STALE_HOLD_MAX_GAIN = float(os.getenv("STALE_HOLD_MAX_GAIN", 0.10))
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
 PROFIT_TARGET_PCT        = float(os.getenv("PROFIT_TARGET_PCT", 0.25))
@@ -793,16 +798,15 @@ def run_market_open_buys(ib: IB):
             parent.account = ib.managedAccounts()[0]
             parent.transmit = False
 
-            # Child 1: Profit Target (Limit Sell)
-            profit_target = round(current_price * (1 + PROFIT_TARGET_PCT), 2)
-            takeProfit = LimitOrder('SELL', shares, profit_target)
-            takeProfit.orderId = ib.client.getReqId()
-            takeProfit.parentId = parent.orderId
-            takeProfit.tif = 'GTC'
-            takeProfit.account = ib.managedAccounts()[0]
-            takeProfit.transmit = False
-
-            # Child 2: Trailing Stop
+            # Child: Trailing Stop only — NO profit target limit order placed at buy time.
+            # Rationale (Option C / Power Hold race-condition fix):
+            #   Placing a +25% limit order at buy time causes IBKR to fill it before
+            #   monitor_portfolio_intraday() can detect a ≥20% surge and activate Power
+            #   Hold (which should cancel the limit).  By omitting the limit here, the
+            #   self-healing routine adds it automatically on day 22+ if Power Hold has
+            #   not activated (should_have_limit = days_held > POWER_HOLD_DAYS_LIMIT and
+            #   not is_power_hold).  During the 21-day window only the trailing stop
+            #   protects the position.
             stopLoss = TrailingStopOrder('SELL', shares, trailingPercent=round(STOP_LOSS_PCT * 100, 2))
             stopLoss.orderId = ib.client.getReqId()
             stopLoss.parentId = parent.orderId
@@ -812,7 +816,6 @@ def run_market_open_buys(ib: IB):
 
             print(f"   Submitting native atomic bracket for {ticker}...")
             ib.placeOrder(contract, parent)
-            ib.placeOrder(contract, takeProfit)
             ib.placeOrder(contract, stopLoss)
 
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
@@ -965,6 +968,10 @@ def monitor_portfolio_intraday(ib: IB):
         print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
               f"| High: ${high_water_mark:.2f} | IBKR Trail: {STOP_LOSS_PCT*100:.0f}% | PT: ${profit_target:.2f}")
 
+        # Compute hold duration here — used by self-healing and Power Hold below
+        days_held = (datetime.datetime.now(datetime.timezone.utc) - buy_date).days
+        should_have_limit = days_held > POWER_HOLD_DAYS_LIMIT and not is_power_hold
+
         # ── Self-healing: ensure IBKR OCA bracket exists for this position ──
         # GTC orders survive gateway restarts at IBKR's servers but may be
         # absent for positions opened before this feature or after a full
@@ -973,9 +980,7 @@ def monitor_portfolio_intraday(ib: IB):
         # Uses the stored oca_group to check for the EXACT order pair rather
         # than any sell order — prevents double-placement if openTrades() is
         # briefly stale right after a new buy.
-        
-        days_held = (datetime.datetime.now(datetime.timezone.utc) - buy_date).days
-        should_have_limit = days_held > POWER_HOLD_DAYS_LIMIT and not is_power_hold
+        # (days_held and should_have_limit computed above)
         
         _stored_oca = pos.get("oca_group")
         _open_sells = [

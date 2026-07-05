@@ -1,23 +1,28 @@
 """
-test_sell_logic.py — Tests for monitor_portfolio_intraday() sell rules.
+test_sell_logic.py — Tests for monitor_portfolio_intraday() and run_market_open_buys() sell rules.
 
 Covers:
   - IBKR OCA bracket self-healing (trailing stop + limit sell placed if missing)
   - Power Hold activation (≥20% gain within 21 days) — cancels limit, keeps stop
   - Power Hold expiry — re-places full OCA bracket
   - High-water mark update
-  - ETF positions skipped in the per-position loop
-  - Stale rotation: sort priority, conditions, Power Hold exemption
+  - Opportunity-cost rotation: sort priority, conditions, Power Hold exemption
+    (threshold: gain < 10% AND days_held >= 15 AND portfolio full AND fresh trigger)
   - No duplicate Telegram notification on stale rotation (Bug #3)
+  - Option C: no profit-target limit order placed at buy time (Power Hold race-condition fix)
 
 ARCHITECTURE NOTE (post-refactor):
   Trailing stop-loss and profit target are now managed by IBKR via GTC OCA bracket
-  orders placed at buy time. monitor_portfolio_intraday() does NOT call execute_sell()
-  for those triggers. Python's role in the monitor is:
+  orders placed by the self-healing routine (NOT at buy time — see Option C).
+  monitor_portfolio_intraday() does NOT call execute_sell() for those triggers.
+  Python’s role in the monitor loop is:
     1. Update high_water_mark in Supabase (informational)
     2. Self-heal OCA bracket if IBKR orders are missing
     3. Manage Power Hold state (cancel limit, re-place stop-only)
-    4. Handle stale rotation (explicit execute_sell call)
+    4. EMA-21 EOD exit check
+  run_market_open_buys() handles:
+    5. Opportunity-cost rotation (replaces underperforming positions with fresh triggers)
+    6. New position buys
   reconcile_with_ibkr() (Case 1) detects IBKR-closed positions and archives them.
 
 IMPORTANT: All tests mock ib.portfolio() NOT ib.positions().
@@ -395,27 +400,6 @@ class TestPowerHold:
         )
 
 
-
-# ── ETF positions skipped in per-position loop ────────────────────────────────
-
-class TestETFPositionSkipped:
-
-    def test_etf_parking_position_not_stop_lossed(self):
-        """
-        Bug #7 related: ETF parking positions must be skipped in the
-        per-position stop-loss/profit-target loop.
-        Even if price collapses, execute_sell should NOT be called for ETF.
-        """
-        pos = make_position("QQQ", buy_price=400.0, buy_source="etf_parking",
-                            high_water_mark=400.0)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["QQQ"])
-
-        mock_sell, _ = _run_monitor(ib, supabase, live_prices={"QQQ": 300.0})
-        # execute_sell must not be triggered for ETF positions by the stop-loss logic
-        mock_sell.assert_not_called()
-
-
 # ── Stale rotation ────────────────────────────────────────────────────────────
 
 class TestStaleRotation:
@@ -701,4 +685,130 @@ class TestMovingAverageExits:
             
             execution_agent.monitor_portfolio_intraday(ib)
             mock_sell.assert_not_called() # Failsafe prevents sell
+
+
+# ── Option C: No profit-target limit order placed at buy time ────────────────────
+
+class TestBuyBracketNoLimitAtBuyTime:
+    """
+    Option C (Power Hold race-condition fix):
+    The buy bracket must NOT include a +25% profit-target LimitOrder at buy time.
+    Only a TrailingStopOrder child is submitted with the parent bracket.
+    The profit target is added later by the self-healing routine (day 22+).
+
+    Root cause this fixes:
+      FBNC surged +26% in 23h, BWB surged +25% in 26h. IBKR's profit-target limit
+      order (placed at buy time) filled before monitor_portfolio_intraday() could
+      detect the ≥20% surge and activate Power Hold.
+    """
+
+    def test_buy_places_only_trailing_stop_child(self):
+        """run_market_open_buys() must NOT submit a LimitOrder (profit target)
+        as a child of the buy bracket. Only the parent BUY + TrailingStopOrder
+        child should be placed (Option C: no limit at buy time).
+
+        Uses MAX_POSITIONS=1 with an empty portfolio so all gates pass and exactly
+        one buy executes, making order-type inspection unambiguous.
+        """
+        trigger = make_trigger("NVDA", close_price=100.0, volume_surge=2.0,
+                               pivot_distance_pct=-0.5)
+
+        # Start with empty portfolio so the cap gate (0 < MAX_POSITIONS=1) passes
+        supabase = make_supabase_mock(
+            daily_triggers=[trigger],
+            portfolio=[],
+        )
+        ib = make_ib_mock(symbols=[])   # empty IBKR portfolio initially
+        ib.managedAccounts.return_value = ["DU12345"]
+
+        order_types_placed = []
+
+        def _track_place(contract, order):
+            order_types_placed.append((
+                getattr(order, 'action', '?'),
+                getattr(order, 'orderType', '?'),
+            ))
+            trade_mock = MagicMock()
+            trade_mock.orderStatus.status = "Submitted"
+            trade_mock.orderStatus.avgFillPrice = 101.0
+            return trade_mock
+
+        ib.placeOrder.side_effect = _track_place
+        # Simulate fill: NVDA appears in IBKR portfolio during the wait loop
+        ib.portfolio.return_value = [
+            make_portfolio_item("NVDA", position=99, avg_cost=101.0)
+        ]
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.get_live_price", return_value=100.0), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
+             patch("execution_agent.get_available_cash", return_value=10000.0), \
+             patch("execution_agent.MAX_POSITIONS", 1):
+            execution_agent.run_market_open_buys(ib)
+
+        sell_types = [
+            order_type for action, order_type in order_types_placed
+            if action == 'SELL'
+        ]
+        limit_sells = [t for t in sell_types if t == 'LMT']
+        trail_sells = [t for t in sell_types if t == 'TRAIL']
+
+        assert len(limit_sells) == 0, (
+            f"No LimitOrder (profit target) should be placed at buy time (Option C). "
+            f"Found LMT sell orders: {limit_sells}. All placed order types: {order_types_placed}"
+        )
+        assert len(trail_sells) == 1, (
+            f"Exactly one TrailingStopOrder should be placed as child. "
+            f"Found: {trail_sells}. All placed order types: {order_types_placed}"
+        )
+
+    def test_self_healing_adds_limit_after_21_days(self):
+        """On day 22+ with no Power Hold, self-healing must place a full OCA bracket
+        (trailing stop + 25% limit) since the limit was not placed at buy time."""
+        pos = make_position("AAPL", buy_price=100.0, days_ago=22, is_power_hold=False)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"])
+        # Simulate: only 1 open sell (trailing stop), missing the limit order
+        mock_trail = MagicMock()
+        mock_trail.contract.symbol = "AAPL"
+        mock_trail.order.action = "SELL"
+        mock_trail.order.orderType = "TRAIL"
+        mock_trail.order.ocaGroup = ""
+        mock_trail.orderStatus.status = "Submitted"
+        ib.openTrades.return_value = [mock_trail]
+
+        _, mock_oca = _run_monitor(ib, supabase, live_prices={"AAPL": 105.0})
+
+        # Self-healing must have been called with submit_limit_order=True
+        full_oca_calls = [
+            c for c in mock_oca.call_args_list
+            if c.kwargs.get('submit_limit_order', False)
+        ]
+        assert len(full_oca_calls) >= 1, (
+            "Self-healing must place full OCA bracket (submit_limit_order=True) "
+            "on day 22+ when the limit order is missing."
+        )
+
+    def test_self_healing_does_not_add_limit_within_21_days(self):
+        """Within the 21-day window, self-healing expects only 1 order (trailing stop).
+        Even if the limit is missing, it must NOT be placed prematurely."""
+        pos = make_position("MSFT", buy_price=100.0, days_ago=10, is_power_hold=False)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["MSFT"])
+        # Simulate: 1 open sell (trailing stop) — exactly what's expected in first 21 days
+        mock_trail = MagicMock()
+        mock_trail.contract.symbol = "MSFT"
+        mock_trail.order.action = "SELL"
+        mock_trail.order.orderType = "TRAIL"
+        mock_trail.order.ocaGroup = ""
+        mock_trail.orderStatus.status = "Submitted"
+        ib.openTrades.return_value = [mock_trail]
+
+        _, mock_oca = _run_monitor(ib, supabase, live_prices={"MSFT": 105.0})
+
+        # No healing expected — 1 order is exactly right within 21 days
+        assert mock_oca.call_count == 0, (
+            "Self-healing must NOT place OCA bracket within the 21-day window "
+            "when the trailing stop is already present."
+        )
 

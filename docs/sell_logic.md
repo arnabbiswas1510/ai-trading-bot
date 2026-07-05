@@ -8,10 +8,8 @@ Sell decisions are made by two functions:
 1. `monitor_portfolio_intraday(ib)` — runs every 15 minutes during market hours, enforces exits
 2. `execute_sell(ib, client, ticker, ...)` — the actual sell execution called by the monitor
 
-Each 15-min cycle runs **three phases**:
-1. **Pre-pass 0** — Bear market check: liquidate ETF parking if SPY < SMA200
-2. **Per-position loop** — Power Hold, trailing stop, profit target (ETF positions skipped)
-3. **Re-park** — `run_etf_parking()` called after every sell to immediately redeploy freed cash
+Each 15-min cycle runs one phase:
+- **Per-position loop** — Time Stop, Power Hold, trailing stop, profit target (all stock positions)
 
 ---
 
@@ -34,65 +32,34 @@ if (now.hour == 9 and now.minute > 45) or (10 <= now.hour < 16):
 
 ---
 
-## Phase 0 — Bear Market ETF Liquidation
-
-At the start of every monitoring cycle, the market direction is checked:
-
-```python
-if ETF_PARKING_ENABLED:
-    if not is_market_bullish():   # SPY.close < SPY.SMA200
-        etf_positions = get_etf_positions(client)
-        if etf_positions:
-            liquidate_etf_positions(ib, client, etf_positions,
-                reason="Bear market: SPY below SMA200. Holding cash.")
-```
-
-`is_market_bullish()` fetches SPY EOD history from FMP and compares the latest close to its SMA(200).
-- Returns **True** (bull) if SPY > SMA200 → ETF stays parked
-- Returns **False** (bear) → immediately liquidate all `buy_source='etf_parking'` positions → hold cash
-- **Fails open** (returns True) if FMP API is unavailable, to avoid unintended cash locks
-
----
-
-## Phase 1 — Stale Position Rotation (Migrated)
+## Check 0 — Opportunity-Cost Rotation (at market open, in `run_market_open_buys`)
 
 > [!NOTE]
-> The Stale Position Rotation logic has been **migrated** to `run_market_open_buys` in `buy_logic.md`. 
-> It now runs as a pre-flight check before attempting new buys, rather than as a standalone phase during intraday monitoring.
+> The Opportunity-Cost Rotation logic lives in `run_market_open_buys` (see `buy_logic.md`).
+> It runs once per day at market open as a pre-flight check before attempting new buys.
+> It is NOT part of the intraday monitor loop.
 
----
+**Purpose:** Prevent mediocre positions from occupying slots that a fresh CANSLIM breakout
+could fill. Only fires when the portfolio is full AND a fresh trigger exists — you always
+rotate INTO something confirmed better, never sell into a void.
 
-## Phase 2 — Per-Position Loop
+**Activation conditions (ALL must be true):**
+- Portfolio is full (`len(holdings) >= MAX_POSITIONS`)
+- A fresh breakout trigger exists in `daily_triggers`
+- Candidate position: `NOT is_power_hold`, `days_held >= STALE_HOLD_DAYS` (default 15), `gain < STALE_HOLD_MAX_GAIN` (default 10%)
 
-#### ETF Parking Skip
+**Gain threshold rationale (10%, raised from 3%):**
+The 3% threshold only caught literally flat stocks. CANSLIM breakouts target 20–25%+; any
+position below 10% total return from entry has not proven itself worth defending over a
+fresh confirmed trigger. Stocks above 10% (including consolidating gainers) are protected.
 
-```python
-if pos.get("buy_source") == "etf_parking":
-    continue   # ETF parking positions have their own lifecycle
-```
-
-ETF parking positions are never evaluated for stop-loss or profit target. They are managed exclusively by `run_etf_parking()` and `liquidate_etf_positions()`.
-
-#### IBKR Sync Guard
-
-```python
-ib_map   = {p.contract.symbol: p for p in ib.portfolio()}   # NOT ib.positions()
-ib_tickers = list(ib_map.keys())
-
-if ticker not in ib_tickers:
-    continue   # Already closed in IBKR — reconcile_with_ibkr() handles it
-```
-
-#### High-Water Mark Update
-
-```python
-if current_price > high_water_mark:
-    high_water_mark = round(current_price, 2)
-    portfolio_positions.update({"high_water_mark": high_water_mark}).eq("ticker", ticker)
-```
-
-`high_water_mark` is initialized to `buy_price` at purchase. It rises with price, never falls.
-Persisted to Supabase each cycle to survive restarts.
+| Condition | Threshold | Config |
+|-----------|-----------|--------|
+| Days held | ≥ 15 calendar days | `STALE_HOLD_DAYS=15` |
+| Total gain from entry | < 10% | `STALE_HOLD_MAX_GAIN=0.10` |
+| Power Hold active | NOT eligible | `is_power_hold=True` blocks rotation |
+| Portfolio full | Required | `MAX_POSITIONS=4` |
+| Fresh trigger exists | Required | `daily_triggers` table |
 
 ---
 
@@ -113,12 +80,26 @@ if not is_power_hold and current_price >= (buy_price * (1 + POWER_HOLD_GAIN_TRIG
 | Days since purchase | <= 21 days | `POWER_HOLD_DAYS_LIMIT=21` |
 | Hold duration | 8 weeks | `POWER_HOLD_DURATION_WEEKS=8` |
 
-**Effect:** The 25% profit target limit order is **deferred** for 8 weeks (or if already placed, it is canceled and only the trailing stop remains). The limit order is dynamically re-added by the self-healing routine once Power Hold expires. Stop-loss remains active.
+**Effect:** The 25% profit target limit order is deferred for 8 weeks. Since the limit order is
+no longer placed at buy time (see Option C below), this check activates the Power Hold flag so
+the self-healing routine continues to withhold the limit for the full hold duration.
+
+**Why this now works reliably (Option C fix):**
+
+Previously, a +25% limit order was placed at buy time as part of the native IBKR bracket. If the
+stock surged ≥20% within the first day or two, IBKR's limit order would fill at +25% *before*
+`monitor_portfolio_intraday()` had a chance to detect the ≥20% surge and cancel the limit.
+This caused FBNC (+26% in 23h) and BWB (+25% in 26h) to be sold at their profit target instead
+of entering an 8-week Power Hold.
+
+The fix: no limit order is placed at buy time. Only the trailing stop is submitted. The
+self-healing routine adds the limit at day 22+ if Power Hold has not activated.
 
 **Expiry:**
 ```python
 if is_power_hold and today >= power_hold_expiry:
     portfolio_positions.update({"is_power_hold": False, "power_hold_expiry": None})
+    # Self-healing re-places full OCA bracket (trailing stop + 25% limit) next cycle
 ```
 
 ---
@@ -127,42 +108,42 @@ if is_power_hold and today >= power_hold_expiry:
 
 ```python
 trailing_stop = round(high_water_mark * (1 - STOP_LOSS_PCT), 2)   # default: × 0.93
-
-if current_price <= trailing_stop:
-    execute_sell(..., reason=f"Trailing Stop...")
-    if ETF_PARKING_ENABLED:
-        run_etf_parking(ib, client)   # Re-park freed slot immediately
 ```
+
+Managed entirely by IBKR via GTC `TrailingStopOrder` placed at buy time. Python does NOT
+call `execute_sell()` for stop-loss triggers. `reconcile_with_ibkr()` detects the closed
+position and archives it on the next cycle.
 
 **How it works:**
 - `high_water_mark` starts at `buy_price` and rises whenever the stock makes new highs
-- Trailing stop is always `high_water_mark × 0.93` — computed live, never stored
+- Trailing stop is always `high_water_mark × 0.93` — computed live by IBKR, never stored
 - If stock never gains: trailing stop = `buy_price × 0.93` (same as a hard stop-loss)
 - If stock rises to $130 from $100: trailing stop rises to $120.90, locking in gains
 
-**Sell reason strings:**
-
-| Scenario | Reason String |
-|----------|---------------|
-| Stock gained before pullback | `Trailing Stop (-7% from high of $130.00, locked in +30.0% gain)` |
-| Stock never gained | `Trailing Stop (-7% from entry — position never gained)` |
-
-No exceptions — fires even if `is_power_hold = True`.
+No exceptions — fires even during Power Hold.
 
 ---
 
 ## Check 3 — 25% Profit Target
 
+Managed by IBKR via GTC `LimitOrder` placed by the self-healing routine at day 22+.
+
+> [!IMPORTANT]
+> **Option C change:** The +25% limit order is NOT placed at buy time. It is added
+> automatically by `monitor_portfolio_intraday()` self-healing once `days_held > 21`
+> and `is_power_hold = False`. During the first 21-day window, only the trailing stop
+> protects the position. This prevents IBKR from filling the profit target before
+> Power Hold has a chance to activate.
+
 ```python
-if current_price >= profit_target and not is_power_hold:
-    execute_sell(..., reason="25% Profit Target")
-    if ETF_PARKING_ENABLED:
-        run_etf_parking(ib, client)   # Re-park freed slot immediately
+# Self-healing logic (runs every cycle):
+should_have_limit = days_held > POWER_HOLD_DAYS_LIMIT and not is_power_hold
+expected_orders   = 2 if should_have_limit else 1
+# If fewer orders than expected → place_oca_bracket(submit_limit_order=should_have_limit)
 ```
 
-- **Threshold:** `buy_price × (1 + PROFIT_TARGET_PCT)` — default +25% from entry
-- **Blocked during Power Hold:** If `is_power_hold = True`, skipped entirely
-- Note: trailing stop still applies during Power Hold — position is not unprotected
+- **Blocked during Power Hold:** If `is_power_hold = True`, `should_have_limit = False` → limit never placed
+- **Restored after Power Hold expiry:** `is_power_hold` set to False → limit added on next self-healing cycle
 
 ---
 
@@ -181,7 +162,7 @@ if EXIT_MA_TRIGGER_ENABLED:
 
 **How it works:**
 - **Trigger Condition:** Sells the stock if the current price falls below its moving average (EMA-21 by default) minus the buffer.
-- **Whipsaw Protection:** 
+- **Whipsaw Protection:**
   - **EOD-Only Checking:** If `EXIT_MA_EOD_ONLY` is enabled, the exit is only evaluated near the market close (3:45–4:00 PM Eastern Time), ignoring intraday whipsaws/noise.
   - **Buffer Percentage:** Introduces a buffer (default 1.0%, `EXIT_MA_BUFFER_PCT=0.01`) below the moving average price before triggering the exit.
 - **Failsafe**: If the Financial Modeling Prep (FMP) historical EOD API fails or returns no history, the bot fails safe and does not trigger an exit.
@@ -192,11 +173,11 @@ if EXIT_MA_TRIGGER_ENABLED:
 
 | Priority | Trigger | Condition | Power Hold Override? |
 |----------|---------|-----------|---------------------|
-| Phase 0 | Bear market ETF exit | SPY < SMA200 → liquidate ETF parking | N/A (ETF only) |
-| 1 | Trailing Stop Loss | `price <= high_water_mark × 0.93` | No — always fires |
-| 2 | 25% Profit Target | `price >= buy × 1.25` | Yes — suspended during hold |
+| 0 | Opportunity-Cost Rotation | held ≥15d AND gain < 10% AND portfolio full AND fresh trigger | No — exempt if `is_power_hold=True` |
+| 1 | Trailing Stop Loss | `price <= high_water_mark × 0.93` (IBKR-managed) | No — always fires |
+| 2 | 25% Profit Target | IBKR limit order at `buy × 1.25` (added day 22+ by self-healing) | Yes — limit not placed during Power Hold |
 | 3 | Moving Average Breach | `price < MA * (1 - Buffer)` (EOD only) | No — EMA-21 support check |
-| — | Power Hold Activation | 20% gain in ≤21 days | Suspends profit target for 8 weeks |
+| — | Power Hold Activation | 20% gain in ≤21 days | Defers limit order for 8 weeks |
 
 ---
 
@@ -270,20 +251,22 @@ Identical accounting logic to `execute_sell`, bypasses all IBKR calls.
 ## Sell Logic Flowchart
 
 ```
+Every market open:
+    │
+    ▼
+run_market_open_buys() — Opportunity-Cost Rotation pre-flight
+    ├─ Portfolio full AND fresh trigger exists?
+    │   ├─ Find positions: NOT power_hold, days_held ≥15, gain < 10%
+    │   └─ If any: sell worst, proceed to buy
+    │
+    ▼
 Every 15 min (9:45 AM – 4:00 PM ET)
     │
     ▼
 reconcile_with_ibkr()  [ib.portfolio() — catches manual TWS closes]
     │
     ▼
-PHASE 0: Bear market check
-    ├─ SPY > SMA200? → BULL, continue
-    └─ SPY < SMA200? → BEAR → liquidate all ETF parking positions → hold cash
-    │
-    ▼
 PHASE 2: For each position in portfolio_positions:
-    │
-    ├─ buy_source == 'etf_parking'? → SKIP (managed by run_etf_parking)
     │
     ├─ Not in ib.portfolio()? → Skip (reconcile handles it)
     │
@@ -293,24 +276,30 @@ Fetch live price (FMP) + update high_water_mark if new high
     ├─ Price <= 0? → Skip cycle
     │
     ▼
+Self-healing OCA bracket check
+    ├─ Missing trailing stop OR (day 22+ AND missing limit)? → place_oca_bracket()
+    │
+    ▼
 Power Hold check:
     ├─ price >= entry*1.20 AND days_held <= 21 AND not power_hold?
     │   └─ Activate: is_power_hold=True, expiry=today+8weeks
+    │       (no limit order to cancel — none was placed at buy time)
     │
     ├─ is_power_hold AND today >= expiry?
     │   └─ Deactivate: is_power_hold=False
+    │       (self-healing will add limit order next cycle)
     │
     ▼
-Check 1: price <= high_water_mark * 0.93 (trailing stop)?
-    └─ YES → execute_sell("Trailing Stop...") → run_etf_parking()
+Check 1: price <= high_water_mark * 0.93 (trailing stop — IBKR-managed)?
+    └─ Detected next cycle via reconcile_with_ibkr()
     │
     ▼
-Check 2: price >= profit_target (entry * 1.25) AND NOT power_hold?
-    └─ YES → execute_sell("25% Profit Target") → run_etf_parking()
+Check 2: profit target (entry * 1.25) — IBKR limit order (added day 22+)?
+    └─ Detected next cycle via reconcile_with_ibkr()
     │
     ▼
 Check 3: price < EMA-21 * 0.99 (EOD only)?
-    └─ YES → execute_sell("EMA-21 Exit...") → run_etf_parking()
+    └─ YES → execute_sell("EMA-21 Exit...")
     │
     ▼
 (No exit — hold)
