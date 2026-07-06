@@ -8,6 +8,13 @@ from zoneinfo import ZoneInfo
 from supabase import create_client, Client
 from ib_insync import IB, Stock, MarketOrder, LimitOrder, Order
 from telegram_notifier import TelegramNotifier
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+fmp_session = requests.Session()
+retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504, 429], connect=3, read=3)
+fmp_session.mount('https://', HTTPAdapter(max_retries=retries))
+fmp_session.mount('http://', HTTPAdapter(max_retries=retries))
 
 # Load environment variables
 if os.path.exists(".env"):
@@ -95,7 +102,7 @@ def get_live_price(ticker: str) -> float:
     """Fetch current price of a ticker from FMP."""
     url = f"https://financialmodelingprep.com/stable/quote?symbol={ticker}&apikey={FMP_API_KEY}"
     try:
-        res = requests.get(url, timeout=10)
+        res = fmp_session.get(url, timeout=10)
         if res.status_code == 200:
             data = res.json()
             if isinstance(data, list) and len(data) > 0:
@@ -115,7 +122,7 @@ def fetch_historical_closes_with_dates(ticker: str, window: int) -> list:
            f"?symbol={ticker}&from={from_date}&to={to_date}"
            f"&apikey={FMP_API_KEY}")
     try:
-        r = requests.get(url, timeout=10)
+        r = fmp_session.get(url, timeout=10)
         if r.status_code == 200:
             data = r.json()
             if isinstance(data, list) and len(data) > 0:
@@ -605,7 +612,7 @@ def is_market_bullish() -> bool:
         url = ("https://financialmodelingprep.com/stable/historical-price-eod/full"
                f"?symbol={MARKET_DIRECTION_TICKER}&from={from_date}&to={to_date}"
                f"&apikey={FMP_API_KEY}")
-        r = requests.get(url, timeout=10)
+        r = fmp_session.get(url, timeout=10)
         if r.status_code != 200:
             return True
         data = r.json()
