@@ -795,35 +795,12 @@ def run_market_open_buys(ib: IB):
         try:
             contract = Stock(ticker, 'SMART', 'USD')
             ib.qualifyContracts(contract)
+            # 1. Market Order Entry
+            order = MarketOrder('BUY', shares)
+            order.account = ib.managedAccounts()[0]
             
-            # Marketable Limit Order (1% slippage buffer above ask) to guarantee fast fill
-            # while satisfying IBKR's strict constraint that Trailing Stops can only be attached to Limit orders.
-            limit_price = round(current_price * 1.01, 2)
-            parent = LimitOrder('BUY', shares, limit_price)
-            parent.orderId = ib.client.getReqId()
-            parent.tif = 'GTC'
-            parent.account = ib.managedAccounts()[0]
-            parent.transmit = False
-
-            # Child: Trailing Stop only — NO profit target limit order placed at buy time.
-            # Rationale (Option C / Power Hold race-condition fix):
-            #   Placing a +25% limit order at buy time causes IBKR to fill it before
-            #   monitor_portfolio_intraday() can detect a ≥20% surge and activate Power
-            #   Hold (which should cancel the limit).  By omitting the limit here, the
-            #   self-healing routine adds it automatically on day 22+ if Power Hold has
-            #   not activated (should_have_limit = days_held > POWER_HOLD_DAYS_LIMIT and
-            #   not is_power_hold).  During the 21-day window only the trailing stop
-            #   protects the position.
-            stopLoss = TrailingStopOrder('SELL', shares, trailingPercent=round(STOP_LOSS_PCT * 100, 2))
-            stopLoss.orderId = ib.client.getReqId()
-            stopLoss.parentId = parent.orderId
-            stopLoss.tif = 'GTC'
-            stopLoss.account = ib.managedAccounts()[0]
-            stopLoss.transmit = True
-
-            print(f"   Submitting native atomic bracket for {ticker}...")
-            trade = ib.placeOrder(contract, parent)
-            ib.placeOrder(contract, stopLoss)
+            print(f"   Submitting Market Order for {shares} shares of {ticker}...")
+            trade = ib.placeOrder(contract, order)
 
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
             for _ in range(60):
@@ -833,7 +810,7 @@ def run_market_open_buys(ib: IB):
 
             if trade.orderStatus.status != 'Filled':
                 print(f"   ⚠️ {ticker} order not fully filled after 60s. Cancelling remaining.")
-                ib.cancelOrder(parent)
+                ib.cancelOrder(order)
                 ib.sleep(2)
 
             actual_shares = int(trade.orderStatus.filled)
@@ -847,9 +824,17 @@ def run_market_open_buys(ib: IB):
             if fill_price <= 0:
                 fill_price = current_price
             
-            # The bracket uses internal IBKR grouping, but we track the OCA string from the child
-            # in case we need to self-heal later. For native brackets, we don't have a custom OCA group string.
-            # We will use "NATIVE_BRACKET_" to denote it wasn't a custom group.
+            # 2. Sequential Trailing Stop
+            # Now that the position is verified filled, we attach the trailing stop loss.
+            # No profit target is placed (Option C).
+            stopLoss = TrailingStopOrder('SELL', actual_shares, trailingPercent=round(STOP_LOSS_PCT * 100, 2))
+            stopLoss.account = ib.managedAccounts()[0]
+            stopLoss.tif = 'GTC'
+            print(f"   Submitting standalone Trailing Stop for {actual_shares} shares of {ticker}...")
+            ib.placeOrder(contract, stopLoss)
+            
+            # The stop loss is unlinked (standalone OCA string)
+            oca_str = "SEQUENTIAL_TS"
             
             position_data = {
                 "ticker":          ticker,
@@ -861,7 +846,7 @@ def run_market_open_buys(ib: IB):
                 "profit_target":   round(fill_price * (1 + PROFIT_TARGET_PCT), 2),
                 "is_power_hold":   False,
                 "high_water_mark": fill_price,
-                "oca_group":       "NATIVE_BRACKET"
+                "oca_group":       oca_str
             }
             
             client.table("portfolio_positions").insert(position_data).execute()

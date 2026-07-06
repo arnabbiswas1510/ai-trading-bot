@@ -170,12 +170,11 @@ Prevents buying a stock that has already run more than 5% beyond its pivot. Crit
 contract = Stock(ticker, 'SMART', 'USD')
 ib.qualifyContracts(contract)
 
-# Marketable Limit Order (5% slippage buffer above ask) to guarantee fast fill
-# 5% buffer matches MAX_PIVOT_EXTENSION and ensures we don't buy if it gapped too high,
-# while giving enough headroom for FMP quote delays or wide spreads on illiquid stocks.
-limit_price = round(current_price * 1.05, 2)
-parent = LimitOrder('BUY', shares, limit_price)
-trade = ib.placeOrder(contract, parent)
+# 1. Market Order Entry
+# We use a raw MarketOrder to guarantee an immediate fill at the best available Ask,
+# avoiding any risk of FMP quote delays causing a limit order to sit unfilled.
+order = MarketOrder('BUY', shares)
+trade = ib.placeOrder(contract, order)
 
 print(f"   Waiting for fill on {shares} shares of {ticker}...")
 for _ in range(60):
@@ -184,7 +183,7 @@ for _ in range(60):
         break
 
 if trade.orderStatus.status != 'Filled':
-    ib.cancelOrder(parent)
+    ib.cancelOrder(order)
     ib.sleep(2)
 
 actual_shares = int(trade.orderStatus.filled)
@@ -207,14 +206,13 @@ fill_price = round(trade.orderStatus.avgFillPrice, 2)
 ## Step 9 — Stop/Target Initialization & Supabase Record
 
 ```python
-# The exit orders are attached directly to the parent buy order's ID
-place_oca_bracket(
-    ib, contract, actual_shares, fill_price,
-    PROFIT_TARGET_PCT, STOP_LOSS_PCT,
-    submit_limit_order=not is_power_hold,
-    parent_order_id=trade.order.orderId
-)
-
+# 2. Sequential Trailing Stop
+# Placed only after the market order is completely filled and verified.
+stopLoss = TrailingStopOrder('SELL', actual_shares, trailingPercent=round(STOP_LOSS_PCT * 100, 2))
+stopLoss.account = ib.managedAccounts()[0]
+stopLoss.tif = 'GTC'
+ib.placeOrder(contract, stopLoss)
+```
 stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)      # default: fill * 0.93
 profit_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)  # default: fill * 1.25
 
