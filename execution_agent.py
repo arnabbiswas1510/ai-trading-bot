@@ -198,6 +198,27 @@ def get_available_cash(ib: IB) -> float:
 # IBKR Order Management Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def get_ibkr_account(ib: IB) -> str:
+    """
+    Returns the configured IBKR account.
+    Defaults to the Paper Trading account ('DU...') if multiple exist.
+    Can be overridden with the IBKR_ACCOUNT environment variable.
+    """
+    accounts = ib.managedAccounts()
+    if not accounts:
+        raise ValueError("No IBKR accounts found for this login.")
+        
+    env_account = os.getenv("IBKR_ACCOUNT")
+    if env_account and env_account in accounts:
+        return env_account
+        
+    # Default to Paper account if available
+    paper_accounts = [acc for acc in accounts if acc.startswith('DU')]
+    if paper_accounts:
+        return paper_accounts[0]
+        
+    return accounts[0]
+
 def TrailingStopOrder(action: str, totalQuantity: float,
                      trailingPercent: float = None,
                      trailStopPrice: float = None, **kwargs) -> Order:
@@ -243,7 +264,7 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
                              trailStopPrice=trail_stop_price,
                              ocaGroup=oca_group, ocaType=1)
     stop.tif = 'GTC'
-    stop.account = ib.managedAccounts()[0]
+    stop.account = get_ibkr_account(ib)
     ib.placeOrder(contract, stop)
     print(f"   🛡️  IBKR trailing stop placed: {stop_loss_pct*100:.0f}% trail (OCA: {oca_group})")
 
@@ -252,7 +273,7 @@ def place_oca_bracket(ib: IB, contract, shares: int, buy_price: float,
         limit = LimitOrder('SELL', shares, profit_target,
                            ocaGroup=oca_group, ocaType=1)
         limit.tif = 'GTC'
-        limit.account = ib.managedAccounts()[0]
+        limit.account = get_ibkr_account(ib)
         ib.placeOrder(contract, limit)
         print(f"   💰 IBKR limit sell placed: ${profit_target:.2f} "
               f"(+{profit_target_pct*100:.0f}%) (OCA: {oca_group})")
@@ -797,7 +818,7 @@ def run_market_open_buys(ib: IB):
             ib.qualifyContracts(contract)
             # 1. Market Order Entry
             order = MarketOrder('BUY', shares)
-            order.account = ib.managedAccounts()[0]
+            order.account = get_ibkr_account(ib)
             
             print(f"   Submitting Market Order for {shares} shares of {ticker}...")
             trade = ib.placeOrder(contract, order)
@@ -834,7 +855,7 @@ def run_market_open_buys(ib: IB):
             # Now that the position is verified filled, we attach the trailing stop loss.
             # No profit target is placed (Option C).
             stopLoss = TrailingStopOrder('SELL', actual_shares, trailingPercent=round(STOP_LOSS_PCT * 100, 2))
-            stopLoss.account = ib.managedAccounts()[0]
+            stopLoss.account = get_ibkr_account(ib)
             stopLoss.tif = 'GTC'
             print(f"   Submitting standalone Trailing Stop for {actual_shares} shares of {ticker}...")
             ib.placeOrder(contract, stopLoss)
@@ -1143,7 +1164,7 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         contract = Stock(ticker, 'SMART', 'USD')
         ib.qualifyContracts(contract)
         order = MarketOrder('SELL', shares)
-        order.account = ib.managedAccounts()[0]
+        order.account = get_ibkr_account(ib)
         trade = ib.placeOrder(contract, order)
         
         print(f"   Placing market sell order for {shares} shares of {ticker}...")
