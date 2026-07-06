@@ -816,11 +816,15 @@ def run_market_open_buys(ib: IB):
         try:
             contract = Stock(ticker, 'SMART', 'USD')
             ib.qualifyContracts(contract)
-            # 1. Market Order Entry
-            order = MarketOrder('BUY', shares)
+            # 1. Marketable Limit Order Entry (+5% buffer)
+            # We use a limit order here instead of a MarketOrder because IBKR's Paper Trading
+            # simulator requires live data to fill MarketOrders. A marketable LimitOrder 
+            # guarantees a fast fill even in a paper environment without live data subscriptions.
+            limit_price = round(current_price * 1.05, 2)
+            order = LimitOrder('BUY', shares, limit_price)
             order.account = get_ibkr_account(ib)
             
-            print(f"   Submitting Market Order for {shares} shares of {ticker}...")
+            print(f"   Submitting Marketable Limit Order (+5% at ${limit_price:.2f}) for {shares} shares of {ticker}...")
             trade = ib.placeOrder(contract, order)
 
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
