@@ -807,17 +807,23 @@ def run_market_open_buys(ib: IB):
                 ib.sleep(1)
                 if trade.orderStatus.status == 'Filled':
                     break
+                elif trade.orderStatus.status in ('Cancelled', 'Inactive'):
+                    break
 
             if trade.orderStatus.status != 'Filled':
-                print(f"   ⚠️ {ticker} order not fully filled after 60s. Cancelling remaining.")
+                print(f"   ⚠️ {ticker} order not fully filled or was rejected. Cancelling remaining.")
                 ib.cancelOrder(order)
                 ib.sleep(2)
 
             actual_shares = int(trade.orderStatus.filled)
             if actual_shares == 0:
-                print(f"   ⚠️ {ticker} order had 0 shares filled. Cancelling and skipping.")
+                reject_msg = "Order timed out with 0 shares filled."
+                if trade.log and trade.log[-1].message:
+                    reject_msg = trade.log[-1].message
+                
+                print(f"   ⚠️ {ticker} order had 0 shares filled. Reason: {reject_msg}")
                 notifier.notify_buy_failure(ticker=ticker, shares=shares,
-                    error="Order timed out with 0 shares filled.")
+                    error=f"Rejected or Timed out. IBKR Log: {reject_msg}")
                 continue
 
             fill_price = round(trade.orderStatus.avgFillPrice, 2)
