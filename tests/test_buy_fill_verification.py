@@ -88,5 +88,5 @@ def test_smart_polling_timeout(mock_get_live_price, mock_get_supabase_client, mo
     
     with patch('execution_agent.get_available_cash', return_value=100000.0):
         execution_agent.run_market_open_buys(mock_ib)
-        assert mock_ib.sleep.call_count == 15
+        assert mock_ib.sleep.call_count == 60
         assert mock_ib.cancelOrder.call_count == 1
