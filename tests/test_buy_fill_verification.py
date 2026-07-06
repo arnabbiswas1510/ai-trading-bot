@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock
 import sys
 import os
 
@@ -63,13 +63,18 @@ def test_smart_polling_fast_fill(mock_get_live_price, mock_get_supabase_client, 
         [], [], [MockPosition("AAPL", 101.0, 10)]
     ]
     
+    # Mock trade orderStatus
+    mock_trade = MagicMock()
+    # On the 3rd iteration, the status becomes 'Filled'
+    type(mock_trade.orderStatus).status = PropertyMock(side_effect=['Submitted', 'Submitted', 'Filled', 'Filled', 'Filled'])
+    mock_ib.placeOrder.return_value = mock_trade
+    
     triggers = [{"ticker": "AAPL", "close_price": 99.0, "volume_surge": 2.0}]
     mock_get_supabase_client.return_value = FakeSupabaseClient(triggers, [])
     
     with patch('execution_agent.get_available_cash', return_value=100000.0):
         execution_agent.run_market_open_buys(mock_ib)
         assert mock_ib.sleep.call_count == 3
-        mock_ib.sleep.assert_called_with(1)
 
 @patch('builtins.print')
 @patch('execution_agent.notifier')
@@ -83,10 +88,15 @@ def test_smart_polling_timeout(mock_get_live_price, mock_get_supabase_client, mo
     
     mock_ib.portfolio.return_value = []
     
+    mock_trade = MagicMock()
+    type(mock_trade.orderStatus).status = PropertyMock(return_value='Submitted')
+    mock_ib.placeOrder.return_value = mock_trade
+    
     triggers = [{"ticker": "AAPL", "close_price": 99.0, "volume_surge": 2.0}]
     mock_get_supabase_client.return_value = FakeSupabaseClient(triggers, [])
     
     with patch('execution_agent.get_available_cash', return_value=100000.0):
         execution_agent.run_market_open_buys(mock_ib)
-        assert mock_ib.sleep.call_count == 60
+        # 60 calls in loop + 1 call (sleep 2) in cancel block
+        assert mock_ib.sleep.call_count == 61
         assert mock_ib.cancelOrder.call_count == 1

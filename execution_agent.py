@@ -822,19 +822,23 @@ def run_market_open_buys(ib: IB):
             stopLoss.transmit = True
 
             print(f"   Submitting native atomic bracket for {ticker}...")
-            ib.placeOrder(contract, parent)
+            trade = ib.placeOrder(contract, parent)
             ib.placeOrder(contract, stopLoss)
 
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
             for _ in range(60):
                 ib.sleep(1)
-                ib_map = {p.contract.symbol: p for p in ib.portfolio()}
-                if ticker in ib_map:
+                if trade.orderStatus.status == 'Filled':
                     break
 
-            if ticker not in ib_map:
-                print(f"   ⚠️ {ticker} not found in IBKR portfolio after 60s — order may not have filled. Cancelling and skipping.")
+            if trade.orderStatus.status != 'Filled':
+                print(f"   ⚠️ {ticker} order not fully filled after 60s. Cancelling remaining.")
                 ib.cancelOrder(parent)
+                ib.sleep(2)
+
+            ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+            if ticker not in ib_map or ib_map[ticker].position == 0:
+                print(f"   ⚠️ {ticker} not found in IBKR portfolio after 60s — order may not have filled. Cancelling and skipping.")
                 notifier.notify_buy_failure(ticker=ticker, shares=shares,
                     error="Not confirmed in IBKR portfolio after 60s")
                 continue
