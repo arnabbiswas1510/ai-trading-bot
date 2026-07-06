@@ -169,32 +169,38 @@ Prevents buying a stock that has already run more than 5% beyond its pivot. Crit
 ```python
 contract = Stock(ticker, 'SMART', 'USD')
 ib.qualifyContracts(contract)
-order = MarketOrder('BUY', shares)
-ib.placeOrder(contract, order)
-ib.sleep(5)   # Wait for fill
 
-# Verify via ib.portfolio() NOT trade.orderStatus — avoids ghost positions
-# from IBKR paper trading's Error 10349 (order cancel-and-resubmit on TIF change)
-ib_map = {p.contract.symbol: p for p in ib.portfolio()}
-if ticker not in ib_map:
-    ib.sleep(3)   # one more wait
-    ib_map = {p.contract.symbol: p for p in ib.portfolio()}
+# Marketable Limit Order (5% slippage buffer above ask) to guarantee fast fill
+# 5% buffer matches MAX_PIVOT_EXTENSION and ensures we don't buy if it gapped too high,
+# while giving enough headroom for FMP quote delays or wide spreads on illiquid stocks.
+limit_price = round(current_price * 1.05, 2)
+parent = LimitOrder('BUY', shares, limit_price)
+trade = ib.placeOrder(contract, parent)
 
-if ticker not in ib_map:
+print(f"   Waiting for fill on {shares} shares of {ticker}...")
+for _ in range(60):
+    ib.sleep(1)
+    if trade.orderStatus.status == 'Filled':
+        break
+
+if trade.orderStatus.status != 'Filled':
+    ib.cancelOrder(parent)
+    ib.sleep(2)
+
+actual_shares = int(trade.orderStatus.filled)
+if actual_shares == 0:
     # Order did not confirm in IBKR — skip Supabase insert
     notify_buy_failure(...)
     continue
 
-ib_pos        = ib_map[ticker]
-fill_price    = round(ib_pos.averageCost, 2)
-actual_shares = int(ib_pos.position)
+fill_price = round(trade.orderStatus.avgFillPrice, 2)
 ```
 
 > [!IMPORTANT]
-> Fill verification **must** use `ib.portfolio()`, not `trade.orderStatus.avgFillPrice`.
-> IBKR paper trading cancels-and-resubmits orders when the TIF preset changes (Error 10349),
-> briefly showing status "Cancelled". Using `avgFillPrice` in this state returns 0 and would
-> insert a ghost row with a $0 buy price. `ib.portfolio()` reflects the actual settled position.
+> Fill verification uses `trade.orderStatus.filled` instead of polling `ib.portfolio()`.
+> Polling the portfolio immediately can fail if the IBKR API lags a fraction of a second
+> behind the order fill, which would previously cause the bot to silently drop the
+> position insert and Telegram notification.
 
 ---
 
