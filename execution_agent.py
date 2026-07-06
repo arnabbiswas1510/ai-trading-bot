@@ -836,16 +836,16 @@ def run_market_open_buys(ib: IB):
                 ib.cancelOrder(parent)
                 ib.sleep(2)
 
-            ib_map = {p.contract.symbol: p for p in ib.portfolio()}
-            if ticker not in ib_map or ib_map[ticker].position == 0:
-                print(f"   ⚠️ {ticker} not found in IBKR portfolio after 60s — order may not have filled. Cancelling and skipping.")
+            actual_shares = int(trade.orderStatus.filled)
+            if actual_shares == 0:
+                print(f"   ⚠️ {ticker} order had 0 shares filled. Cancelling and skipping.")
                 notifier.notify_buy_failure(ticker=ticker, shares=shares,
-                    error="Not confirmed in IBKR portfolio after 60s")
+                    error="Order timed out with 0 shares filled.")
                 continue
 
-            ib_pos = ib_map[ticker]
-            fill_price = round(ib_pos.averageCost, 2)
-            actual_shares = int(ib_pos.position)
+            fill_price = round(trade.orderStatus.avgFillPrice, 2)
+            if fill_price <= 0:
+                fill_price = current_price
             
             # The bracket uses internal IBKR grouping, but we track the OCA string from the child
             # in case we need to self-heal later. For native brackets, we don't have a custom OCA group string.
