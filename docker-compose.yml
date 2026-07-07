@@ -14,6 +14,7 @@ services:
       - TRADING_MODE=paper
       - READ_ONLY_API=no
       - AUTO_LOGOFF=no
+      - BYPASS_WARNING_MESSAGES=yes
     shm_size: '1gb'
     networks:
       - trading_bridge
@@ -50,6 +51,8 @@ services:
 networks:
   trading_bridge:
     driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1400
 
 volumes:
   bot-data:
