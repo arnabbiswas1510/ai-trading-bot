@@ -69,6 +69,19 @@ class TelegramNotifier:
     # Trade Event Notifications
     # ──────────────────────────────────────────────────────────────────────────
 
+    def notify_breakouts_detected(self, breakouts: list[dict]) -> None:
+        """Fires from technical_screener.py when breakouts are pushed to the database."""
+        if not breakouts:
+            self._send(f"😴 <b>Daily Screener Complete</b>\n\nNo breakouts passed CANSLIM criteria today.\n\n🕒 {self._now_et()}")
+            return
+            
+        msg = f"🚀 <b>CANSLIM Breakouts Detected!</b>\n\nFound {len(breakouts)} breakout(s) today:\n\n"
+        for t in breakouts:
+            msg += f"• <b>{t['ticker']}</b> — ${t['close_price']} (Vol: {t['volume_surge']}x)\n"
+        
+        msg += f"\n<i>These have been successfully logged to Supabase for the execution agent.</i>\n\n🕒 {self._now_et()}"
+        self._send(msg)
+
     def notify_buy(
         self,
         ticker: str,

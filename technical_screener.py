@@ -210,6 +210,7 @@ if __name__ == "__main__":
                     active_triggers.append(trigger_data)
                     
             write_triggers_to_supabase(active_triggers)
+            notifier.notify_breakouts_detected(active_triggers)
     except Exception as e:
         notifier.notify_exception("main block — technical_screener.py", e)
         raise
