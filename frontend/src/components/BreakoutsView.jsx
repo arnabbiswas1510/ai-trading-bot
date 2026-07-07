@@ -51,6 +51,23 @@ function BreakoutTable({ list }) {
                       {b.retention_period}
                     </span>
                   )}
+                  {b.company_size && (
+                    <span style={{
+                      display: 'inline-block',
+                      marginLeft: '0.4rem',
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '4px',
+                      fontSize: '0.62rem',
+                      fontWeight: 700,
+                      color: b.company_size === 'Large' ? '#3b82f6' : b.company_size === 'Mid' ? '#8b5cf6' : '#10b981',
+                      background: b.company_size === 'Large' ? 'rgba(59,130,246,0.12)' : b.company_size === 'Mid' ? 'rgba(139,92,246,0.12)' : 'rgba(16,185,129,0.12)',
+                      border: `1px solid ${b.company_size === 'Large' ? 'rgba(59,130,246,0.35)' : b.company_size === 'Mid' ? 'rgba(139,92,246,0.35)' : 'rgba(16,185,129,0.35)'}`,
+                      textTransform: 'uppercase',
+                      verticalAlign: 'middle',
+                    }}>
+                      {b.company_size}
+                    </span>
+                  )}
                 </td>
                 <td style={{ fontWeight: 600 }}>
                   {b.ai_rating !== undefined && b.ai_rating !== null ? (

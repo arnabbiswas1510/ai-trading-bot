@@ -596,6 +596,13 @@ def get_daily_triggers():
             prev_res = client.table("daily_triggers").select("ticker").eq("triggered_at", prev_date).execute()
             prev_tickers = set(row["ticker"] for row in prev_res.data)
             
+        # 3.5 Fetch company_size from watchlist
+        curr_tickers_list = [row["ticker"] for row in curr_rows]
+        watchlist_map = {}
+        if curr_tickers_list:
+            watchlist_res = client.table("watchlist").select("ticker, company_size").in_("ticker", curr_tickers_list).execute()
+            watchlist_map = {row["ticker"]: row.get("company_size") for row in (watchlist_res.data or [])}
+
         results = []
         curr_tickers = set()
         for row in curr_rows:
@@ -613,7 +620,8 @@ def get_daily_triggers():
                 "triggered_at": row["triggered_at"],
                 "change_status": change_status,
                 "retention_period": row.get("retention_period") or "1d",
-                "ai_rating": row.get("ai_rating")
+                "ai_rating": row.get("ai_rating"),
+                "company_size": watchlist_map.get(ticker)
             })
             
         removed_tickers = list(prev_tickers - curr_tickers) if prev_tickers else []
