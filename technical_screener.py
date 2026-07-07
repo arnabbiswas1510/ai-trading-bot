@@ -60,7 +60,7 @@ def get_watchlist_from_supabase():
         latest_ts = timestamps_res.data[0]["created_at"]
         
         # Check if the watchlist was populated today
-        latest_date = datetime.datetime.fromisoformat(latest_ts.replace('Z', '+00:00')).date()
+        latest_date = datetime.date.fromisoformat(latest_ts.split('T')[0])
         today = datetime.datetime.now(datetime.timezone.utc).date()
         
         if latest_date != today:
