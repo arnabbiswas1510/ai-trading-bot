@@ -70,15 +70,16 @@ class TelegramNotifier:
     # ──────────────────────────────────────────────────────────────────────────
 
     def notify_breakouts_detected(self, breakouts: list[dict]) -> None:
-        """Fires from technical_screener.py when breakouts are pushed to the database."""
+        """Fires from technical_screener.py when breakouts are pushed to the database.
+        Silent when no breakouts found — only notifies when there are actual signals.
+        """
         if not breakouts:
-            self._send(f"😴 <b>Daily Screener Complete</b>\n\nNo breakouts passed CANSLIM criteria today.\n\n🕒 {self._now_et()}")
-            return
-            
+            return  # No alert on quiet days — don't noise the channel
+
         msg = f"🚀 <b>CANSLIM Breakouts Detected!</b>\n\nFound {len(breakouts)} breakout(s) today:\n\n"
         for t in breakouts:
             msg += f"• <b>{t['ticker']}</b> — ${t['close_price']} (Vol: {t['volume_surge']}x)\n"
-        
+
         msg += f"\n<i>These have been successfully logged to Supabase for the execution agent.</i>\n\n🕒 {self._now_et()}"
         self._send(msg)
 
