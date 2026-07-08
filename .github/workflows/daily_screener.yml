@@ -49,6 +49,8 @@ jobs:
         FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
       run: python technical_screener.py
 
     - name: Execute AI Evaluator
@@ -58,4 +60,16 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: python ai_evaluator.py
 
-
+    - name: Sync IBKR Cash Flows (Flex Query)
+      # Fetches deposits/withdrawals from IBKR and upserts into Supabase cash_flows table.
+      # Used by the performance report UI to exclude deposits from return calculations.
+      # Also checks token expiry and sends a Telegram warning 30 days before expiry.
+      env:
+        IBKR_FLEX_TOKEN: ${{ secrets.IBKR_FLEX_TOKEN }}
+        IBKR_FLEX_QUERY_ID: ${{ secrets.IBKR_FLEX_QUERY_ID }}
+        IBKR_FLEX_TOKEN_EXPIRY: ${{ secrets.IBKR_FLEX_TOKEN_EXPIRY }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+      run: python flex_query_sync.py
