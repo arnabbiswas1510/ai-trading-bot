@@ -1155,11 +1155,11 @@ def main_loop():
             else:
                 print(f"❌ Connection error in main execution loop: {loop_err}")
                 notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
-            ib.sleep(60)
+            time.sleep(60)   # use time.sleep — ib.sleep() throws on a dead socket
         except Exception as loop_err:
             print(f"❌ Error in main execution loop: {loop_err}")
             notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
-            ib.sleep(60)
+            time.sleep(60)   # use time.sleep — ib.sleep() throws on a dead socket
             
         # Reconnection failsafe
         if not ib.isConnected():
@@ -1169,7 +1169,7 @@ def main_loop():
                 print("✅ Reconnected to IBKR Gateway successfully!")
             except Exception as e:
                 print(f"❌ Reconnection failed: {e}")
-                ib.sleep(60)
+                time.sleep(60)   # wait before next reconnect attempt
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CANSLIM Local execution agent CLI.")

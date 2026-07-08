@@ -68,8 +68,9 @@ Idle portfolio slots are parked in QQQ during bull markets and held as cash duri
 |----------|---------------|-------------|
 | [Fundamental Screener](docs/fundamental_screener.md) | `fundamental_screener.py`, `backend/screener.py` | CANSLIM 7-dimension scoring, watchlist pipeline, EPS thresholds |
 | [Technical Triggers](docs/technical_triggers.md) | `technical_screener.py` | Breakout detection: SMA-50, volume surge, 52-week high proximity |
-| [Buy Logic](docs/buy_logic.md) | `execution_agent.py` → `run_market_open_buys()` | cascade: primary → ETF parking; position sizing |
-| [Sell Logic](docs/sell_logic.md) | `execution_agent.py` → `monitor_portfolio_intraday()` | Bear market exit, stale rotation, stop-loss, profit target, Power Hold |
+| [Buy Logic](docs/buy_logic.md) | `execution_agent.py` → `run_market_open_buys()` | Gates (cap, cooling-off, pivot extension), sizing, trailing stop placement, `hwm_date` init |
+| [Sell Logic](docs/sell_logic.md) | `execution_agent.py` → `monitor_portfolio_intraday()` | Trailing stop (IBKR), MA breach exit, EOD plateau rotation, self-healing |
+| [Configuration](docs/configuration.md) | All source files | All environment variables, Supabase schema, and table column reference |
 
 ---
 
