@@ -31,8 +31,8 @@ TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 ET = ZoneInfo("America/New_York")
 
 # Suppress identical exception alerts within this window (prevents storm if same
-# error fires every 15-min monitoring cycle)
-EXCEPTION_COOLDOWN_SECONDS = 300   # 5 minutes
+# error fires every monitoring cycle — e.g. gateway connection refused during restart)
+EXCEPTION_COOLDOWN_SECONDS = 3600  # 1 hour — reminder frequency, not silence
 
 
 class TelegramNotifier:
