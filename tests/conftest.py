@@ -61,17 +61,23 @@ def make_position(ticker: str,
                   buy_price: float = 100.0,
                   days_ago: int = 5,
                   buy_source: str = "daily_triggers",
-                  high_water_mark: float | None = None,
                   shares: int = 100,
+                  stop_loss: float | None = None,
+                  hwm_date: str | None = None,
+                  # Legacy compat (ignored by new code, but harmless for old tests)
+                  high_water_mark: float | None = None,
                   is_power_hold: bool = False,
                   power_hold_expiry: str | None = None,
-                  stop_loss: float | None = None,
                   profit_target: float | None = None) -> dict:
     """Factory for a portfolio_positions Supabase row."""
     buy_date = (
         datetime.datetime.now(datetime.timezone.utc)
         - datetime.timedelta(days=days_ago)
     ).isoformat()
+    # Default hwm_date to today if not provided
+    if hwm_date is None:
+        from zoneinfo import ZoneInfo
+        hwm_date = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     return {
         "ticker": ticker,
         "shares": shares,
@@ -79,11 +85,9 @@ def make_position(ticker: str,
         "buy_date": buy_date,
         "buy_source": buy_source,
         "buy_reason": f"Test: {ticker}",
-        "high_water_mark": high_water_mark if high_water_mark is not None else buy_price,
         "stop_loss": stop_loss if stop_loss is not None else round(buy_price * 0.93, 2),
-        "profit_target": profit_target if profit_target is not None else round(buy_price * 1.25, 2),
-        "is_power_hold": is_power_hold,
-        "power_hold_expiry": power_hold_expiry,
+        "hwm_date": hwm_date,
+        "oca_group": "TEST_OCA_GROUP",
     }
 
 

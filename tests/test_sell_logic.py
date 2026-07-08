@@ -1,32 +1,24 @@
 """
-test_sell_logic.py — Tests for monitor_portfolio_intraday() and run_market_open_buys() sell rules.
+test_sell_logic.py -- Tests for monitor_portfolio_intraday() and run_market_open_buys() sell rules.
 
 Covers:
-  - IBKR OCA bracket self-healing (trailing stop + limit sell placed if missing)
-  - Power Hold activation (≥20% gain within 21 days) — cancels limit, keeps stop
-  - Power Hold expiry — re-places full OCA bracket
-  - High-water mark update
-  - Opportunity-cost rotation: sort priority, conditions, Power Hold exemption
-    (threshold: gain < 10% AND days_held >= 15 AND portfolio full AND fresh trigger)
-  - No duplicate Telegram notification on stale rotation (Bug #3)
-  - Option C: no profit-target limit order placed at buy time (Power Hold race-condition fix)
+  - Trailing stop self-healing (re-places when absent, anchors from current price)
+  - hwm_date updated when price rises; NOT updated when price falls
+  - No Python-side stop-loss or profit-target enforcement (IBKR owns these)
+  - Moving Average Exit (EMA-21 EOD check)
+  - EOD Plateau Rotation (3:45pm, portfolio full, fresh trigger, stale hwm_date)
+  - No limit order placed at buy time
 
-ARCHITECTURE NOTE (post-refactor):
-  Trailing stop-loss and profit target are now managed by IBKR via GTC OCA bracket
-  orders placed by the self-healing routine (NOT at buy time — see Option C).
-  monitor_portfolio_intraday() does NOT call execute_sell() for those triggers.
-  Python’s role in the monitor loop is:
-    1. Update high_water_mark in Supabase (informational)
-    2. Self-heal OCA bracket if IBKR orders are missing
-    3. Manage Power Hold state (cancel limit, re-place stop-only)
-    4. EMA-21 EOD exit check
-  run_market_open_buys() handles:
-    5. Opportunity-cost rotation (replaces underperforming positions with fresh triggers)
-    6. New position buys
+ARCHITECTURE NOTE (post HWM Plateau Rotation refactor):
+  IBKR manages the trailing stop HWM price tick-by-tick.
+  Python only tracks hwm_date (date of last new high) for plateau detection.
+  No profit target, no power hold, no morning stale rotation.
+  monitor_portfolio_intraday() roles:
+    1. Update hwm_date when a new intraday high is seen
+    2. Self-heal trailing stop if IBKR orders are missing
+    3. EMA-21 EOD exit check
+    4. EOD Plateau Rotation (3:45pm window)
   reconcile_with_ibkr() (Case 1) detects IBKR-closed positions and archives them.
-
-IMPORTANT: All tests mock ib.portfolio() NOT ib.positions().
-ib.positions() was the broken path fixed in Bug #5.
 """
 
 import datetime
@@ -34,6 +26,7 @@ import sys
 import os
 import pytest
 from unittest.mock import MagicMock, patch, call
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -44,61 +37,62 @@ from tests.conftest import (
 import execution_agent
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────────────
+# -- Helpers --
 
-def _run_monitor(ib, supabase_mock, live_prices: dict | None = None,
-                 is_bullish: bool = True):
+def _run_monitor(ib, supabase_mock, live_prices=None, is_eod=False, is_bullish=True):
     """
     Runs monitor_portfolio_intraday() with standard patches.
     live_prices: dict of {ticker: price}. Defaults to $100 for all.
-    Patches place_oca_bracket and cancel_ticker_sell_orders so tests
-    don’t need a live IBKR connection for OCA order placement.
+    is_eod: if True, patches datetime so is_ma_window and is_eod_window are True.
     """
     prices = live_prices or {}
 
     def _price(ticker):
         return prices.get(ticker, 100.0)
 
+    tz = ZoneInfo("America/New_York")
+    if is_eod:
+        now_mock = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)  # 3:50 PM ET
+    else:
+        now_mock = datetime.datetime(2026, 6, 20, 11, 30, tzinfo=tz)  # 11:30 AM ET
+
     with patch("execution_agent.supabase", supabase_mock), \
          patch("execution_agent.get_live_price", side_effect=_price), \
-         patch("execution_agent.is_market_bullish", return_value=is_bullish), \
-         patch("execution_agent.place_oca_bracket") as mock_oca, \
          patch("execution_agent.cancel_ticker_sell_orders"), \
-         patch("execution_agent.execute_sell") as mock_sell:
+         patch("execution_agent.place_trailing_stop", return_value="TS_MOCK") as mock_ts, \
+         patch("execution_agent.execute_sell") as mock_sell, \
+         patch("execution_agent.datetime") as mock_datetime:
+        mock_datetime.datetime.now.side_effect = lambda *a, **kw: now_mock
+        mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
+        mock_datetime.date.fromisoformat.side_effect = datetime.date.fromisoformat
+        mock_datetime.date.today.return_value = now_mock.date()
+        mock_datetime.timezone = datetime.timezone
+        mock_datetime.timedelta = datetime.timedelta
         execution_agent.monitor_portfolio_intraday(ib)
-        return mock_sell, mock_oca
+        return mock_sell, mock_ts
 
 
-# ── Trailing stop-loss (IBKR-managed) ────────────────────────────────────────────────────────
+# -- Trailing stop self-healing --
 
-class TestTrailingStopLoss:
+class TestSelfHealingTrailingStop:
     """
-    IBKR manages trailing stops via GTC TrailingStopOrder in the OCA bracket.
-    Python code does NOT call execute_sell() for stop-loss triggers.
-    The monitor’s role is to: update high_water_mark, self-heal OCA if missing.
+    If no open SELL orders exist for a position, monitor must re-place the
+    trailing stop (using place_trailing_stop, NOT place_oca_bracket).
     """
 
-    def test_stop_loss_not_enforced_by_python_code(self):
-        """Even when price is well below 7% trailing stop, Python does NOT call
-        execute_sell(). IBKR’s TrailingStopOrder fires the actual sell."""
-        # Entry $100, high $120, trailing stop = $120 * 0.93 = $111.60
-        # Current $110 < $111.60 — old code would have fired execute_sell here
-        pos = make_position("AAPL", buy_price=100.0, high_water_mark=120.0)
+    def test_self_healing_places_trailing_stop_when_no_sell_orders(self):
+        """No open SELL orders -> place_trailing_stop called for self-healing."""
+        pos = make_position("NVDA", buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["AAPL"])
-        # Simulate OCA already placed — openTrades returns a sell order
-        mock_trade = MagicMock()
-        mock_trade.contract.symbol = "AAPL"
-        mock_trade.order.action = "SELL"
-        mock_trade.orderStatus.status = "Submitted"
-        ib.openTrades.return_value = [mock_trade]
+        ib = make_ib_mock(symbols=["NVDA"])
+        ib.openTrades.return_value = []  # No open sell orders
 
-        mock_sell, _ = _run_monitor(ib, supabase, live_prices={"AAPL": 110.0})
-        mock_sell.assert_not_called()  # Python no longer fires execute_sell for stops
+        _, mock_ts = _run_monitor(ib, supabase, live_prices={"NVDA": 105.0})
+        mock_ts.assert_called_once()
 
-    def test_stop_loss_not_triggered_above_threshold(self):
-        """Price above trailing stop → no sell (unchanged behaviour)."""
-        pos = make_position("AAPL", buy_price=100.0, high_water_mark=100.0)
+    def test_self_healing_not_called_when_sell_order_exists(self):
+        """Trailing stop already in IBKR -> no self-healing."""
+        pos = make_position("AAPL", buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
         mock_trade = MagicMock()
@@ -107,44 +101,37 @@ class TestTrailingStopLoss:
         mock_trade.orderStatus.status = "Submitted"
         ib.openTrades.return_value = [mock_trade]
 
-        mock_sell, _ = _run_monitor(ib, supabase, live_prices={"AAPL": 94.0})
-        mock_sell.assert_not_called()
+        _, mock_ts = _run_monitor(ib, supabase, live_prices={"AAPL": 105.0})
+        mock_ts.assert_not_called()
 
-    def test_trailing_stop_rises_with_high_water_mark(self):
-        """Trailing stop is based on high_water_mark — high_water_mark is updated when price rises."""
-        # Entry $100, high $130, trailing stop = $130 * 0.93 = $120.90
-        # Price $122 > $120.90 → no sell; but high_water_mark should be updated
-        # (price=$122 < high=$130, so no update — just confirm no sell)
-        pos = make_position("NVDA", buy_price=100.0, high_water_mark=130.0)
+    def test_ibkr_stop_not_python_code_enforced(self):
+        """Even when price is below stop level, Python does NOT call execute_sell.
+        IBKR fires the trailing stop order automatically."""
+        pos = make_position("AAPL", buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["NVDA"])
+        ib = make_ib_mock(symbols=["AAPL"])
         mock_trade = MagicMock()
-        mock_trade.contract.symbol = "NVDA"
+        mock_trade.contract.symbol = "AAPL"
         mock_trade.order.action = "SELL"
         mock_trade.orderStatus.status = "Submitted"
         ib.openTrades.return_value = [mock_trade]
 
-        mock_sell, _ = _run_monitor(ib, supabase, live_prices={"NVDA": 122.0})
+        # Price at 87 -- well below a 7% trailing stop from $100 entry
+        mock_sell, _ = _run_monitor(ib, supabase, live_prices={"AAPL": 87.0})
         mock_sell.assert_not_called()
 
-    def test_self_healing_places_oca_when_no_sell_orders(self):
-        """If no open SELL orders exist for a position, monitor re-places OCA bracket."""
-        pos = make_position("NVDA", buy_price=100.0, high_water_mark=100.0)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["NVDA"])
-        ib.openTrades.return_value = []  # No open sell orders — self-healing should fire
 
-        _, mock_oca = _run_monitor(ib, supabase, live_prices={"NVDA": 105.0})
-        mock_oca.assert_called_once()  # place_oca_bracket called for self-healing
+# -- hwm_date tracking --
 
+class TestHwmDateTracking:
+    """
+    hwm_date (date of last intraday high) is the only HWM data Python tracks.
+    IBKR owns the HWM price for the trailing stop.
+    """
 
-# ── High-water mark update ────────────────────────────────────────────────────
-
-class TestHighWaterMark:
-
-    def test_high_water_mark_updated_when_price_rises(self):
-        """New high price → Supabase update called with new high_water_mark."""
-        pos = make_position("MSFT", buy_price=100.0, high_water_mark=100.0)
+    def test_hwm_date_updated_when_price_rises(self):
+        """New intraday high (price > buy_price) -> hwm_date written to Supabase."""
+        pos = make_position("MSFT", buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["MSFT"])
         mock_trade = MagicMock()
@@ -155,17 +142,20 @@ class TestHighWaterMark:
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=115.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.execute_sell"):
             execution_agent.monitor_portfolio_intraday(ib)
 
-        # Verify update was called (high water mark rise)
-        # Should be called once for the HWM update, not the OCA group update
-        supabase.table("portfolio_positions").update.assert_called_with({"high_water_mark": 115.0})
+        # Verify hwm_date update was called
+        update_calls = supabase.table("portfolio_positions").update.call_args_list
+        hwm_date_written = any(
+            "hwm_date" in (call_args[0][0] if call_args[0] else {})
+            for call_args in update_calls
+        )
+        assert hwm_date_written, "hwm_date must be written to Supabase when price makes new intraday high"
 
-    def test_high_water_mark_not_updated_when_price_falls(self):
-        """Price below existing high → no high_water_mark update."""
-        pos = make_position("MSFT", buy_price=100.0, high_water_mark=130.0)
+    def test_hwm_date_not_updated_when_price_falls(self):
+        """Price does not exceed buy_price (or last seen peak) -> no hwm_date update."""
+        pos = make_position("MSFT", buy_price=130.0)  # current < buy_price
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["MSFT"])
         mock_trade = MagicMock()
@@ -176,365 +166,48 @@ class TestHighWaterMark:
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=115.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.execute_sell"):
             execution_agent.monitor_portfolio_intraday(ib)
 
-        # No update to portfolio_positions when price < high_water_mark
-        supabase.table("portfolio_positions").update.assert_not_called()
-
-
-
-# ── Profit target (IBKR-managed) ───────────────────────────────────────────────────────
-
-class TestProfitTarget:
-    """
-    Profit target is now managed by IBKR via GTC LimitOrder in the OCA bracket.
-    Python code does NOT call execute_sell() when price crosses the profit target.
-    """
-
-    def test_profit_target_not_enforced_by_python_code(self):
-        """Even when price ≥ profit_target and not in power hold, Python does NOT
-        call execute_sell(). IBKR’s LimitOrder fills the sell."""
-        pos = make_position("AMZN", buy_price=100.0, profit_target=125.0,
-                            is_power_hold=False)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["AMZN"])
-        # OCA already placed
-        mock_trade = MagicMock()
-        mock_trade.contract.symbol = "AMZN"
-        mock_trade.order.action = "SELL"
-        mock_trade.orderStatus.status = "Submitted"
-        ib.openTrades.return_value = [mock_trade]
-
-        mock_sell, _ = _run_monitor(ib, supabase, live_prices={"AMZN": 126.0})
-        mock_sell.assert_not_called()  # Python no longer fires execute_sell for profit target
-
-    def test_profit_target_blocked_by_active_power_hold(self):
-        """Power hold active → profit target LimitOrder was already cancelled.
-        Python confirms execute_sell is not called from monitor."""
-        expiry = (datetime.datetime.now(ZoneInfo('America/New_York')).date() + datetime.timedelta(days=30)).isoformat()
-        pos = make_position("MSFT", buy_price=100.0, profit_target=125.0,
-                            is_power_hold=True, power_hold_expiry=expiry)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["MSFT"])
-
-        mock_sell, _ = _run_monitor(ib, supabase, live_prices={"MSFT": 130.0})
-        mock_sell.assert_not_called()
-
-
-# ── Power Hold ────────────────────────────────────────────────────────────────
-
-class TestPowerHold:
-
-    def test_power_hold_activates_on_20pct_gain_within_21_days(self):
-        """≥20% gain within 21 days → Power Hold activated in Supabase."""
-        pos = make_position("NVDA", buy_price=100.0, days_ago=10, is_power_hold=False)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["NVDA"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=121.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.place_oca_bracket"), \
-             patch("execution_agent.cancel_ticker_sell_orders"), \
-             patch("execution_agent.execute_sell"):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        # Supabase should have been updated to set is_power_hold=True
+        # hwm_date should NOT be written if current < buy_price (default intraday peak)
         update_calls = supabase.table("portfolio_positions").update.call_args_list
-        power_hold_set = any(
-            call_args[0][0].get("is_power_hold") is True
+        hwm_date_written = any(
+            "hwm_date" in (call_args[0][0] if call_args[0] else {})
             for call_args in update_calls
-            if call_args[0]
         )
-        assert power_hold_set, "is_power_hold=True was not written to Supabase"
-
-    def test_power_hold_not_activated_after_21_days(self):
-        """≥20% gain but held >21 days → Power Hold NOT activated."""
-        pos = make_position("NVDA", buy_price=100.0, days_ago=25, is_power_hold=False)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["NVDA"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=121.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.place_oca_bracket"), \
-             patch("execution_agent.cancel_ticker_sell_orders"), \
-             patch("execution_agent.execute_sell"):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        update_calls = supabase.table("portfolio_positions").update.call_args_list
-        power_hold_set = any(
-            call_args[0][0].get("is_power_hold") is True
-            for call_args in update_calls
-            if call_args[0]
-        )
-        assert not power_hold_set
-
-    def test_power_hold_not_activated_on_small_gain(self):
-        """15% gain within 21 days → does NOT trigger Power Hold (needs ≥20%)."""
-        pos = make_position("NVDA", buy_price=100.0, days_ago=10, is_power_hold=False)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["NVDA"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=115.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.execute_sell"):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        update_calls = supabase.table("portfolio_positions").update.call_args_list
-        power_hold_set = any(
-            call_args[0][0].get("is_power_hold") is True
-            for call_args in update_calls
-            if call_args[0]
-        )
-        assert not power_hold_set
-
-    def test_power_hold_deactivated_after_expiry(self):
-        """today ≥ power_hold_expiry → is_power_hold deactivated in Supabase."""
-        yesterday = (datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=1)).isoformat()
-        pos = make_position("TSLA", buy_price=100.0, is_power_hold=True,
-                            power_hold_expiry=yesterday)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["TSLA"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=110.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.execute_sell"):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        update_calls = supabase.table("portfolio_positions").update.call_args_list
-        deactivated = any(
-            call_args[0][0].get("is_power_hold") is False
-            for call_args in update_calls
-            if call_args[0]
-        )
-        assert deactivated, "is_power_hold=False was not written to Supabase on expiry"
-
-    def test_power_hold_stays_active_before_expiry(self):
-        """today < power_hold_expiry → Power Hold remains active."""
-        future = (datetime.datetime.now(ZoneInfo('America/New_York')).date() + datetime.timedelta(days=30)).isoformat()
-        pos = make_position("TSLA", buy_price=100.0, is_power_hold=True,
-                            power_hold_expiry=future)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["TSLA"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=110.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.execute_sell"):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        update_calls = supabase.table("portfolio_positions").update.call_args_list
-        deactivated = any(
-            call_args[0][0].get("is_power_hold") is False
-            for call_args in update_calls
-            if call_args[0]
-        )
-        assert not deactivated
-
-    def test_power_hold_activation_places_trailing_stop_only(self):
-        """When Power Hold activates, the OCA bracket is cancelled and ONLY a
-        trailing stop (orderType='TRAIL') is re-placed — no 25% limit sell.
-        This prevents the profit target from auto-filling while the position
-        is exempt during the power hold window."""
-        pos = make_position("NVDA", buy_price=100.0, days_ago=10, is_power_hold=False)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["NVDA"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=121.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.place_oca_bracket") as mock_oca, \
-             patch("execution_agent.cancel_ticker_sell_orders") as mock_cancel, \
-             patch("execution_agent.execute_sell"):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        # cancel_ticker_sell_orders must be called for NVDA to remove the OCA limit sell
-        cancel_tickers = [str(c) for c in mock_cancel.call_args_list]
-        assert any("NVDA" in t for t in cancel_tickers), \
-            "cancel_ticker_sell_orders must be called for NVDA when Power Hold activates"
-
-        # place_oca_bracket is mocked, so we verify it was called with submit_limit_order=False
-        oca_calls = [
-            c for c in mock_oca.call_args_list
-            if not c.kwargs.get('submit_limit_order', True)
-        ]
-        assert len(oca_calls) >= 1, (
-            "Exactly one OCA bracket without limit order must be placed when Power Hold activates"
-        )
-
-    def test_power_hold_expiry_replaces_full_oca_bracket(self):
-        """When Power Hold expires, place_oca_bracket() is called without
-        is_power_hold=True, which means BOTH the trailing stop AND the 25%
-        limit sell are re-placed (full OCA bracket restored)."""
-        yesterday = (datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=1)).isoformat()
-        pos = make_position("TSLA", buy_price=100.0, is_power_hold=True,
-                            power_hold_expiry=yesterday)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["TSLA"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=110.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.place_oca_bracket") as mock_oca, \
-             patch("execution_agent.cancel_ticker_sell_orders"), \
-             patch("execution_agent.execute_sell"):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        # place_oca_bracket must be called at least once without is_power_hold=True
-        # (call #1 is self-healing with is_power_hold=True; call #2 is expiry re-place
-        # with is_power_hold defaulting to False — i.e. full OCA bracket).
-        oca_calls = mock_oca.call_args_list
-        assert len(oca_calls) >= 1, "place_oca_bracket must be called on Power Hold expiry"
-        full_oca_calls = [
-            c for c in oca_calls
-            if c.kwargs.get('submit_limit_order', False)
-        ]
-        assert len(full_oca_calls) >= 1, (
-            "At least one place_oca_bracket call must have submit_limit_order=True "
-            "(full OCA bracket restored after Power Hold expiry)"
-        )
+        assert not hwm_date_written, "hwm_date must NOT be written when price did not make a new intraday high"
 
 
-# ── Stale rotation ────────────────────────────────────────────────────────────
-
-class TestStaleRotation:
-
-    def test_stale_rotation_fires_when_portfolio_full_and_trigger_exists(self):
-        """Stale rotation: portfolio full + fresh trigger → worst position sold."""
-        portfolio = [
-            make_position("AAPL", days_ago=20, buy_price=100.0),  # stale: 20d, 0% gain
-            make_position("MSFT", days_ago=5),
-            make_position("NVDA", days_ago=5),
-            make_position("AMZN", days_ago=5),
-        ]
-        supabase = make_supabase_mock(
-            portfolio=portfolio,
-            daily_triggers=[make_trigger("TSLA")],
-        )
-        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "AMZN"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", side_effect=lambda t: {
-                 "AAPL": 100.0, "MSFT": 100.0, "NVDA": 100.0, "AMZN": 100.0
-             }.get(t, 100.0)), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.execute_sell") as mock_sell, \
-             patch("execution_agent.get_fresh_triggers_today", return_value=["TSLA"]):
-            execution_agent.run_market_open_buys(ib)
-
-        mock_sell.assert_called()
-
-    def test_stale_rotation_does_not_fire_when_portfolio_not_full(self):
-        """Stale rotation: only 2 positions → rotation should not fire."""
-        portfolio = [
-            make_position("AAPL", days_ago=20, buy_price=100.0),
-            make_position("MSFT", days_ago=5),
-        ]
-        supabase = make_supabase_mock(
-            portfolio=portfolio,
-            daily_triggers=[make_trigger("TSLA")],
-        )
-        ib = make_ib_mock(symbols=["AAPL", "MSFT"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.execute_sell") as mock_sell, \
-             patch("execution_agent.get_fresh_triggers_today", return_value=["TSLA"]):
-            execution_agent.run_market_open_buys(ib)
-
-        mock_sell.assert_not_called()
-
-    def test_stale_rotation_does_not_fire_without_fresh_trigger(self):
-        """Stale rotation: portfolio full but no fresh trigger today → no rotation."""
-        portfolio = [make_position(t, days_ago=20) for t in ["AAPL", "MSFT", "NVDA", "AMZN"]]
-        supabase = make_supabase_mock(portfolio=portfolio, daily_triggers=[])
-        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "AMZN"])
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.execute_sell") as mock_sell, \
-             patch("execution_agent.get_fresh_triggers_today", return_value=[]):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        mock_sell.assert_not_called()
-
-
-
-    def test_stale_rotation_exempts_power_hold_positions(self):
-        """Power Hold positions must NOT be stale-rotated."""
-        future_expiry = (datetime.datetime.now(ZoneInfo('America/New_York')).date() + datetime.timedelta(days=30)).isoformat()
-        portfolio = [
-            make_position("PH_STOCK", days_ago=20, is_power_hold=True,
-                          power_hold_expiry=future_expiry),
-            make_position("STOCK2", days_ago=5),
-            make_position("STOCK3", days_ago=5),
-            make_position("STOCK4", days_ago=5),
-        ]
-        supabase = make_supabase_mock(portfolio=portfolio)
-        ib = make_ib_mock(symbols=["PH_STOCK", "STOCK2", "STOCK3", "STOCK4"])
-
-        sold_tickers = []
-
-        def capture_sell(ib_, client, ticker, *args, **kwargs):
-            sold_tickers.append(ticker)
-
-        prices = {t["ticker"]: 100.0 for t in portfolio}
-
-        with patch("execution_agent.supabase", supabase), \
-             patch("execution_agent.get_live_price", side_effect=lambda t: prices.get(t, 100.0)), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
-             patch("execution_agent.execute_sell", side_effect=capture_sell), \
-             patch("execution_agent.get_fresh_triggers_today", return_value=["NEWCOMER"]):
-            execution_agent.monitor_portfolio_intraday(ib)
-
-        assert "PH_STOCK" not in sold_tickers, "Power Hold position was incorrectly stale-rotated"
-
-
-# ── Moving Average Exits ──────────────────────────────────────────────────────
-
-from zoneinfo import ZoneInfo
+# -- Moving Average Calculations --
 
 class TestMovingAverageCalculations:
 
     def test_calculate_sma(self):
         closes = [10.0, 20.0, 30.0, 40.0]
-        # SMA of last 3: (20 + 30 + 40) / 3 = 30
         assert execution_agent.calculate_sma(closes, 3) == 30.0
-        # If not enough elements
         assert execution_agent.calculate_sma(closes, 5) is None
 
     def test_calculate_ema(self):
         closes = [10.0, 11.0, 12.0]
-        # Window 2: SMA first 2 = (10 + 11)/2 = 10.5
-        # EMA_2 = 12 * (2/3) + 10.5 * (1/3) = 8.0 + 3.5 = 11.5
         assert abs(execution_agent.calculate_ema(closes, 2) - 11.5) < 1e-6
-        # If not enough elements
         assert execution_agent.calculate_ema(closes, 4) is None
 
     @patch("execution_agent.fetch_historical_closes_with_dates")
     def test_get_ma_value_appends_current_price_if_not_today(self, mock_fetch):
-        # Latest EOD close is yesterday (June 19)
         mock_fetch.return_value = [
             {"date": "2026-06-18", "close": 100.0},
             {"date": "2026-06-19", "close": 102.0}
         ]
-        
         with patch("execution_agent.datetime") as mock_date:
             tz = ZoneInfo("America/New_York")
             mock_date.date.today.return_value = datetime.date(2026, 6, 20)
             mock_date.datetime.now.side_effect = lambda *args, **kwargs: datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
             mock_date.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
-            
             val = execution_agent.get_ma_value("AAPL", 104.0, "SMA", 2)
             assert val == 103.0
 
+
+# -- Moving Average Exits --
 
 class TestMovingAverageExits:
 
@@ -549,17 +222,13 @@ class TestMovingAverageExits:
         mock_trade.orderStatus.status = "Submitted"
         ib.openTrades.return_value = [mock_trade]
 
-        # EMA-21 will calculate to 100.0, buffer 1%, threshold = 99.0
-        # Price is 98.0 (< 99.0) -> breach
         hist_data = [{"date": f"2026-06-{i:02d}", "close": 100.0} for i in range(1, 22)]
-        
         tz = ZoneInfo("America/New_York")
-        eod_time = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz) # 3:50 PM ET
+        eod_time = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
              patch("execution_agent.get_live_price", return_value=98.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
@@ -567,22 +236,20 @@ class TestMovingAverageExits:
              patch("execution_agent.EXIT_MA_BUFFER_PCT", 0.01), \
              patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
              patch("execution_agent.datetime") as mock_datetime:
-             
             mock_datetime.datetime.now.side_effect = lambda *args, **kwargs: eod_time
             mock_datetime.date.today.return_value = eod_time.date()
+            mock_datetime.date.fromisoformat.side_effect = datetime.date.fromisoformat
             mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
             mock_datetime.timezone = datetime.timezone
             mock_datetime.timedelta = datetime.timedelta
-            
             execution_agent.monitor_portfolio_intraday(ib)
-            
             mock_sell.assert_called_once()
             args, kwargs = mock_sell.call_args
             assert args[2] == "AAPL"
             assert "EMA-21 Exit" in args[8]
 
     def test_ma_exit_does_not_trigger_within_buffer(self):
-        """Price is below MA but within buffer -> no exit."""
+        """Price below MA but within buffer -> no exit."""
         pos = make_position("AAPL", buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
@@ -592,7 +259,6 @@ class TestMovingAverageExits:
         mock_trade.orderStatus.status = "Submitted"
         ib.openTrades.return_value = [mock_trade]
 
-        # MA is 100.0, threshold is 99.0. Current price 99.5 is below MA but above threshold.
         hist_data = [{"date": f"2026-06-{i:02d}", "close": 100.0} for i in range(1, 22)]
         tz = ZoneInfo("America/New_York")
         eod_time = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
@@ -600,7 +266,6 @@ class TestMovingAverageExits:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
              patch("execution_agent.get_live_price", return_value=99.5), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
@@ -608,18 +273,17 @@ class TestMovingAverageExits:
              patch("execution_agent.EXIT_MA_BUFFER_PCT", 0.01), \
              patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
              patch("execution_agent.datetime") as mock_datetime:
-             
             mock_datetime.datetime.now.side_effect = lambda *args, **kwargs: eod_time
             mock_datetime.date.today.return_value = eod_time.date()
+            mock_datetime.date.fromisoformat.side_effect = datetime.date.fromisoformat
             mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
             mock_datetime.timezone = datetime.timezone
             mock_datetime.timedelta = datetime.timedelta
-            
             execution_agent.monitor_portfolio_intraday(ib)
             mock_sell.assert_not_called()
 
     def test_ma_exit_skipped_outside_eod_window(self):
-        """Outside 3:45-4:00 PM and EOD_ONLY is enabled -> no exit."""
+        """Outside 3:45-4:00 PM and EOD_ONLY enabled -> no exit."""
         pos = make_position("AAPL", buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
@@ -631,12 +295,11 @@ class TestMovingAverageExits:
 
         hist_data = [{"date": f"2026-06-{i:02d}", "close": 100.0} for i in range(1, 22)]
         tz = ZoneInfo("America/New_York")
-        midday = datetime.datetime(2026, 6, 20, 11, 30, tzinfo=tz) # 11:30 AM ET
+        midday = datetime.datetime(2026, 6, 20, 11, 30, tzinfo=tz)
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
              patch("execution_agent.get_live_price", return_value=95.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
@@ -644,14 +307,12 @@ class TestMovingAverageExits:
              patch("execution_agent.EXIT_MA_BUFFER_PCT", 0.01), \
              patch("execution_agent.EXIT_MA_EOD_ONLY", True), \
              patch("execution_agent.datetime") as mock_datetime:
-             
             mock_datetime.datetime.now.side_effect = lambda *args, **kwargs: midday
             mock_datetime.date.today.return_value = midday.date()
+            mock_datetime.date.fromisoformat.side_effect = datetime.date.fromisoformat
             mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
             mock_datetime.timezone = datetime.timezone
             mock_datetime.timedelta = datetime.timedelta
-            mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
-            
             execution_agent.monitor_portfolio_intraday(ib)
             mock_sell.assert_not_called()
 
@@ -672,61 +333,167 @@ class TestMovingAverageExits:
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=[]), \
              patch("execution_agent.get_live_price", return_value=95.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.execute_sell") as mock_sell, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.datetime") as mock_datetime:
-             
             mock_datetime.datetime.now.side_effect = lambda *args, **kwargs: eod_time
             mock_datetime.date.today.return_value = eod_time.date()
+            mock_datetime.date.fromisoformat.side_effect = datetime.date.fromisoformat
             mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
             mock_datetime.timezone = datetime.timezone
             mock_datetime.timedelta = datetime.timedelta
-            
             execution_agent.monitor_portfolio_intraday(ib)
-            mock_sell.assert_not_called() # Failsafe prevents sell
+            mock_sell.assert_not_called()
 
 
-# ── Option C: No profit-target limit order placed at buy time ────────────────────
+# -- EOD Plateau Rotation --
+
+class TestPlateauRotation:
+    """
+    EOD plateau rotation: at 3:45-4pm, if portfolio is full AND fresh breakout
+    trigger exists AND a position has had no new HWM in PLATEAU_DAYS days,
+    sell the most-stalled position.
+    """
+
+    def _eod_monitor(self, positions, daily_triggers, live_prices=None):
+        """Helper: run monitor in EOD window."""
+        supabase = make_supabase_mock(portfolio=positions, daily_triggers=daily_triggers)
+        symbols = [p["ticker"] for p in positions]
+        ib = make_ib_mock(symbols=symbols)
+        mock_trade = MagicMock()
+        mock_trade.order.action = "SELL"
+        mock_trade.orderStatus.status = "Submitted"
+        # Give each position a sell order so self-healing doesn''t interfere
+        def _open_trades():
+            trades = []
+            for sym in symbols:
+                t = MagicMock()
+                t.contract.symbol = sym
+                t.order.action = "SELL"
+                t.orderStatus.status = "Submitted"
+                trades.append(t)
+            return trades
+        ib.openTrades.side_effect = _open_trades
+
+        prices = live_prices or {p["ticker"]: 100.0 for p in positions}
+
+        tz = ZoneInfo("America/New_York")
+        eod_time = datetime.datetime(2026, 6, 20, 15, 50, tzinfo=tz)
+
+        sold_tickers = []
+        def _capture_sell(ib_, client, ticker, *args, **kwargs):
+            sold_tickers.append(ticker)
+            return True
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.get_live_price", side_effect=lambda t: prices.get(t, 100.0)), \
+             patch("execution_agent.execute_sell", side_effect=_capture_sell), \
+             patch("execution_agent.cancel_ticker_sell_orders"), \
+             patch("execution_agent.datetime") as mock_datetime:
+            mock_datetime.datetime.now.side_effect = lambda *a, **kw: eod_time
+            mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
+            mock_datetime.date.fromisoformat.side_effect = datetime.date.fromisoformat
+            mock_datetime.date.today.return_value = eod_time.date()
+            mock_datetime.timezone = datetime.timezone
+            mock_datetime.timedelta = datetime.timedelta
+            execution_agent.monitor_portfolio_intraday(ib)
+
+        return sold_tickers
+
+    def test_plateau_rotation_fires_when_portfolio_full_and_trigger_exists(self):
+        """Portfolio full + fresh trigger + stalled position -> execute_sell called."""
+        stale_date = (datetime.date(2026, 6, 20) - datetime.timedelta(days=15)).isoformat()
+        portfolio = [
+            make_position("AAPL", buy_price=100.0, hwm_date=stale_date),
+            make_position("MSFT", buy_price=100.0, hwm_date=datetime.date(2026, 6, 20).isoformat()),
+            make_position("NVDA", buy_price=100.0, hwm_date=datetime.date(2026, 6, 20).isoformat()),
+            make_position("AMZN", buy_price=100.0, hwm_date=datetime.date(2026, 6, 20).isoformat()),
+        ]
+        triggers = [make_trigger("TSLA")]
+
+        sold = self._eod_monitor(portfolio, triggers)
+        assert "AAPL" in sold, f"Most stalled position (AAPL) should have been rotated out, got {sold}"
+
+    def test_plateau_rotation_skips_fresh_stock(self):
+        """Position with recent hwm_date (< PLATEAU_DAYS) is NOT rotated."""
+        fresh_date = (datetime.date(2026, 6, 20) - datetime.timedelta(days=3)).isoformat()
+        portfolio = [
+            make_position("AAPL", buy_price=100.0, hwm_date=fresh_date),
+            make_position("MSFT", buy_price=100.0, hwm_date=fresh_date),
+            make_position("NVDA", buy_price=100.0, hwm_date=fresh_date),
+            make_position("AMZN", buy_price=100.0, hwm_date=fresh_date),
+        ]
+        triggers = [make_trigger("TSLA")]
+
+        sold = self._eod_monitor(portfolio, triggers)
+        assert sold == [], f"No position should be rotated when all hwm_dates are fresh, got {sold}"
+
+    def test_plateau_rotation_skips_when_no_triggers(self):
+        """No fresh triggers -> no rotation even if positions are stale."""
+        stale_date = (datetime.date(2026, 6, 20) - datetime.timedelta(days=15)).isoformat()
+        portfolio = [
+            make_position("AAPL", buy_price=100.0, hwm_date=stale_date),
+            make_position("MSFT", buy_price=100.0, hwm_date=stale_date),
+            make_position("NVDA", buy_price=100.0, hwm_date=stale_date),
+            make_position("AMZN", buy_price=100.0, hwm_date=stale_date),
+        ]
+
+        sold = self._eod_monitor(portfolio, daily_triggers=[])
+        assert sold == [], f"No rotation when no fresh triggers, got {sold}"
+
+    def test_plateau_rotation_skips_when_portfolio_not_full(self):
+        """Portfolio not at MAX_POSITIONS -> no rotation."""
+        stale_date = (datetime.date(2026, 6, 20) - datetime.timedelta(days=15)).isoformat()
+        portfolio = [
+            make_position("AAPL", buy_price=100.0, hwm_date=stale_date),
+            make_position("MSFT", buy_price=100.0, hwm_date=stale_date),
+        ]
+        triggers = [make_trigger("TSLA")]
+
+        sold = self._eod_monitor(portfolio, triggers)
+        assert sold == [], f"No rotation when portfolio not full, got {sold}"
+
+    def test_plateau_rotation_picks_most_stalled(self):
+        """If multiple positions are stale, the one with the oldest hwm_date is rotated."""
+        oldest = (datetime.date(2026, 6, 20) - datetime.timedelta(days=20)).isoformat()
+        older  = (datetime.date(2026, 6, 20) - datetime.timedelta(days=12)).isoformat()
+        recent = (datetime.date(2026, 6, 20) - datetime.timedelta(days=2)).isoformat()
+        portfolio = [
+            make_position("AAPL", buy_price=100.0, hwm_date=oldest),   # most stale -- should be sold
+            make_position("MSFT", buy_price=100.0, hwm_date=older),
+            make_position("NVDA", buy_price=100.0, hwm_date=recent),
+            make_position("AMZN", buy_price=100.0, hwm_date=recent),
+        ]
+        triggers = [make_trigger("TSLA")]
+
+        sold = self._eod_monitor(portfolio, triggers)
+        assert "AAPL" in sold, f"Most stalled position (AAPL, {oldest}) should be rotated, got {sold}"
+        assert "NVDA" not in sold
+        assert "AMZN" not in sold
+
+
+# -- No LMT at buy time --
 
 class TestBuyBracketNoLimitAtBuyTime:
     """
-    Option C (Power Hold race-condition fix):
-    The buy bracket must NOT include a +25% profit-target LimitOrder at buy time.
-    Only a TrailingStopOrder child is submitted with the parent bracket.
-    The profit target is added later by the self-healing routine (day 22+).
-
-    Root cause this fixes:
-      FBNC surged +26% in 23h, BWB surged +25% in 26h. IBKR's profit-target limit
-      order (placed at buy time) filled before monitor_portfolio_intraday() could
-      detect the ≥20% surge and activate Power Hold.
+    run_market_open_buys() must NOT submit any LimitOrder (profit target).
+    Only a TrailingStopOrder is placed after the buy fills.
     """
 
-    def test_buy_places_only_trailing_stop_child(self):
-        """run_market_open_buys() must NOT submit a LimitOrder (profit target)
-        as a child of the buy bracket. Only the parent BUY + TrailingStopOrder
-        child should be placed (Option C: no limit at buy time).
-
-        Uses MAX_POSITIONS=1 with an empty portfolio so all gates pass and exactly
-        one buy executes, making order-type inspection unambiguous.
-        """
+    def test_buy_places_only_trailing_stop(self):
+        """run_market_open_buys() must place exactly 1 TRAIL sell -- no LMT."""
         trigger = make_trigger("NVDA", close_price=100.0, volume_surge=2.0,
                                pivot_distance_pct=-0.5)
-
-        # Start with empty portfolio so the cap gate (0 < MAX_POSITIONS=1) passes
-        supabase = make_supabase_mock(
-            daily_triggers=[trigger],
-            portfolio=[],
-        )
-        ib = make_ib_mock(symbols=[])   # empty IBKR portfolio initially
+        supabase = make_supabase_mock(daily_triggers=[trigger], portfolio=[])
+        ib = make_ib_mock(symbols=[])
         ib.managedAccounts.return_value = ["DU12345"]
 
         order_types_placed = []
 
         def _track_place(contract, order):
             order_types_placed.append((
-                getattr(order, 'action', '?'),
-                getattr(order, 'orderType', '?'),
+                getattr(order, "action", "?"),
+                getattr(order, "orderType", "?"),
             ))
             trade_mock = MagicMock()
             trade_mock.orderStatus.status = "Submitted"
@@ -734,81 +501,23 @@ class TestBuyBracketNoLimitAtBuyTime:
             return trade_mock
 
         ib.placeOrder.side_effect = _track_place
-        # Simulate fill: NVDA appears in IBKR portfolio during the wait loop
         ib.portfolio.return_value = [
             make_portfolio_item("NVDA", position=99, avg_cost=101.0)
         ]
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.get_available_cash", return_value=10000.0), \
              patch("execution_agent.MAX_POSITIONS", 1):
             execution_agent.run_market_open_buys(ib)
 
-        sell_types = [
-            order_type for action, order_type in order_types_placed
-            if action == 'SELL'
-        ]
-        limit_sells = [t for t in sell_types if t == 'LMT']
-        trail_sells = [t for t in sell_types if t == 'TRAIL']
+        sell_types = [order_type for action, order_type in order_types_placed if action == "SELL"]
+        limit_sells = [t for t in sell_types if t == "LMT"]
+        trail_sells = [t for t in sell_types if t == "TRAIL"]
 
         assert len(limit_sells) == 0, (
-            f"No LimitOrder (profit target) should be placed at buy time (Option C). "
-            f"Found LMT sell orders: {limit_sells}. All placed order types: {order_types_placed}"
+            f"No LimitOrder (profit target) should be placed. Found: {limit_sells}"
         )
         assert len(trail_sells) == 1, (
-            f"Exactly one TrailingStopOrder should be placed as child. "
-            f"Found: {trail_sells}. All placed order types: {order_types_placed}"
+            f"Exactly one TRAIL stop should be placed. Found: {trail_sells}"
         )
-
-    def test_self_healing_adds_limit_after_21_days(self):
-        """On day 22+ with no Power Hold, self-healing must place a full OCA bracket
-        (trailing stop + 25% limit) since the limit was not placed at buy time."""
-        pos = make_position("AAPL", buy_price=100.0, days_ago=22, is_power_hold=False)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["AAPL"])
-        # Simulate: only 1 open sell (trailing stop), missing the limit order
-        mock_trail = MagicMock()
-        mock_trail.contract.symbol = "AAPL"
-        mock_trail.order.action = "SELL"
-        mock_trail.order.orderType = "TRAIL"
-        mock_trail.order.ocaGroup = ""
-        mock_trail.orderStatus.status = "Submitted"
-        ib.openTrades.return_value = [mock_trail]
-
-        _, mock_oca = _run_monitor(ib, supabase, live_prices={"AAPL": 105.0})
-
-        # Self-healing must have been called with submit_limit_order=True
-        full_oca_calls = [
-            c for c in mock_oca.call_args_list
-            if c.kwargs.get('submit_limit_order', False)
-        ]
-        assert len(full_oca_calls) >= 1, (
-            "Self-healing must place full OCA bracket (submit_limit_order=True) "
-            "on day 22+ when the limit order is missing."
-        )
-
-    def test_self_healing_does_not_add_limit_within_21_days(self):
-        """Within the 21-day window, self-healing expects only 1 order (trailing stop).
-        Even if the limit is missing, it must NOT be placed prematurely."""
-        pos = make_position("MSFT", buy_price=100.0, days_ago=10, is_power_hold=False)
-        supabase = make_supabase_mock(portfolio=[pos])
-        ib = make_ib_mock(symbols=["MSFT"])
-        # Simulate: 1 open sell (trailing stop) — exactly what's expected in first 21 days
-        mock_trail = MagicMock()
-        mock_trail.contract.symbol = "MSFT"
-        mock_trail.order.action = "SELL"
-        mock_trail.order.orderType = "TRAIL"
-        mock_trail.order.ocaGroup = ""
-        mock_trail.orderStatus.status = "Submitted"
-        ib.openTrades.return_value = [mock_trail]
-
-        _, mock_oca = _run_monitor(ib, supabase, live_prices={"MSFT": 105.0})
-
-        # No healing expected — 1 order is exactly right within 21 days
-        assert mock_oca.call_count == 0, (
-            "Self-healing must NOT place OCA bracket within the 21-day window "
-            "when the trailing stop is already present."
-        )
-

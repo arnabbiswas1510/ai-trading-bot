@@ -77,11 +77,13 @@ class TestReconcileCase1:
 class TestReconcileCase2:
     """Case 2: In IBKR, NOT in Supabase → manual buy detected."""
 
-    def test_case2_inserts_new_position_with_high_water_mark(self):
+    def test_case2_inserts_new_position_with_hwm_date(self):
         """
-        Bug #4 regression: Case 2 must set high_water_mark = avg_cost.
-        Without this, high_water_mark is NULL and trailing stop is based on $0.
+        Case 2 must set hwm_date = today (ISO string) when inserting a manually-opened
+        IBKR position. This starts the plateau detection clock from the entry date.
+        high_water_mark is no longer written — IBKR owns the HWM price internally.
         """
+        import datetime
         supabase = make_supabase_mock(portfolio=[])  # Nothing in Supabase
         ib = make_ib_mock(symbols=["TSLA"], avg_cost=200.0)  # TSLA in IBKR
 
@@ -90,9 +92,18 @@ class TestReconcileCase2:
         supabase.table("portfolio_positions").insert.assert_called()
         insert_args = supabase.table("portfolio_positions").insert.call_args[0][0]
 
-        # high_water_mark must equal avg_cost — Bug #4 invariant
-        assert insert_args.get("high_water_mark") == 200.0, (
-            f"high_water_mark should equal avg_cost=200.0, got {insert_args.get('high_water_mark')}"
+        # hwm_date must be set to today (ISO format) — plateau clock starts at entry
+        hwm_date = insert_args.get("hwm_date")
+        assert hwm_date is not None, "hwm_date must be set on Case 2 insert"
+        from zoneinfo import ZoneInfo
+        today_nyc = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+        assert hwm_date == today_nyc, (
+            f"hwm_date should equal today={today_nyc}, got {hwm_date}"
+        )
+
+        # high_water_mark (price) must NOT be written — IBKR owns this now
+        assert "high_water_mark" not in insert_args, (
+            "high_water_mark price must not be written in Case 2 (IBKR owns this)"
         )
 
     def test_case2_uses_averagecost_attribute_not_avgcost(self):
@@ -121,8 +132,9 @@ class TestReconcileCase2:
 
         supabase.table("portfolio_positions").insert.assert_not_called()
 
-    def test_case2_stop_loss_and_profit_target_computed_correctly(self):
-        """Case 2: stop_loss = avg_cost * 0.93, profit_target = avg_cost * 1.25."""
+    def test_case2_stop_loss_computed_correctly(self):
+        """Case 2: stop_loss = avg_cost * (1 - STOP_LOSS_PCT).
+        profit_target is no longer stored — the trailing stop is the only exit."""
         supabase = make_supabase_mock(portfolio=[])
         ib = make_ib_mock(symbols=["AMZN"], avg_cost=100.0)
 
@@ -130,8 +142,12 @@ class TestReconcileCase2:
 
         supabase.table("portfolio_positions").insert.assert_called()
         insert_args = supabase.table("portfolio_positions").insert.call_args[0][0]
+        # stop_loss should be ~7% below avg_cost
         assert abs(insert_args["stop_loss"] - 93.0) < 0.01
-        assert abs(insert_args["profit_target"] - 125.0) < 0.01
+        # profit_target must NOT be present — eliminated from schema
+        assert "profit_target" not in insert_args, (
+            "profit_target must not be stored in Case 2 (eliminated from exit strategy)"
+        )
 
 
 class TestReconcileCase3:
