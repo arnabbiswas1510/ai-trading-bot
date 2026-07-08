@@ -42,8 +42,16 @@ CREATE INDEX IF NOT EXISTS idx_cash_flows_date ON cash_flows (date DESC);
 ALTER TABLE cash_flows ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (used by flex_query_sync.py)
-CREATE POLICY IF NOT EXISTS "Service role full access"
-    ON cash_flows
-    FOR ALL
-    USING (true)
-    WITH CHECK (true);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'cash_flows' AND policyname = 'Service role full access'
+    ) THEN
+        CREATE POLICY "Service role full access"
+            ON cash_flows
+            FOR ALL
+            USING (true)
+            WITH CHECK (true);
+    END IF;
+END $$;
