@@ -1,24 +1,24 @@
-ï»¿# Fundamental Screener
+# Fundamental Screener
 
-## What It Does â€” Simply
+## What It Does — Simply
 
 Every week, the bot runs a scan across **every US-listed stock** and asks: *"Which ones are actually growing fast?"*
 
 It uses TradingView's screener API (the same engine behind the TradingView website) to instantly filter thousands of stocks down to only those that meet all five conditions at once. The survivors get written to a `watchlist` table. The technical screener then watches only those stocks each day for breakout signals.
 
-Think of it as the **first filter** â€” not looking for breakouts yet, just looking for companies that are genuinely earning more money, quarter after quarter, with real trading volume behind them.
+Think of it as the **first filter** — not looking for breakouts yet, just looking for companies that are genuinely earning more money, quarter after quarter, with real trading volume behind them.
 
 ---
 
 ## Universe
 
-**All US-listed stocks** â€” the entire American equity market, not just the S&P 500 or any index subset. The TradingView scanner scans common stocks, preferred stocks, and depositary receipts listed on US exchanges, and excludes ETFs, mutual funds, and pre-IPO shares.
+**All US-listed stocks** — the entire American equity market, not just the S&P 500 or any index subset. The TradingView scanner scans common stocks, preferred stocks, and depositary receipts listed on US exchanges, and excludes ETFs, mutual funds, and pre-IPO shares.
 
 ---
 
 ## How It Works
 
-**File:** `tv_api_screener.py` (runs weekly via GitHub Actions)
+**File:** `tv_api_screener.py` (runs daily after market close (Mon-Fri at 6:00 PM ET) via GitHub Actions)
 
 A single POST request is made to the TradingView scanner API:
 
@@ -26,7 +26,7 @@ A single POST request is made to the TradingView scanner API:
 POST https://scanner.tradingview.com/america/scan
 ```
 
-TradingView evaluates the entire US market server-side and returns only stocks matching all filter conditions. No manual CSV export is needed â€” the scan is fully automated.
+TradingView evaluates the entire US market server-side and returns only stocks matching all filter conditions. No manual CSV export is needed — the scan is fully automated.
 
 ---
 
@@ -35,7 +35,7 @@ TradingView evaluates the entire US market server-side and returns only stocks m
 | Filter | Threshold | Why It Matters |
 |--------|-----------|----------------|
 | **Price** | > $10 | Avoids penny stocks with thin liquidity and manipulation risk |
-| **Quarterly EPS growth (QoQ)** | > 20% | The company earned more this quarter than a year ago â€” earnings are accelerating right now |
+| **Quarterly EPS growth (QoQ)** | > 20% | The company earned more this quarter than a year ago — earnings are accelerating right now |
 | **Annual EPS growth (TTM YoY)** | > 20% | Growth has been sustained over the full year, not a one-time blip |
 | **30-day average volume** | > 100,000 shares/day | Enough daily activity to enter and exit cleanly without moving the price |
 | **Stock type** | Common or preferred only | Excludes ETFs, mutual funds, and pre-IPO shares |
@@ -58,7 +58,7 @@ For each qualifying stock, the following fields are captured from TradingView:
 | `analyst_rating` | `Recommend.All` | TradingView analyst consensus (-1 to +1, mapped to text) |
 | `float_shares` | `float_shares_outstanding` | Shares in float (proxy for supply/demand) |
 | `roe` | `return_on_equity` | Return on equity |
-| `company_size` | Derived from `market_cap_basic` | Large (>$10B), Mid ($2Bâ€“$10B), Small (<$2B) |
+| `company_size` | Derived from `market_cap_basic` | Large (>$10B), Mid ($2B–$10B), Small (<$2B) |
 | `price` | `close` | Latest close price |
 
 ---
@@ -67,9 +67,9 @@ For each qualifying stock, the following fields are captured from TradingView:
 
 The screener does not just replace the watchlist from scratch each week. It preserves a **retention counter** for stocks that keep qualifying:
 
-- **New stock** â€” enters with `retention_period = "1d"`
-- **Returning stock** â€” `retention_period` is incremented (1d â†’ 2d â†’ 3d â†’ ...)
-- **Dropped stock** â€” removed from the watchlist entirely (full replace each run)
+- **New stock** — enters with `retention_period = "1d"`
+- **Returning stock** — `retention_period` is incremented (1d ? 2d ? 3d ? ...)
+- **Dropped stock** — removed from the watchlist entirely (full replace each run)
 
 This means stocks that consistently qualify accumulate a longer retention period, giving the technical screener a signal of sustained fundamental strength.
 
@@ -77,17 +77,17 @@ This means stocks that consistently qualify accumulate a longer retention period
 
 ## CANSLIM Scoring Engine (Dashboard Only)
 
-The `backend/screener.py` module provides a deeper per-stock CANSLIM score (0â€“100 pts) for the dashboard UI. This scoring uses FMP financial data (income statements, balance sheets, historical prices) and is **separate from the pipeline** â€” it is not used to generate the watchlist or make buy decisions.
+The `backend/screener.py` module provides a deeper per-stock CANSLIM score (0–100 pts) for the dashboard UI. This scoring uses FMP financial data (income statements, balance sheets, historical prices) and is **separate from the pipeline** — it is not used to generate the watchlist or make buy decisions.
 
 | Dimension | Max Points | Source |
 |-----------|-----------|--------|
-| C â€” Current Earnings | 15 | FMP quarterly income statements |
-| A â€” Annual Earnings | 15 | FMP annual income + ROE |
-| N â€” Near 52-Week High | 15 | FMP quote + historical prices |
-| S â€” Supply & Demand | 15 | FMP 20-day OHLCV (accumulation/distribution days) |
-| L â€” Relative Strength | 15 | Weighted 3/6/9/12-month performance vs. watchlist peers |
-| I â€” Institutional Sponsorship | 10 | FMP institutional holdings % |
-| M â€” Market Direction | 15 | SPY and Nasdaq vs. SMA-50/200 |
+| C — Current Earnings | 15 | FMP quarterly income statements |
+| A — Annual Earnings | 15 | FMP annual income + ROE |
+| N — Near 52-Week High | 15 | FMP quote + historical prices |
+| S — Supply & Demand | 15 | FMP 20-day OHLCV (accumulation/distribution days) |
+| L — Relative Strength | 15 | Weighted 3/6/9/12-month performance vs. watchlist peers |
+| I — Institutional Sponsorship | 10 | FMP institutional holdings % |
+| M — Market Direction | 15 | SPY and Nasdaq vs. SMA-50/200 |
 | **Total** | **100** | |
 
 ---
@@ -95,7 +95,7 @@ The `backend/screener.py` module provides a deeper per-stock CANSLIM score (0â€“
 ## Data Flow
 
 ```
-GitHub Actions (weekly cron)
+GitHub Actions (daily, Mon-Fri after close)
     |
     v
 tv_api_screener.py
@@ -104,7 +104,7 @@ tv_api_screener.py
     |       Filters: EPS > 20% QoQ & YoY, volume > 100K, price > $10
     |       Returns: up to 2,000 US stocks sorted by market cap
     |
-    +-- Check existing watchlist â†’ increment retention_period for returning stocks
+    +-- Check existing watchlist ? increment retention_period for returning stocks
     |
     +-- Truncate watchlist table
     |
