@@ -22,7 +22,7 @@ import datetime
 from zoneinfo import ZoneInfo
 from supabase import create_client
 from ib_insync import IB, Stock, MarketOrder
-from execution_agent import place_oca_bracket
+from execution_agent import place_trailing_stop, cancel_ticker_sell_orders
 from telegram_notifier import TelegramNotifier
 
 # ── Load .env if present (for local runs) ─────────────────────────────────────
@@ -43,7 +43,7 @@ IB_GATEWAY_PORT      = int(os.getenv("IB_GATEWAY_PORT", 4004))
 MAX_POSITIONS        = int(os.getenv("MAX_POSITIONS", 4))
 MIN_POSITION_SIZE    = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 STOP_LOSS_PCT        = float(os.getenv("STOP_LOSS_PCT", 0.07))
-PROFIT_TARGET_PCT    = float(os.getenv("PROFIT_TARGET_PCT", 0.25))
+PLATEAU_DAYS         = int(os.getenv("PLATEAU_DAYS", 10))   # kept for env parity; not used here
 COOLING_OFF_DAYS     = int(os.getenv("COOLING_OFF_DAYS", 3))
 TRIGGER_LOOKBACK_DAYS = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION  = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))
@@ -128,9 +128,6 @@ def main():
 
     if triggers:
         new_trigger_count = sum(1 for t in triggers if t["ticker"] not in held)
-            # Refresh held after ETF sell
-            positions  = client.table("portfolio_positions").select("*").execute().data or []
-            held       = [p["ticker"] for p in positions]
 
     available_cash = get_available_cash(ib)
     print(f"Available cash: ${available_cash:,.2f}")
@@ -172,12 +169,11 @@ def main():
             print(f"   Skip: price ${current_price:.2f} too high for position size ${position_size:,.0f}.")
             continue
 
-        stop_loss     = round(current_price * (1 - STOP_LOSS_PCT), 2)
-        profit_target = round(current_price * (1 + PROFIT_TARGET_PCT), 2)
-        buy_reason    = f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger.get('volume_surge', 'N/A')}x"
+        stop_loss  = round(current_price * (1 - STOP_LOSS_PCT), 2)
+        buy_reason = f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger.get('volume_surge', 'N/A')}x"
 
         confirm = input(f"\n   BUY {shares} shares of {ticker} @ ~${current_price:.2f} "
-                        f"(stop: ${stop_loss}, target: ${profit_target})? [y/N] ").strip().lower()
+                        f"(7% trail stop from fill price)? [y/N] ").strip().lower()
         if confirm != "y":
             print("   Skipped by user.")
             continue
@@ -202,39 +198,35 @@ def main():
                 fill_price = round(ib_pos.averageCost, 2)
                 actual_shares = int(ib_pos.position)
 
+                actual_stop = round(fill_price * (1 - STOP_LOSS_PCT), 2)
                 client.table("portfolio_positions").insert({
-                    "ticker":          ticker,
-                    "shares":          actual_shares,
-                    "buy_price":       fill_price,
-                    "high_water_mark": fill_price,
-                    "stop_loss":       round(fill_price * (1 - STOP_LOSS_PCT), 2),
-                    "profit_target":   round(fill_price * (1 + PROFIT_TARGET_PCT), 2),
-                    "buy_reason":      buy_reason,
-                    "buy_source":      "daily_triggers",
-                    "is_power_hold":   False,
-                    "oca_group":       None,  # will be updated after bracket placement below
+                    "ticker":     ticker,
+                    "shares":     actual_shares,
+                    "buy_price":  fill_price,
+                    "stop_loss":  actual_stop,
+                    "buy_reason": buy_reason,
+                    "buy_source": "daily_triggers",
+                    "hwm_date":   datetime.datetime.now(tz).date().isoformat(),
+                    "oca_group":  None,  # updated after trailing stop placement below
                 }).execute()
 
-                # Place OCA bracket immediately — trailing stop + limit sell.
+                # Place trailing stop immediately.
                 # Store the group name so execution_agent self-healing won't
                 # double-place on the next monitor cycle.
                 try:
-                    _oca = place_oca_bracket(ib, contract, actual_shares, fill_price,
-                                             PROFIT_TARGET_PCT, STOP_LOSS_PCT,
-                                             parent_order_id=trade.order.orderId)
+                    cancel_ticker_sell_orders(ib, ticker)  # safety: clear any stale orders
+                    _oca = place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
                     client.table("portfolio_positions").update(
                         {"oca_group": _oca}
                     ).eq("ticker", ticker).execute()
                 except Exception as _oca_err:
-                    print(f"   ⚠️ OCA bracket placement failed: {_oca_err} — self-healing will re-place.")
+                    print(f"   ⚠️ Trailing stop placement failed: {_oca_err} — self-healing will re-place.")
 
-                actual_stop   = round(fill_price * (1 - STOP_LOSS_PCT), 2)
-                actual_target = round(fill_price * (1 + PROFIT_TARGET_PCT), 2)
                 print(f"   ✅ Confirmed fill: {actual_shares} shares of {ticker} @ ${fill_price:.2f}")
-                print(f"   Stop: ${actual_stop}  |  Target: ${actual_target}")
+                print(f"   Trailing stop: 7% from peak (IBKR-managed)")
                 notifier.notify_buy(
                     ticker=ticker, shares=actual_shares, fill_price=fill_price,
-                    stop_loss=actual_stop, profit_target=actual_target,
+                    stop_loss=actual_stop, profit_target=None,
                     volume_surge=float(trigger.get("volume_surge", 0)),
                     pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
                     slot_used=len(held) + bought + 1, max_slots=MAX_POSITIONS
