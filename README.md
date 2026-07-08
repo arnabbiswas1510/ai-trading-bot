@@ -1,46 +1,41 @@
-# AI Trading Bot — CANSLIM Momentum Strategy
+﻿# AI Trading Bot — CANSLIM Momentum Strategy
 
 An automated equity trading system implementing the **CANSLIM** methodology developed by William O'Neil.
-The bot screens fundamentally strong stocks, detects technical breakout triggers, and executes
-market orders via Interactive Brokers (IBKR), running as a fully containerized daemon.
-Idle portfolio slots are parked in QQQ during bull markets and held as cash during bear markets.
+The bot finds fundamentally strong stocks, detects technical breakout triggers, and executes
+market orders via Interactive Brokers (IBKR), running as a fully containerized daemon on a home server.
 
 ---
 
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│  DATA SOURCES                                                        │
-│  Financial Modeling Prep (FMP API)  ←→  Interactive Brokers (IBKR)  │
-└────────────┬──────────────────────────────────┬─────────────────────┘
-             │                                  │
-             ▼                                  ▼
-┌────────────────────────┐        ┌─────────────────────────────────────┐
-│  FUNDAMENTAL SCREENER  │        │         EXECUTION AGENT             │
-│  fundamental_screener  │        │         execution_agent.py          │
-│  .py (weekly cron)     │        │         (continuous daemon)         │
-│                        │        │                                     │
-│  S&P 500 universe      │        │  9:30–9:45 AM → run_market_open_   │
-│  EPS growth filter     │        │  buys() — 5-step cascade:           │
-│  Composite scoring     │        │   ① Sell ETF slots for triggers     │
-│  Top 90 → Supabase     │        │   ② Buy daily_triggers (CANSLIM)   │
-│  watchlist table       │        └────────────┬───────────┘                     │                    │   ③ Park idle slots → QQQ / cash   │
-             ▼                    │                                     │
-┌────────────────────────┐        │  9:45 AM–4 PM → monitor_portfolio_ │
-│  TECHNICAL SCREENER    │        │  intraday() — 4-phase sell logic    │
-│  technical_screener.py │        │                                     │
-│  (daily cron)          │        │  Every cycle → reconcile_with_      │
-│                        │        │  ibkr() [uses ib.portfolio()]       │
-│  SMA-50 check          │        └──────────────┬──────────────────────┘
-│  40%+ volume surge     │                       │
-│  Within 2% of 52w high │                       │
-│  → daily_triggers      │    ┌──────────────────▼──────────────────────┐
-└────────────────────────┘    │            SUPABASE DATABASE            │
-             │                │  watchlist · daily_triggers             │
-             ▼                                              │  portfolio_positions · trade_history    │
-                              │  account_balances                       │
-                              └─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  DATA SOURCES                                                   │
+│  TradingView Scanner  ·  Financial Modeling Prep (FMP)  ·  IBKR │
+└──────┬──────────────────────────┬──────────────────────────┬────┘
+       │                          │                          │
+       ▼                          ▼                          ▼
+┌──────────────────┐   ┌──────────────────┐   ┌─────────────────────────────┐
+│ FUNDAMENTAL      │   │ TECHNICAL        │   │ EXECUTION AGENT             │
+│ SCREENER         │   │ SCREENER         │   │ execution_agent.py          │
+│ tv_api_screener  │   │ technical_       │   │ (continuous daemon)         │
+│ .py (weekly)     │   │ screener.py      │   │                             │
+│                  │   │ (daily)          │   │ Market open → buy loop      │
+│ TradingView scan:│   │                  │   │   Check triggers, gate buys,│
+│ EPS > 20% QoQ   │   │ FMP price data:  │   │   place market orders +     │
+│ EPS > 20% YoY   │   │ Above SMA-50     │   │   trailing stops            │
+│ Volume > 100K   │   │ 40%+ vol surge   │   │                             │
+│ Price > $10     │   │ Near 52w high    │   │ Every 15 min → monitor loop │
+│ → watchlist     │   │ → daily_triggers │   │   Update HWM date, self-heal│
+└──────────────────┘   └──────────────────┘   │   MA exit, EOD rotation     │
+                                               └──────────────┬──────────────┘
+                                                              │
+                                          ┌───────────────────▼───────────────┐
+                                          │         SUPABASE DATABASE         │
+                                          │  watchlist · daily_triggers       │
+                                          │  portfolio_positions              │
+                                          │  trade_history · account_balances │
+                                          └───────────────────────────────────┘
 ```
 
 ---
@@ -51,255 +46,177 @@ Idle portfolio slots are parked in QQQ during bull markets and held as cash duri
 |-----------|-----------|
 | Language | Python 3.11+ |
 | Broker API | Interactive Brokers (`ib_insync`) |
+| Fundamental Screening | TradingView Scanner API (undocumented, browser-spoofed) |
 | Market Data | Financial Modeling Prep (FMP) REST API |
 | Database | Supabase (PostgreSQL) |
 | Containerization | Docker + Docker Compose |
-| HTTP Client | `httpx` (async), `requests` (sync) |
-| Data Processing | `pandas` |
+| Notifications | Telegram Bot API |
+| AI Ranking | OpenAI (ranks triggers by CANSLIM quality before market open) |
 
 ---
 
 ## Component Documentation
 
-> These documents are derived directly from source code and must be kept in sync
-> with any code changes. See [Maintenance Policy](#llm-maintenance-policy) below.
-
-| Document | Source File(s) | Description |
-|----------|---------------|-------------|
-| [Fundamental Screener](docs/fundamental_screener.md) | `fundamental_screener.py`, `backend/screener.py` | CANSLIM 7-dimension scoring, watchlist pipeline, EPS thresholds |
-| [Technical Triggers](docs/technical_triggers.md) | `technical_screener.py` | Breakout detection: SMA-50, volume surge, 52-week high proximity |
-| [Buy Logic](docs/buy_logic.md) | `execution_agent.py` → `run_market_open_buys()` | Gates (cap, cooling-off, pivot extension), sizing, trailing stop placement, `hwm_date` init |
-| [Sell Logic](docs/sell_logic.md) | `execution_agent.py` → `monitor_portfolio_intraday()` | Trailing stop (IBKR), MA breach exit, EOD plateau rotation, self-healing |
-| [Configuration](docs/configuration.md) | All source files | All environment variables, Supabase schema, and table column reference |
+| Document | Description |
+|----------|-------------|
+| [Fundamental Screener](docs/fundamental_screener.md) | What makes a stock qualify for the watchlist |
+| [Technical Triggers](docs/technical_triggers.md) | How breakout signals are detected daily |
+| [Buy Logic](docs/buy_logic.md) | All the checks before a buy order is placed |
+| [Sell Logic](docs/sell_logic.md) | How the bot exits positions |
+| [Configuration](docs/configuration.md) | All settings, environment variables, and database schema |
 
 ---
 
-## CANSLIM Strategy Summary
+## CANSLIM Strategy — Explained Simply
 
-| Letter | Dimension | Pipeline Implementation | Config Variable |
-|--------|-----------|------------------------|----------------|
-| **C** | Current Earnings | Q EPS growth > 18% | `CANSLIM_MIN_Q_EPS_GROWTH` |
-| **A** | Annual Earnings | 3Y EPS growth > 10% | `CANSLIM_MIN_A_EPS_GROWTH` |
-| **N** | New Highs | Within 2% of 52-week high (technical trigger) | `PIVOT_PROXIMITY` |
-| **S** | Supply & Demand | Volume surge >= 1.4x avg (technical trigger) | `VOLUME_SURGE_MIN` |
-| **L** | Leader vs Laggard | RS rating percentile, weighted 4-period momentum | — |
-| **I** | Institutional Sponsorship | > 5 distinct institutional holders | `CANSLIM_MIN_INST_HOLDERS` |
-| **M** | Market Direction | **Actively enforced:** SPY vs SMA-200. Bull → buy/park. Bear → liquidate ETF, hold cash. | `MARKET_DIRECTION_TICKER`, `MARKET_DIRECTION_SMA_WINDOW` |
+Imagine you are looking for the best athlete in a school. You would not just pick someone randomly — you would look for someone with a track record of winning (earnings growth), who is on a hot streak right now (recent breakout), who the coaches believe in (institutional money is buying them), and who is racing in a good environment (bull market).
 
----
+CANSLIM is that same checklist, applied to stocks:
 
-## Buy Rules
+| Letter | What It Means | How the Bot Checks It |
+|--------|---------------|----------------------|
+| **C** | *Current Earnings* — Is the company making more money this quarter than last year? | Quarterly EPS growth > 20% (TradingView filter) |
+| **A** | *Annual Earnings* — Has it been growing for a while, not just a one-hit wonder? | Annual EPS growth > 20% (TradingView filter) |
+| **N** | *New Highs* — Is the stock breaking out to new price highs on the chart? | Price within 2% of its 52-week high on a big-volume day |
+| **S** | *Supply & Demand* — Are more people rushing to buy it than usual? | Volume at least 40% above the 50-day average |
+| **L** | *Leader* — Is it one of the best in its sector, not a laggard? | Relative strength built into the TradingView screener sort |
+| **I** | *Institutional Sponsorship* — Are the big funds (Fidelity, etc.) buying it? | TradingView analyst rating used as a proxy |
+| **M** | *Market Direction* — Is the overall market going up? | SPY vs its 200-day moving average |
 
-Buys execute at **9:30–9:45 AM ET** via `run_market_open_buys()`. The function runs a **cascade**: primary CANSLIM triggers → ETF cash parking. Every trigger passes these gates — all must pass for an order to be placed:
-
-| # | Gate | Logic | Config |
-|---|------|-------|--------|
-| 1 | **Stock capacity** | Skip if **stock-only** count ≥ MAX_POSITIONS (ETF parking slots are displaceable) | `MAX_POSITIONS=4` |
-| 2 | **Trigger freshness** | Only consider triggers from last N days | `TRIGGER_LOOKBACK_DAYS=3` |
-| 3 | **Not already held** | Skip if ticker already in portfolio | — |
-| 4 | **Cooling-off period** | Skip if ticker was sold within last N days | `COOLING_OFF_DAYS=3` |
-| 5 | **Sufficient cash** | Skip if available cash < minimum position floor | `MIN_POSITION_SIZE=5000` |
-| 6 | **Pivot extension** | Skip if live price > N% above breakout pivot | `MAX_PIVOT_EXTENSION=0.05` |
-| 7 | **Share count** | Compute shares = position_size / live_price; skip if 0 | — |
-
-**Position sizing:** `available_cash ÷ remaining_stock_slots` — equal-weight across unfilled stock slots only.
-
-> [!IMPORTANT]
-> Gate 6 (pivot extension) enforces O'Neil's buy zone rule: a stock that has already moved >5% beyond
-> its breakout pivot is considered "extended" and skipped. Critical when the bot recovers
-> from downtime and evaluates triggers that are 1–2 days old.
-
-> [!IMPORTANT]
-> Fill verification uses `ib.portfolio()` (not `trade.orderStatus`) to prevent ghost positions
-> from IBKR paper trading's "Cancelled and Resubmitted" order status (Error 10349).
+The bot does **not** chase every stock. It only buys when ALL these conditions line up at once. Most days, it does nothing.
 
 ---
 
-## Sell Rules
+## Buy Rules — Explained Simply
 
-| Rule | Trigger | Default Threshold | Config Variable |
-|------|---------|-------------------|-----------------| 
-| Bear market exit | SPY below SMA-200 | Liquidate ETF parking → hold cash | `MARKET_DIRECTION_TICKER`, `MARKET_DIRECTION_SMA_WINDOW` |
-| Trailing Stop Loss | Price falls below high-water mark | -7% from highest price reached | `STOP_LOSS_PCT` |
-| Profit Target | Price rises from entry | +25% from fill price | `PROFIT_TARGET_PCT` |
-| Power Hold activation | Rapid early surge | ≥20% gain in ≤21 days | `POWER_HOLD_GAIN_TRIGGER`, `POWER_HOLD_DAYS_LIMIT` |
-| Power Hold duration | Profit target suspended for | 8 weeks | `POWER_HOLD_DURATION_WEEKS` |
-| Stale Rotation | Sideways holder, portfolio full, fresh trigger exists | Held ≥15 days with <3% gain | `STALE_HOLD_DAYS`, `STALE_HOLD_MAX_GAIN` |
-| Cooling-off | Re-buy blocked after a stop-out | 3 days | `COOLING_OFF_DAYS` |
+Think of the bot as a strict bouncer at a club. Every breakout trigger has to pass **all 7 checks** before getting in:
 
-After every sell, `run_etf_parking()` immediately re-parks the freed slot (QQQ if bull, cash if bear).
+1. **Room in the portfolio?** The bot holds a maximum of 4 stocks. If all 4 slots are full, no new buys — full stop.
+2. **Is the trigger fresh?** The breakout signal must be from the last 3 days. Stale signals from last week are ignored.
+3. **Already own it?** Can't buy the same stock twice.
+4. **Too soon after selling it?** If the bot sold this stock in the last 3 days (e.g., it hit the trailing stop), it waits before buying it again — the same trade that lost once rarely wins immediately.
+5. **Enough cash?** The position must be worth at least $5,000. Tiny positions aren't worth the commission risk.
+6. **Still in the buy zone?** If the stock already ran up more than 5% past the breakout point by the time the bot checks it, it skips — buying too late is a losing trade in O'Neil's system.
+7. **Can we afford whole shares?** Divides the cash by the current price. If that results in 0 shares, skip.
+
+When a buy passes all 7 gates:
+- A **market order** is placed immediately (guarantees a fill at the best available price)
+- A **7% trailing stop** is attached right after the fill — this is the safety net
+- The position is recorded in Supabase with `hwm_date = today` (the plateau clock starts ticking)
+- Triggers are evaluated **highest AI-rated first** — the best opportunities get filled before lesser ones
+
+**Position sizing:** Cash is divided equally across the remaining empty slots. If you have $20,000 and 2 empty slots, each buy gets $10,000.
+
+| # | Gate | What It Checks | Setting |
+|---|------|----------------|---------|
+| 1 | Portfolio cap | Must have an open slot | `MAX_POSITIONS=4` |
+| 2 | Trigger freshness | Signal must be ≤ 3 days old | `TRIGGER_LOOKBACK_DAYS=3` |
+| 3 | No duplicate | Not already held | — |
+| 4 | Cooling-off | Not sold within last 3 days | `COOLING_OFF_DAYS=3` |
+| 5 | Cash floor | Available cash ≥ $5,000 | `MIN_POSITION_SIZE=5000` |
+| 6 | Buy zone | Price ≤ 5% above pivot | `MAX_PIVOT_EXTENSION=0.05` |
+| 7 | Share count | shares = position_size / price > 0 | — |
+
+---
+
+## Sell Rules — Explained Simply
+
+The bot never guesses when to sell. It follows three clear rules:
+
+### Rule 1 — Trailing Stop (the floor that rises with you)
+
+Every stock gets a **7% trailing stop** the moment it is bought. Think of it as a floor that follows the stock up but never comes back down.
+
+- Stock bought at $100 → stop starts at $93
+- Stock rises to $130 → stop rises to $120.90 (locks in a gain)
+- Stock then falls to $120 → stop fires, position sold automatically
+
+**This is fully managed by IBKR** — it works even when the bot is down. The bot just checks every 15 minutes that the stop order is still there; if it disappeared, it re-places it (self-healing).
+
+### Rule 2 — Moving Average Exit (support line check)
+
+Once a day, near market close (3:45–4:00 PM), the bot checks if the stock price has fallen **below its 21-day EMA by more than 1%**. If yes, it sells immediately. This catches slow bleed situations where the trailing stop has not fired yet but the stock has quietly broken its trend.
+
+### Rule 3 — Plateau Rotation (the "get off the fence" rule)
+
+This is the cleverest rule. Imagine holding a stock for 12 days and it just sits there going nowhere — no new highs, no progress. Meanwhile, a fresh breakout stock is waiting to enter the portfolio but there is no room.
+
+At 3:45 PM every day, the bot checks:
+- Is the portfolio full?
+- Is there a fresh breakout signal from a stock we don't own?
+- Has any position gone **10+ days without making a new high?**
+
+If all three are true, it sells the most-stalled position to make room for the fresh opportunity. The replacement buy happens the next morning.
+
+The staleness clock (`hwm_date`) tracks the **last date each stock made a new high** during intraday monitoring. Every 15 minutes, if the current price exceeds the previous poll's high, `hwm_date` is updated to today. If it stops updating, the clock runs.
+
+| Exit | Trigger | Who Acts |
+|------|---------|----------|
+| **Trailing Stop** | Price falls 7% from its peak | IBKR (automatic, always on) |
+| **MA Breach** | Price drops below EMA-21 by >1% | Bot sells at 3:45 PM ET |
+| **Plateau Rotation** | 10+ days no new high + full portfolio + fresh trigger | Bot sells at 3:45 PM ET |
 
 ---
 
 ## Configuration Reference
 
-All strategy parameters are set in `.env`. Defaults are shown — override any value without touching code.
+These are the strategy knobs — the numbers that control how the bot behaves. All are set via environment variables.
 
-### Infrastructure
+### Portfolio & Risk
 
-| Variable | Default | Description |
+| Variable | Default | What It Does |
 |----------|---------|-------------|
-| `FMP_API_KEY` | — | Financial Modeling Prep API key |
-| `SUPABASE_URL` | — | Supabase project URL |
-| `SUPABASE_KEY` | — | Supabase service role key |
-| `IB_GATEWAY_HOST` | `localhost` | IB Gateway hostname (`ib-gateway` in Docker) |
-| `IB_GATEWAY_PORT` | `7497` | IB Gateway API port |
-| `TELEGRAM_BOT_TOKEN` | — | Telegram bot token from @BotFather (leave empty to disable) |
-| `TELEGRAM_CHAT_IDS` | — | Comma-separated recipient chat IDs |
+| `MAX_POSITIONS` | `4` | How many stocks to hold at once |
+| `MIN_POSITION_SIZE` | `5000` | Minimum dollar amount per buy — skips if cash is too low |
+| `STOP_LOSS_PCT` | `0.07` | Trailing stop distance — 7% below the stock's highest price reached |
+| `PLATEAU_DAYS` | `10` | Days without a new high before a stock qualifies for rotation |
+| `COOLING_OFF_DAYS` | `3` | Days to wait before re-buying a stock that was just sold |
 
-### Portfolio Management
+### Buy Gating
 
-| Variable | Default | Description |
+| Variable | Default | What It Does |
 |----------|---------|-------------|
-| `MAX_POSITIONS` | `4` | Maximum concurrent positions (stocks + ETF parking combined) |
-| `MIN_POSITION_SIZE` | `5000.0` | Minimum USD position size — skip if position would be smaller |
+| `TRIGGER_LOOKBACK_DAYS` | `3` | How far back to look for breakout signals (covers weekends/holidays) |
+| `MAX_PIVOT_EXTENSION` | `0.05` | Maximum % a stock can be above its breakout price before we skip it |
 
-### Exit & Hold Parameters (`execution_agent.py`)
+### Moving Average Exit
 
-| Variable | Default | Description |
+| Variable | Default | What It Does |
 |----------|---------|-------------|
-| `STOP_LOSS_PCT` | `0.07` | Trailing stop distance — sell if price falls this % below high-water mark |
-| `PROFIT_TARGET_PCT` | `0.25` | Take-profit — sell when position gains this % from entry |
-| `POWER_HOLD_GAIN_TRIGGER` | `0.20` | Surge required to activate Power Hold (20%) |
-| `POWER_HOLD_DAYS_LIMIT` | `21` | Power Hold only activates if surge occurs within this many days of purchase |
-| `POWER_HOLD_DURATION_WEEKS` | `8` | Weeks the profit target is suspended after Power Hold activates |
-| `COOLING_OFF_DAYS` | `3` | Days before a stopped-out ticker can be re-bought |
-| `TRIGGER_LOOKBACK_DAYS` | `3` | Days back to look for valid breakout triggers (covers weekends/holidays) |
-| `MAX_PIVOT_EXTENSION` | `0.05` | Skip buy if live price is already >5% above the trigger's pivot close |
-| `STALE_HOLD_DAYS` | `15` | Min days held before a sideways position qualifies for rotation |
-| `STALE_HOLD_MAX_GAIN` | `0.03` | Max gain (decimal) that qualifies as "sideways" — 0.03 = within 3% of entry |
+| `EXIT_MA_TRIGGER_ENABLED` | `true` | Turn the MA exit on or off |
+| `EXIT_MA_TYPE` | `EMA` | Type of moving average: `EMA` or `SMA` |
+| `EXIT_MA_WINDOW` | `21` | Number of trading days for the moving average |
+| `EXIT_MA_BUFFER_PCT` | `0.01` | How far below the MA before selling (1% buffer prevents noise-triggered exits) |
+| `EXIT_MA_EOD_ONLY` | `true` | Only check at 3:45 PM (prevents intraday whipsaw sells) |
 
-### Fundamental Screener (`fundamental_screener.py`)
+### Technical Screener
 
-| Variable | Default | Description |
+The technical screener runs daily after market close. It checks each stock on the watchlist and looks for a breakout pattern. Think of it as looking for a sprinter leaving the starting blocks.
+
+| Variable | Default | What It Does |
 |----------|---------|-------------|
-| `CANSLIM_MIN_Q_EPS_GROWTH` | `0.18` | Minimum quarterly EPS growth rate (CANSLIM "C") |
-| `CANSLIM_MIN_A_EPS_GROWTH` | `0.10` | Minimum annual EPS growth rate (CANSLIM "A") |
-| `CANSLIM_MIN_INST_HOLDERS` | `5` | Minimum distinct institutional holders (CANSLIM "I") |
-| `CANSLIM_WATCHLIST_SIZE` | `90` | Max candidates written to watchlist per screening run |
-| `WATCHLIST_PRUNE_DAYS` | `56` | Days to retain watchlist rows in Supabase |
-| `API_CONCURRENCY` | `10` | Max parallel FMP API calls during screening |
+| `SMA_WINDOW` | `50` | Days used to calculate the trend line the stock must be above |
+| `VOLUME_SURGE_MIN` | `1.40` | Volume must be at least 40% above normal to count as a real breakout |
+| `ROLLING_HIGH_WINDOW` | `252` | Trading days used to define the 52-week high |
+| `PIVOT_PROXIMITY` | `0.98` | Stock must be within 2% of its 52-week high to qualify |
+| `TRIGGER_PRUNE_DAYS` | `56` | How long to keep old breakout signals in the database |
 
-### Technical Screener (`technical_screener.py`)
+### Fundamental Screener
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SMA_WINDOW` | `50` | Moving average period for trend filter |
-| `VOLUME_AVG_WINDOW` | `50` | Period for computing the volume baseline |
-| `VOLUME_SURGE_MIN` | `1.40` | Min volume surge ratio to qualify as a breakout (1.40 = 40% above avg) |
-| `ROLLING_HIGH_WINDOW` | `252` | Trading days used to compute the rolling high |
-| `PIVOT_PROXIMITY` | `0.98` | Price must be within this fraction of rolling high (0.98 = within 2%) |
-| `MIN_PRICE_HISTORY` | `50` | Min days of price history required to analyze a ticker |
-| `FMP_HISTORY_DAYS` | `380` | Calendar days of EOD data fetched from FMP per ticker |
-| `TRIGGER_PRUNE_DAYS` | `56` | Days to retain daily_trigger rows in Supabase |
+The fundamental screener runs weekly. It asks TradingView to scan every US stock and returns only the ones that pass all these filters simultaneously:
 
-### ETF Cash Parking / Market Direction Filter
+| Filter | Threshold | What It Means |
+|--------|-----------|---------------|
+| Price | > $10 | Avoids penny stocks |
+| Quarterly EPS growth | > 20% YoY | Company is earning more this quarter than a year ago — accelerating |
+| Annual EPS growth | > 20% TTM | Sustained growth over the full year, not a one-time blip |
+| 30-day avg volume | > 100,000 | Enough daily trading activity to enter and exit cleanly |
+| Stock type | Common or preferred only | No ETFs, no pre-IPO, no mutual funds |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ETF_PARKING_ENABLED` | `true` | Master switch — disable to always hold cash |
-| `ETF_PARKING_TICKER` | `QQQ` | Ticker to park idle cash in (NASDAQ-100, CANSLIM growth bias) |
-| `ETF_PARKING_MAX_SLOTS` | `4` | Max slots eligible for parking (SMA200 is the safety valve) |
-| `MARKET_DIRECTION_FILTER_ENABLED` | `true` | Enable bear market detection and ETF liquidation |
-| `MARKET_DIRECTION_SMA_WINDOW` | `200` | SMA period for market direction (O'Neil standard: 200) |
-| `MARKET_DIRECTION_TICKER` | `SPY` | Market direction gauge (S&P 500) |
+These filters run inside a single TradingView API call — results (up to 2,000 stocks) are sorted by market cap and written to the `watchlist` table. The technical screener then scans only this curated list each day.
 
 ---
-
-## Running the System
-
-### Local (Development)
-
-```bash
-# 1. Copy and fill environment variables
-cp .env.example .env
-
-# 2. Run the fundamental screener (weekly)
-python fundamental_screener.py
-
-# 3. Run the technical screener (daily, after market close)
-python technical_screener.py
-
-# 4. Run the execution agent daemon (during market hours)
-python execution_agent.py
-
-# 5. Mock-sell a position for testing (no IBKR connection needed)
-python execution_agent.py --mock-sell AAPL --price 195.50 --reason "Test exit"
-```
-
-### Docker (Production)
-
-```bash
-docker compose up -d
-```
-
-Key services in `docker-compose.yml`:
-- `ib-gateway` — Interactive Brokers Gateway (API port 4004)
-- `execution-agent` — The main daemon
-- `backend` — FastAPI dashboard backend
-
-### Manual Buy Trigger (one-off)
-
-```bash
-# Run inside the running container — interactive prompt per ticker
-docker exec -it execution-agent python force_buy.py
-```
-
-Runs the full cascade (daily_triggers → ETF parking) with Y/N confirmation per buy.
-
----
-
-## Supabase Schema
-
-| Table | Key Columns | Purpose | Retention |
-|-------|------------|---------|---------|
-| `watchlist` | `ticker`, `q_eps_growth`, `a_eps_growth`, `price` | Fundamental screener top-N output | 56 days rolling |
-| `daily_triggers` | `ticker`, `triggered_at`, `volume_surge`, `pivot_distance_pct` | CANSLIM breakout signals | 56 days rolling |
-| `portfolio_positions` | `ticker`, `buy_price`, `high_water_mark`, `profit_target`, `is_power_hold`, **`buy_source`** | Open positions ledger | Until sell/close |
-| `trade_history` | `ticker`, `buy_price`, `sell_price`, `sell_date`, `sell_reason`, `profit_loss` | Closed trade audit log | Permanent |
-| `account_balances` | `key`, `value` | IBKR cash balance sync (single row: `ibkr_cash_balance`) | Live upsert |
-
-**`portfolio_positions.buy_source` values:**
-- `"daily_triggers"` — CANSLIM primary breakout
-- `"etf_parking"` — QQQ idle-slot position (displaceable, not monitored for stop/profit)
-
----
-
-## LLM Maintenance Policy
-
-> [!IMPORTANT]
-> These markdown files are **living documentation** tied directly to the source code.
-> They must be updated whenever the corresponding source files change.
-
-### How These Docs Are Maintained
-
-The component docs are stored as **Knowledge Items** in the AI assistant's knowledge base. This means:
-
-1. **Auto-loaded at conversation start** — The assistant receives summaries of all knowledge items and reads
-   the relevant ones before answering questions about this codebase.
-2. **Triggered on code changes** — When you modify source files, ask the assistant to
-   update the corresponding doc.
-3. **Accurate by design** — Docs are generated from actual code, not written by hand,
-   so they reflect real thresholds, formulas, and logic.
-
-### What Triggers a Doc Update
-
-| Change | Doc to Update |
-|--------|--------------|
-| Modify `fundamental_screener.py` | `fundamental_screener.md` |
-| Modify `technical_screener.py` | `technical_triggers.md` |
-| Modify `run_market_open_buys()` in `execution_agent.py` | `buy_logic.md` |
-| Modify `monitor_portfolio_intraday()` or `execute_sell()` | `sell_logic.md` |
-| Add `.env` variables | `README.md` Configuration Reference section |
-
-### Limitations
-
-The assistant **cannot** automatically detect code changes without being asked.
-To ensure docs stay accurate:
-- Mention doc updates when requesting code changes
-- Or periodically ask: *"Are the trading bot docs still accurate?"* — the assistant will
-  re-read the source files and flag any drift.
 
 ## OpenAI Integration
-The bot uses OpenAI (requires `OPENAI_API_KEY`) to evaluate and rank technical breakouts according to CANSLIM fundamentals before the market opens.
 
+Before market open each day, OpenAI evaluates the day's breakout signals and assigns an **AI rating** to each one. The bot sorts triggers by this rating before buying — highest-confidence breakouts get first access to available capital.
