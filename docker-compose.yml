@@ -9,9 +9,9 @@ services:
       - "4002:4004"
       - "5900:5900"
     environment:
-      - TWS_USERID=${IBKR_PAPER_USER}
-      - TWS_PASSWORD=${IBKR_PAPER_PASS}
-      - TRADING_MODE=paper
+      - TWS_USERID=${IBKR_LIVE_USER}
+      - TWS_PASSWORD=${IBKR_LIVE_PASS}
+      - TRADING_MODE=live
       - READ_ONLY_API=no
       - AUTO_LOGOFF=no
       - BYPASS_WARNING_MESSAGES=yes
