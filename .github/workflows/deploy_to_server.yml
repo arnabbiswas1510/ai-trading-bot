@@ -34,8 +34,8 @@ jobs:
             echo "=== Removing old container instances to prevent name conflicts ==="
             docker compose rm -fs execution-agent trading-bot
 
-            echo "=== Restarting all trading bot containers (dependency order) ==="
-            docker compose up -d ib-gateway > /dev/null 2>&1
+            echo "=== Starting ib-gateway only if not already running (--no-recreate prevents 2FA disruption) ==="
+            docker compose up -d --no-recreate ib-gateway > /dev/null 2>&1
             sleep 5
             docker compose up -d execution-agent trading-bot > /dev/null 2>&1
 
