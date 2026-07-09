@@ -191,12 +191,16 @@ def get_portfolio():
             except Exception as ex:
                 print(f"Could not update live price for {ticker}: {ex}")
                 
-            value = pos['shares'] * pos['current_price']
+            # Fall back to buy_price when FMP hasn't refreshed yet (e.g. positions just bought)
+            # This prevents a 500 crash and shows 0% PnL until the next price cycle.
+            display_price = pos['current_price'] or pos['buy_price']
+            value = pos['shares'] * display_price
             portfolio_value += value
             
             pnl = value - (pos['shares'] * pos['buy_price'])
-            pnl_pct = (pos['current_price'] / pos['buy_price'] - 1.0) * 100.0
+            pnl_pct = (display_price / pos['buy_price'] - 1.0) * 100.0
             
+            pos['current_price'] = display_price   # ensure it's never None in response
             pos['value'] = round(value, 2)
             pos['pnl'] = round(pnl, 2)
             pos['pnl_pct'] = round(pnl_pct, 2)
