@@ -15,6 +15,8 @@ services:
       - READ_ONLY_API=no
       - AUTO_LOGOFF=no
       - BYPASS_WARNING_MESSAGES=yes
+      - VNC_SERVER_PASSWORD=${VNC_SERVER_PASSWORD}
+      - TWOFA_DEVICE=IB Key
     shm_size: '1gb'
     networks:
       - trading_bridge
