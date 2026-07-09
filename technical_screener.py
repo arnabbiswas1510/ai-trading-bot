@@ -26,12 +26,34 @@ FMP_BASE_URL = "https://financialmodelingprep.com"
 # ── Technical screener configuration (set in .env) ──────────────────────────────
 SMA_WINDOW        = int(os.environ.get("SMA_WINDOW", 50))
 VOLUME_AVG_WINDOW = int(os.environ.get("VOLUME_AVG_WINDOW", 50))
-VOLUME_SURGE_MIN  = float(os.environ.get("VOLUME_SURGE_MIN", 1.40))
+VOLUME_SURGE_MIN  = float(os.environ.get("VOLUME_SURGE_MIN", 1.20))   # relaxed from 1.40
 ROLLING_HIGH_WINDOW = int(os.environ.get("ROLLING_HIGH_WINDOW", 252))
-PIVOT_PROXIMITY   = float(os.environ.get("PIVOT_PROXIMITY", 0.98))
+PIVOT_PROXIMITY   = float(os.environ.get("PIVOT_PROXIMITY", 0.95))    # relaxed from 0.98
 MIN_PRICE_HISTORY = int(os.environ.get("MIN_PRICE_HISTORY", 50))
 FMP_HISTORY_DAYS  = int(os.environ.get("FMP_HISTORY_DAYS", 380))
 TRIGGER_PRUNE_DAYS = int(os.environ.get("TRIGGER_PRUNE_DAYS", 56))
+
+
+def compute_quality_score(volume_surge_ratio: float, pivot_dist_pct: float,
+                          current_close: float, sma_50: float) -> int:
+    """
+    Composite quality score 0–100 for a breakout trigger.
+
+    Weights:
+      Volume surge   40% — normalised against 3× average (≥3× → full marks)
+      Pivot proximity 40% — distance from 52-week high (0% → full marks, −5% → zero)
+      SMA margin      20% — how far above 50-day SMA (capped at 10% above)
+
+    Used as the primary sort key when AI rating is unavailable, and as a
+    tiebreaker + AI bonus input when ai_grade is present.
+    """
+    vol_norm  = min(volume_surge_ratio / 3.0, 1.0)
+    # pivot_dist_pct is negative when below the high (e.g. -1.19)
+    prox_norm = max(0.0, 1.0 + (pivot_dist_pct / 5.0))
+    sma_margin_pct = ((current_close - sma_50) / sma_50 * 100.0) if sma_50 > 0 else 0.0
+    sma_norm  = min(max(sma_margin_pct / 10.0, 0.0), 1.0)
+    score = (vol_norm * 40.0) + (prox_norm * 40.0) + (sma_norm * 20.0)
+    return int(round(score))
 
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(
@@ -144,9 +166,12 @@ def check_technical_breakout(ticker):
         if is_above_50ma and has_volume_surge and is_breaking_high:
             rolling_high = today['rolling_high_52w']
             pivot_dist = ((current_close / rolling_high) - 1.0) * 100.0 if rolling_high > 0 else 0.0
-            
+            quality_score = compute_quality_score(
+                volume_surge_ratio, pivot_dist, current_close, sma_50
+            )
+
             today_ny = datetime.datetime.now(ZoneInfo("America/New_York")).date().strftime("%Y-%m-%d")
-            
+
             return {
                 "ticker": ticker,
                 "close_price": float(round(current_close, 2)),
@@ -154,6 +179,7 @@ def check_technical_breakout(ticker):
                 "sma_50": float(round(sma_50, 2)),
                 "rolling_high_52w": float(round(rolling_high, 2)),
                 "pivot_distance_pct": float(round(pivot_dist, 2)),
+                "quality_score": quality_score,
                 "triggered_at": today_ny
             }
     except Exception as e:
@@ -200,6 +226,7 @@ if __name__ == "__main__":
         
         if not watchlist:
             print("💭 Target tracking watchlist is empty or could not be retrieved.")
+            notifier.notify_breakouts_detected([])
         else:
             print(f"🔍 Analyzing {len(watchlist)} assets for volume breakouts...")
             active_triggers = []

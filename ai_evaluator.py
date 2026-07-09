@@ -51,11 +51,30 @@ def fetch_watchlist_data(tickers):
         print(f"❌ Failed to fetch watchlist data: {e}")
         return {}
 
-def update_trigger_rating(ticker, rating):
+# Grade boundaries and buy-gate bonus
+_GRADE_BOUNDARIES = [(70, "A", 15), (50, "B", 5), (30, "C", 0)]
+# Ratings below 30 → grade D → AI veto (execution agent will skip)
+AI_VETO_THRESHOLD = 30
+
+
+def ai_grade_and_bonus(rating: int) -> tuple[str, int]:
+    """Return (letter_grade, score_bonus) for an AI rating 1-100."""
+    for threshold, grade, bonus in _GRADE_BOUNDARIES:
+        if rating >= threshold:
+            return grade, bonus
+    return "D", 0   # veto — execution agent will skip this ticker
+
+
+def update_trigger_scores(ticker: str, ai_rating: int, ai_grade: str, final_score: int):
+    """Write ai_rating, ai_grade, and final_score back to daily_triggers."""
     try:
-        client.table("daily_triggers").update({"ai_rating": rating}).eq("ticker", ticker).execute()
+        client.table("daily_triggers").update({
+            "ai_rating":   ai_rating,
+            "ai_grade":    ai_grade,
+            "final_score": final_score,
+        }).eq("ticker", ticker).execute()
     except Exception as e:
-        print(f"⚠️ Failed to update rating for {ticker}: {e}")
+        print(f"⚠️ Failed to update scores for {ticker}: {e}")
 
 def main():
     triggers = fetch_daily_triggers()
@@ -117,16 +136,24 @@ Return ONLY valid JSON.
         
         result_text = response.choices[0].message.content
         ratings = json.loads(result_text)
-        
-        print(f"✅ Received ratings: {ratings}")
-        
-        # Update the database
+
+        print(f"✅ Received AI ratings: {ratings}")
+
+        # Write ai_rating, ai_grade, and final_score back to every graded trigger
         for t in triggers:
             ticker = t["ticker"]
-            if ticker in ratings:
-                print(f"[*] Updating {ticker} with rating {ratings[ticker]}")
-                update_trigger_rating(ticker, ratings[ticker])
-                
+            if ticker not in ratings:
+                continue
+
+            ai_rating = int(ratings[ticker])
+            grade, bonus = ai_grade_and_bonus(ai_rating)
+            quality_score = t.get("quality_score") or 50   # fallback if column not yet populated
+            final_score = quality_score + bonus             # D-grade still gets 0 bonus (veto handled by agent)
+
+            print(f"   {ticker}: AI={ai_rating} → grade={grade} | "
+                  f"quality={quality_score} + bonus={bonus} = final={final_score}")
+            update_trigger_scores(ticker, ai_rating, grade, final_score)
+
         print("✅ AI evaluation complete!")
         
     except Exception as e:

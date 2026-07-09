@@ -634,8 +634,12 @@ def run_market_open_buys(ib: IB):
     try:
         triggers_res = client.table("daily_triggers").select("*").gte("triggered_at", recent_date).execute()
         triggers = triggers_res.data
-        # Sort triggers by ai_rating (descending). Use 0 for any missing/null ratings.
-        triggers.sort(key=lambda x: x.get("ai_rating") or 0, reverse=True)
+        # Sort by final_score (quality + AI bonus) descending.
+        # Falls back to quality_score, then ai_rating, then 0 if columns not yet populated.
+        triggers.sort(
+            key=lambda x: x.get("final_score") or x.get("quality_score") or x.get("ai_rating") or 0,
+            reverse=True
+        )
     except Exception as e:
         notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", e)
         print(f"❌ Failed to fetch daily triggers: {e}")
@@ -679,6 +683,16 @@ def run_market_open_buys(ib: IB):
         except Exception as cool_err:
             notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", cool_err)
             print(f"   ⚠️ Cooling-off check failed for {ticker}: {cool_err} — allowing buy.")
+
+        # ── AI veto: skip D-grade tickers (low-conviction AI rating < 30) ────────
+        ai_grade = trigger.get("ai_grade")
+        if ai_grade == "D":
+            print(f"   🚫 {ticker} vetoed by AI evaluator (D-grade, conviction < 30). Skipping.")
+            continue
+        if ai_grade:
+            print(f"   🟢 {ticker} AI grade: {ai_grade} | "
+                  f"quality={trigger.get('quality_score', 'N/A')} | "
+                  f"final={trigger.get('final_score', 'N/A')}")
             
         # Size the position as an equal share of remaining capital across unfilled slots
         stock_held_count = len(holdings)
@@ -778,8 +792,13 @@ def run_market_open_buys(ib: IB):
                 "buy_reason": f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x",
                 "buy_source": buy_source,
                 "stop_loss":  stop_loss_val,
-                "hwm_date":   datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),   # plateau clock starts at buy date
+                "hwm_date":   datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
                 "oca_group":  oca_str,
+                # ── Entry quality snapshot (for future rotation analysis) ──────
+                "entry_quality_score": trigger.get("quality_score"),
+                "entry_ai_rating":     trigger.get("ai_rating"),
+                "entry_ai_grade":      trigger.get("ai_grade"),
+                "entry_final_score":   trigger.get("final_score"),
             }
 
             client.table("portfolio_positions").insert(position_data).execute()
