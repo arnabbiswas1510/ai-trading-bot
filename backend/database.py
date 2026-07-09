@@ -435,7 +435,7 @@ def get_positions():
                 "buy_reason": row.get("buy_reason", "CANSLIM Breakout"),
                 "current_price": float(row.get("current_price") or row["buy_price"]),
                 "stop_loss": float(row["stop_loss"]),
-                "profit_target": float(row["profit_target"]),
+                "profit_target": float(row["profit_target"]) if row.get("profit_target") is not None else 0.0,
                 "high_water_mark": float(row.get("high_water_mark") or row["buy_price"]),
                 "is_power_hold": bool(row.get("is_power_hold", False)),
                 "power_hold_expiry": row.get("power_hold_expiry"),
