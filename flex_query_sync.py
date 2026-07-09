@@ -138,22 +138,38 @@ def _request_reference_code() -> str:
     """
     Step 1: Submit the query to IBKR and get a ReferenceCode.
     Returns the ReferenceCode string on success, raises on failure.
+    Retries on error 1001 (server busy) with exponential backoff.
     """
     params = {"t": FLEX_TOKEN, "q": FLEX_QUERY_ID, "v": "3"}
-    resp = requests.get(SEND_URL, params=params, timeout=30)
-    resp.raise_for_status()
 
-    root = ET.fromstring(resp.text)
-    status = root.findtext("Status", "")
-    if status != "Success":
+    for attempt in range(1, MAX_RETRIES + 1):
+        if attempt > 1:
+            wait = INITIAL_WAIT_S + (attempt - 2) * RETRY_BACKOFF_S
+            print(f"[flex_query_sync] Retrying Step 1 in {wait}s (attempt {attempt}/{MAX_RETRIES})...")
+            time.sleep(wait)
+
+        resp = requests.get(SEND_URL, params=params, timeout=30)
+        resp.raise_for_status()
+
+        root = ET.fromstring(resp.text)
+        status = root.findtext("Status", "")
+
+        if status == "Success":
+            ref = root.findtext("ReferenceCode", "")
+            if not ref:
+                raise RuntimeError("IBKR returned Success but no ReferenceCode in response.")
+            return ref
+
         error_code = root.findtext("ErrorCode", "")
         error_msg  = root.findtext("ErrorMessage", "")
+
+        if error_code == "1001":
+            print(f"[flex_query_sync] IBKR Step 1 returned error 1001 (server busy). Retrying...")
+            continue
+
         raise RuntimeError(f"IBKR SendRequest failed [{error_code}]: {error_msg}")
 
-    ref = root.findtext("ReferenceCode", "")
-    if not ref:
-        raise RuntimeError("IBKR returned Success but no ReferenceCode in response.")
-    return ref
+    raise RuntimeError(f"IBKR SendRequest still returning error 1001 after {MAX_RETRIES} retries.")
 
 
 def _fetch_statement(ref_code: str) -> str:
