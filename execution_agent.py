@@ -1159,9 +1159,25 @@ def main_loop():
                     ib.sleep(900)
                     continue
 
-            # Outside market hours: check once an hour
-            print(f"😴 Market is closed. Checking in 1 hour... (Current Time: {now.strftime('%H:%M:%S')})")
-            ib.sleep(3600)
+            # ── Smart sleep: wake exactly at 9:30 AM ET ─────────────────────────────
+            # Compute seconds until next 9:30 AM ET (today or tomorrow if already past)
+            next_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+            if now >= next_open:
+                # After today's open/close — aim for tomorrow, skip weekends
+                next_open += datetime.timedelta(days=1)
+                while next_open.weekday() >= 5:  # skip Sat(5) / Sun(6)
+                    next_open += datetime.timedelta(days=1)
+
+            secs_to_open = int((next_open - now).total_seconds())
+
+            if secs_to_open <= 5400:  # within 90 min of next open → sleep precisely
+                sleep_secs = max(secs_to_open + 30, 60)  # +30s buffer, never < 1 min
+                print(f"⏰ Market opens at 9:30 AM ET — sleeping {sleep_secs // 60}m {sleep_secs % 60}s (until {next_open.strftime('%H:%M:%S')})")
+            else:
+                sleep_secs = 1800  # check every 30 min during deep off-hours
+                print(f"😴 Market is closed. Checking in 30 min... (Current Time: {now.strftime('%H:%M:%S')})")
+
+            ib.sleep(sleep_secs)
             
         except KeyboardInterrupt:
             print("\nShutting down execution agent.")
