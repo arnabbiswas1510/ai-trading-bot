@@ -89,16 +89,15 @@ class TelegramNotifier:
         shares: int,
         fill_price: float,
         stop_loss: float,
-        profit_target: float,
         volume_surge: float,
         pivot_dist_pct: float,
         slot_used: int,
         max_slots: int,
+        profit_target: float = None,  # kept for backwards-compat; no longer used
     ) -> None:
         """Fires after a successful IBKR market buy order is filled and recorded."""
         position_size = shares * fill_price
         stop_pct = ((stop_loss / fill_price) - 1.0) * 100.0
-        target_pct = ((profit_target / fill_price) - 1.0) * 100.0
         dist_str = f"{pivot_dist_pct:+.1f}%" if pivot_dist_pct != 0 else "At high"
 
         msg = (
@@ -113,9 +112,9 @@ class TelegramNotifier:
             f"  Vol Surge:     <code>{volume_surge:.2f}x</code> avg volume\n"
             f"  52w High Dist: <code>{dist_str}</code>\n"
             f"\n"
-            f"🛡️ <b>Risk Levels</b>\n"
-            f"  Stop-Loss:     <code>${stop_loss:,.2f}</code>  ({stop_pct:.1f}%)\n"
-            f"  Profit Target: <code>${profit_target:,.2f}</code>  ({target_pct:+.1f}%)\n"
+            f"🛡️ <b>Risk Management</b>\n"
+            f"  Trail Stop:    <code>${stop_loss:,.2f}</code>  ({stop_pct:.1f}%)\n"
+            f"  Exit Rule:     EMA-21 end-of-day | plateau rotation\n"
             f"\n"
             f"🗂️ Portfolio: {slot_used} / {max_slots} slots used\n"
             f"🕒 {self._now_et()}"

@@ -746,6 +746,7 @@ def run_market_open_buys(ib: IB):
             ib.qualifyContracts(contract)
             # 1. Market Order Entry
             order = MarketOrder('BUY', shares)
+            order.tif = 'DAY'   # explicit DAY prevents IBKR error 10349 (preset TIF warning)
             order.account = get_ibkr_account(ib)
             
             print(f"   Submitting Market Order for {shares} shares of {ticker}...")
@@ -805,21 +806,21 @@ def run_market_open_buys(ib: IB):
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
             print(f"   Stop-Loss: ${stop_loss_val} | Trail: {STOP_LOSS_PCT*100:.0f}% (IBKR-managed)")
 
-            # Notify all configured Telegram recipients
+            # Update loop state FIRST — before notify_buy so the tracker is
+            # correct even if the Telegram call raises an exception.
+            active_tickers.append(ticker)
             portfolio_res = client.table("portfolio_positions").select("ticker").execute()
-            slot_used = len(portfolio_res.data) if portfolio_res.data else 1
+            holdings = portfolio_res.data or []
+            slot_used = len(holdings)
+
+            # Notify all configured Telegram recipients
             notifier.notify_buy(
                 ticker=ticker, shares=actual_shares, fill_price=fill_price,
                 stop_loss=stop_loss_val,
-                profit_target=None,
                 volume_surge=float(trigger.get("volume_surge", 0)),
                 pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
                 slot_used=slot_used, max_slots=MAX_POSITIONS
             )
-
-            # Add to local tracker to prevent double buys in this loop
-            active_tickers.append(ticker)
-            holdings = portfolio_res.data or []
 
         except Exception as order_err:
             notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", order_err)
