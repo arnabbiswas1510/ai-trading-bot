@@ -12,7 +12,6 @@ import {
   ChevronRight,
   ShieldAlert,
   Clock,
-  Target,
   TrendingDown as StopIcon,
   Zap,
   Calendar
@@ -24,6 +23,7 @@ const STALE_HOLD_MAX_GAIN = 0.03; // <3% gain = "sideways"
 const POWER_HOLD_GAIN     = 0.20; // 20%+ in <21 days triggers power hold
 const POWER_HOLD_DAYS_LIM = 21;   // window to qualify
 const STOP_LOSS_PCT       = 0.07; // 7% trailing stop
+const PLATEAU_DAYS        = 10;   // days without new HWM before plateau exit eligible
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function daysHeld(buyDate) {
@@ -157,7 +157,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
 
   return (
     <tr>
-      <td colSpan={9} style={{ padding: 0 }}>
+      <td colSpan={11} style={{ padding: 0 }}>
         <div style={panelStyle}>
 
           {/* ── Holding Info ─────────────────────────── */}
@@ -178,23 +178,35 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             <div style={noteStyle}>
               7% below high of {formatCurrency(pos.high_water_mark || pos.buy_price)}<br />
               Managed by IBKR — fires automatically.<br />
-              {isPH ? '⚠️ Profit target suspended during Power Hold.' : `Profit target also active at ${formatCurrency(pos.profit_target)}.`}
+              {isPH ? '⚠️ EMA-21 exit suspended during Power Hold.' : 'EMA-21 exit also active at end of each trading day.'}
             </div>
           </div>
 
-          {/* ── Profit Target ────────────────────────── */}
-          <div style={cardStyle('52,211,153')}>
-            <div style={labelStyle}>🟢 Profit Target (IBKR GTC)</div>
-            <div style={valueStyle(isPH ? 'var(--text-muted)' : '#34d399')}>
-              {isPH ? <span style={{ textDecoration: 'line-through', opacity: 0.4 }}>{formatCurrency(pos.profit_target)}</span> : formatCurrency(pos.profit_target)}
-            </div>
-            <div style={noteStyle}>
-              +25% from entry price.<br />
-              {isPH
-                ? '🛡️ Suspended — Power Hold active. Only trail stop applies.'
-                : 'OCA pair with trail stop — whichever fires first wins.'}
-            </div>
-          </div>
+          {/* ── Plateau Risk ─────────────────────────── */}
+          {(() => {
+            const hwmDate = pos.hwm_date ? new Date(pos.hwm_date) : new Date(pos.buy_date);
+            const daysSinceHWM = Math.floor((new Date() - hwmDate) / (1000 * 60 * 60 * 24));
+            const pct = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
+            const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
+            const color = isPlateauing ? '#f43f5e' : pct >= 0.7 ? '#f59e0b' : '#10b981';
+            return (
+              <div style={cardStyle(isPlateauing ? '244,63,94' : pct >= 0.7 ? '245,158,11' : '52,211,153')}>
+                <div style={labelStyle}>⏱️ Plateau Exit</div>
+                <div style={valueStyle(color)}>
+                  Day {daysSinceHWM} / {PLATEAU_DAYS}
+                  {isPlateauing && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem' }}>⚠️ ELIGIBLE</span>}
+                </div>
+                <div style={{ height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', margin: '0.4rem 0' }}>
+                  <div style={{ height: '100%', width: `${pct * 100}%`, background: color, borderRadius: '2px', transition: 'width 0.3s' }} />
+                </div>
+                <div style={noteStyle}>
+                  HWM last set: {pos.hwm_date ? new Date(pos.hwm_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'at entry'}<br />
+                  Exit fires at day {PLATEAU_DAYS} with &lt;3% gain.<br />
+                  {isPlateauing ? '🚨 Plateau rotation eligible today.' : `${PLATEAU_DAYS - daysSinceHWM} days remaining before eligible.`}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ── Power Hold ───────────────────────────── */}
           <div style={cardStyle(isPH ? '245,158,11' : '167,139,250')}>
@@ -415,12 +427,13 @@ export default function DashboardView({ data, marketData, trades }) {
                 <tr>
                   <th style={{ width: '1.5rem' }}></th>{/* chevron */}
                   <th onClick={() => requestSortPos('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIconPos('ticker')}</th>
+                  <th onClick={() => requestSortPos('entry_final_score')} style={{ cursor: 'pointer' }}>Conviction{getSortIconPos('entry_final_score')}</th>
                   <th onClick={() => requestSortPos('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIconPos('shares')}</th>
                   <th onClick={() => requestSortPos('buy_price')} style={{ cursor: 'pointer' }}>Buy Price{getSortIconPos('buy_price')}</th>
                   <th onClick={() => requestSortPos('current_price')} style={{ cursor: 'pointer' }}>Current Price{getSortIconPos('current_price')}</th>
                   <th onClick={() => requestSortPos(p => (p.current_price || p.buy_price) * p.shares)} style={{ cursor: 'pointer' }}>Market Value{getSortIconPos(p => (p.current_price || p.buy_price) * p.shares)}</th>
                   <th onClick={() => requestSortPos('trail_stop')} style={{ cursor: 'pointer' }}>Trail Stop{getSortIconPos('trail_stop')}</th>
-                  <th onClick={() => requestSortPos('profit_target')} style={{ cursor: 'pointer' }}>Profit Target{getSortIconPos('profit_target')}</th>
+                  <th onClick={() => requestSortPos('hwm_date')} style={{ cursor: 'pointer' }}>Plateau Days{getSortIconPos('hwm_date')}</th>
                   <th onClick={() => requestSortPos('pnl')} style={{ cursor: 'pointer' }}>Profit/Loss ($){getSortIconPos('pnl')}</th>
                   <th onClick={() => requestSortPos('buy_date')} style={{ cursor: 'pointer' }}>Buy Date{getSortIconPos('buy_date')}</th>
                   <th>Status</th>
@@ -447,6 +460,34 @@ export default function DashboardView({ data, marketData, trades }) {
                             : <ChevronRight size={14} />}
                         </td>
                         <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>{pos.ticker}</td>
+                        {/* Conviction Score at entry */}
+                        <td>
+                          {(() => {
+                            const score = pos.entry_final_score ?? null;
+                            const grade = pos.entry_ai_grade ?? null;
+                            if (score === null && grade === null) return <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>;
+                            const gradeColor = { A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#f43f5e' }[grade] ?? 'var(--text-muted)';
+                            const scoreColor = score >= 85 ? '#10b981' : score >= 65 ? '#3b82f6' : score >= 45 ? '#f59e0b' : '#f43f5e';
+                            return (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                {score !== null && (
+                                  <span style={{ fontWeight: 800, fontSize: '0.9rem', fontFamily: 'var(--font-display)', color: scoreColor }}>
+                                    {score}
+                                  </span>
+                                )}
+                                {grade && (
+                                  <span style={{
+                                    fontSize: '0.62rem', fontWeight: 800, padding: '0.1rem 0.3rem',
+                                    borderRadius: '4px', color: gradeColor,
+                                    background: `${gradeColor}22`,
+                                    border: `1px solid ${gradeColor}55`,
+                                    letterSpacing: '0.04em',
+                                  }}>{grade}</span>
+                                )}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td>{pos.shares}</td>
                         <td>{formatCurrency(pos.buy_price)}</td>
                         <td style={{ color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
@@ -459,16 +500,26 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
                           {formatCurrency(trailStop)}
                         </td>
-                        {/* Profit Target: strikethrough if Power Hold active */}
-                        <td style={{
-                          color: pos.is_power_hold ? 'var(--text-muted)' : 'var(--color-up)',
-                          fontWeight: 600,
-                          fontSize: '0.85rem',
-                          textDecoration: pos.is_power_hold ? 'line-through' : 'none',
-                          opacity: pos.is_power_hold ? 0.45 : 1
-                        }}>
-                          {formatCurrency(pos.profit_target)}
-                        </td>
+                        {/* Plateau Days: days since HWM with progress bar */}
+                        {(() => {
+                          const hwmDate = pos.hwm_date ? new Date(pos.hwm_date) : new Date(pos.buy_date);
+                          const daysSinceHWM = Math.floor((new Date() - hwmDate) / (1000 * 60 * 60 * 24));
+                          const pct = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
+                          const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
+                          const color = isPlateauing ? 'var(--color-down)' : pct >= 0.7 ? '#f59e0b' : 'var(--color-up)';
+                          return (
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '72px' }}>
+                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color }}>
+                                  {daysSinceHWM}d / {PLATEAU_DAYS}d
+                                </span>
+                                <div style={{ height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px' }}>
+                                  <div style={{ height: '100%', width: `${pct * 100}%`, background: color, borderRadius: '2px' }} />
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        })()}
                         <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                           {pos.pnl >= 0 ? '+' : ''}{formatCurrency(pos.pnl)}
                         </td>

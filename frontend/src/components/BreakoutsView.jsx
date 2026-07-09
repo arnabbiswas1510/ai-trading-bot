@@ -15,7 +15,7 @@ function BreakoutTable({ list }) {
         <thead>
           <tr>
             <th onClick={() => requestSort('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIcon('ticker')}</th>
-            <th onClick={() => requestSort('ai_rating')} style={{ cursor: 'pointer' }}>AI Rating{getSortIcon('ai_rating')}</th>
+            <th onClick={() => requestSort('final_score')} style={{ cursor: 'pointer' }}>Conviction Score{getSortIcon('final_score')}</th>
             <th onClick={() => requestSort('triggered_at')} style={{ cursor: 'pointer' }}>Trigger Date{getSortIcon('triggered_at')}</th>
             <th onClick={() => requestSort('close_price')} style={{ cursor: 'pointer' }}>Close Price{getSortIcon('close_price')}</th>
             <th onClick={() => requestSort('volume_surge')} style={{ cursor: 'pointer' }}>Volume Surge{getSortIcon('volume_surge')}</th>
@@ -70,17 +70,31 @@ function BreakoutTable({ list }) {
                   )}
                 </td>
                 <td style={{ fontWeight: 600 }}>
-                  {b.ai_rating !== undefined && b.ai_rating !== null ? (
-                    <span style={{ 
-                      color: b.ai_rating >= 75 ? '#10b981' : b.ai_rating >= 50 ? '#f59e0b' : '#f43f5e',
-                      fontFamily: 'var(--font-display)',
-                      fontWeight: 800
-                    }}>
-                      {b.ai_rating}
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                  )}
+                  {(() => {
+                    const score = b.final_score ?? b.ai_rating ?? null;
+                    const grade = b.ai_grade ?? null;
+                    const gradeColor = { A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#f43f5e' }[grade] ?? 'var(--text-muted)';
+                    const gradeAlpha = { A: '0.15', B: '0.15', C: '0.12', D: '0.12' }[grade] ?? '0.08';
+                    if (score === null) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+                    return (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{
+                          color: score >= 85 ? '#10b981' : score >= 65 ? '#3b82f6' : score >= 45 ? '#f59e0b' : '#f43f5e',
+                          fontFamily: 'var(--font-display)',
+                          fontWeight: 800,
+                          fontSize: '1rem',
+                        }}>{score}</span>
+                        {grade && (
+                          <span style={{
+                            fontSize: '0.65rem', fontWeight: 800, padding: '0.1rem 0.35rem',
+                            borderRadius: '4px', color: gradeColor,
+                            background: `rgba(${gradeColor === '#10b981' ? '16,185,129' : gradeColor === '#3b82f6' ? '59,130,246' : gradeColor === '#f59e0b' ? '245,158,11' : '244,63,94'},${gradeAlpha})`,
+                            border: `1px solid ${gradeColor}55`, letterSpacing: '0.04em',
+                          }}>{grade}</span>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -166,7 +180,8 @@ export default function BreakoutsView({ breakouts }) {
               </span>
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-              Primary breakouts — strict CAN SLIM fundamentals (EPS ≥ 18%, ≥ 5 inst. holders) with standard technical thresholds (volume surge ≥ 1.4×, pivot proximity ≥ 98%). Highest-conviction signals.
+              CANSLIM breakouts — fundamentally qualified stocks with volume surge ≥ 1.2×, pivot proximity ≥ 95%.
+              Ranked by <strong>Conviction Score</strong> (quality score + AI bonus). A-grade = highest conviction; D-grade tickers are vetoed.
             </p>
 
             {tier1List.length === 0 ? (
