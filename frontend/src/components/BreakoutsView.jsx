@@ -2,10 +2,15 @@ import React, { useState, useEffect } from 'react';
 import useSortableTable from '../hooks/useSortableTable';
 import { Activity, AlertCircle, Calendar, Zap, TrendingUp, History, ShieldAlert, Sparkles, TrendingDown } from 'lucide-react';
 
+// Stable sort-key function — must be module-level so reference is identical
+// across renders (required for getSortIcon's === comparison to light up the arrow).
+// Mirrors the display fallback: final_score (quality + AI bonus) → ai_rating → 0.
+const sortByConviction = (t) => t.final_score ?? t.ai_rating ?? 0;
+
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
 function BreakoutTable({ list }) {
-  const { items: sortedList, requestSort, getSortIcon } = useSortableTable(list, 'triggered_at', 'desc');
+  const { items: sortedList, requestSort, getSortIcon } = useSortableTable(list, sortByConviction, 'desc');
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
@@ -15,7 +20,7 @@ function BreakoutTable({ list }) {
         <thead>
           <tr>
             <th onClick={() => requestSort('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIcon('ticker')}</th>
-            <th onClick={() => requestSort('final_score')} style={{ cursor: 'pointer' }}>Conviction Score{getSortIcon('final_score')}</th>
+            <th onClick={() => requestSort(sortByConviction)} style={{ cursor: 'pointer' }}>Conviction Score{getSortIcon(sortByConviction)}</th>
             <th onClick={() => requestSort('triggered_at')} style={{ cursor: 'pointer' }}>Trigger Date{getSortIcon('triggered_at')}</th>
             <th onClick={() => requestSort('close_price')} style={{ cursor: 'pointer' }}>Close Price{getSortIcon('close_price')}</th>
             <th onClick={() => requestSort('volume_surge')} style={{ cursor: 'pointer' }}>Volume Surge{getSortIcon('volume_surge')}</th>
