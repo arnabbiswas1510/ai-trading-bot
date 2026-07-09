@@ -37,6 +37,9 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
 
 import requests
 from supabase import create_client, Client
@@ -101,7 +104,7 @@ def check_token_expiry() -> None:
         print(f"[flex_query_sync] Could not parse IBKR_FLEX_TOKEN_EXPIRY='{TOKEN_EXPIRY}'. Use YYYY-MM-DD.")
         return
 
-    days_left = (expiry - date.today()).days
+    days_left = (expiry - datetime.now(ET).date()).days
 
     if days_left <= 0:
         msg = (
