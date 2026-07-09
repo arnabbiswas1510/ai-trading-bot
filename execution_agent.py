@@ -756,9 +756,16 @@ def run_market_open_buys(ib: IB):
             for _ in range(60):
                 ib.sleep(1)
                 status = trade.orderStatus.status
+                filled_so_far = int(trade.orderStatus.filled)
                 if status == 'Filled':
                     break
                 elif status in ('Cancelled', 'Inactive'):
+                    if filled_so_far == 0:
+                        # Grace period: fill confirmation may still be in-flight
+                        # (race condition where IBKR warning/cancel arrives before fill ack)
+                        ib.sleep(2)
+                        if int(trade.orderStatus.filled) > 0:
+                            print(f"   ℹ️ {ticker}: fill arrived after cancel event — proceeding with position.")
                     break
 
             if trade.orderStatus.status != 'Filled':
