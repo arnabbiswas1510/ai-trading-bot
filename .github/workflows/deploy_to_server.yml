@@ -39,6 +39,17 @@ jobs:
             sleep 5
             docker compose up -d execution-agent trading-bot > /dev/null 2>&1
 
+            echo "=== Pruning log files older than 7 days ==="
+            # Belt-and-suspenders: TeeLogger purges on startup too, but this
+            # guarantees cleanup even if the container crashed before that ran.
+            find /home/dietpi/docker/ai-trading-bot/logs \
+              -maxdepth 1 \
+              -name "execution_*.log" \
+              -mtime +7 \
+              -print \
+              -delete \
+              2>/dev/null || true
+
             echo "=== Deployment complete ==="
             docker inspect ib-gateway       --format 'ib-gateway:       {{.State.Status}} (restarts: {{.RestartCount}})'
             docker inspect execution-agent  --format 'execution-agent:  {{.State.Status}} (restarts: {{.RestartCount}})'
