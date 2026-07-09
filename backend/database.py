@@ -437,8 +437,13 @@ def get_positions():
                 "stop_loss": float(row["stop_loss"]),
                 "profit_target": float(row["profit_target"]) if row.get("profit_target") is not None else 0.0,
                 "high_water_mark": float(row.get("high_water_mark") or row["buy_price"]),
+                "hwm_date": row.get("hwm_date"),
                 "is_power_hold": bool(row.get("is_power_hold", False)),
                 "power_hold_expiry": row.get("power_hold_expiry"),
+                # Entry conviction snapshot — written by execution_agent at buy time
+                "entry_final_score": row.get("entry_final_score"),
+                "entry_ai_rating": row.get("entry_ai_rating"),
+                "entry_ai_grade": row.get("entry_ai_grade"),
                 "active": 1,
             })
         return positions

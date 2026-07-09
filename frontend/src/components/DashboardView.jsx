@@ -18,12 +18,15 @@ import {
 } from 'lucide-react';
 
 // ── Constants mirrored from execution_agent.py env defaults ──────────────────
-const STALE_HOLD_DAYS     = 15;   // days before sideways eligible for rotation
-const STALE_HOLD_MAX_GAIN = 0.03; // <3% gain = "sideways"
-const POWER_HOLD_GAIN     = 0.20; // 20%+ in <21 days triggers power hold
-const POWER_HOLD_DAYS_LIM = 21;   // window to qualify
-const STOP_LOSS_PCT       = 0.07; // 7% trailing stop
-const PLATEAU_DAYS        = 10;   // days without new HWM before plateau exit eligible
+const STOP_LOSS_PCT  = 0.07;  // 7% trailing stop
+const PLATEAU_DAYS   = 10;   // days without new HWM before plateau exit eligible
+
+// ── Stable module-level sort-key functions ────────────────────────────────────
+// Must be module-level so the === reference stays identical across renders
+// (required for getSortIcon to light up the active-sort arrow).
+// Mirrors display fallback: entry_final_score → entry_ai_rating → 0
+const sortByConvictionPos = (p) => p.entry_final_score ?? p.entry_ai_rating ?? 0;
+const sortByMarketValue   = (p) => (p.current_price || p.buy_price) * p.shares;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function daysHeld(buyDate) {
@@ -93,47 +96,14 @@ function getDetailedExitTooltip(raw, pctReturn) {
 
 // Derive the most urgent status badge for the compact column
 function getStatusBadge(pos, days) {
-  const gain = (pos.current_price / pos.buy_price) - 1.0;
-
-  if (pos.is_power_hold) {
-    const expiry = pos.power_hold_expiry ? new Date(pos.power_hold_expiry) : null;
-    const daysLeft = expiry ? Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24)) : null;
-    return { label: daysLeft != null ? `PH · ${daysLeft}d left` : 'Power Hold', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '🛡️' };
-  }
-
-  // Stale risk: held >= stale threshold AND gain < max
-  if (days >= STALE_HOLD_DAYS && gain < STALE_HOLD_MAX_GAIN) {
-    return { label: 'Stale · Eligible', color: '#f43f5e', bg: 'rgba(244,63,94,0.10)', icon: '⚠️' };
-  }
-
-  // Approaching stale (within 3 days)
-  const daysToStale = STALE_HOLD_DAYS - days;
-  if (daysToStale <= 3 && daysToStale > 0 && gain < STALE_HOLD_MAX_GAIN) {
-    return { label: `Stale in ${daysToStale}d`, color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', icon: '⏳' };
-  }
-
-  // Power hold eligible window (still watching)
-  if (!pos.is_power_hold && days <= POWER_HOLD_DAYS_LIM && gain >= 0.10) {
-    return { label: 'PH Watch', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', icon: '👁' };
-  }
-
-  return null; // Normal — no badge
+  // Power Hold and Stale Rotation rules removed — only plateau exits are active.
+  return null; // Normal — no special badge
 }
 
 // ── Position Intelligence Panel (expandable) ─────────────────────────────────
 function ExitConditionsPanel({ pos, formatCurrency }) {
   const days = daysHeld(pos.buy_date);
-  const gain = (pos.current_price / pos.buy_price) - 1.0;
-  const gainPct = (gain * 100).toFixed(1);
   const trailStop = parseFloat(((pos.high_water_mark || pos.buy_price) * (1 - STOP_LOSS_PCT)).toFixed(2));
-  const isPH = pos.is_power_hold;
-  const phExpiry = pos.power_hold_expiry ? new Date(pos.power_hold_expiry) : null;
-  const phDaysLeft = phExpiry ? Math.ceil((phExpiry - new Date()) / (1000 * 60 * 60 * 24)) : null;
-
-  const daysToStale = STALE_HOLD_DAYS - days;
-  const isStaleEligible = days >= STALE_HOLD_DAYS && gain < STALE_HOLD_MAX_GAIN;
-  const phQualifyGain = POWER_HOLD_GAIN * 100;
-  const phDaysRemain = POWER_HOLD_DAYS_LIM - days;
 
   const panelStyle = {
     background: 'rgba(255,255,255,0.02)',
@@ -178,7 +148,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             <div style={noteStyle}>
               7% below high of {formatCurrency(pos.high_water_mark || pos.buy_price)}<br />
               Managed by IBKR — fires automatically.<br />
-              {isPH ? '⚠️ EMA-21 exit suspended during Power Hold.' : 'EMA-21 exit also active at end of each trading day.'}
+              EMA-21 exit also active at end of each trading day.
             </div>
           </div>
 
@@ -207,72 +177,6 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
               </div>
             );
           })()}
-
-          {/* ── Power Hold ───────────────────────────── */}
-          <div style={cardStyle(isPH ? '245,158,11' : '167,139,250')}>
-            <div style={labelStyle}>🛡️ Power Hold Rule</div>
-            {isPH ? (
-              <>
-                <div style={valueStyle('#f59e0b')}>
-                  ACTIVE · {phDaysLeft != null ? `${phDaysLeft} days left` : `expires ${formatDate(pos.power_hold_expiry)}`}
-                </div>
-                <div style={noteStyle}>
-                  Holds until {formatDate(pos.power_hold_expiry)}.<br />
-                  Profit target re-activates on expiry.<br />
-                  Only trailing stop applies during hold.
-                </div>
-              </>
-            ) : days <= POWER_HOLD_DAYS_LIM ? (
-              <>
-                <div style={valueStyle('#a78bfa')}>Watching · {phDaysRemain}d window</div>
-                <div style={noteStyle}>
-                  Triggers if +{phQualifyGain}% within {POWER_HOLD_DAYS_LIM} days of buy.<br />
-                  Currently {gainPct}% — need +{(POWER_HOLD_GAIN * 100 - parseFloat(gainPct)).toFixed(1)}% more.<br />
-                  Would lock in 8-week hold, suspend profit target.
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={valueStyle('var(--text-muted)')}>Window Closed</div>
-                <div style={noteStyle}>
-                  +{phQualifyGain}% surge required within {POWER_HOLD_DAYS_LIM} days of buy.<br />
-                  Day {days} — qualification window has passed.<br />
-                  Standard trail stop + profit target remain active.
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* ── Stale Rotation ───────────────────────── */}
-          <div style={cardStyle(isStaleEligible ? '244,63,94' : '148,163,184')}>
-            <div style={labelStyle}>⏳ Stale Rotation</div>
-            {isPH ? (
-              <>
-                <div style={valueStyle('#f59e0b')}>Exempt</div>
-                <div style={noteStyle}>Power Hold positions cannot be rotated.</div>
-              </>
-            ) : isStaleEligible ? (
-              <>
-                <div style={valueStyle('#f43f5e')}>Eligible now</div>
-                <div style={noteStyle}>
-                  Held {days}d with only {gainPct}% gain (threshold: &lt;{STALE_HOLD_MAX_GAIN * 100}%).<br />
-                  Will rotate if portfolio is full AND a stronger breakout fires today.<br />
-                  Worst performer among stale candidates is sold first.
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={valueStyle('var(--text-secondary)')}>
-                  {daysToStale > 0 ? `In ${daysToStale} days` : 'Eligible'} {gain >= STALE_HOLD_MAX_GAIN ? `· (protected by +${gainPct}% gain)` : ''}
-                </div>
-                <div style={noteStyle}>
-                  Eligible after {STALE_HOLD_DAYS}d if gain &lt;{STALE_HOLD_MAX_GAIN * 100}%.<br />
-                  Currently day {days}, gain {gainPct}%.<br />
-                  Requires portfolio full + fresh trigger today.
-                </div>
-              </>
-            )}
-          </div>
 
         </div>
       </td>
@@ -427,11 +331,11 @@ export default function DashboardView({ data, marketData, trades }) {
                 <tr>
                   <th style={{ width: '1.5rem' }}></th>{/* chevron */}
                   <th onClick={() => requestSortPos('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIconPos('ticker')}</th>
-                  <th onClick={() => requestSortPos('entry_final_score')} style={{ cursor: 'pointer' }}>Conviction{getSortIconPos('entry_final_score')}</th>
+                  <th onClick={() => requestSortPos(sortByConvictionPos)} style={{ cursor: 'pointer' }}>Conviction{getSortIconPos(sortByConvictionPos)}</th>
                   <th onClick={() => requestSortPos('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIconPos('shares')}</th>
                   <th onClick={() => requestSortPos('buy_price')} style={{ cursor: 'pointer' }}>Buy Price{getSortIconPos('buy_price')}</th>
                   <th onClick={() => requestSortPos('current_price')} style={{ cursor: 'pointer' }}>Current Price{getSortIconPos('current_price')}</th>
-                  <th onClick={() => requestSortPos(p => (p.current_price || p.buy_price) * p.shares)} style={{ cursor: 'pointer' }}>Market Value{getSortIconPos(p => (p.current_price || p.buy_price) * p.shares)}</th>
+                  <th onClick={() => requestSortPos(sortByMarketValue)} style={{ cursor: 'pointer' }}>Market Value{getSortIconPos(sortByMarketValue)}</th>
                   <th onClick={() => requestSortPos('trail_stop')} style={{ cursor: 'pointer' }}>Trail Stop{getSortIconPos('trail_stop')}</th>
                   <th onClick={() => requestSortPos('hwm_date')} style={{ cursor: 'pointer' }}>Plateau Days{getSortIconPos('hwm_date')}</th>
                   <th onClick={() => requestSortPos('pnl')} style={{ cursor: 'pointer' }}>Profit/Loss ($){getSortIconPos('pnl')}</th>
