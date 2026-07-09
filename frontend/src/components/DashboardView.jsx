@@ -340,13 +340,12 @@ export default function DashboardView({ data, marketData, trades }) {
                   <th onClick={() => requestSortPos('hwm_date')} style={{ cursor: 'pointer' }}>Plateau Days{getSortIconPos('hwm_date')}</th>
                   <th onClick={() => requestSortPos('pnl')} style={{ cursor: 'pointer' }}>Profit/Loss ($){getSortIconPos('pnl')}</th>
                   <th onClick={() => requestSortPos('buy_date')} style={{ cursor: 'pointer' }}>Buy Date{getSortIconPos('buy_date')}</th>
-                  <th>Status</th>
+
                 </tr>
               </thead>
               <tbody>
                 {sortedPositions.map((pos) => {
                   const days = daysHeld(pos.buy_date);
-                  const badge = getStatusBadge(pos, days);
                   const isOpen = expandedRow === pos.ticker;
                   const trailStop = parseFloat(((pos.high_water_mark || pos.buy_price) * (1 - STOP_LOSS_PCT)).toFixed(2));
 
@@ -404,7 +403,7 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
                           {formatCurrency(trailStop)}
                         </td>
-                        {/* Plateau Days: days since HWM with progress bar */}
+                        {/* Plateau Days: days since HWM */}
                         {(() => {
                           const hwmDate = pos.hwm_date ? new Date(pos.hwm_date) : new Date(pos.buy_date);
                           const daysSinceHWM = Math.floor((new Date() - hwmDate) / (1000 * 60 * 60 * 24));
@@ -413,14 +412,9 @@ export default function DashboardView({ data, marketData, trades }) {
                           const color = isPlateauing ? 'var(--color-down)' : pct >= 0.7 ? '#f59e0b' : 'var(--color-up)';
                           return (
                             <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '72px' }}>
-                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color }}>
-                                  {daysSinceHWM}d / {PLATEAU_DAYS}d
-                                </span>
-                                <div style={{ height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px' }}>
-                                  <div style={{ height: '100%', width: `${pct * 100}%`, background: color, borderRadius: '2px' }} />
-                                </div>
-                              </div>
+                              <span style={{ fontWeight: 700, fontSize: '0.85rem', color }}>
+                                {daysSinceHWM}d
+                              </span>
                             </td>
                           );
                         })()}
@@ -430,26 +424,7 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                           {formatDate(pos.buy_date)}
                         </td>
-                        {/* Status badge */}
-                        <td>
-                          {badge ? (
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '0.2rem 0.55rem',
-                              borderRadius: '20px',
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                              color: badge.color,
-                              background: badge.bg,
-                              border: `1px solid ${badge.color}44`,
-                              whiteSpace: 'nowrap',
-                            }}>
-                              {badge.icon} {badge.label}
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Normal</span>
-                          )}
-                        </td>
+
                       </tr>
                       {isOpen && (
                         <ExitConditionsPanel pos={pos} formatCurrency={formatCurrency} />
