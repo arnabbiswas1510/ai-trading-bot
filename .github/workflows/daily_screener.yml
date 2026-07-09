@@ -67,6 +67,7 @@ jobs:
       # NOTE: IBKR_FLEX_TOKEN_EXPIRY is a Variable (not a Secret) so it's readable
       #       in Settings > Secrets and variables > Actions > Variables tab.
       #       Update it each year when you renew the token in IBKR portal.
+      continue-on-error: true   # Non-critical: screener runs fine without cash flow data
       env:
         IBKR_FLEX_TOKEN: ${{ secrets.IBKR_FLEX_TOKEN }}
         IBKR_FLEX_QUERY_ID: ${{ secrets.IBKR_FLEX_QUERY_ID }}
