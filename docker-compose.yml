@@ -6,7 +6,7 @@ services:
     container_name: ib-gateway
     restart: unless-stopped
     ports:
-      - "4002:4004"
+      - "4002:4003"
       - "5900:5900"
     environment:
       - TWS_USERID=${IBKR_LIVE_USER}
@@ -31,7 +31,7 @@ services:
       - .env
     environment:
       - IB_GATEWAY_HOST=ib-gateway
-      - IB_GATEWAY_PORT=4004
+      - IB_GATEWAY_PORT=4003
     networks:
       - trading_bridge
 
