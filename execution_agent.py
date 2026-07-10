@@ -1280,16 +1280,18 @@ def main_loop():
                 sleep_secs = 1800  # check every 30 min during deep off-hours
                 print(f"😴 Market is closed. Checking in 30 min... (Current Time: {now.strftime('%H:%M:%S')})")
 
-            ib.sleep(sleep_secs)
+            time.sleep(sleep_secs)   # use time.sleep — ib.sleep() throws on a dead socket during long off-hours waits
             
         except KeyboardInterrupt:
             print("\nShutting down execution agent.")
             ib.disconnect()
             break
-        except ConnectionError as loop_err:
-            if "Socket disconnect" in str(loop_err):
-                print(f"⚠️ IBKR Socket disconnected (likely daily server reset). Will attempt to reconnect...")
-                # Do NOT send Telegram alert for this expected daily reset
+        except (ConnectionError, TimeoutError) as loop_err:
+            # ConnectionError (socket disconnect) and TimeoutError (ib.sleep() on dead socket)
+            # are both symptoms of the expected IBKR daily gateway reset — not real errors.
+            if isinstance(loop_err, TimeoutError) or "Socket disconnect" in str(loop_err):
+                print(f"⚠️ IBKR connection dropped (likely daily gateway reset) — will reconnect. ({type(loop_err).__name__})")
+                # No Telegram alert — this is a known, expected nightly event
             else:
                 print(f"❌ Connection error in main execution loop: {loop_err}")
                 notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
