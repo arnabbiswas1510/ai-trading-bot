@@ -1296,13 +1296,13 @@ def main_loop():
             ib.disconnect()
             break
         except (ConnectionError, TimeoutError) as loop_err:
-            # ConnectionError (socket disconnect) and TimeoutError (ib.sleep() on dead socket)
-            # are both symptoms of the expected IBKR daily gateway reset — not real errors.
-            if isinstance(loop_err, TimeoutError) or "Socket disconnect" in str(loop_err):
-                print(f"⚠️ IBKR connection dropped (likely daily gateway reset) — will reconnect. ({type(loop_err).__name__})")
-                # No Telegram alert — this is a known, expected nightly event
+            # Only suppress pure socket disconnects (expected daily IBKR reset).
+            # All other connection/timeout errors ARE actionable — alert so the user
+            # knows to re-authenticate IB Gateway.
+            if "Socket disconnect" in str(loop_err):
+                print(f"⚠️ IBKR socket disconnected (daily reset) — will reconnect silently.")
             else:
-                print(f"❌ Connection error in main execution loop: {loop_err}")
+                print(f"❌ IBKR connection/timeout in main loop: {loop_err}")
                 notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
             time.sleep(60)   # use time.sleep — ib.sleep() throws on a dead socket
         except Exception as loop_err:
@@ -1318,6 +1318,7 @@ def main_loop():
                 print("✅ Reconnected to IBKR Gateway successfully!")
             except Exception as e:
                 print(f"❌ Reconnection failed: {e}")
+                notifier.notify_exception("main_loop() — reconnect — execution_agent.py", e)
                 time.sleep(60)   # wait before next reconnect attempt
 
 if __name__ == "__main__":
