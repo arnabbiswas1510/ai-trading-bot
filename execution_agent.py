@@ -140,6 +140,11 @@ COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
+# Position size safety factor: even with IBKR-sourced prices there is a brief
+# window between price check and order fill during which prices can move.
+# 95% handles up to ~5% price movement post-check; keeps most capital deployed.
+# Override via POSITION_SIZE_PCT env var (e.g. 90 for more conservative sizing).
+POSITION_SIZE_PCT        = float(os.getenv("POSITION_SIZE_PCT", 95.0)) / 100.0
 
 # ── Moving Average Exit parameters ────────────────────────────────────────────
 EXIT_MA_TRIGGER_ENABLED  = os.getenv("EXIT_MA_TRIGGER_ENABLED", "true").lower() == "true"
@@ -787,8 +792,8 @@ def run_market_open_buys(ib: IB):
         remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
         available_cash = get_available_cash(ib)
         print(f"💰 Available Cash Balance in IBKR: ${available_cash:,.2f}")
-        position_size = available_cash / remaining_slots
-        print(f"   Position sizing: ${available_cash:,.2f} cash / {remaining_slots} remaining slot(s) = ${position_size:,.2f} per position")
+        position_size = (available_cash * POSITION_SIZE_PCT) / remaining_slots
+        print(f"   Position sizing: ${available_cash:,.2f} × {POSITION_SIZE_PCT:.0%} / {remaining_slots} slot(s) = ${position_size:,.2f} per position")
 
         # Double check active holdings size again (in case we bought one earlier in this loop)
         portfolio_res = client.table("portfolio_positions").select("*").execute()
@@ -820,55 +825,63 @@ def run_market_open_buys(ib: IB):
             notifier.notify_buy_loop_halted(ticker=ticker, reason=str(_qe))
             break
 
-        # ── Get price from IBKR's own feed ─────────────────────────────────
-        # FMP quotes lag actual open prices by 4-6% for small/micro-cap stocks
-        # that gap up at open, causing Error 201 rejections.
+        # ── Get price from IBKR (primary) ─────────────────────────────────────────
+        # Using FMP for position sizing is the root cause of Error 201 rejections:
+        # FMP's /stable/quote returns yesterday's close at market open, lagging
+        # actual prices by 5-10%+ for stocks that gap up. IBKR already has the
+        # real price; we just need to ask it correctly.
         #
-        # Attempt 1: reqTickers() — real-time snapshot (requires subscription).
-        #   Fails with Error 10089 if account lacks a real-time data subscription.
-        # Attempt 2: reqHistoricalData() — most recent 1-min TRADES bar.
-        #   Works without any subscription; accurate to ~60 seconds.
-        # Fallback:  FMP → previous close (last resort only).
+        # Priority:
+        #   1. reqHistoricalData() — last 1-min TRADES bar (~60s old, always free)
+        #   2. Delayed reqTickers() — IBKR guaranteed (Error 10089 says so!), 15-20min lag
+        #   3. FMP — external fallback only; may be stale at market open
         ibkr_price   = 0.0
         price_method = ""
 
+        # Attempt 1: most recent 1-min TRADES bar (no subscription needed)
         try:
-            _tickers = ib.reqTickers(contract)
-            if _tickers:
-                _t    = _tickers[0]
-                _ask  = _t.ask  if _t.ask  == _t.ask  and _t.ask  > 0 else 0.0
-                _last = _t.last if _t.last == _t.last and _t.last > 0 else 0.0
-                _p    = _ask if _ask > 0 else _last
-                if _p > 0:
-                    ibkr_price   = _p
-                    price_method = "reqTickers"
-        except Exception as _pe:
-            print(f"   ⚠️ IBKR reqTickers() unavailable for {ticker} (no subscription?): {_pe}")
+            _bars = ib.reqHistoricalData(
+                contract,
+                endDateTime='',
+                durationStr='120 S',
+                barSizeSetting='1 min',
+                whatToShow='TRADES',
+                useRTH=False,
+                formatDate=1,
+                keepUpToDate=False,
+            )
+            if _bars:
+                ibkr_price   = float(_bars[-1].close)
+                price_method = "hist-bar"
+        except Exception as _he:
+            print(f"   ⚠️ IBKR reqHistoricalData() failed for {ticker}: {_he}")
 
+        # Attempt 2: IBKR delayed market data (free, 15-20 min lag)
+        # IBKR confirms this is available in the Error 10089 message itself.
+        # At 9:30+ AM, delayed = actual traded prices from 9:10+ AM (far better than FMP).
         if ibkr_price <= 0:
             try:
-                _bars = ib.reqHistoricalData(
-                    contract,
-                    endDateTime='',
-                    durationStr='120 S',
-                    barSizeSetting='1 min',
-                    whatToShow='TRADES',
-                    useRTH=False,
-                    formatDate=1,
-                    keepUpToDate=False,
-                )
-                if _bars:
-                    ibkr_price   = float(_bars[-1].close)
-                    price_method = "reqHistoricalData"
-            except Exception as _he:
-                print(f"   ⚠️ IBKR reqHistoricalData() failed for {ticker}: {_he}")
+                ib.reqMarketDataType(3)  # Switch to delayed data
+                _tickers = ib.reqTickers(contract)
+                if _tickers:
+                    _t    = _tickers[0]
+                    _ask  = _t.ask  if _t.ask  == _t.ask  and _t.ask  > 0 else 0.0
+                    _last = _t.last if _t.last == _t.last and _t.last > 0 else 0.0
+                    _p    = _ask if _ask > 0 else _last
+                    if _p > 0:
+                        ibkr_price   = _p
+                        price_method = "delayed"
+            except Exception as _de:
+                print(f"   ⚠️ IBKR delayed market data failed for {ticker}: {_de}")
+            finally:
+                ib.reqMarketDataType(1)  # Always restore live mode
 
         if ibkr_price > 0:
             current_price = ibkr_price
             price_source  = f"IBKR ({price_method})"
         else:
             current_price = get_live_price(ticker)
-            price_source  = "FMP"
+            price_source  = "FMP (fallback)"
         if current_price <= 0:
             current_price = float(trigger["close_price"])
             price_source  = "prev close"
