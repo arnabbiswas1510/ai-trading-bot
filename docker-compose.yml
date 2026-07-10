@@ -2,23 +2,26 @@ version: '3.8'
 
 services:
   ib-gateway:
-    image: ghcr.io/gnzsnz/ib-gateway:stable
+    image: heshiming/ibga
     container_name: ib-gateway
     restart: unless-stopped
     ports:
-      - "4002:4003"
-      - "5900:5900"
+      - "4002:4000"   # IB Gateway API port
+      - "15800:15800" # VNC web viewer (no password required for local access)
     environment:
-      - TWS_USERID=${IBKR_LIVE_USER}
-      - TWS_PASSWORD=${IBKR_LIVE_PASS}
-      - TRADING_MODE=live
-      - READ_ONLY_API=no
-      - AUTO_LOGOFF=no
-      - BYPASS_WARNING_MESSAGES=yes
-      - VNC_SERVER_PASSWORD=${VNC_SERVER_PASSWORD}
-      - TWOFA_DEVICE=IB Key
-      - TWOFA_TOTP_SECRET=${IBKR_TOTP_SECRET}
-    shm_size: '1gb'
+      - IB_USERNAME=${IBKR_LIVE_USER}
+      - IB_PASSWORD=${IBKR_LIVE_PASS}
+      - TOTP_SECRET=${IBKR_TOTP_SECRET}
+      - IB_REGION=America
+      - IB_TIMEZONE=America/New_York
+      - IB_LOGINTAB=IB API
+      - IB_LOGINTYPE=Live Trading
+      - IB_LOGOFF=11:55 PM
+      - IB_APILOG=data
+      - IB_LOGLEVEL=Error
+    volumes:
+      - ib-gateway-program:/home/ibg
+      - ib-gateway-settings:/home/ibg_settings
     networks:
       - trading_bridge
 
@@ -32,7 +35,7 @@ services:
       - .env
     environment:
       - IB_GATEWAY_HOST=ib-gateway
-      - IB_GATEWAY_PORT=4003
+      - IB_GATEWAY_PORT=4000
     volumes:
       - /home/dietpi/docker/ai-trading-bot/logs:/app/logs   # host path — survives container recreations
     logging:
@@ -66,5 +69,9 @@ networks:
 
 volumes:
   bot-data:
+    driver: local
+  ib-gateway-program:
+    driver: local
+  ib-gateway-settings:
     driver: local
 
