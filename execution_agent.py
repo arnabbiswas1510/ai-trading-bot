@@ -116,10 +116,19 @@ if os.path.exists(".env"):
 
 # Install TeeLogger immediately after env load so every subsequent print() is
 # captured. LOG_DIR defaults to /app/logs — the bind-mounted host directory.
+# Falls back to a system temp dir if /app/logs is not writable (e.g. in CI or
+# unit tests where the container path does not exist).
 _LOG_DIR = os.getenv("LOG_DIR", "/app/logs")
-_tee = TeeLogger(_LOG_DIR)
-sys.stdout = _tee
-sys.stderr = _tee
+try:
+    _tee = TeeLogger(_LOG_DIR)
+    sys.stdout = _tee
+    sys.stderr = _tee
+except (PermissionError, OSError):
+    import tempfile
+    _LOG_DIR = os.path.join(tempfile.gettempdir(), "execution_agent_logs")
+    _tee = TeeLogger(_LOG_DIR)
+    sys.stdout = _tee
+    sys.stderr = _tee
 
 FMP_API_KEY = os.getenv("FMP_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")

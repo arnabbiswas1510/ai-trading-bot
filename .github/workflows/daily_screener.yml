@@ -77,3 +77,29 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
       run: python flex_query_sync.py
+
+    - name: Notify on Failure
+      if: failure()
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+      run: |
+        python - <<'EOF'
+        import os, requests
+        token = os.environ["TELEGRAM_BOT_TOKEN"]
+        chat_ids = os.environ["TELEGRAM_CHAT_IDS"].split(",")
+        run_url = f"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        msg = (
+            f"❌ *Daily Screener FAILED*\n"
+            f"Job: `${{ github.job }}`\n"
+            f"Workflow: `${{ github.workflow }}`\n"
+            f"[View run]({run_url})"
+        )
+        for chat_id in chat_ids:
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id.strip(), "text": msg, "parse_mode": "Markdown"},
+                timeout=10,
+            )
+        print("Failure notification sent.")
+        EOF
