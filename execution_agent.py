@@ -881,13 +881,16 @@ def run_market_open_buys(ib: IB):
             fill_price = round(trade.orderStatus.avgFillPrice, 2)
             if fill_price <= 0:
                 fill_price = current_price
-            
-            # 2. Sequential Trailing Stop
-            # Now that the position is verified filled, we attach the trailing stop loss.
-            # IBKR anchors it to the current market price and tracks the HWM tick-by-tick.
-            oca_str = place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
 
             stop_loss_val = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+
+            # ── Record position in Supabase FIRST ─────────────────────────────
+            # CRITICAL: insert BEFORE place_trailing_stop() so that any exception
+            # from stop placement cannot leave the position phantom-filled in IBKR
+            # but absent from the DB. A missing DB entry fools the capacity check
+            # into allowing extra buy orders (which IBKR then cancels for
+            # insufficient buying power). Recording first makes this atomic from
+            # the capacity-counting perspective.
             position_data = {
                 "ticker":     ticker,
                 "shares":     actual_shares,
@@ -896,24 +899,35 @@ def run_market_open_buys(ib: IB):
                 "buy_source": buy_source,
                 "stop_loss":  stop_loss_val,
                 "hwm_date":   datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
-                "oca_group":  oca_str,
+                "oca_group":  None,   # filled in below after trailing stop placed
                 # ── Entry quality snapshot (for future rotation analysis) ──────
                 "entry_quality_score": trigger.get("quality_score"),
                 "entry_ai_rating":     trigger.get("ai_rating"),
                 "entry_ai_grade":      trigger.get("ai_grade"),
                 "entry_final_score":   trigger.get("final_score"),
             }
-
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
             print(f"   Stop-Loss: ${stop_loss_val} | Trail: {STOP_LOSS_PCT*100:.0f}% (IBKR-managed)")
 
-            # Update loop state FIRST — before notify_buy so the tracker is
-            # correct even if the Telegram call raises an exception.
+            # Update loop capacity state immediately after DB write.
+            # Must happen before notify_buy so the tracker is correct even if
+            # the Telegram call raises an exception.
             active_tickers.append(ticker)
             portfolio_res = client.table("portfolio_positions").select("ticker").execute()
             holdings = portfolio_res.data or []
             slot_used = len(holdings)
+
+            # ── Attach Trailing Stop (isolated try/except) ────────────────────
+            # Wrapped separately so a stop-placement failure never prevents the
+            # position from being recorded above or the loop from continuing.
+            try:
+                oca_str = place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
+                # Backfill oca_group now that we have it
+                client.table("portfolio_positions").update({"oca_group": oca_str}).eq("ticker", ticker).execute()
+            except Exception as stop_err:
+                print(f"   ⚠️ Trailing stop placement failed for {ticker}: {stop_err} — position recorded, manual stop required.")
+                notifier.notify_exception("place_trailing_stop() — execution_agent.py", stop_err)
 
             # Notify all configured Telegram recipients
             notifier.notify_buy(
