@@ -17,6 +17,7 @@ services:
       - BYPASS_WARNING_MESSAGES=yes
       - VNC_SERVER_PASSWORD=${VNC_SERVER_PASSWORD}
       - TWOFA_DEVICE=IB Key
+      - TWOFA_TOTP_SECRET=${IBKR_TOTP_SECRET}
     shm_size: '1gb'
     networks:
       - trading_bridge
