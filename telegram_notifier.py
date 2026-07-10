@@ -54,16 +54,24 @@ class TelegramNotifier:
         if not self._is_configured():
             return
         for chat_id in self.chat_ids:
-            try:
-                r = requests.post(
-                    self._url,
-                    data={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
-                    timeout=5
-                )
-                if r.status_code != 200:
-                    print(f"Telegram API Error ({r.status_code}): {r.text}")
-            except Exception as e:
-                print(f"Telegram Network Error: {e}")
+            for attempt in range(2):          # 1 retry on timeout
+                try:
+                    r = requests.post(
+                        self._url,
+                        data={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+                        timeout=(5, 15),      # (connect_timeout, read_timeout) in seconds
+                    )
+                    if r.status_code != 200:
+                        print(f"Telegram API Error ({r.status_code}): {r.text}")
+                    break                     # success — no retry needed
+                except requests.exceptions.Timeout:
+                    if attempt == 0:
+                        print(f"Telegram timeout for chat_id={chat_id}, retrying...")
+                    else:
+                        print(f"Telegram timeout for chat_id={chat_id} after retry — giving up.")
+                except Exception as e:
+                    print(f"Telegram Network Error: {e}")
+                    break                     # non-timeout errors don't benefit from retry
 
     # ──────────────────────────────────────────────────────────────────────────
     # Trade Event Notifications
