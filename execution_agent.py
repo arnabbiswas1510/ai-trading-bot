@@ -825,56 +825,34 @@ def run_market_open_buys(ib: IB):
             notifier.notify_buy_loop_halted(ticker=ticker, reason=str(_qe))
             break
 
-        # ── Get price from IBKR (primary) ─────────────────────────────────────────
-        # Using FMP for position sizing is the root cause of Error 201 rejections:
+        # ── Get price from IBKR (delayed market data) ───────────────────────────
         # FMP's /stable/quote returns yesterday's close at market open, lagging
-        # actual prices by 5-10%+ for stocks that gap up. IBKR already has the
-        # real price; we just need to ask it correctly.
+        # actual prices by 5-10%+ for gap-up stocks — the root cause of Error 201.
         #
-        # Priority:
-        #   1. reqHistoricalData() — last 1-min TRADES bar (~60s old, always free)
-        #   2. Delayed reqTickers() — IBKR guaranteed (Error 10089 says so!), 15-20min lag
-        #   3. FMP — external fallback only; may be stale at market open
+        # IBKR delayed market data (reqMarketDataType=3) is free for all accounts
+        # and returns actual IBKR traded prices with a 15-20 min lag.
+        # reqHistoricalData was tried first but always fails on this ib-gateway
+        # setup with Error 162 (HMDS query returned no data), so it is skipped.
         ibkr_price   = 0.0
         price_method = ""
 
-        # Attempt 1: most recent 1-min TRADES bar (no subscription needed)
+        # Attempt 1: IBKR delayed market data (free, 15-20 min lag, guaranteed available)
+        # IBKR confirms this in the Error 10089 message: 'Delayed market data is available.'
         try:
-            _bars = ib.reqHistoricalData(
-                contract,
-                endDateTime='',
-                durationStr='120 S',
-                barSizeSetting='1 min',
-                whatToShow='TRADES',
-                useRTH=False,
-                formatDate=1,
-                keepUpToDate=False,
-            )
-            if _bars:
-                ibkr_price   = float(_bars[-1].close)
-                price_method = "hist-bar"
-        except Exception as _he:
-            print(f"   ⚠️ IBKR reqHistoricalData() failed for {ticker}: {_he}")
-
-        # Attempt 2: IBKR delayed market data (free, 15-20 min lag)
-        # IBKR confirms this is available in the Error 10089 message itself.
-        # At 9:30+ AM, delayed = actual traded prices from 9:10+ AM (far better than FMP).
-        if ibkr_price <= 0:
-            try:
-                ib.reqMarketDataType(3)  # Switch to delayed data
-                _tickers = ib.reqTickers(contract)
-                if _tickers:
-                    _t    = _tickers[0]
-                    _ask  = _t.ask  if _t.ask  == _t.ask  and _t.ask  > 0 else 0.0
-                    _last = _t.last if _t.last == _t.last and _t.last > 0 else 0.0
-                    _p    = _ask if _ask > 0 else _last
-                    if _p > 0:
-                        ibkr_price   = _p
-                        price_method = "delayed"
-            except Exception as _de:
-                print(f"   ⚠️ IBKR delayed market data failed for {ticker}: {_de}")
-            finally:
-                ib.reqMarketDataType(1)  # Always restore live mode
+            ib.reqMarketDataType(3)  # Switch to delayed data
+            _tickers = ib.reqTickers(contract)
+            if _tickers:
+                _t    = _tickers[0]
+                _ask  = _t.ask  if _t.ask  == _t.ask  and _t.ask  > 0 else 0.0
+                _last = _t.last if _t.last == _t.last and _t.last > 0 else 0.0
+                _p    = _ask if _ask > 0 else _last
+                if _p > 0:
+                    ibkr_price   = _p
+                    price_method = "delayed"
+        except Exception as _de:
+            print(f"   ⚠️ IBKR delayed price failed for {ticker}: {_de}")
+        finally:
+            ib.reqMarketDataType(1)  # Always restore live mode
 
         if ibkr_price > 0:
             current_price = ibkr_price
