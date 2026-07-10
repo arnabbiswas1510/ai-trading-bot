@@ -140,11 +140,12 @@ COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
-# Position size safety factor: even with IBKR-sourced prices there is a brief
-# window between price check and order fill during which prices can move.
-# 95% handles up to ~5% price movement post-check; keeps most capital deployed.
-# Override via POSITION_SIZE_PCT env var (e.g. 90 for more conservative sizing).
-POSITION_SIZE_PCT        = float(os.getenv("POSITION_SIZE_PCT", 95.0)) / 100.0
+# Flat cash reserve per buy order: absorbs the 15-20 min lag between IBKR delayed
+# price and actual fill price. Unlike a percentage, this doesn't scale with position
+# size — the price-lag risk is constant regardless of order size. $1,000 covers
+# ~4% movement on a $25K position; minimises idle cash vs a 5% percentage buffer.
+# Override via PRICE_SAFETY_RESERVE env var (e.g. 500 for smaller reserve).
+PRICE_SAFETY_RESERVE     = float(os.getenv("PRICE_SAFETY_RESERVE", 1000.0))
 
 # ── Moving Average Exit parameters ────────────────────────────────────────────
 EXIT_MA_TRIGGER_ENABLED  = os.getenv("EXIT_MA_TRIGGER_ENABLED", "true").lower() == "true"
@@ -792,8 +793,8 @@ def run_market_open_buys(ib: IB):
         remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
         available_cash = get_available_cash(ib)
         print(f"💰 Available Cash Balance in IBKR: ${available_cash:,.2f}")
-        position_size = (available_cash * POSITION_SIZE_PCT) / remaining_slots
-        print(f"   Position sizing: ${available_cash:,.2f} × {POSITION_SIZE_PCT:.0%} / {remaining_slots} slot(s) = ${position_size:,.2f} per position")
+        position_size = available_cash / remaining_slots
+        print(f"   Position sizing: ${available_cash:,.2f} / {remaining_slots} slot(s) = ${position_size:,.2f} per position (${PRICE_SAFETY_RESERVE:,.0f} safety reserve applied at share count)")
 
         # Double check active holdings size again (in case we bought one earlier in this loop)
         portfolio_res = client.table("portfolio_positions").select("*").execute()
@@ -875,7 +876,9 @@ def run_market_open_buys(ib: IB):
         print(f"   ✅ {ticker} within buy zone: {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
               f"(max {MAX_PIVOT_EXTENSION*100:.0f}%)")
 
-        shares = int(position_size / current_price)
+        # Subtract the flat safety reserve before dividing to stay within available
+        # cash even if the 15-20 min delayed IBKR price lags the actual fill price.
+        shares = int((position_size - PRICE_SAFETY_RESERVE) / current_price)
         if shares <= 0:
             print(f"⚠️ Price of {ticker} (${current_price:.2f}) is too high for the computed position size (${position_size:,.0f}). Skipping.")
             continue
