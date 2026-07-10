@@ -6,6 +6,7 @@ import datetime
 import json
 import asyncio
 import pandas as pd
+from zoneinfo import ZoneInfo
 
 import database as db
 import screener
@@ -389,7 +390,7 @@ def get_benchmark_returns(from_date: str = None, to_date: str = None):
         {"symbol": "IWM", "name": "Russell 2000"},
     ]
 
-    today = datetime.date.today()
+    today = datetime.datetime.now(ZoneInfo("America/New_York")).date()
     if not to_date:
         to_date = today.isoformat()
     if not from_date:

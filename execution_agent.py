@@ -6,7 +6,7 @@ import time
 import requests
 from zoneinfo import ZoneInfo
 from supabase import create_client, Client
-from ib_insync import IB, Stock, MarketOrder, LimitOrder, Order
+from ib_insync import IB, Stock, MarketOrder, Order
 from telegram_notifier import TelegramNotifier
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -516,14 +516,12 @@ def reconcile_with_ibkr(ib: IB):
 
     candidates_to_delete = supabase_tickers - ib_tickers
     changes = 0
-    net_trade_cash = 0.0
 
     # ── Case 1: In Supabase but NOT in IBKR ─────────────────────────────────
-    # IBKR is the single source of truth: it manages trailing stops and limit
-    # sells via GTC OCA bracket. Any position missing from IBKR portfolio was
-    # legitimately closed (trailing stop fired, limit sell hit, or TWS manual
-    # close). Guard 1 above (empty portfolio) is the only transient-glitch
-    # guard needed.
+    # IBKR is the single source of truth: it manages trailing stops via GTC
+    # TRAIL orders. Any position missing from IBKR portfolio was legitimately
+    # closed (trailing stop fired or manual TWS close). Guard 1 above (empty
+    # portfolio) is the only transient-glitch guard needed.
     for ticker in candidates_to_delete:
         pos = supabase_map[ticker]
         print(f"   ✅ {ticker}: position closed in IBKR — archiving to trade_history.")
@@ -560,7 +558,7 @@ def reconcile_with_ibkr(ib: IB):
                 continue
             print(f"        ℹ️  No SLD fill but position confirmed gone from IBKR — archiving.")
 
-        # Cancel any remaining OCA orders for this ticker (cleanup)
+        # Cancel any remaining SELL orders for this ticker (cleanup)
         cancel_ticker_sell_orders(ib, ticker)
 
 
@@ -617,8 +615,6 @@ def reconcile_with_ibkr(ib: IB):
             except Exception as e:
                 notifier.notify_exception(f"reconcile_with_ibkr() (trade_history insert) — execution_agent.py", e)
                 print(f"        ❌ DB error adding {ticker} to trade_history: {e}")
-                
-            net_trade_cash += (sell_price * shares)
         except Exception as e:
             notifier.notify_exception(f"reconcile_with_ibkr() (portfolio delete) — execution_agent.py", e)
             print(f"        ❌ DB error removing {ticker} from portfolio: {e}")
@@ -652,7 +648,6 @@ def reconcile_with_ibkr(ib: IB):
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"        ✅ Added to Supabase: {shares} shares @ ${avg_cost} | SL: ${stop_loss}")
             changes += 1
-            net_trade_cash -= (avg_cost * shares)
         except Exception as e:
             notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
             print(f"        ❌ DB error adding {ticker} to Supabase: {e}")
@@ -675,9 +670,6 @@ def reconcile_with_ibkr(ib: IB):
         print("   ✅ Supabase and IBKR are in sync. No changes needed.")
     else:
         print(f"   🔄 Reconciliation complete — {changes} correction(s) applied.")
-
-    # Cash sync moved to top of function
-    pass
 
 
 def is_market_bullish() -> bool:
@@ -835,7 +827,7 @@ def run_market_open_buys(ib: IB):
             print(f"⚠️ Price of {ticker} (${current_price:.2f}) is too high for the computed position size (${position_size:,.0f}). Skipping.")
             continue
             
-        # Place Atomic Bracket Order on IBKR (Marketable Limit)
+        # Place market buy order on IBKR
         try:
             contract = Stock(ticker, 'SMART', 'USD')
             ib.qualifyContracts(contract)
@@ -899,7 +891,6 @@ def run_market_open_buys(ib: IB):
                 "buy_source": buy_source,
                 "stop_loss":  stop_loss_val,
                 "hwm_date":   datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
-                "oca_group":  None,   # filled in below after trailing stop placed
                 # ── Entry quality snapshot (for future rotation analysis) ──────
                 "entry_quality_score": trigger.get("quality_score"),
                 "entry_ai_rating":     trigger.get("ai_rating"),
@@ -922,9 +913,7 @@ def run_market_open_buys(ib: IB):
             # Wrapped separately so a stop-placement failure never prevents the
             # position from being recorded above or the loop from continuing.
             try:
-                oca_str = place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
-                # Backfill oca_group now that we have it
-                client.table("portfolio_positions").update({"oca_group": oca_str}).eq("ticker", ticker).execute()
+                place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
             except Exception as stop_err:
                 print(f"   ⚠️ Trailing stop placement failed for {ticker}: {stop_err} — position recorded, manual stop required.")
                 notifier.notify_exception("place_trailing_stop() — execution_agent.py", stop_err)
@@ -1036,10 +1025,7 @@ def monitor_portfolio_intraday(ib: IB):
                 # Anchor from current price — IBKR tracks HWM from here onward.
                 # Slightly conservative vs. the true peak but acceptable for this
                 # rare self-healing edge case.
-                _new_group = place_trailing_stop(ib, _heal_contract, shares, STOP_LOSS_PCT)
-                client.table("portfolio_positions").update(
-                    {"oca_group": _new_group}
-                ).eq("ticker", ticker).execute()
+                place_trailing_stop(ib, _heal_contract, shares, STOP_LOSS_PCT)
             except Exception as _heal_err:
                 notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", _heal_err)
                 print(f"   ⚠️ Self-healing failed for {ticker}: {_heal_err}")
@@ -1128,7 +1114,7 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
     deletions when market orders are cancelled/rejected (e.g. paper trading no-data).
     """
     try:
-        # Cancel any open OCA orders (trailing stop + limit) before placing
+        # Cancel any open trailing stop SELL orders before placing
         # explicit sell (stale rotation) to avoid duplicate fills.
         cancel_ticker_sell_orders(ib, ticker)
         ib.sleep(1)

@@ -87,7 +87,6 @@ def make_position(ticker: str,
         "buy_reason": f"Test: {ticker}",
         "stop_loss": stop_loss if stop_loss is not None else round(buy_price * 0.93, 2),
         "hwm_date": hwm_date,
-        "oca_group": "TEST_OCA_GROUP",
     }
 
 
