@@ -32,6 +32,13 @@ services:
     environment:
       - IB_GATEWAY_HOST=ib-gateway
       - IB_GATEWAY_PORT=4003
+    volumes:
+      - /home/dietpi/docker/ai-trading-bot/logs:/app/logs   # host path — survives container recreations
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"   # Docker json-file capped for live `docker logs` tailing
+        max-file: "3"
     networks:
       - trading_bridge
 

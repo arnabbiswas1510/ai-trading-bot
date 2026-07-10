@@ -1,4 +1,4 @@
-﻿# Configuration Reference
+# Configuration Reference
 
 All properties are set via environment variables (`.env` file or Docker environment). No defaults are hardcoded in ways that would silently produce wrong behavior — missing critical variables cause startup failures.
 
@@ -73,7 +73,6 @@ Runs as a separate daily GitHub Actions job. Scans the watchlist for CANSLIM vol
 | `PIVOT_PROXIMITY` | `0.98` | float | Close must be >= `rolling_high x 0.98` (within 2% of high) |
 | `MIN_PRICE_HISTORY` | `50` | int | Minimum trading days of history required to process a ticker |
 | `FMP_HISTORY_DAYS` | `380` | int | Calendar days of price history requested from FMP |
-| `TRIGGER_PRUNE_DAYS` | `56` | int | Days before old trigger records are pruned |
 | `FMP_API_KEY` | required | string | FMP API key |
 | `SUPABASE_URL` | required | string | Supabase project URL |
 | `SUPABASE_KEY` | required | string | Supabase service role key |

@@ -1,4 +1,4 @@
-﻿# AI Trading Bot — CANSLIM Momentum Strategy
+# AI Trading Bot — CANSLIM Momentum Strategy
 
 An automated equity trading system implementing the **CANSLIM** methodology developed by William O'Neil.
 The bot finds fundamentally strong stocks, detects technical breakout triggers, and executes
@@ -199,7 +199,6 @@ The technical screener runs daily after market close (Mon-Fri, same GitHub Actio
 | `VOLUME_SURGE_MIN` | `1.40` | Volume must be at least 40% above normal to count as a real breakout |
 | `ROLLING_HIGH_WINDOW` | `252` | Trading days used to define the 52-week high |
 | `PIVOT_PROXIMITY` | `0.98` | Stock must be within 2% of its 52-week high to qualify |
-| `TRIGGER_PRUNE_DAYS` | `56` | How long to keep old breakout signals in the database |
 
 ### Fundamental Screener
 

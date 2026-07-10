@@ -626,6 +626,9 @@ def get_daily_triggers():
                 "change_status": change_status,
                 "retention_period": row.get("retention_period") or "1d",
                 "ai_rating": row.get("ai_rating"),
+                "quality_score": row.get("quality_score"),
+                "ai_grade": row.get("ai_grade"),
+                "final_score": row.get("final_score"),
                 "company_size": watchlist_map.get(ticker)
             })
             

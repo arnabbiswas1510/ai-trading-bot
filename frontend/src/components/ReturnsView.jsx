@@ -32,6 +32,8 @@ export default function ReturnsView({ trades }) {
   const [appliedFromDate, setAppliedFromDate] = useState('');
   const [appliedToDate, setAppliedToDate] = useState('');
   const [returnType, setReturnType] = useState('TWR'); // 'TWR' vs 'SIMPLE'
+  const [benchmarks, setBenchmarks] = useState([]);
+  const [benchmarksLoading, setBenchmarksLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -164,6 +166,8 @@ export default function ReturnsView({ trades }) {
 
     return {
       chartData: filteredChartData,
+      effectiveFromDate: filteredChartData.length > 0 ? filteredChartData[0].date : null,
+      effectiveToDate: filteredChartData.length > 0 ? filteredChartData[filteredChartData.length - 1].date : null,
       kpis: {
         startingCapital: startVal,
         currentValue: endVal,
@@ -173,6 +177,21 @@ export default function ReturnsView({ trades }) {
       }
     };
   }, [balances, cashFlows, dateRange, appliedFromDate, appliedToDate, returnType, trades]);
+
+  // Fetch benchmark returns whenever the effective date range changes
+  useEffect(() => {
+    if (!processedData.effectiveFromDate || !processedData.effectiveToDate) return;
+    setBenchmarksLoading(true);
+    const params = new URLSearchParams({
+      from_date: processedData.effectiveFromDate,
+      to_date:   processedData.effectiveToDate,
+    });
+    fetch(`/api/benchmark_returns?${params}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(data => setBenchmarks(data.benchmarks || []))
+      .catch(err => { console.error('Benchmark fetch failed:', err); setBenchmarks([]); })
+      .finally(() => setBenchmarksLoading(false));
+  }, [processedData.effectiveFromDate, processedData.effectiveToDate]);
 
   if (loading) {
     return (
@@ -455,6 +474,38 @@ export default function ReturnsView({ trades }) {
         />
       </div>
 
+      {/* Benchmark Comparison */}
+      <div className="dashboard-card" style={{ padding: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <TrendingUp size={20} className="text-accent" />
+            Benchmark Comparison
+          </h3>
+          {processedData.effectiveFromDate && processedData.effectiveToDate && (
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.04)', padding: '0.25rem 0.65rem', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
+              {processedData.effectiveFromDate} → {processedData.effectiveToDate}
+            </span>
+          )}
+        </div>
+        {benchmarksLoading ? (
+          <div className="flex-center" style={{ height: '80px' }}><div className="spinner" /></div>
+        ) : benchmarks.length === 0 ? (
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', textAlign: 'center', padding: '1rem' }}>
+            Benchmark data unavailable — ensure FMP API key is configured in Settings.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            {benchmarks.map(b => (
+              <BenchmarkCard
+                key={b.symbol}
+                benchmark={b}
+                botReturn={kpis?.roi ?? null}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Equity Curve Chart */}
       <div className="dashboard-card" style={{ padding: '1.5rem', minHeight: '400px' }}>
         <h3 style={{ margin: '0 0 1.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -600,3 +651,92 @@ function KpiCard({ title, value, valueColor = 'var(--text-primary)', icon }) {
     </div>
   );
 }
+
+function BenchmarkCard({ benchmark, botReturn }) {
+  const indexReturn = benchmark.return;
+  const hasData     = indexReturn !== null && indexReturn !== undefined;
+  const alpha       = hasData && botReturn !== null ? botReturn - indexReturn : null;
+  const beating     = alpha !== null && alpha > 0;
+  const losing      = alpha !== null && alpha < 0;
+
+  const COLORS = {
+    SPY: '#6366f1',
+    QQQ: '#f59e0b',
+    IWM: '#10b981',
+  };
+  const accentColor = COLORS[benchmark.symbol] || 'var(--accent-primary)';
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.02)',
+      border: `1px solid ${beating ? 'rgba(16,185,129,0.3)' : losing ? 'rgba(239,68,68,0.25)' : 'var(--border-color)'}`,
+      borderRadius: '12px',
+      padding: '1.1rem 1.25rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.6rem',
+      transition: 'border-color 0.2s',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: accentColor, flexShrink: 0 }} />
+          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+            {benchmark.symbol}
+          </span>
+        </div>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{benchmark.name}</span>
+      </div>
+
+      {/* Index return */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Index return</span>
+        {hasData ? (
+          <span style={{
+            fontSize: '1.35rem', fontWeight: 700,
+            color: indexReturn >= 0 ? 'var(--success-color)' : 'var(--danger-color)'
+          }}>
+            {indexReturn >= 0 ? '+' : ''}{indexReturn.toFixed(2)}%
+          </span>
+        ) : (
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            {benchmark.error || 'N/A'}
+          </span>
+        )}
+      </div>
+
+      {/* Bot return */}
+      {botReturn !== null && (
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Bot return</span>
+          <span style={{
+            fontSize: '1.05rem', fontWeight: 600,
+            color: botReturn >= 0 ? 'var(--success-color)' : 'var(--danger-color)'
+          }}>
+            {botReturn >= 0 ? '+' : ''}{botReturn.toFixed(2)}%
+          </span>
+        </div>
+      )}
+
+      {/* Alpha */}
+      {alpha !== null && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)',
+        }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Alpha</span>
+          <span style={{
+            fontWeight: 700,
+            fontSize: '0.95rem',
+            color: beating ? 'var(--success-color)' : losing ? 'var(--danger-color)' : 'var(--text-secondary)',
+            display: 'flex', alignItems: 'center', gap: '0.3rem',
+          }}>
+            {beating ? '▲' : losing ? '▼' : '—'}
+            {alpha >= 0 ? '+' : ''}{alpha.toFixed(2)}%
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+

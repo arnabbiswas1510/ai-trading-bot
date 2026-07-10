@@ -377,6 +377,66 @@ def get_stock_history(ticker: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/benchmark_returns")
+def get_benchmark_returns(from_date: str = None, to_date: str = None):
+    """
+    Return % price returns for S&P 500 (SPY), Nasdaq 100 (QQQ), and Russell 2000 (IWM)
+    over the given date range, so the frontend can display benchmark comparisons.
+    """
+    BENCHMARKS = [
+        {"symbol": "SPY", "name": "S&P 500"},
+        {"symbol": "QQQ", "name": "Nasdaq 100"},
+        {"symbol": "IWM", "name": "Russell 2000"},
+    ]
+
+    today = datetime.date.today()
+    if not to_date:
+        to_date = today.isoformat()
+    if not from_date:
+        # Default to YTD if no range supplied
+        from_date = f"{today.year}-01-01"
+
+    fmp = FMPClient()
+    if not fmp.is_configured():
+        return {"benchmarks": [], "error": "FMP API key not configured — set it in Settings."}
+
+    results = []
+    for b in BENCHMARKS:
+        try:
+            df = fmp.get_historical_prices(b["symbol"], from_date, to_date)
+            if df.empty or len(df) < 2:
+                results.append({
+                    "symbol": b["symbol"],
+                    "name": b["name"],
+                    "return": None,
+                    "error": "Insufficient data"
+                })
+                continue
+
+            start_price = float(df["Close"].iloc[0])
+            end_price   = float(df["Close"].iloc[-1])
+            pct_return  = ((end_price / start_price) - 1) * 100
+
+            results.append({
+                "symbol":      b["symbol"],
+                "name":        b["name"],
+                "return":      round(pct_return, 2),
+                "start_price": round(start_price, 2),
+                "end_price":   round(end_price, 2),
+                "from_date":   df.index[0].strftime("%Y-%m-%d"),
+                "to_date":     df.index[-1].strftime("%Y-%m-%d"),
+            })
+        except Exception as e:
+            results.append({
+                "symbol": b["symbol"],
+                "name":   b["name"],
+                "return": None,
+                "error":  str(e)
+            })
+
+    return {"benchmarks": results, "from_date": from_date, "to_date": to_date}
+
+
 import os
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse

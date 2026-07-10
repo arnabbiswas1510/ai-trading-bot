@@ -31,7 +31,6 @@ ROLLING_HIGH_WINDOW = int(os.environ.get("ROLLING_HIGH_WINDOW", 252))
 PIVOT_PROXIMITY   = float(os.environ.get("PIVOT_PROXIMITY", 0.95))    # relaxed from 0.98
 MIN_PRICE_HISTORY = int(os.environ.get("MIN_PRICE_HISTORY", 50))
 FMP_HISTORY_DAYS  = int(os.environ.get("FMP_HISTORY_DAYS", 380))
-TRIGGER_PRUNE_DAYS = int(os.environ.get("TRIGGER_PRUNE_DAYS", 56))
 
 
 def compute_quality_score(volume_surge_ratio: float, pivot_dist_pct: float,
