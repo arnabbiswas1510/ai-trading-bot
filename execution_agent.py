@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import argparse
 import datetime
 import time
@@ -807,10 +808,46 @@ def run_market_open_buys(ib: IB):
 
         print(f"🚀 Execution Trigger: Initiating purchase for {ticker}...")
 
-        # Get live price to size shares
-        current_price = get_live_price(ticker)
+        # ── Qualify contract first so we can request IBKR's live price ────────
+        # Contract must be qualified before reqTickers(); done here (not inside
+        # the order try block) so the price is available for share sizing.
+        contract = Stock(ticker, 'SMART', 'USD')
+        try:
+            ib.qualifyContracts(contract)
+        except Exception as _qe:
+            print(f"   ⚠️ Contract qualification failed for {ticker}: {_qe}. Halting buy loop.")
+            notifier.notify_buy_failure(ticker=ticker, shares=0, error=_qe)
+            notifier.notify_buy_loop_halted(ticker=ticker, reason=str(_qe))
+            break
+
+        # ── Get price from IBKR's own feed (primary) ───────────────────
+        # IBKR prices are real-time and accurate at market open. Using FMP here
+        # caused Error 201 rejections because FMP can lag actual open prices by
+        # 4-6% for small/micro-cap stocks that gap up, making calculated order
+        # values exceed available settled cash.
+        ibkr_price = 0.0
+        try:
+            _tickers = ib.reqTickers(contract)
+            if _tickers:
+                _t = _tickers[0]
+                # NaN check: NaN is the only float where x != x
+                _ask  = _t.ask  if _t.ask  == _t.ask  and _t.ask  > 0 else 0.0
+                _last = _t.last if _t.last == _t.last and _t.last > 0 else 0.0
+                # Prefer ask price for market buys — it’s the conservative bound
+                ibkr_price = _ask if _ask > 0 else _last
+        except Exception as _pe:
+            print(f"   ⚠️ IBKR price request failed for {ticker}: {_pe} — falling back to FMP.")
+
+        if ibkr_price > 0:
+            current_price = ibkr_price
+            price_source  = "IBKR"
+        else:
+            current_price = get_live_price(ticker)
+            price_source  = "FMP"
         if current_price <= 0:
             current_price = float(trigger["close_price"])
+            price_source  = "prev close"
+        print(f"   📡 {ticker} price: ${current_price:.2f} (source: {price_source})") 
 
         # ── CANSLIM pivot extension check ────────────────────────────────────
         pivot_price = float(trigger["close_price"])
@@ -826,11 +863,10 @@ def run_market_open_buys(ib: IB):
         if shares <= 0:
             print(f"⚠️ Price of {ticker} (${current_price:.2f}) is too high for the computed position size (${position_size:,.0f}). Skipping.")
             continue
-            
+
         # Place market buy order on IBKR
         try:
-            contract = Stock(ticker, 'SMART', 'USD')
-            ib.qualifyContracts(contract)
+            # Note: contract already qualified above
             # 1. Market Order Entry
             order = MarketOrder('BUY', shares)
             order.tif = 'DAY'   # explicit DAY prevents IBKR error 10349 (preset TIF warning)
@@ -864,11 +900,15 @@ def run_market_open_buys(ib: IB):
             if actual_shares == 0:
                 reject_msgs = [entry.message for entry in trade.log if getattr(entry, 'message', '')]
                 reject_msg = " | ".join(reject_msgs) if reject_msgs else "No explicit IBKR message (Order timed out, zero liquidity, or halted)"
-                
+
                 print(f"   ⚠️ {ticker} order had 0 shares filled. Reason: {reject_msg}")
                 notifier.notify_buy_failure(ticker=ticker, shares=shares,
                     error=f"IBKR Log: {reject_msg}")
-                continue
+                # Stop the entire buy loop — do NOT attempt the next ranked stock.
+                # Skipping to the next ticker would change portfolio construction
+                # priority and is worse than halting for manual intervention.
+                notifier.notify_buy_loop_halted(ticker=ticker, reason=reject_msg)
+                break
 
             fill_price = round(trade.orderStatus.avgFillPrice, 2)
             if fill_price <= 0:
@@ -931,6 +971,9 @@ def run_market_open_buys(ib: IB):
             notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", order_err)
             print(f"❌ Failed to execute order for {ticker}: {order_err}")
             notifier.notify_buy_failure(ticker=ticker, shares=shares, error=order_err)
+            # Stop the entire buy loop — same reasoning as the 0-fill case above.
+            notifier.notify_buy_loop_halted(ticker=ticker, reason=str(order_err))
+            break
 
 
 def get_fresh_triggers_today(client: Client, active_tickers: list) -> list:

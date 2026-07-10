@@ -22,6 +22,7 @@ Setup Instructions:
 """
 
 import hashlib
+import html
 import time
 import requests
 from datetime import datetime
@@ -129,15 +130,42 @@ class TelegramNotifier:
         )
         self._send(msg)
 
-    def notify_buy_failure(self, ticker: str, shares: int, error: Exception) -> None:
+    def notify_buy_failure(self, ticker: str, shares: int, error: object) -> None:
         """Fires when a buy order placement on IBKR fails."""
+        # html.escape prevents Telegram 400 errors when IBKR error messages
+        # contain raw HTML fragments (e.g. <br> in Error 201 cash-check messages).
+        error_str = html.escape(str(error)[:300])
         msg = (
             f"❌ <b>BUY ORDER FAILED</b> — ${ticker}\n"
             f"\n"
             f"  Attempted:  <code>{shares:,} shares</code>\n"
-            f"  Error:      <code>{type(error).__name__}: {str(error)[:200]}</code>\n"
+            f"  Error:      <code>{error_str}</code>\n"
             f"\n"
             f"⚠️ <i>Position was NOT opened. Check IBKR logs.</i>\n"
+            f"🕒 {self._now_et()}"
+        )
+        self._send(msg)
+
+    def notify_buy_loop_halted(self, ticker: str, reason: str) -> None:
+        """
+        Fires when the buy loop is stopped after a failed order attempt.
+
+        Distinct from notify_buy_failure: this message signals that ALL remaining
+        breakout candidates for this cycle were skipped — the loop is dead — and
+        manual intervention is required to preserve the intended buying order.
+        """
+        reason_str = html.escape(str(reason)[:300])
+        msg = (
+            f"🛑 <b>BUY LOOP HALTED — MANUAL INTERVENTION REQUIRED</b>\n"
+            f"\n"
+            f"  Failed ticker: <code>${ticker}</code>\n"
+            f"  Reason:        <code>{reason_str}</code>\n"
+            f"\n"
+            f"⚠️ <i>No further buy orders will be placed this cycle.\n"
+            f"   Remaining breakout candidates were skipped to preserve\n"
+            f"   portfolio construction priority order.</i>\n"
+            f"\n"
+            f"👉 <b>Action needed</b>: Review and manually place any missed orders.\n"
             f"🕒 {self._now_et()}"
         )
         self._send(msg)
@@ -268,7 +296,7 @@ class TelegramNotifier:
 
         self._exception_cache[error_key] = now
 
-        import html
+        import html  # already imported at top-level; local import kept for clarity
         error_str = html.escape(str(error)[:300])  # Truncate and escape HTML to prevent Telegram 400 errors
         msg = (
             f"⚠️ <b>TRADING BOT EXCEPTION</b>\n"
