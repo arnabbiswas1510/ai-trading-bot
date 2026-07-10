@@ -1216,14 +1216,23 @@ def main_loop():
     print(f"Connecting to IB Gateway at {IB_GATEWAY_HOST}:{IB_GATEWAY_PORT}...")
     
     ib = IB()
-    try:
-        ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
-        print("✅ Connected to IBKR Gateway successfully!")
-    except Exception as e:
-        notifier.notify_exception(f"main_loop() — execution_agent.py", e)
-        print(f"❌ Failed to connect to IBKR Gateway: {e}")
-        print("   Ensure the ib-gateway container is running and API ports are open.")
-        sys.exit(1)
+    # Retry loop — keeps the container alive while IB Gateway is initialising or
+    # re-authenticating after the daily reset.  Telegram fires once on the first
+    # failure; subsequent retries are silent (exception cache rate-limits them).
+    _retry_delays = [30, 60, 120, 300]  # backoff schedule in seconds
+    _attempt = 0
+    while True:
+        try:
+            ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
+            print("✅ Connected to IBKR Gateway successfully!")
+            break
+        except Exception as e:
+            delay = _retry_delays[min(_attempt, len(_retry_delays) - 1)]
+            notifier.notify_exception(f"main_loop() — execution_agent.py", e)
+            print(f"❌ Cannot connect to IB Gateway: {e}")
+            print(f"   Retrying in {delay}s... (attempt {_attempt + 1})")
+            _attempt += 1
+            time.sleep(delay)
 
     while True:
         try:
