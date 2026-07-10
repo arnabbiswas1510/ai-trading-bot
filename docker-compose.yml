@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   ib-gateway:
-    image: heshiming/ibga
+    image: heshiming/ibga@sha256:82bba0d8befb40720b4e70be604ca57cc234cc4930ddbaf5cc45ed6f41e586c9
     container_name: ib-gateway
     restart: unless-stopped
     ports:
@@ -11,7 +11,7 @@ services:
     environment:
       - IB_USERNAME=${IBKR_LIVE_USER}
       - IB_PASSWORD=${IBKR_LIVE_PASS}
-      - TOTP_SECRET=${IBKR_TOTP_SECRET}
+      - TOTP_KEY=${IBKR_TOTP_SECRET}
       - IB_REGION=America
       - IB_TIMEZONE=America/New_York
       - IB_LOGINTAB=IB API
