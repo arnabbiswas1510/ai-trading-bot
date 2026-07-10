@@ -820,34 +820,59 @@ def run_market_open_buys(ib: IB):
             notifier.notify_buy_loop_halted(ticker=ticker, reason=str(_qe))
             break
 
-        # ── Get price from IBKR's own feed (primary) ───────────────────
-        # IBKR prices are real-time and accurate at market open. Using FMP here
-        # caused Error 201 rejections because FMP can lag actual open prices by
-        # 4-6% for small/micro-cap stocks that gap up, making calculated order
-        # values exceed available settled cash.
-        ibkr_price = 0.0
+        # ── Get price from IBKR's own feed ─────────────────────────────────
+        # FMP quotes lag actual open prices by 4-6% for small/micro-cap stocks
+        # that gap up at open, causing Error 201 rejections.
+        #
+        # Attempt 1: reqTickers() — real-time snapshot (requires subscription).
+        #   Fails with Error 10089 if account lacks a real-time data subscription.
+        # Attempt 2: reqHistoricalData() — most recent 1-min TRADES bar.
+        #   Works without any subscription; accurate to ~60 seconds.
+        # Fallback:  FMP → previous close (last resort only).
+        ibkr_price   = 0.0
+        price_method = ""
+
         try:
             _tickers = ib.reqTickers(contract)
             if _tickers:
-                _t = _tickers[0]
-                # NaN check: NaN is the only float where x != x
+                _t    = _tickers[0]
                 _ask  = _t.ask  if _t.ask  == _t.ask  and _t.ask  > 0 else 0.0
                 _last = _t.last if _t.last == _t.last and _t.last > 0 else 0.0
-                # Prefer ask price for market buys — it’s the conservative bound
-                ibkr_price = _ask if _ask > 0 else _last
+                _p    = _ask if _ask > 0 else _last
+                if _p > 0:
+                    ibkr_price   = _p
+                    price_method = "reqTickers"
         except Exception as _pe:
-            print(f"   ⚠️ IBKR price request failed for {ticker}: {_pe} — falling back to FMP.")
+            print(f"   ⚠️ IBKR reqTickers() unavailable for {ticker} (no subscription?): {_pe}")
+
+        if ibkr_price <= 0:
+            try:
+                _bars = ib.reqHistoricalData(
+                    contract,
+                    endDateTime='',
+                    durationStr='120 S',
+                    barSizeSetting='1 min',
+                    whatToShow='TRADES',
+                    useRTH=False,
+                    formatDate=1,
+                    keepUpToDate=False,
+                )
+                if _bars:
+                    ibkr_price   = float(_bars[-1].close)
+                    price_method = "reqHistoricalData"
+            except Exception as _he:
+                print(f"   ⚠️ IBKR reqHistoricalData() failed for {ticker}: {_he}")
 
         if ibkr_price > 0:
             current_price = ibkr_price
-            price_source  = "IBKR"
+            price_source  = f"IBKR ({price_method})"
         else:
             current_price = get_live_price(ticker)
             price_source  = "FMP"
         if current_price <= 0:
             current_price = float(trigger["close_price"])
             price_source  = "prev close"
-        print(f"   📡 {ticker} price: ${current_price:.2f} (source: {price_source})") 
+        print(f"   📡 {ticker} price: ${current_price:.2f} (source: {price_source})")
 
         # ── CANSLIM pivot extension check ────────────────────────────────────
         pivot_price = float(trigger["close_price"])
