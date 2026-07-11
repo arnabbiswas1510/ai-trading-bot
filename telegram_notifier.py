@@ -89,7 +89,47 @@ class TelegramNotifier:
         for t in breakouts:
             msg += f"• <b>{t['ticker']}</b> — ${t['close_price']} (Vol: {t['volume_surge']}x)\n"
 
-        msg += f"\n<i>These have been successfully logged to Supabase for the execution agent.</i>\n\n🕒 {self._now_et()}"
+        msg += f"\n<i>AI evaluation running... scores will follow shortly.</i>\n\n🕒 {self._now_et()}"
+        self._send(msg)
+
+    def notify_ai_evaluation_complete(self, triggers: list[dict]) -> None:
+        """
+        Fires from ai_evaluator.py after all 5-component scores are computed.
+        Shows final score, grade, component breakdown, and AI rationale for each trigger.
+        Triggers are expected to be sorted by final_score descending before calling.
+        """
+        if not triggers:
+            return
+
+        # Sort by final_score descending so the best pick is shown first
+        sorted_triggers = sorted(triggers, key=lambda x: x.get("final_score", 0), reverse=True)
+
+        msg = f"🧠 <b>AI Evaluation Complete</b> — {len(triggers)} trigger(s) scored\n\n"
+
+        for t in sorted_triggers:
+            ticker     = t.get("ticker", "?")
+            price      = t.get("close_price", 0)
+            final      = t.get("final_score", "—")
+            grade      = t.get("ai_grade", "?")
+            tech       = t.get("technical_score") or t.get("quality_score", "—")
+            liq        = t.get("liquidity_score", "—")
+            ai_s       = t.get("ai_rating", "—")
+            sent       = t.get("sentiment_score", "—")
+            rs         = t.get("rs_score", "—")
+            rationale  = t.get("score_rationale", "").strip()
+
+            grade_emoji = {"A": "🟢", "B": "🟡", "C": "🟠", "D": "🔴"}.get(grade, "⚪")
+
+            msg += (
+                f"{grade_emoji} <b>{ticker}</b>  ${price}  →  "
+                f"<b>Score: {final}</b> ({grade})\n"
+                f"  Tech:{tech} | Liq:{liq} | AI:{ai_s} | Sent:{sent} | RS:{rs}\n"
+            )
+            if rationale:
+                msg += f"  <i>{rationale}</i>\n"
+            msg += "\n"
+
+        msg += f"🕒 {self._now_et()}"
         self._send(msg)
 
     def notify_buy(
