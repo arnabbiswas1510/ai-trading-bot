@@ -378,7 +378,8 @@ export default function ReturnsView({ trades }) {
                   background: 'rgba(255, 255, 255, 0.02)',
                   color: 'var(--text-primary)',
                   fontSize: '0.82rem',
-                  outline: 'none'
+                  outline: 'none',
+                  colorScheme: 'dark'
                 }}
               />
             </div>
@@ -396,7 +397,8 @@ export default function ReturnsView({ trades }) {
                   background: 'rgba(255, 255, 255, 0.02)',
                   color: 'var(--text-primary)',
                   fontSize: '0.82rem',
-                  outline: 'none'
+                  outline: 'none',
+                  colorScheme: 'dark'
                 }}
               />
             </div>
