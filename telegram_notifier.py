@@ -126,7 +126,7 @@ class TelegramNotifier:
                 f"  Tech:{tech} | Liq:{liq} | AI:{ai_s} | Sent:{sent} | RS:{rs}\n"
             )
             if rationale:
-                msg += f"  <i>{rationale}</i>\n"
+                msg += f"  📝 <b>Rating Reason:</b> <i>{rationale}</i>\n"
             msg += "\n"
 
         msg += f"🕒 {self._now_et()}"
