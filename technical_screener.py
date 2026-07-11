@@ -32,6 +32,10 @@ ROLLING_HIGH_WINDOW = int(os.environ.get("ROLLING_HIGH_WINDOW", 252))
 PIVOT_PROXIMITY     = float(os.environ.get("PIVOT_PROXIMITY", 0.95))
 MIN_PRICE_HISTORY   = int(os.environ.get("MIN_PRICE_HISTORY", 50))
 FMP_HISTORY_DAYS    = int(os.environ.get("FMP_HISTORY_DAYS", 380))
+# RS gate: stocks below this percentile vs SPY over 12 weeks are skipped.
+# O'Neil recommends only buying stocks in the top 50th percentile (RS>=50).
+# Set to 40 to allow slight laggards that are recovering but still show volume.
+RS_MIN_GATE         = int(os.environ.get("RS_MIN_GATE", 40))
 
 
 def compute_quality_score(volume_surge_ratio: float, pivot_dist_pct: float,
@@ -209,6 +213,14 @@ def check_technical_breakout(ticker):
                 pass   # stays 0.0 -> rs_score = 50 (neutral)
 
             rs       = compute_rs_score(stock_12w_return, _SPY_12W_RETURN)
+
+            # ── RS quality gate ───────────────────────────────────────────────────
+            # O'Neil: only buy stocks in the top 50th percentile of 12-week
+            # relative strength vs SPY. We use RS_MIN_GATE (default 40) to
+            # allow mild laggards that are recovering with a volume surge.
+            if rs < RS_MIN_GATE:
+                print(f"  🚧 {ticker}: RS score {rs} < {RS_MIN_GATE} — lagging SPY, skipping.")
+                return None
             today_ny = datetime.datetime.now(ZoneInfo("America/New_York")).date().strftime("%Y-%m-%d")
 
             # ── ATR-14 (swing-trade velocity) ────────────────────────────────

@@ -52,10 +52,19 @@ def run_screener():
             "volume"                                     # 10: volume
         ],
         "filter": [
-            {"left": "close", "operation": "egreater", "right": 10},
-            {"left": "earnings_per_share_diluted_yoy_growth_ttm", "operation": "greater", "right": 20},
+            # Raised $10→$15: aligns with AI rating cap boundary (sub-$15 stocks capped at 45)
+            {"left": "close", "operation": "egreater", "right": 15},
+            # Relaxed 20%→15%: captures recovering momentum stocks and one-bad-quarter situations
+            # Annual is secondary to quarterly in CANSLIM predictiveness
+            {"left": "earnings_per_share_diluted_yoy_growth_ttm", "operation": "greater", "right": 15},
+            # KEPT at 20%: quarterly acceleration is the strongest CANSLIM signal
             {"left": "earnings_per_share_diluted_qoq_growth_fq", "operation": "greater", "right": 20},
-            {"left": "average_volume_30d_calc", "operation": "greater", "right": 100000},
+            # Raised 100K→250K: eliminates dead-zone stocks that score 0 on liquidity anyway
+            {"left": "average_volume_30d_calc", "operation": "greater", "right": 250000},
+            # NEW: $300M market cap floor — excludes institutional-free micro-caps
+            {"left": "market_cap_basic", "operation": "greater", "right": 300000000},
+            # NEW: revenue must grow — blocks cost-cutting EPS games (layoffs, buybacks)
+            {"left": "total_revenue_yoy_growth_ttm", "operation": "greater", "right": 0},
             {"left": "is_primary", "operation": "equal", "right": True}
         ],
         "ignore_unknown_fields": False,
