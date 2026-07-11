@@ -116,18 +116,28 @@ class TelegramNotifier:
             ai_s       = t.get("ai_rating", "—")
             sent       = t.get("sentiment_score", "—")
             rs         = t.get("rs_score", "—")
+            atr_pct    = t.get("atr_pct", 0) or 0
+            est_days   = t.get("est_days_to_target", 999) or 999
             rationale  = t.get("score_rationale", "").strip()
 
             grade_emoji = {"A": "🟢", "B": "🟡", "C": "🟠", "D": "🔴"}.get(grade, "⚪")
+            swing_emoji = (
+                "🚀" if 0 < est_days <= 15 else
+                "✅" if est_days <= 30 else
+                "⚠️" if est_days <= 60 else
+                "❌"
+            )
 
             msg += (
                 f"{grade_emoji} <b>{ticker}</b>  ${price}  →  "
                 f"<b>Score: {final}</b> ({grade})\n"
                 f"  Tech:{tech} | Liq:{liq} | AI:{ai_s} | Sent:{sent} | RS:{rs}\n"
+                f"  {swing_emoji} ATR: {atr_pct}%/day  →  Est. {est_days} days to +25%\n"
             )
             if rationale:
                 msg += f"  📝 <b>Rating Reason:</b> <i>{rationale}</i>\n"
             msg += "\n"
+
 
         msg += f"🕒 {self._now_et()}"
         self._send(msg)

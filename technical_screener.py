@@ -211,19 +211,46 @@ def check_technical_breakout(ticker):
             rs       = compute_rs_score(stock_12w_return, _SPY_12W_RETURN)
             today_ny = datetime.datetime.now(ZoneInfo("America/New_York")).date().strftime("%Y-%m-%d")
 
+            # ── ATR-14 (swing-trade velocity) ────────────────────────────────
+            # True Range = max(H-L, |H-prevC|, |L-prevC|)
+            # ATR% = 14-day avg ATR as % of current price
+            # est_days_to_target = trading days to reach 25% at avg ATR pace
+            # Zero extra API calls — high/low/close already in df.
+            atr_pct            = 0.0
+            est_days_to_target = 999   # sentinel = "unreachable within swing horizon"
+            try:
+                df['prev_close'] = df['close'].shift(1)
+                df['tr'] = (
+                    pd.concat([
+                        df['high'] - df['low'],
+                        (df['high'] - df['prev_close']).abs(),
+                        (df['low']  - df['prev_close']).abs(),
+                    ], axis=1)
+                ).max(axis=1)
+                atr_14 = df['tr'].rolling(window=14).mean().iloc[-1]
+                if current_close > 0 and atr_14 == atr_14:   # NaN guard
+                    atr_pct = round((atr_14 / current_close) * 100.0, 2)
+                    if atr_pct > 0:
+                        est_days_to_target = int(round(25.0 / atr_pct))
+            except Exception:
+                pass   # stay at defaults on any error
+
             return {
-                "ticker":             ticker,
-                "close_price":        float(round(current_close, 2)),
-                "volume_surge":       float(round(volume_surge_ratio, 2)),
-                "sma_50":             float(round(sma_50, 2)),
-                "rolling_high_52w":   float(round(rolling_high, 2)),
-                "pivot_distance_pct": float(round(pivot_dist, 2)),
-                "quality_score":      quality_score,   # kept for backwards-compat
-                "technical_score":    quality_score,   # alias for 5-component formula
-                "avg_volume_50":      int(avg_vol_50) if avg_vol_50 == avg_vol_50 else 0,
-                "rs_score":           rs,
-                "triggered_at":       today_ny,
+                "ticker":              ticker,
+                "close_price":         float(round(current_close, 2)),
+                "volume_surge":        float(round(volume_surge_ratio, 2)),
+                "sma_50":              float(round(sma_50, 2)),
+                "rolling_high_52w":    float(round(rolling_high, 2)),
+                "pivot_distance_pct":  float(round(pivot_dist, 2)),
+                "quality_score":       quality_score,   # kept for backwards-compat
+                "technical_score":     quality_score,   # alias for 5-component formula
+                "avg_volume_50":       int(avg_vol_50) if avg_vol_50 == avg_vol_50 else 0,
+                "rs_score":            rs,
+                "atr_pct":             atr_pct,           # daily ATR as % of price
+                "est_days_to_target":  est_days_to_target, # trading days to +25% at ATR pace
+                "triggered_at":        today_ny,
             }
+
     except Exception as e:
         print(f"❌ Error processing technical indicators for {ticker}: {e}")
     return None

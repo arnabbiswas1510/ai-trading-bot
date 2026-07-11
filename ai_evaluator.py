@@ -151,44 +151,70 @@ def main():
         headlines = news_by_ticker.get(ticker, [])
         news_str  = " | ".join(headlines[:5]) if headlines else "No recent news"
 
+        atr_pct = t.get("atr_pct", 0)
+        est_days = t.get("est_days_to_target", 999)
+        swing_label = (
+            "🚀 Fast mover" if 0 < est_days <= 15 else
+            "✅ Swing-compatible" if est_days <= 30 else
+            "⚠️ Slow mover" if est_days <= 60 else
+            "❌ Long-term only"
+        )
+
         breakouts_text += (
             f"\n- {ticker}:\n"
             f"  Price=${price}, AvgDailyVol={avg_vol:,}, CompanySize={size}, RS_vs_SPY={rs}/100\n"
             f"  VolSurge={t.get('volume_surge')}x, DistFromPivot={t.get('pivot_distance_pct')}%\n"
+            f"  ATR={atr_pct}%/day, EstDaysTo25%={est_days} [{swing_label}]\n"
             f"  Q-EPS={f_data.get('q_eps_growth','N/A')}%, A-EPS={f_data.get('a_eps_growth','N/A')}%,"
             f" RevGrowth={f_data.get('revenue_growth','N/A')}%, ROE={f_data.get('roe','N/A')}%\n"
             f"  Analyst={f_data.get('analyst_rating','N/A')}\n"
             f"  RecentNews: {news_str}\n"
         )
 
-    prompt = f"""You are an expert AI trading system specializing in the CANSLIM strategy.
-Your task is to analyze today's breakout stocks and rate each one.
+    prompt = f"""You are an expert AI trading system specializing in CANSLIM swing trading.
+Your investor has a SWING TRADER horizon of 2-6 weeks (10-30 trading days).
+They need stocks that can move +25% within that window before hitting a -7% trailing stop.
+Long-term stories that take months to play out are NOT suitable — the capital must be
+deployed and returned within weeks, not quarters.
 
 {history_text}
 
 {breakouts_text}
 
-SCORING RULES (non-negotiable):
-1. Rating (1-100): Probability the stock hits +25% BEFORE -7% stop loss.
-   MANDATORY PENALTIES — apply these regardless of other positives:
+SCORING RULES (non-negotiable — swing trade horizon is the primary filter):
+
+1. Rating (1-100): Probability the stock hits +25% WITHIN 2-6 WEEKS before -7% stop loss.
+
+   SWING-TRADE VELOCITY (most important factor):
+   - EstDaysTo25% <= 15 (ATR >= 1.7%/day): ideal, boost rating +10-15 pts
+   - EstDaysTo25% 16-30 (ATR 0.8-1.7%/day): acceptable swing horizon
+   - EstDaysTo25% 31-60 (ATR 0.4-0.8%/day): marginal — reduce rating 15 pts
+   - EstDaysTo25% > 60 (ATR < 0.4%/day): NOT a swing trade — cap rating at 35
+
+   MANDATORY LIQUIDITY PENALTIES:
    - Stock price under $15: cap rating at 45 (gap risk, no institutional interest)
-   - Avg daily volume under 500,000: reduce rating by at least 20 points (liquidity risk)
-   - Small-cap company: reduce rating by at least 15 points (no institutional sponsorship)
+   - Avg daily volume under 500,000: reduce rating by at least 20 points
+   - Small-cap company: reduce rating by at least 15 points
+
+   OTHER FACTORS:
+   - Stock lagging SPY (RS < 50): reduce 10-20 points (fighting the tape)
    - Negative/concerning news: reduce rating accordingly
-   - Stock lagging SPY (RS < 50): reduce rating by 10-20 points
+   - Near-term catalyst (earnings, product launch) within 2-3 weeks: boost 10 pts
 
 2. Sentiment (1-100): How positive is the recent news for this stock?
-   80-100 = very positive (earnings beat, upgrade, product launch)
+   80-100 = very positive (earnings beat, upgrade, product launch, momentum story)
    40-60  = neutral/mixed
    1-39   = negative (lawsuit, downgrade, guidance cut, regulatory risk)
 
-3. Rationale: 2-3 sentences explaining the KEY factors driving the score.
-   Be specific — mention price level, volume, size, news, RS. Do NOT be generic.
+3. Rationale: 2-3 sentences from a swing trader's perspective.
+   MUST address: (a) whether it can reach 25% within 2-6 weeks based on ATR,
+   (b) the key risk to the thesis, (c) what would make this a conviction trade.
+   Be specific — avoid generic statements.
 
 Return ONLY valid JSON in this exact format:
 {{
-  "TICKER1": {{"rating": 85, "sentiment": 70, "rationale": "Strong large-cap breakout..."}},
-  "TICKER2": {{"rating": 31, "sentiment": 25, "rationale": "Sub-$10 small-cap with..."}}
+  "TICKER1": {{"rating": 85, "sentiment": 70, "rationale": "ATR of 1.8%/day suggests..."}},
+  "TICKER2": {{"rating": 31, "sentiment": 25, "rationale": "ATR of 0.3%/day means..."}}
 }}"""
 
     print("[*] Sending enriched data to OpenAI for analysis...")
@@ -252,19 +278,25 @@ Return ONLY valid JSON in this exact format:
             technical_score, liq_score, ai_score, sentiment_score, rs_score
         )
 
+        atr_pct        = float(t.get("atr_pct") or 0.0)
+        est_days       = int(t.get("est_days_to_target") or 999)
+
         print(f"   {ticker}: tech={technical_score} liq={liq_score} ai={ai_score} "
-              f"sent={sentiment_score} rs={rs_score} -> final={final_score} ({grade})")
+              f"sent={sentiment_score} rs={rs_score} atr={atr_pct}% est={est_days}d -> final={final_score} ({grade})")
         print(f"     Rationale: {rationale}")
 
         fields = {
-            "ai_rating":       ai_score,
-            "ai_grade":        grade,
-            "final_score":     final_score,
-            "technical_score": technical_score,
-            "liquidity_score": liq_score,
-            "sentiment_score": sentiment_score,
-            "rs_score":        rs_score,
-            "score_rationale": rationale,
+            "ai_rating":          ai_score,
+            "ai_grade":           grade,
+            "final_score":        final_score,
+            "technical_score":    technical_score,
+            "liquidity_score":    liq_score,
+            "sentiment_score":    sentiment_score,
+            "rs_score":           rs_score,
+            "score_rationale":    rationale,
+            # swing-trade velocity fields (written by screener, confirmed here for display)
+            "atr_pct":            atr_pct,
+            "est_days_to_target": est_days,
         }
         update_trigger_scores(ticker, fields)
 
