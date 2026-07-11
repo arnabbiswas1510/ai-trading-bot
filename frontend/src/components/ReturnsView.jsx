@@ -5,17 +5,21 @@ import {
   ArrowUpCircle, 
   DollarSign, 
   Percent, 
-  Calendar,
   Activity,
-  History
+  History,
+  BarChart2,
+  ShieldAlert
 } from 'lucide-react';
 import { 
   AreaChart, 
   Area, 
+  LineChart,
+  Line,
   XAxis, 
   YAxis, 
   CartesianGrid, 
   Tooltip, 
+  Legend,
   ResponsiveContainer,
   ReferenceLine
 } from 'recharts';
@@ -34,6 +38,7 @@ export default function ReturnsView({ trades }) {
   const [returnType, setReturnType] = useState('TWR'); // 'TWR' vs 'SIMPLE'
   const [benchmarks, setBenchmarks] = useState([]);
   const [benchmarksLoading, setBenchmarksLoading] = useState(false);
+  const [activeBenchmark, setActiveBenchmark] = useState('BOT');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -147,32 +152,73 @@ export default function ReturnsView({ trades }) {
     if (filteredChartData.length > 0) {
       const startPoint = filteredChartData[0];
       const endPoint = filteredChartData[filteredChartData.length - 1];
-      
       startVal = startPoint.totalValue;
-      endVal = endPoint.totalValue;
-      
+      endVal   = endPoint.totalValue;
       filteredChartData.forEach(d => rangeDeposits += d.flow);
-
-      // Rebase TWR for the range
       const startMultiplier = (startPoint.twr / 100) + 1;
-      const endMultiplier = (endPoint.twr / 100) + 1;
-      rangeTwr = startMultiplier > 0 ? ((endMultiplier / startMultiplier) - 1) * 100 : 0;
-
-      // Rebase Simple Return for the range (includes cash deposits)
+      const endMultiplier   = (endPoint.twr   / 100) + 1;
+      rangeTwr    = startMultiplier > 0 ? ((endMultiplier / startMultiplier) - 1) * 100 : 0;
       rangeSimple = (startVal + rangeDeposits) > 0 ? ((endVal - startVal - rangeDeposits) / (startVal + rangeDeposits)) * 100 : 0;
     }
 
+    const periodRoi = returnType === 'TWR' ? rangeTwr : rangeSimple;
     const realizedPnL = trades ? trades.reduce((sum, t) => sum + parseFloat(t.profit_loss || 0), 0) : 0;
+
+    // ── Risk metrics from portfolio daily values ─────────────────────────────
+    const dailyReturns = [];
+    for (let i = 1; i < filteredChartData.length; i++) {
+      const prev = filteredChartData[i - 1].totalValue;
+      const curr = filteredChartData[i].totalValue;
+      if (prev > 0) dailyReturns.push((curr - prev) / prev);
+    }
+    let botVolatility = null;
+    if (dailyReturns.length > 1) {
+      const mean = dailyReturns.reduce((s, r) => s + r, 0) / dailyReturns.length;
+      const variance = dailyReturns.reduce((s, r) => s + (r - mean) ** 2, 0) / (dailyReturns.length - 1);
+      botVolatility = Math.sqrt(variance) * Math.sqrt(252) * 100;
+    }
+
+    let botMaxDrawdown = null;
+    if (filteredChartData.length > 1) {
+      let peak = filteredChartData[0].totalValue;
+      let maxDD = 0;
+      for (const d of filteredChartData) {
+        if (d.totalValue > peak) peak = d.totalValue;
+        const dd = (d.totalValue - peak) / peak;
+        if (dd < maxDD) maxDD = dd;
+      }
+      botMaxDrawdown = maxDD * 100;
+    }
+
+    let botAnnReturn = null;
+    if (filteredChartData.length > 1) {
+      const t0 = new Date(filteredChartData[0].date);
+      const t1 = new Date(filteredChartData[filteredChartData.length - 1].date);
+      const nDays = Math.max((t1 - t0) / (1000 * 60 * 60 * 24), 1);
+      botAnnReturn = (Math.pow(1 + periodRoi / 100, 365 / nDays) - 1) * 100;
+    }
+
+    // ── Bot normalized series for the benchmark chart (start = 100) ──────────
+    const botNormalized = filteredChartData.length > 0
+      ? filteredChartData.map(d => ({
+          date: d.date,
+          BOT: parseFloat(((d.totalValue / filteredChartData[0].totalValue) * 100).toFixed(4))
+        }))
+      : [];
 
     return {
       chartData: filteredChartData,
+      botNormalized,
       effectiveFromDate: filteredChartData.length > 0 ? filteredChartData[0].date : null,
-      effectiveToDate: filteredChartData.length > 0 ? filteredChartData[filteredChartData.length - 1].date : null,
+      effectiveToDate:   filteredChartData.length > 0 ? filteredChartData[filteredChartData.length - 1].date : null,
       kpis: {
         startingCapital: startVal,
-        currentValue: endVal,
-        netDeposits: rangeDeposits,
-        roi: returnType === 'TWR' ? rangeTwr : rangeSimple,
+        currentValue:    endVal,
+        netDeposits:     rangeDeposits,
+        roi:             periodRoi,
+        annReturn:       botAnnReturn,
+        volatility:      botVolatility,
+        maxDrawdown:     botMaxDrawdown,
         realizedPnL
       }
     };
@@ -449,8 +495,8 @@ export default function ReturnsView({ trades }) {
         </div>
       </div>
 
-      {/* KPI Strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+      {/* KPI Strip — 6 cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '1rem' }}>
         <KpiCard 
           title="Starting Capital" 
           value={`$${(kpis?.startingCapital || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`}
@@ -463,50 +509,46 @@ export default function ReturnsView({ trades }) {
           icon={kpis?.netDeposits >= 0 ? <ArrowUpCircle size={20} /> : <ArrowDownCircle size={20} />}
         />
         <KpiCard 
-          title="Realized Trading P&L" 
+          title="Realized P&L" 
           value={`${kpis?.realizedPnL >= 0 ? '+' : ''}$${(kpis?.realizedPnL || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`}
           valueColor={kpis?.realizedPnL >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}
           icon={<Activity size={20} />}
         />
         <KpiCard 
-          title={returnType === 'TWR' ? "True ROI (TWR %)" : "Simple ROI (%)"}
-          value={`${kpis?.roi >= 0 ? '+' : ''}${(kpis?.roi || 0).toFixed(2)}%`}
-          valueColor={kpis?.roi >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}
+          title={returnType === 'TWR' ? 'Ann. Return (TWR)' : 'Ann. Return (Simple)'}
+          value={kpis?.annReturn != null ? `${kpis.annReturn >= 0 ? '+' : ''}${kpis.annReturn.toFixed(2)}%` : '—'}
+          valueColor={kpis?.annReturn >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}
           icon={<Percent size={20} />}
+        />
+        <KpiCard 
+          title="Volatility (Ann.)"
+          value={kpis?.volatility != null ? `${kpis.volatility.toFixed(2)}%` : '—'}
+          icon={<BarChart2 size={20} />}
+        />
+        <KpiCard 
+          title="Max Drawdown"
+          value={kpis?.maxDrawdown != null ? `${kpis.maxDrawdown.toFixed(2)}%` : '—'}
+          valueColor={kpis?.maxDrawdown != null && kpis.maxDrawdown < -5 ? 'var(--danger-color)' : kpis?.maxDrawdown != null && kpis.maxDrawdown < -2 ? '#f59e0b' : 'var(--success-color)'}
+          icon={<ShieldAlert size={20} />}
         />
       </div>
 
-      {/* Benchmark Comparison */}
-      <div className="dashboard-card" style={{ padding: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingUp size={20} className="text-accent" />
-            Benchmark Comparison
-          </h3>
-          {processedData.effectiveFromDate && processedData.effectiveToDate && (
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.04)', padding: '0.25rem 0.65rem', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
-              {processedData.effectiveFromDate} → {processedData.effectiveToDate}
-            </span>
-          )}
-        </div>
-        {benchmarksLoading ? (
-          <div className="flex-center" style={{ height: '80px' }}><div className="spinner" /></div>
-        ) : benchmarks.length === 0 ? (
-          <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', textAlign: 'center', padding: '1rem' }}>
-            Benchmark data unavailable — ensure FMP API key is configured in Settings.
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            {benchmarks.map(b => (
-              <BenchmarkCard
-                key={b.symbol}
-                benchmark={b}
-                botReturn={kpis?.roi ?? null}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Benchmark Analyzer */}
+      <BenchmarkAnalyzer
+        benchmarks={benchmarks}
+        benchmarksLoading={benchmarksLoading}
+        botNormalized={processedData.botNormalized}
+        botStats={{
+          ann_return: kpis?.annReturn,
+          volatility: kpis?.volatility,
+          max_drawdown: kpis?.maxDrawdown,
+          return: kpis?.roi
+        }}
+        activeBenchmark={activeBenchmark}
+        setActiveBenchmark={setActiveBenchmark}
+        effectiveFromDate={processedData.effectiveFromDate}
+        effectiveToDate={processedData.effectiveToDate}
+      />
 
       {/* Equity Curve Chart */}
       <div className="dashboard-card" style={{ padding: '1.5rem', minHeight: '400px' }}>
@@ -640,103 +682,236 @@ export default function ReturnsView({ trades }) {
   );
 }
 
+// ── Colour palette shared by chart + table ──────────────────────────────────
+const BENCH_COLORS = {
+  BOT: '#a855f7',
+  SPY: '#ef4444',
+  QQQ: '#3b82f6',
+  IWM: '#10b981',
+  RSP: '#f59e0b',
+};
+
 function KpiCard({ title, value, valueColor = 'var(--text-primary)', icon }) {
   return (
     <div className="dashboard-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
-        <span style={{ fontSize: '0.9rem', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{title}</span>
+        <span style={{ fontSize: '0.85rem', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{title}</span>
         {icon}
       </div>
-      <div style={{ fontSize: '1.8rem', fontWeight: 700, color: valueColor }}>
-        {value}
-      </div>
+      <div style={{ fontSize: '1.75rem', fontWeight: 700, color: valueColor }}>{value}</div>
     </div>
   );
 }
 
-function BenchmarkCard({ benchmark, botReturn }) {
-  const indexReturn = benchmark.return;
-  const hasData     = indexReturn !== null && indexReturn !== undefined;
-  const alpha       = hasData && botReturn !== null ? botReturn - indexReturn : null;
-  const beating     = alpha !== null && alpha > 0;
-  const losing      = alpha !== null && alpha < 0;
+// ── Benchmark Analyzer ───────────────────────────────────────────────────────
+function BenchmarkAnalyzer({ benchmarks, benchmarksLoading, botNormalized, botStats, activeBenchmark, setActiveBenchmark, effectiveFromDate, effectiveToDate }) {
 
-  const COLORS = {
-    SPY: '#6366f1',
-    QQQ: '#f59e0b',
-    IWM: '#10b981',
+  // Build combined chart data: merge bot + all benchmark daily_normalized by date
+  const combinedChart = useMemo(() => {
+    const byDate = {};
+    (botNormalized || []).forEach(({ date, BOT }) => {
+      byDate[date] = { date, BOT };
+    });
+    (benchmarks || []).forEach(b => {
+      (b.daily_normalized || []).forEach(({ date, value }) => {
+        if (!byDate[date]) byDate[date] = { date };
+        byDate[date][b.symbol] = value;
+      });
+    });
+    return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+  }, [botNormalized, benchmarks]);
+
+  // Build table rows: Bot first, then each benchmark
+  const tableRows = useMemo(() => {
+    const rows = [];
+    if (botStats) {
+      rows.push({
+        symbol: 'BOT', name: 'This Bot',
+        ann_return:   botStats.ann_return,
+        volatility:   botStats.volatility,
+        max_drawdown: botStats.max_drawdown,
+        return:       botStats.return,
+        error: null
+      });
+    }
+    (benchmarks || []).forEach(b => rows.push(b));
+    return rows;
+  }, [botStats, benchmarks]);
+
+  const activeRow = tableRows.find(r => r.symbol === activeBenchmark) || tableRows[0];
+
+  const fmtPct = (v, signed = true) => {
+    if (v == null) return '—';
+    return `${signed && v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
   };
-  const accentColor = COLORS[benchmark.symbol] || 'var(--accent-primary)';
+
+  const BenchmarkTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+    return (
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '0.82rem' }}>
+        <p style={{ margin: '0 0 0.4rem 0', fontWeight: 600, color: 'var(--text-primary)' }}>{label}</p>
+        {payload.map(p => (
+          <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: '1.5rem', color: p.color }}>
+            <span>{p.name}</span>
+            <span style={{ fontWeight: 600 }}>{p.value != null ? p.value.toFixed(2) : '—'}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const seriesKeys = ['BOT', ...((benchmarks || []).map(b => b.symbol))];
 
   return (
-    <div style={{
-      background: 'rgba(255,255,255,0.02)',
-      border: `1px solid ${beating ? 'rgba(16,185,129,0.3)' : losing ? 'rgba(239,68,68,0.25)' : 'var(--border-color)'}`,
-      borderRadius: '12px',
-      padding: '1.1rem 1.25rem',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.6rem',
-      transition: 'border-color 0.2s',
-    }}>
+    <div className="dashboard-card" style={{ padding: '1.5rem' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: accentColor, flexShrink: 0 }} />
-          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-            {benchmark.symbol}
-          </span>
-        </div>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{benchmark.name}</span>
-      </div>
-
-      {/* Index return */}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Index return</span>
-        {hasData ? (
-          <span style={{
-            fontSize: '1.35rem', fontWeight: 700,
-            color: indexReturn >= 0 ? 'var(--success-color)' : 'var(--danger-color)'
-          }}>
-            {indexReturn >= 0 ? '+' : ''}{indexReturn.toFixed(2)}%
-          </span>
-        ) : (
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            {benchmark.error || 'N/A'}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <TrendingUp size={20} className="text-accent" />
+          Benchmark Analyzer
+        </h3>
+        {effectiveFromDate && effectiveToDate && (
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.04)', padding: '0.25rem 0.65rem', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
+            {effectiveFromDate} → {effectiveToDate}
           </span>
         )}
       </div>
 
-      {/* Bot return */}
-      {botReturn !== null && (
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Bot return</span>
-          <span style={{
-            fontSize: '1.05rem', fontWeight: 600,
-            color: botReturn >= 0 ? 'var(--success-color)' : 'var(--danger-color)'
-          }}>
-            {botReturn >= 0 ? '+' : ''}{botReturn.toFixed(2)}%
-          </span>
+      {benchmarksLoading ? (
+        <div className="flex-center" style={{ height: '260px' }}><div className="spinner" /></div>
+      ) : benchmarks.length === 0 ? (
+        <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', textAlign: 'center', padding: '3rem' }}>
+          Benchmark data unavailable — ensure FMP API key is configured in Settings.
         </div>
-      )}
+      ) : (
+        <>
+          {/* Normalized price chart */}
+          <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>Normalized Price ($) ↑</p>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={combinedChart} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+              <XAxis
+                dataKey="date"
+                stroke="var(--text-muted)"
+                tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+                tickFormatter={v => {
+                  const d = new Date(v);
+                  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                }}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                stroke="var(--text-muted)"
+                tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+                domain={['auto', 'auto']}
+                tickFormatter={v => `$${v.toFixed(0)}`}
+              />
+              <ReferenceLine y={100} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" />
+              <Tooltip content={<BenchmarkTooltip />} />
+              <Legend
+                wrapperStyle={{ fontSize: '0.8rem', paddingTop: '0.5rem' }}
+                formatter={name => <span style={{ color: BENCH_COLORS[name] || '#aaa' }}>{name}</span>}
+              />
+              {seriesKeys.map(key => (
+                <Line
+                  key={key}
+                  type="monotone"
+                  dataKey={key}
+                  name={key}
+                  stroke={BENCH_COLORS[key] || '#aaa'}
+                  strokeWidth={key === 'BOT' ? 2.5 : 1.5}
+                  dot={false}
+                  connectNulls
+                  strokeOpacity={activeBenchmark === key ? 1 : 0.45}
+                  strokeWidth={activeBenchmark === key ? 3 : (key === 'BOT' ? 2.5 : 1.5)}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
 
-      {/* Alpha */}
-      {alpha !== null && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)',
-        }}>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Alpha</span>
-          <span style={{
-            fontWeight: 700,
-            fontSize: '0.95rem',
-            color: beating ? 'var(--success-color)' : losing ? 'var(--danger-color)' : 'var(--text-secondary)',
-            display: 'flex', alignItems: 'center', gap: '0.3rem',
-          }}>
-            {beating ? '▲' : losing ? '▼' : '—'}
-            {alpha >= 0 ? '+' : ''}{alpha.toFixed(2)}%
-          </span>
-        </div>
+          {/* Table */}
+          <div style={{ marginTop: '1.5rem', overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  {['Ticker', 'Ann. Return', 'Volatility', 'Max Drawdown'].map(h => (
+                    <th key={h} style={{ padding: '0.6rem 1rem', textAlign: h === 'Ticker' ? 'left' : 'right', color: 'var(--text-secondary)', fontWeight: 600, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.map(row => {
+                  const isActive = row.symbol === activeBenchmark;
+                  const hasData  = row.ann_return != null;
+                  return (
+                    <tr
+                      key={row.symbol}
+                      onClick={() => setActiveBenchmark(row.symbol)}
+                      style={{
+                        background: isActive ? `${BENCH_COLORS[row.symbol] || 'rgba(99,102,241,0.25)'}22` : 'transparent',
+                        borderLeft: isActive ? `3px solid ${BENCH_COLORS[row.symbol] || 'var(--accent-primary)'}` : '3px solid transparent',
+                        cursor: 'pointer',
+                        transition: 'background 0.15s',
+                        borderBottom: '1px solid rgba(255,255,255,0.04)'
+                      }}
+                    >
+                      <td style={{ padding: '0.7rem 1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{ width: 9, height: 9, borderRadius: '50%', background: BENCH_COLORS[row.symbol] || '#aaa', flexShrink: 0 }} />
+                          <span style={{ fontWeight: 700 }}>{row.symbol}</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{row.name}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.7rem 1rem', textAlign: 'right', fontWeight: 600, color: hasData && row.ann_return >= 0 ? 'var(--success-color)' : 'var(--danger-color)' }}>
+                        {fmtPct(row.ann_return)}
+                      </td>
+                      <td style={{ padding: '0.7rem 1rem', textAlign: 'right', fontWeight: 500, color: 'var(--text-primary)' }}>
+                        {fmtPct(row.volatility, false)}
+                      </td>
+                      <td style={{ padding: '0.7rem 1rem', textAlign: 'right', fontWeight: 500, color: row.max_drawdown != null && row.max_drawdown < -10 ? 'var(--danger-color)' : row.max_drawdown != null && row.max_drawdown < -5 ? '#f59e0b' : 'var(--text-primary)' }}>
+                        {fmtPct(row.max_drawdown)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Summary stats for active row */}
+          {activeRow && (
+            <div style={{
+              marginTop: '1.5rem',
+              padding: '1rem 1.5rem',
+              background: 'rgba(255,255,255,0.03)',
+              borderRadius: '10px',
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              gap: '0',
+              alignItems: 'center',
+            }}>
+              {[
+                { label: 'ANNUALIZED RETURN', value: fmtPct(activeRow.ann_return) },
+                { label: 'VOLATILITY',        value: fmtPct(activeRow.volatility, false) },
+                { label: 'MAX DRAWDOWN',      value: fmtPct(activeRow.max_drawdown) },
+              ].map((stat, i, arr) => (
+                <React.Fragment key={stat.label}>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.8px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>{stat.label}</div>
+                    <div style={{ fontSize: '1.45rem', fontWeight: 700, color: BENCH_COLORS[activeRow.symbol] || 'var(--accent-primary)' }}>{stat.value}</div>
+                  </div>
+                  {i < arr.length - 1 && <div style={{ width: '1px', height: '40px', background: 'var(--border-color)', flexShrink: 0 }} />}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+
+          {/* Active series label */}
+          <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Active Series: <strong style={{ color: BENCH_COLORS[activeBenchmark] || 'var(--accent-primary)' }}>{activeBenchmark}</strong></span>
+            <span style={{ color: 'var(--text-muted)' }}>Click a row to highlight its series</span>
+          </div>
+        </>
       )}
     </div>
   );
