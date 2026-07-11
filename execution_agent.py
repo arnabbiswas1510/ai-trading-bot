@@ -723,6 +723,36 @@ def is_market_bullish() -> bool:
         print(f"⚠️ Market direction check failed: {e}. Defaulting to BULL.")
         return True
 
+def fetch_ibkr_delayed_price(ib: IB, contract) -> tuple:
+    """Fetch the current price for a contract using IBKR delayed market data (type 3).
+
+    Prefers the ask price; falls back to last traded price.
+    Always restores live market data mode (type 1) after the call.
+
+    Returns:
+        (price: float, method: str) where method is 'ask', 'last', or '' on failure.
+        price is 0.0 when no valid price is available.
+    """
+    ibkr_price   = 0.0
+    price_method = ""
+    try:
+        ib.reqMarketDataType(3)          # Switch to delayed data (free, 15-20 min lag)
+        _tickers = ib.reqTickers(contract)
+        if _tickers:
+            _t    = _tickers[0]
+            _ask  = _t.ask  if _t.ask  == _t.ask  and _t.ask  > 0 else 0.0
+            _last = _t.last if _t.last == _t.last and _t.last > 0 else 0.0
+            _p    = _ask if _ask > 0 else _last
+            if _p > 0:
+                ibkr_price   = _p
+                price_method = "ask" if _ask > 0 else "last"
+    except Exception as _de:
+        print(f"   ⚠️ IBKR delayed price failed: {_de}")
+    finally:
+        ib.reqMarketDataType(1)          # Always restore live mode
+    return ibkr_price, price_method
+
+
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
     print("⏳ Running Market Open Buy checks...")
@@ -835,34 +865,13 @@ def run_market_open_buys(ib: IB):
             notifier.notify_buy_loop_halted(ticker=ticker, reason=str(_qe))
             break
 
-        # ── Get price from IBKR (delayed market data) ───────────────────────────
+        # -- Get price from IBKR (delayed market data) --
         # FMP's /stable/quote returns yesterday's close at market open, lagging
-        # actual prices by 5-10%+ for gap-up stocks — the root cause of Error 201.
+        # actual prices by 5-10%+ for gap-up stocks -- the root cause of Error 201.
         #
         # IBKR delayed market data (reqMarketDataType=3) is free for all accounts
         # and returns actual IBKR traded prices with a 15-20 min lag.
-        # reqHistoricalData was tried first but always fails on this ib-gateway
-        # setup with Error 162 (HMDS query returned no data), so it is skipped.
-        ibkr_price   = 0.0
-        price_method = ""
-
-        # Attempt 1: IBKR delayed market data (free, 15-20 min lag, guaranteed available)
-        # IBKR confirms this in the Error 10089 message: 'Delayed market data is available.'
-        try:
-            ib.reqMarketDataType(3)  # Switch to delayed data
-            _tickers = ib.reqTickers(contract)
-            if _tickers:
-                _t    = _tickers[0]
-                _ask  = _t.ask  if _t.ask  == _t.ask  and _t.ask  > 0 else 0.0
-                _last = _t.last if _t.last == _t.last and _t.last > 0 else 0.0
-                _p    = _ask if _ask > 0 else _last
-                if _p > 0:
-                    ibkr_price   = _p
-                    price_method = "delayed"
-        except Exception as _de:
-            print(f"   ⚠️ IBKR delayed price failed for {ticker}: {_de}")
-        finally:
-            ib.reqMarketDataType(1)  # Always restore live mode
+        ibkr_price, price_method = fetch_ibkr_delayed_price(ib, contract)
 
         if ibkr_price > 0:
             current_price = ibkr_price
