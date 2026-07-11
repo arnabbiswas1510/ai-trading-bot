@@ -1335,19 +1335,15 @@ def main_loop():
                     or (10 <= now.hour < 16)
                 )
 
-                # 1. Daily Buy Check (No Window Restriction)
-                # Ensure the buy check continues running intraday until a successful buy occurs
-                # (or portfolio is full). This naturally creates an intraday failsafe.
-                if is_market_open and not has_bought_today(get_supabase_client(), today_str):
-                    reconcile_with_ibkr(ib)   # Sync before placing any new buys
-                    run_market_open_buys(ib)
-                    ib.sleep(900)
-                    continue
-
-                # 2. Intraday monitoring during market hours
+                # 1. Buy check + intraday monitoring (runs every 15 min while market is open)
+                # has_bought_today removed: run_market_open_buys is idempotent — it exits
+                # immediately when the portfolio is full or cash is insufficient.
+                # Removing this gate means a force-sell that frees a slot is filled the
+                # same day rather than waiting until the next morning.
                 if is_market_open:
-                    reconcile_with_ibkr(ib)   # Sync every 15 min — catches manual TWS trades
-                    monitor_portfolio_intraday(ib)
+                    reconcile_with_ibkr(ib)        # Sync IBKR → Supabase before checks
+                    run_market_open_buys(ib)        # No-op when portfolio is full
+                    monitor_portfolio_intraday(ib)  # Trailing stops, MA exits, plateau rotation
                     ib.sleep(900)
                     continue
 
