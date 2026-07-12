@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import math
 import argparse
@@ -1297,21 +1297,39 @@ def main_loop():
     
     ib = IB()
     # Retry loop — keeps the container alive while IB Gateway is initialising or
-    # re-authenticating after the daily reset.  Telegram fires once on the first
-    # failure; subsequent retries are silent (exception cache rate-limits them).
+    # re-authenticating after the daily reset.
+    # Autoheal monitors the gateway health check and restarts the container automatically
+    # if the API port is down. We suppress Telegram for the first AUTOHEAL_ALERT_AFTER
+    # attempts to give autoheal time to act (~18 min with backoff). After that threshold
+    # we fire ONE alert, meaning autoheal itself may have failed.
+    AUTOHEAL_ALERT_AFTER = 6   # ~18 min: 30+60+120+300+300+300s of backoff
     _retry_delays = [30, 60, 120, 300]  # backoff schedule in seconds
     _attempt = 0
+    _connect_silent_attempts = 0   # consecutive silent (pre-threshold) failures
     while True:
         try:
             ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
             print("✅ Connected to IBKR Gateway successfully!")
+            _connect_silent_attempts = 0
             break
         except Exception as e:
             delay = _retry_delays[min(_attempt, len(_retry_delays) - 1)]
-            notifier.notify_exception(f"main_loop() — execution_agent.py", e)
-            print(f"❌ Cannot connect to IB Gateway: {e}")
-            print(f"   Retrying in {delay}s... (attempt {_attempt + 1})")
+            _connect_silent_attempts += 1
             _attempt += 1
+            if _connect_silent_attempts >= AUTOHEAL_ALERT_AFTER:
+                # Autoheal has had enough time to fix this — something is wrong
+                notifier.notify_exception(
+                    f"main_loop() — IB Gateway still unreachable after "
+                    f"{_connect_silent_attempts} attempts (~18 min). "
+                    f"Autoheal may have failed.",
+                    e,
+                )
+                _connect_silent_attempts = 0   # reset so we don't spam every attempt after threshold
+            else:
+                print(f"⚠️ IB Gateway unreachable (attempt {_attempt}) — "
+                      f"autoheal watching, no alert for {AUTOHEAL_ALERT_AFTER - _connect_silent_attempts} more attempts.")
+            print(f"❌ Cannot connect to IB Gateway: {e}")
+            print(f"   Retrying in {delay}s... (attempt {_attempt})")
             time.sleep(delay)
 
     while True:
@@ -1372,15 +1390,14 @@ def main_loop():
             ib.disconnect()
             break
         except (ConnectionError, TimeoutError) as loop_err:
-            # Only suppress pure socket disconnects (expected daily IBKR reset).
-            # All other connection/timeout errors ARE actionable — alert so the user
-            # knows to re-authenticate IB Gateway.
+            # Gateway resets (IBKR nightly logoff, autoheal restart) produce ConnectionError
+            # or TimeoutError. These are expected and autoheal handles them automatically.
+            # Suppress Telegram -- reconnect failsafe below fires after the threshold.
             if "Socket disconnect" in str(loop_err):
-                print(f"⚠️ IBKR socket disconnected (daily reset) — will reconnect silently.")
+                print(f"Warning: IBKR socket disconnected (daily reset) -- reconnecting silently.")
             else:
-                print(f"❌ IBKR connection/timeout in main loop: {loop_err}")
-                notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
-            time.sleep(60)   # use time.sleep — ib.sleep() throws on a dead socket
+                print(f"Error: IBKR connection/timeout in main loop: {loop_err} -- autoheal watching, no alert.")
+            time.sleep(60)
         except Exception as loop_err:
             print(f"❌ Error in main execution loop: {loop_err}")
             notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
@@ -1388,14 +1405,23 @@ def main_loop():
             
         # Reconnection failsafe
         if not ib.isConnected():
-            print("🔄 Reconnecting to IB Gateway...")
+            print("Reconnecting to IB Gateway...")
             try:
                 ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
-                print("✅ Reconnected to IBKR Gateway successfully!")
+                print("Reconnected to IBKR Gateway successfully!")
+                _connect_silent_attempts = 0   # reset threshold counter on success
             except Exception as e:
-                print(f"❌ Reconnection failed: {e}")
-                notifier.notify_exception("main_loop() — reconnect — execution_agent.py", e)
-                time.sleep(60)   # wait before next reconnect attempt
+                _connect_silent_attempts += 1
+                print(f"Reconnection failed (attempt {_connect_silent_attempts}): {e}")
+                if _connect_silent_attempts >= AUTOHEAL_ALERT_AFTER:
+                    notifier.notify_exception(
+                        f"main_loop() -- reconnect -- gateway still down after "
+                        f"{_connect_silent_attempts} attempts (~18 min). "
+                        f"Autoheal may have failed.",
+                        e,
+                    )
+                    _connect_silent_attempts = 0   # reset so we dont spam after each threshold
+                time.sleep(60)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CANSLIM Local execution agent CLI.")
