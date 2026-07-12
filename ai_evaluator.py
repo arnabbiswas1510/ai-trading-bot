@@ -56,13 +56,18 @@ def fetch_trade_history():
 def fetch_daily_triggers():
     print("[*] Fetching today's breakouts...")
     tz = ZoneInfo("America/New_York")
-    today_ny = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
+    # Look back 2 days to be robust against UTC/NY date skew and late-evening runs.
+    # The daily_triggers table is truncated and replaced on every screener run,
+    # so this always returns the current day's data.
+    two_days_ago = (datetime.datetime.now(tz).date() - datetime.timedelta(days=2)).strftime("%Y-%m-%d")
     try:
-        res = client.table("daily_triggers").select("*").gte("triggered_at", today_ny).execute()
+        res = client.table("daily_triggers").select("*").gte("triggered_at", two_days_ago).execute()
+        print(f"[*] Found {len(res.data or [])} trigger(s) since {two_days_ago}")
         return res.data
     except Exception as e:
         print(f"❌ Failed to fetch daily triggers: {e}")
         return []
+
 
 
 def fetch_watchlist_data(tickers):
