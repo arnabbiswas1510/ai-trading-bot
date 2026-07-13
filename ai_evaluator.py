@@ -149,15 +149,16 @@ def main():
     for t in triggers:
         ticker  = t["ticker"]
         f_data  = fundamentals.get(ticker, {})
-        price   = t.get("close_price", "N/A")
-        avg_vol = t.get("avg_volume_50", 0)
-        rs      = t.get("rs_score", 50)
-        size    = f_data.get("company_size", "Unknown")
+        price   = t.get("close_price") or "N/A"
+        # Use 'or' fallback (not .get default) — NULL DB columns return None even with a default
+        avg_vol = t.get("avg_volume_50") or 0
+        rs      = t.get("rs_score") or 50
+        size    = f_data.get("company_size") or "Unknown"
         headlines = news_by_ticker.get(ticker, [])
         news_str  = " | ".join(headlines[:5]) if headlines else "No recent news"
 
-        atr_pct = t.get("atr_pct", 0)
-        est_days = t.get("est_days_to_target", 999)
+        atr_pct  = t.get("atr_pct") or 0.0
+        est_days = t.get("est_days_to_target") or 999
         swing_label = (
             "🚀 Fast mover" if 0 < est_days <= 15 else
             "✅ Swing-compatible" if est_days <= 30 else
