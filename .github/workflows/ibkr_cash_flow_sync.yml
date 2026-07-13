@@ -1,0 +1,42 @@
+name: IBKR Cash Flow Sync
+
+on:
+  schedule:
+    # Mon-Fri at 19:30 UTC = 3:30 PM EDT (near market close, lowest IBKR server traffic)
+    - cron: '30 19 * * 1-5'
+  workflow_dispatch:   # allow manual trigger any time
+
+jobs:
+  sync-cash-flows:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code Repository
+      uses: actions/checkout@v4
+
+    - name: Set Up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Sync IBKR Cash Flows (Flex Query)
+      # Fetches deposits/withdrawals from IBKR and upserts into Supabase cash_flows table.
+      # Single attempt only — runs at 3:30 PM EDT when IBKR server load is lightest.
+      # On error 1001 (server busy), fails fast with a Telegram notification.
+      # NOTE: IBKR_FLEX_TOKEN_EXPIRY is a Variable (not a Secret):
+      #       Settings > Secrets and variables > Actions > Variables tab.
+      #       Update annually when you renew the token in IBKR portal.
+      env:
+        IBKR_FLEX_TOKEN: ${{ secrets.IBKR_FLEX_TOKEN }}
+        IBKR_FLEX_QUERY_ID: ${{ secrets.IBKR_FLEX_QUERY_ID }}
+        IBKR_FLEX_TOKEN_EXPIRY: ${{ vars.IBKR_FLEX_TOKEN_EXPIRY }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+      run: python flex_query_sync.py

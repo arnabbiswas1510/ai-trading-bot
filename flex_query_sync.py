@@ -60,10 +60,10 @@ TELEGRAM_IDS    = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_IDS", "").sp
 SEND_URL  = "https://ndcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
 FETCH_URL = "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
 
-# Retry settings for IBKR rate limiting
-MAX_RETRIES     = 5
+# Single-attempt — IBKR Flex is low-priority; we do not retry on busy (error 1001).
+# A dedicated workflow runs at 3:30 PM EDT when server traffic is lightest.
+MAX_RETRIES     = 1
 INITIAL_WAIT_S  = 5    # seconds to wait between Step 1 and Step 2
-RETRY_BACKOFF_S = 10   # additional seconds added on each retry
 
 # Days before expiry to send Telegram warning
 EXPIRY_WARN_DAYS = 30
@@ -169,7 +169,7 @@ def _request_reference_code() -> str:
 
         raise RuntimeError(f"IBKR SendRequest failed [{error_code}]: {error_msg}")
 
-    raise RuntimeError(f"IBKR SendRequest still returning error 1001 after {MAX_RETRIES} retries.")
+    raise RuntimeError(f"IBKR SendRequest returned error 1001 (server busy). Try again later.")
 
 
 def _fetch_statement(ref_code: str) -> str:
@@ -202,7 +202,7 @@ def _fetch_statement(ref_code: str) -> str:
 
         return resp.text
 
-    raise RuntimeError(f"IBKR GetStatement still returning error 1001 after {MAX_RETRIES} retries.")
+    raise RuntimeError(f"IBKR GetStatement returned error 1001 (server busy). Try again later.")
 
 
 def fetch_cash_transactions() -> list[dict]:
