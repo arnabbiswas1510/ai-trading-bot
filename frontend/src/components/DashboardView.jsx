@@ -36,6 +36,107 @@ function daysHeld(buyDate) {
   return Math.floor((now - buy) / (1000 * 60 * 60 * 24));
 }
 
+// ── NYSE trading-day calendar ──────────────────────────────────────────────────
+// Returns a Set of holiday date-strings "YYYY-MM-DD" for a given year.
+// Computed algorithmically — no external package required.
+function _nyseHolidays(year) {
+  const holidays = new Set();
+
+  // Shift Sat → Fri, Sun → Mon for observed holiday
+  const observed = (d) => {
+    const day = d.getDay(); // 0=Sun,6=Sat
+    if (day === 6) { d.setDate(d.getDate() - 1); }
+    if (day === 0) { d.setDate(d.getDate() + 1); }
+    return d;
+  };
+  const iso = (d) => d.toISOString().slice(0, 10);
+
+  // nth weekday: weekday 1=Mon..5=Fri, n=1,2,...
+  const nthWeekday = (y, month, weekday, n) => {
+    const d = new Date(y, month - 1, 1);
+    let count = 0;
+    while (d.getMonth() === month - 1) {
+      if (d.getDay() === weekday) { count++; if (count === n) return new Date(d); }
+      d.setDate(d.getDate() + 1);
+    }
+  };
+  const lastWeekday = (y, month, weekday) => {
+    const d = new Date(y, month, 0); // last day of month
+    while (d.getDay() !== weekday) d.setDate(d.getDate() - 1);
+    return new Date(d);
+  };
+  // Easter via Anonymous Gregorian algorithm
+  const easter = (y) => {
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100;
+    const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4), k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day   = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(y, month - 1, day);
+  };
+
+  // New Year's Day
+  holidays.add(iso(observed(new Date(year, 0, 1))));
+  // MLK Day — 3rd Monday of January
+  holidays.add(iso(nthWeekday(year, 1, 1, 3)));
+  // Presidents' Day — 3rd Monday of February
+  holidays.add(iso(nthWeekday(year, 2, 1, 3)));
+  // Good Friday — 2 days before Easter
+  const gf = easter(year); gf.setDate(gf.getDate() - 2);
+  holidays.add(iso(gf));
+  // Memorial Day — last Monday of May
+  holidays.add(iso(lastWeekday(year, 5, 1)));
+  // Juneteenth — Jun 19 observed (from 2022)
+  if (year >= 2022) holidays.add(iso(observed(new Date(year, 5, 19))));
+  // Independence Day — Jul 4 observed
+  holidays.add(iso(observed(new Date(year, 6, 4))));
+  // Labor Day — 1st Monday of September
+  holidays.add(iso(nthWeekday(year, 9, 1, 1)));
+  // Thanksgiving — 4th Thursday of November
+  holidays.add(iso(nthWeekday(year, 11, 4, 4)));
+  // Christmas — Dec 25 observed
+  holidays.add(iso(observed(new Date(year, 11, 25))));
+
+  return holidays;
+}
+
+// Cache holidays per year to avoid recomputing on every render
+const _holidayCache = {};
+function _getHolidays(year) {
+  if (!_holidayCache[year]) _holidayCache[year] = _nyseHolidays(year);
+  return _holidayCache[year];
+}
+
+/**
+ * Count NYSE trading days in [start, end) — weekends and market holidays excluded.
+ * start and end are Date objects or ISO date strings.
+ */
+function tradingDaysBetween(start, end) {
+  const s = typeof start === 'string' ? new Date(start) : new Date(start);
+  const e = typeof end   === 'string' ? new Date(end)   : new Date(end);
+  // Normalise to midnight to avoid DST issues
+  s.setHours(0, 0, 0, 0);
+  e.setHours(0, 0, 0, 0);
+  if (e <= s) return 0;
+
+  let count = 0;
+  const cur = new Date(s);
+  while (cur < e) {
+    const dow = cur.getDay(); // 0=Sun,6=Sat
+    if (dow !== 0 && dow !== 6) {
+      const isoStr = cur.toISOString().slice(0, 10);
+      const holidays = _getHolidays(cur.getFullYear());
+      if (!holidays.has(isoStr)) count++;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
 function formatDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -154,8 +255,8 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
 
           {/* ── Plateau Risk ─────────────────────────── */}
           {(() => {
-            const hwmDate = pos.hwm_date ? new Date(pos.hwm_date) : new Date(pos.buy_date);
-            const daysSinceHWM = Math.floor((new Date() - hwmDate) / (1000 * 60 * 60 * 24));
+            const hwmDate = pos.hwm_date || pos.buy_date;
+            const daysSinceHWM = tradingDaysBetween(hwmDate, new Date());
             const pct = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
             const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
             const color = isPlateauing ? '#f43f5e' : pct >= 0.7 ? '#f59e0b' : '#10b981';
@@ -163,7 +264,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
               <div style={cardStyle(isPlateauing ? '244,63,94' : pct >= 0.7 ? '245,158,11' : '52,211,153')}>
                 <div style={labelStyle}>⏱️ Plateau Exit</div>
                 <div style={valueStyle(color)}>
-                  Day {daysSinceHWM} / {PLATEAU_DAYS}
+                  {daysSinceHWM} / {PLATEAU_DAYS} trading days
                   {isPlateauing && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem' }}>⚠️ ELIGIBLE</span>}
                 </div>
                 <div style={{ height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', margin: '0.4rem 0' }}>
@@ -171,8 +272,8 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
                 </div>
                 <div style={noteStyle}>
                   HWM last set: {pos.hwm_date ? new Date(pos.hwm_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'at entry'}<br />
-                  Exit fires at day {PLATEAU_DAYS} with &lt;3% gain.<br />
-                  {isPlateauing ? '🚨 Plateau rotation eligible today.' : `${PLATEAU_DAYS - daysSinceHWM} days remaining before eligible.`}
+                  Exit fires at {PLATEAU_DAYS} trading days with &lt;3% gain.<br />
+                  {isPlateauing ? '🚨 Plateau rotation eligible today.' : `${PLATEAU_DAYS - daysSinceHWM} trading days remaining.`}
                 </div>
               </div>
             );
@@ -403,10 +504,10 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
                           {formatCurrency(trailStop)}
                         </td>
-                        {/* Plateau Days: days since HWM */}
+                        {/* Plateau Days: trading days since HWM (weekends + holidays excluded) */}
                         {(() => {
-                          const hwmDate = pos.hwm_date ? new Date(pos.hwm_date) : new Date(pos.buy_date);
-                          const daysSinceHWM = Math.floor((new Date() - hwmDate) / (1000 * 60 * 60 * 24));
+                          const hwmDate = pos.hwm_date || pos.buy_date;
+                          const daysSinceHWM = tradingDaysBetween(hwmDate, new Date());
                           const pct = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
                           const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
                           const color = isPlateauing ? 'var(--color-down)' : pct >= 0.7 ? '#f59e0b' : 'var(--color-up)';
