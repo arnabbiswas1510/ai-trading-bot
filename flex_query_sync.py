@@ -143,11 +143,6 @@ def _request_reference_code() -> str:
     params = {"t": FLEX_TOKEN, "q": FLEX_QUERY_ID, "v": "3"}
 
     for attempt in range(1, MAX_RETRIES + 1):
-        if attempt > 1:
-            wait = INITIAL_WAIT_S + (attempt - 2) * RETRY_BACKOFF_S
-            print(f"[flex_query_sync] Retrying Step 1 in {wait}s (attempt {attempt}/{MAX_RETRIES})...")
-            time.sleep(wait)
-
         resp = requests.get(SEND_URL, params=params, timeout=30)
         resp.raise_for_status()
 
@@ -164,12 +159,11 @@ def _request_reference_code() -> str:
         error_msg  = root.findtext("ErrorMessage", "")
 
         if error_code == "1001":
-            print(f"[flex_query_sync] IBKR Step 1 returned error 1001 (server busy). Retrying...")
-            continue
+            raise RuntimeError(f"IBKR SendRequest returned error 1001 (server busy). Try again later.")
 
         raise RuntimeError(f"IBKR SendRequest failed [{error_code}]: {error_msg}")
 
-    raise RuntimeError(f"IBKR SendRequest returned error 1001 (server busy). Try again later.")
+    raise RuntimeError("IBKR SendRequest did not succeed.")
 
 
 def _fetch_statement(ref_code: str) -> str:
@@ -181,17 +175,15 @@ def _fetch_statement(ref_code: str) -> str:
     params = {"t": FLEX_TOKEN, "q": ref_code, "v": "3"}
 
     for attempt in range(1, MAX_RETRIES + 1):
-        wait = INITIAL_WAIT_S + (attempt - 1) * RETRY_BACKOFF_S
-        print(f"[flex_query_sync] Waiting {wait}s before fetching statement (attempt {attempt}/{MAX_RETRIES})...")
-        time.sleep(wait)
+        print(f"[flex_query_sync] Waiting {INITIAL_WAIT_S}s before fetching statement...")
+        time.sleep(INITIAL_WAIT_S)
 
         resp = requests.get(FETCH_URL, params=params, timeout=30)
         resp.raise_for_status()
 
         # Check for error 1001 (server busy / report not ready yet)
         if "<ErrorCode>1001</ErrorCode>" in resp.text:
-            print(f"[flex_query_sync] IBKR returned error 1001 (server busy). Retrying...")
-            continue
+            raise RuntimeError("IBKR GetStatement returned error 1001 (server busy). Try again later.")
 
         # Any other error
         if "<Status>Fail</Status>" in resp.text:
@@ -202,7 +194,7 @@ def _fetch_statement(ref_code: str) -> str:
 
         return resp.text
 
-    raise RuntimeError(f"IBKR GetStatement returned error 1001 (server busy). Try again later.")
+    raise RuntimeError("IBKR GetStatement did not succeed.")
 
 
 def fetch_cash_transactions() -> list[dict]:

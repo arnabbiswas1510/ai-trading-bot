@@ -169,6 +169,9 @@ MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 2
 MARKET_DIRECTION_TICKER         = os.getenv("MARKET_DIRECTION_TICKER", "SPY")
 
 # ── Telegram notifications ─────────────────────────────────────────────────────
+notifier = TelegramNotifier(
+    bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+    chat_ids=os.getenv("TELEGRAM_CHAT_IDS", "").split(",")
 )
 
 
