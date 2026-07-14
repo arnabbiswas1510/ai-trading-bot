@@ -551,27 +551,32 @@ def reconcile_with_ibkr(ib: IB):
     print("🔄 Running IBKR ↔ Supabase reconciliation...")
     client = get_supabase_client()
 
-    # ── Sync live IBKR cash balance to Supabase (Do this FIRST) ────────
+    # ── Sync live balance to Supabase (Do this FIRST) ──────────────────────
     try:
         tz = ZoneInfo("America/New_York")
         today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
 
-        # ── Compute portfolio value from Supabase positions + live IBKR prices ─
-        # Avoids unreliable ib.portfolio() and reqAccountSummary() (causes Error 322).
-        # The same fetch_ibkr_delayed_price() used for monitoring works here too.
-        # Cash balance from get_available_cash() is always accurate.
         cash_balance = get_available_cash(ib)
 
         db_pos = client.table("portfolio_positions").select(
             "ticker,shares,buy_price"
         ).execute().data or []
 
+        # Use FMP API for position prices — avoids IBKR reqTickers() which blocks
+        # indefinitely when the ushmds data farm is down. FMP is always available
+        # and is already used throughout the rest of the agent.
         pos_value = 0.0
         for p in db_pos:
-            contract = Stock(p["ticker"], "SMART", "USD")
-            price, _ = fetch_ibkr_delayed_price(ib, contract)
-            if price <= 0:
-                price = float(p["buy_price"])   # cost-basis floor if price fails
+            price = float(p["buy_price"])   # fallback: cost basis
+            try:
+                fmp_url = f"https://financialmodelingprep.com/api/v3/quote-short/{p['ticker']}?apikey={FMP_API_KEY}"
+                r = requests.get(fmp_url, timeout=5)
+                if r.ok and r.json():
+                    fmp_price = float(r.json()[0].get("price", 0))
+                    if fmp_price > 0:
+                        price = fmp_price
+            except Exception:
+                pass   # keep cost-basis fallback
             pos_value += int(p["shares"]) * price
 
         net_liq = cash_balance + pos_value
@@ -588,7 +593,7 @@ def reconcile_with_ibkr(ib: IB):
                   f"({len(db_pos)} position(s))")
     except Exception as e:
         notifier.notify_exception("reconcile_with_ibkr() cash sync — execution_agent.py", e)
-        print(f"   ❌ Could not sync cash balance from IBKR: {e}")
+        print(f"   ❌ Could not sync cash balance: {e}")
 
 
     # ── Fetch IBKR positions ────────────────────────────────────────────────
