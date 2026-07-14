@@ -1441,15 +1441,6 @@ def main_loop():
         try:
             ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
             print("✅ Connected to IBKR Gateway successfully!")
-            # ib_insync only auto-subscribes to account/portfolio events for clientId=0.
-            # With clientId=1, ib.portfolio() and ib.accountValues() stay empty unless
-            # we explicitly subscribe. reqAccountUpdates() is a persistent push subscription
-            # (unlike reqAccountSummary which causes Error 322 on repeat calls).
-            ib.reqAccountUpdates(True)        # persistent portfolio/accountValues push
-            ib.sleep(3)                       # allow initial snapshot to arrive
-            print(f"   📊 Account subscription active — portfolio has "
-                  f"{len(ib.portfolio())} position(s), "
-                  f"cash={next((float(av.value) for av in ib.accountValues() if av.tag == 'TotalCashValue' and av.currency == 'USD'), 0):,.2f}")
             _connect_silent_attempts = 0
             break
         except Exception as e:
