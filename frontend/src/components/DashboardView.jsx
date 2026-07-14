@@ -226,6 +226,14 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
   const valueStyle = (color) => ({ fontSize: '0.92rem', fontWeight: 700, color: color || 'var(--text-primary)', marginBottom: '0.2rem' });
   const noteStyle = { fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 };
 
+  // Helper: color scale for 0-100 scores
+  const scoreColor = (v) => v >= 80 ? '#10b981' : v >= 60 ? '#3b82f6' : v >= 40 ? '#f59e0b' : '#f43f5e';
+  const gradeColors = { A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#f43f5e' };
+
+  const hasConviction = pos.entry_final_score != null
+    || pos.entry_technical_score != null
+    || pos.entry_score_rationale;
+
   return (
     <tr>
       <td colSpan={11} style={{ padding: 0 }}>
@@ -275,6 +283,94 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
                   Exit fires at {PLATEAU_DAYS} trading days with &lt;3% gain.<br />
                   {isPlateauing ? '🚨 Plateau rotation eligible today.' : `${PLATEAU_DAYS - daysSinceHWM} trading days remaining.`}
                 </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Entry Conviction Scorecard ────────────────────────────────────
+               Copied from daily_triggers at buy time — all entry_* fields.      */}
+          {hasConviction && (() => {
+            const scores = [
+              { label: 'Technical',  value: pos.entry_technical_score  ?? pos.entry_quality_score },
+              { label: 'Liquidity',  value: pos.entry_liquidity_score },
+              { label: 'RS Rating',  value: pos.entry_rs_score },
+              { label: 'Sentiment',  value: pos.entry_sentiment_score },
+              { label: 'AI Rating',  value: pos.entry_ai_rating },
+            ].filter(s => s.value != null);
+
+            const grade = pos.entry_ai_grade;
+            const gradeColor = gradeColors[grade] ?? 'var(--text-muted)';
+
+            return (
+              <div style={{ ...cardStyle('167,139,250'), gridColumn: '1 / -1' }}>
+                {/* Header row: label + final score + AI grade badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+                  <div style={labelStyle}>🎯 Entry Conviction</div>
+                  {pos.entry_final_score != null && (
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: scoreColor(pos.entry_final_score), fontFamily: 'var(--font-display)' }}>
+                      {pos.entry_final_score}
+                    </span>
+                  )}
+                  {grade && (
+                    <span style={{
+                      fontSize: '0.62rem', fontWeight: 800, padding: '0.1rem 0.35rem',
+                      borderRadius: '4px', color: gradeColor,
+                      background: `${gradeColor}22`, border: `1px solid ${gradeColor}55`,
+                      letterSpacing: '0.04em',
+                    }}>{grade}</span>
+                  )}
+                  {pos.entry_atr_pct != null && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                      ATR&nbsp;<b style={{ color: 'var(--text-secondary)' }}>{pos.entry_atr_pct.toFixed(2)}%</b>
+                    </span>
+                  )}
+                  {pos.entry_est_days_target != null && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      Est.&nbsp;+25%&nbsp;<b style={{ color: 'var(--text-secondary)' }}>~{pos.entry_est_days_target}d</b>
+                    </span>
+                  )}
+                </div>
+
+                {/* 5-component mini score gauges */}
+                {scores.length > 0 && (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${scores.length}, 1fr)`,
+                    gap: '0.75rem',
+                    marginBottom: pos.entry_score_rationale ? '0.75rem' : 0,
+                  }}>
+                    {scores.map(({ label, value }) => {
+                      const col = scoreColor(value);
+                      return (
+                        <div key={label} style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
+                            {label}
+                          </div>
+                          {/* Progress bar */}
+                          <div style={{ height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', margin: '0 auto 0.3rem', maxWidth: '80px' }}>
+                            <div style={{ height: '100%', width: `${value}%`, background: col, borderRadius: '2px' }} />
+                          </div>
+                          <div style={{ fontSize: '1rem', fontWeight: 800, color: col, fontFamily: 'var(--font-display)' }}>
+                            {value}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* AI Narrative */}
+                {pos.entry_score_rationale && (
+                  <div style={{
+                    fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.5,
+                    fontStyle: 'italic',
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                    paddingTop: '0.6rem',
+                    marginTop: '0.1rem',
+                  }}>
+                    {pos.entry_score_rationale}
+                  </div>
+                )}
               </div>
             );
           })()}
