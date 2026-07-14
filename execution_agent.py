@@ -550,17 +550,14 @@ def reconcile_with_ibkr(ib: IB):
         tz = ZoneInfo("America/New_York")
         today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
 
-        # ── Use IBKR account summary for authoritative portfolio totals ────────
-        # ib.portfolio() often returns empty positions until account subscriptions
-        # fire, causing positions_value=0. NetLiquidation from reqAccountSummary
-        # is IBKR's own computed total (cash + all positions at market value).
-        ib.reqAccountSummary()
-        ib.sleep(3)
+        net_liq      = 0.0
+        cash_balance = 0.0
+        pos_value    = 0.0
 
-        net_liq       = 0.0
-        cash_balance  = 0.0
-        pos_value     = 0.0
-
+        # ── Tier 1: Read from cached accountValues (no new subscription) ─────
+        # reqAccountSummary() creates a persistent IBKR subscription. Calling it
+        # again without cancelling causes Error 322. Read the cached values that
+        # ib_insync populates automatically on connection instead.
         for av in ib.accountValues():
             if av.currency != "USD":
                 continue
@@ -571,10 +568,40 @@ def reconcile_with_ibkr(ib: IB):
             elif av.tag == "GrossPositionValue":
                 pos_value = float(av.value)
 
-        # Fallback: if account summary isn't available, use AvailableFunds
+        # ── Tier 2: Request once if cache is empty (first cycle only) ─────────
+        if net_liq <= 0:
+            try:
+                ib.reqAccountSummary()
+                ib.sleep(3)
+                for av in ib.accountValues():
+                    if av.currency != "USD":
+                        continue
+                    if av.tag == "NetLiquidation":
+                        net_liq = float(av.value)
+                    elif av.tag == "TotalCashValue":
+                        cash_balance = float(av.value)
+                    elif av.tag == "GrossPositionValue":
+                        pos_value = float(av.value)
+            except Exception as e:
+                print(f"   ⚠️  reqAccountSummary failed ({e}) — falling back to position calculation")
+
+        # ── Tier 3: Compute from Supabase positions + live IBKR prices ───────
+        # Used when IBKR account summary is unavailable (Error 322, gateway issue).
+        # Uses the same fetch_ibkr_delayed_price() that monitoring already calls.
         if net_liq <= 0:
             cash_balance = get_available_cash(ib)
-            net_liq = cash_balance
+            db_pos = client.table("portfolio_positions").select(
+                "ticker,shares,buy_price"
+            ).execute().data or []
+            pos_value = 0.0
+            for p in db_pos:
+                price = fetch_ibkr_delayed_price(p["ticker"])
+                if price <= 0:
+                    price = float(p["buy_price"])   # cost-basis floor
+                pos_value += int(p["shares"]) * price
+            net_liq = cash_balance + pos_value
+            print(f"   ℹ️  Used Supabase+IBKR-price fallback: "
+                  f"cash=${cash_balance:,.2f} positions=${pos_value:,.2f}")
 
         if net_liq > 0:
             client.table("account_balances").upsert({
