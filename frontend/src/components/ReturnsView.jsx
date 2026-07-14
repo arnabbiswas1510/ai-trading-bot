@@ -172,7 +172,9 @@ export default function ReturnsView({ trades }) {
       if (prev > 0) dailyReturns.push((curr - prev) / prev);
     }
     let botVolatility = null;
-    if (dailyReturns.length > 1) {
+    // Require at least 20 data points for meaningful annualized volatility.
+    // With fewer points one outlier day dominates the std-dev completely.
+    if (dailyReturns.length >= 20) {
       const mean = dailyReturns.reduce((s, r) => s + r, 0) / dailyReturns.length;
       const variance = dailyReturns.reduce((s, r) => s + (r - mean) ** 2, 0) / (dailyReturns.length - 1);
       botVolatility = Math.sqrt(variance) * Math.sqrt(252) * 100;
@@ -191,11 +193,20 @@ export default function ReturnsView({ trades }) {
     }
 
     let botAnnReturn = null;
+    let botReturnIsAnnualized = false;
     if (filteredChartData.length > 1) {
       const t0 = new Date(filteredChartData[0].date);
       const t1 = new Date(filteredChartData[filteredChartData.length - 1].date);
       const nDays = Math.max((t1 - t0) / (1000 * 60 * 60 * 24), 1);
-      botAnnReturn = (Math.pow(1 + periodRoi / 100, 365 / nDays) - 1) * 100;
+      if (nDays >= 180) {
+        // Enough history to annualize meaningfully
+        botAnnReturn = (Math.pow(1 + periodRoi / 100, 365 / nDays) - 1) * 100;
+        botReturnIsAnnualized = true;
+      } else {
+        // Too short to annualize — show the raw period return instead
+        botAnnReturn = periodRoi;
+        botReturnIsAnnualized = false;
+      }
     }
 
     // ── Bot normalized series for the benchmark chart (start = 100) ──────────
@@ -217,6 +228,7 @@ export default function ReturnsView({ trades }) {
         netDeposits:     rangeDeposits,
         roi:             periodRoi,
         annReturn:       botAnnReturn,
+        isAnnualized:    botReturnIsAnnualized,
         volatility:      botVolatility,
         maxDrawdown:     botMaxDrawdown,
         realizedPnL
@@ -515,14 +527,18 @@ export default function ReturnsView({ trades }) {
           icon={<Activity size={20} />}
         />
         <KpiCard 
-          title={returnType === 'TWR' ? 'Ann. Return (TWR)' : 'Ann. Return (Simple)'}
+          title={
+            kpis?.isAnnualized
+              ? (returnType === 'TWR' ? 'Ann. Return (TWR)' : 'Ann. Return (Simple)')
+              : (returnType === 'TWR' ? 'Period Return (TWR)' : 'Period Return (Simple)')
+          }
           value={kpis?.annReturn != null ? `${kpis.annReturn >= 0 ? '+' : ''}${kpis.annReturn.toFixed(2)}%` : '—'}
           valueColor={kpis?.annReturn >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}
           icon={<Percent size={20} />}
         />
         <KpiCard 
           title="Volatility (Ann.)"
-          value={kpis?.volatility != null ? `${kpis.volatility.toFixed(2)}%` : '—'}
+          value={kpis?.volatility != null ? `${kpis.volatility.toFixed(2)}%` : '— (need 20+ days)'}
           icon={<BarChart2 size={20} />}
         />
         <KpiCard 
@@ -539,10 +555,11 @@ export default function ReturnsView({ trades }) {
         benchmarksLoading={benchmarksLoading}
         botNormalized={processedData.botNormalized}
         botStats={{
-          ann_return: kpis?.annReturn,
-          volatility: kpis?.volatility,
+          ann_return:   kpis?.annReturn,
+          is_annualized: kpis?.isAnnualized,
+          volatility:   kpis?.volatility,
           max_drawdown: kpis?.maxDrawdown,
-          return: kpis?.roi
+          return:       kpis?.roi
         }}
         activeBenchmark={activeBenchmark}
         setActiveBenchmark={setActiveBenchmark}
@@ -834,7 +851,9 @@ function BenchmarkAnalyzer({ benchmarks, benchmarksLoading, botNormalized, botSt
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  {['Ticker', 'Ann. Return', 'Volatility', 'Max Drawdown'].map(h => (
+                  {['Ticker',
+                    botStats?.is_annualized === false ? 'Return (Period)' : 'Ann. Return',
+                    'Volatility', 'Max Drawdown'].map(h => (
                     <th key={h} style={{ padding: '0.6rem 1rem', textAlign: h === 'Ticker' ? 'left' : 'right', color: 'var(--text-secondary)', fontWeight: 600, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
                   ))}
                 </tr>

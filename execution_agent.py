@@ -381,15 +381,21 @@ def get_ma_value(ticker: str, current_price: float, ma_type: str, window: int) -
         return calculate_ema(closes, window)
 
 def get_available_cash(ib: IB) -> float:
-    """Query account values for settled cash / buying power in USD."""
+    """Query account values for total cash balance in USD.
+
+    Prefers TotalCashValue (IBKR's full cash including unsettled T+1 proceeds)
+    over CashBalance (settled cash only, which excludes same-day sale proceeds
+    until next-day settlement — giving an artificially low figure on trade days).
+    """
     try:
         account_values = ib.accountValues()
-        for av in account_values:
-            if av.tag == "CashBalance" and av.currency == "USD":
-                return float(av.value)
-        # Fallback to TotalCashValue
+        # TotalCashValue = settled + unsettled (correct for portfolio valuation)
         for av in account_values:
             if av.tag == "TotalCashValue" and av.currency == "USD":
+                return float(av.value)
+        # Fallback to CashBalance (settled only — may be low on trade days)
+        for av in account_values:
+            if av.tag == "CashBalance" and av.currency == "USD":
                 return float(av.value)
     except Exception as e:
         notifier.notify_exception(f"get_available_cash() — execution_agent.py", e)
