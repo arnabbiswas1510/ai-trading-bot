@@ -1443,7 +1443,7 @@ def main_loop():
             # With clientId=1, ib.portfolio() and ib.accountValues() stay empty unless
             # we explicitly subscribe. reqAccountUpdates() is a persistent push subscription
             # (unlike reqAccountSummary which causes Error 322 on repeat calls).
-            ib.reqAccountUpdates(True, '')   # '' = primary/default account
+            ib.reqAccountUpdates(True)        # persistent portfolio/accountValues push
             ib.sleep(3)                       # allow initial snapshot to arrive
             print(f"   📊 Account subscription active — portfolio has "
                   f"{len(ib.portfolio())} position(s), "
@@ -1546,7 +1546,7 @@ def main_loop():
             print("Reconnecting to IB Gateway...")
             try:
                 ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
-                ib.reqAccountUpdates(True, '')  # re-subscribe after reconnect
+                ib.reqAccountUpdates(True)  # re-subscribe after reconnect
                 ib.sleep(3)
                 print("Reconnected to IBKR Gateway successfully!")
                 _connect_silent_attempts = 0   # reset threshold counter on success
