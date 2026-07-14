@@ -2,8 +2,11 @@ name: IBKR Cash Flow Sync
 
 on:
   schedule:
-    # Mon-Fri at 19:30 UTC = 3:30 PM EDT (near market close, lowest IBKR server traffic)
-    - cron: '30 19 * * 1-5'
+    # Tue-Sat at 06:00 UTC = 2:00 AM EDT (overnight, IBKR Flex servers at minimum load).
+    # IBKR error 1001 (server busy) is most common near market open/close.
+    # Running at 2 AM EDT gives the best chance of a clean first-attempt success.
+    # Data is historical (deposits/withdrawals) so no need to run during market hours.
+    - cron: '0 6 * * 2-6'
   workflow_dispatch:   # allow manual trigger any time
 
 jobs:
@@ -26,8 +29,8 @@ jobs:
 
     - name: Sync IBKR Cash Flows (Flex Query)
       # Fetches deposits/withdrawals from IBKR and upserts into Supabase cash_flows table.
-      # Single attempt only — runs at 3:30 PM EDT when IBKR server load is lightest.
-      # On error 1001 (server busy), fails fast with a Telegram notification.
+      # Retries GetStatement up to 4 times (30s initial wait + 20s between retries)
+      # to handle IBKR error 1001 (report not ready yet). Total max wait: ~90s.
       # NOTE: IBKR_FLEX_TOKEN_EXPIRY is a Variable (not a Secret):
       #       Settings > Secrets and variables > Actions > Variables tab.
       #       Update annually when you renew the token in IBKR portal.

@@ -60,10 +60,13 @@ TELEGRAM_IDS    = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_IDS", "").sp
 SEND_URL  = "https://ndcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
 FETCH_URL = "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
 
-# Single-attempt — IBKR Flex is low-priority; we do not retry on busy (error 1001).
-# A dedicated workflow runs at 3:30 PM EDT when server traffic is lightest.
-MAX_RETRIES     = 1
-INITIAL_WAIT_S  = 5    # seconds to wait between Step 1 and Step 2
+# Retry settings for GetStatement (Step 2).
+# IBKR Flex report generation takes 10-60s depending on server load.
+# We wait INITIAL_WAIT_S before the first attempt, then retry with exponential
+# backoff on error 1001 (report not ready) up to MAX_RETRIES times.
+MAX_RETRIES     = 4
+INITIAL_WAIT_S  = 30   # seconds before first GetStatement attempt
+RETRY_WAIT_S    = 20   # additional wait between retry attempts
 
 # Days before expiry to send Telegram warning
 EXPIRY_WARN_DAYS = 30
@@ -138,15 +141,19 @@ def _request_reference_code() -> str:
     """
     Step 1: Submit the query to IBKR and get a ReferenceCode.
     Returns the ReferenceCode string on success, raises on failure.
-    Retries on error 1001 (server busy) with exponential backoff.
+    Retries on error 1001 (server busy) with a wait between attempts.
     """
     params = {"t": FLEX_TOKEN, "q": FLEX_QUERY_ID, "v": "3"}
 
     for attempt in range(1, MAX_RETRIES + 1):
+        if attempt > 1:
+            print(f"[flex_query_sync] Waiting 15s before SendRequest retry {attempt}/{MAX_RETRIES}...")
+            time.sleep(15)
+
         resp = requests.get(SEND_URL, params=params, timeout=30)
         resp.raise_for_status()
 
-        root = ET.fromstring(resp.text)
+        root   = ET.fromstring(resp.text)
         status = root.findtext("Status", "")
 
         if status == "Success":
@@ -159,33 +166,48 @@ def _request_reference_code() -> str:
         error_msg  = root.findtext("ErrorMessage", "")
 
         if error_code == "1001":
-            raise RuntimeError(f"IBKR SendRequest returned error 1001 (server busy). Try again later.")
+            if attempt < MAX_RETRIES:
+                print(f"[flex_query_sync] SendRequest got error 1001 (server busy) — retrying ({attempt}/{MAX_RETRIES})...")
+                continue
+            raise RuntimeError(
+                f"IBKR SendRequest returned error 1001 after {MAX_RETRIES} attempts. Server is busy."
+            )
 
         raise RuntimeError(f"IBKR SendRequest failed [{error_code}]: {error_msg}")
 
-    raise RuntimeError("IBKR SendRequest did not succeed.")
+    raise RuntimeError("IBKR SendRequest did not succeed after all retries.")
 
 
 def _fetch_statement(ref_code: str) -> str:
     """
     Step 2: Retrieve the generated report using the ReferenceCode.
     Returns the raw XML string on success.
-    Retries on error 1001 (server busy) with exponential backoff.
+    Retries on error 1001 (report not ready yet) with exponential backoff.
+
+    IBKR typically takes 10-60s to generate Flex reports. We wait INITIAL_WAIT_S
+    before the first attempt, then retry with RETRY_WAIT_S between attempts.
     """
     params = {"t": FLEX_TOKEN, "q": ref_code, "v": "3"}
 
     for attempt in range(1, MAX_RETRIES + 1):
-        print(f"[flex_query_sync] Waiting {INITIAL_WAIT_S}s before fetching statement...")
-        time.sleep(INITIAL_WAIT_S)
+        wait = INITIAL_WAIT_S if attempt == 1 else RETRY_WAIT_S
+        print(f"[flex_query_sync] Waiting {wait}s before GetStatement attempt {attempt}/{MAX_RETRIES}...")
+        time.sleep(wait)
 
         resp = requests.get(FETCH_URL, params=params, timeout=30)
         resp.raise_for_status()
 
-        # Check for error 1001 (server busy / report not ready yet)
+        # Error 1001 = report not ready yet — retry if attempts remain
         if "<ErrorCode>1001</ErrorCode>" in resp.text:
-            raise RuntimeError("IBKR GetStatement returned error 1001 (server busy). Try again later.")
+            if attempt < MAX_RETRIES:
+                print(f"[flex_query_sync] Got error 1001 (report not ready) — retrying ({attempt}/{MAX_RETRIES})...")
+                continue
+            raise RuntimeError(
+                f"IBKR GetStatement returned error 1001 after {MAX_RETRIES} attempts. "
+                "IBKR server is busy — try again later."
+            )
 
-        # Any other error
+        # Any other failure
         if "<Status>Fail</Status>" in resp.text:
             root = ET.fromstring(resp.text)
             error_code = root.findtext("ErrorCode", "")
@@ -194,7 +216,7 @@ def _fetch_statement(ref_code: str) -> str:
 
         return resp.text
 
-    raise RuntimeError("IBKR GetStatement did not succeed.")
+    raise RuntimeError("IBKR GetStatement did not succeed after all retries.")
 
 
 def fetch_cash_transactions() -> list[dict]:
