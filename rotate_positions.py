@@ -155,6 +155,19 @@ def main():
     print("  ROTATION: Sell EGP + WSFS  →  Buy RSI + NBIX")
     print("=" * 60)
 
+    # ── ONE-TIME DATE GUARD ───────────────────────────────────────────────────
+    # This script is a single-use rotation for 2026-07-14 ONLY.
+    # It will refuse to run on any other date, even if called manually.
+    ALLOWED_DATE = "2026-07-14"
+    today_et = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    if today_et != ALLOWED_DATE:
+        print(f"\n⛔  ABORTED — This one-time rotation is only valid on {ALLOWED_DATE}.")
+        print(f"    Today is {today_et}. Nothing was traded.")
+        sys.exit(0)
+    print(f"✅  Date check passed ({today_et}). Proceeding with rotation.\n")
+    # ── END DATE GUARD ────────────────────────────────────────────────────────
+
+
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("✗ SUPABASE_URL / SUPABASE_KEY not set.")
         sys.exit(1)
