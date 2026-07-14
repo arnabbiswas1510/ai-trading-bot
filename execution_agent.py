@@ -593,10 +593,11 @@ def reconcile_with_ibkr(ib: IB):
 
     # ── Fetch IBKR positions ────────────────────────────────────────────────
     try:
-        # Use ib.portfolio() instead of ib.positions(): portfolio() is always
-        # populated on connection whereas positions() relies on a subscription
-        # that may not have fired yet, causing false "in sync" results.
-        ib_raw = ib.portfolio()
+        # reqPositions() refreshes the positions cache; works with any clientId
+        # without needing an account subscription (unlike portfolio()/accountValues()).
+        ib.reqPositions()
+        ib.sleep(2)   # allow response to arrive
+        ib_raw = ib.positions()
         # Check for short positions and alert
         for p in ib_raw:
             if p.contract.secType == "STK" and int(p.position) < 0:
@@ -608,6 +609,7 @@ def reconcile_with_ibkr(ib: IB):
                     pass
 
         # Only include equity positions with a positive share count
+        # Position namedtuple fields: account, contract, position, avgCost
         ib_map = {
             p.contract.symbol: p
             for p in ib_raw
@@ -751,7 +753,7 @@ def reconcile_with_ibkr(ib: IB):
     for ticker in ib_tickers - supabase_tickers:
         ib_pos = ib_map[ticker]
         shares = int(ib_pos.position)
-        avg_cost = round(float(ib_pos.averageCost), 2)   # PortfolioItem uses averageCost
+        avg_cost = round(float(ib_pos.avgCost), 2)   # Position uses avgCost (not averageCost)
 
         if avg_cost <= 0:
             print(f"   ⚠️  {ticker}: in IBKR with zero avg cost — skipping.")
@@ -1546,7 +1548,7 @@ def main_loop():
             print("Reconnecting to IB Gateway...")
             try:
                 ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
-                ib.reqAccountUpdates(True)  # re-subscribe after reconnect
+                ib.reqPositions()  # re-subscribe after reconnect
                 ib.sleep(3)
                 print("Reconnected to IBKR Gateway successfully!")
                 _connect_silent_attempts = 0   # reset threshold counter on success
