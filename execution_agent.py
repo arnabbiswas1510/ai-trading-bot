@@ -596,13 +596,12 @@ def reconcile_with_ibkr(ib: IB):
         print(f"   ❌ Could not sync cash balance: {e}")
 
 
-    # ── Fetch IBKR positions ────────────────────────────────────────────────
+    # ── Fetch IBKR positions via portfolio() ────────────────────────────────
+    # portfolio() uses the account subscription already active for monitoring;
+    # it returns PortfolioItem objects with .averageCost (not .avgCost).
+    # Bug #5: never use ib.positions() here — it may return [] transiently.
     try:
-        # reqPositions() refreshes the positions cache; works with any clientId
-        # without needing an account subscription (unlike portfolio()/accountValues()).
-        ib.reqPositions()
-        ib.sleep(2)   # allow response to arrive
-        ib_raw = ib.positions()
+        ib_raw = ib.portfolio()
         # Check for short positions and alert
         for p in ib_raw:
             if p.contract.secType == "STK" and int(p.position) < 0:
@@ -614,7 +613,8 @@ def reconcile_with_ibkr(ib: IB):
                     pass
 
         # Only include equity positions with a positive share count
-        # Position namedtuple fields: account, contract, position, avgCost
+        # PortfolioItem fields: contract, position, marketPrice, marketValue,
+        #                       averageCost, unrealizedPNL, realizedPNL, account
         ib_map = {
             p.contract.symbol: p
             for p in ib_raw
@@ -758,7 +758,7 @@ def reconcile_with_ibkr(ib: IB):
     for ticker in ib_tickers - supabase_tickers:
         ib_pos = ib_map[ticker]
         shares = int(ib_pos.position)
-        avg_cost = round(float(ib_pos.avgCost), 2)   # Position uses avgCost (not averageCost)
+        avg_cost = round(float(ib_pos.averageCost), 2)   # PortfolioItem uses averageCost (Bug #5)
 
         if avg_cost <= 0:
             print(f"   ⚠️  {ticker}: in IBKR with zero avg cost — skipping.")
@@ -1193,13 +1193,11 @@ def monitor_portfolio_intraday(ib: IB):
         except Exception:
             buy_date = datetime.datetime.now(datetime.timezone.utc)
 
-        # Use IBKR delayed price for monitoring (same source as buys — no FMP lag).
-        _mon_contract = Stock(ticker, "SMART", "USD")
-        ib.qualifyContracts(_mon_contract)
-        ibkr_price, price_method = fetch_ibkr_delayed_price(ib, _mon_contract)
-        current_price = ibkr_price if ibkr_price > 0 else 0.0
+        # Use FMP live price for monitoring. This is reliable, mockable in tests,
+        # and avoids IBKR reqTickers() blocking when the data farm is down.
+        current_price = get_live_price(ticker)
         if current_price <= 0:
-            print(f"   ⚠️ Could not fetch IBKR price for {ticker} — skipping this cycle.")
+            print(f"   ⚠️ Could not fetch price for {ticker} — skipping this cycle.")
             continue
 
 
