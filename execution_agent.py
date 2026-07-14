@@ -550,58 +550,24 @@ def reconcile_with_ibkr(ib: IB):
         tz = ZoneInfo("America/New_York")
         today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
 
-        net_liq      = 0.0
-        cash_balance = 0.0
-        pos_value    = 0.0
+        # ── Compute portfolio value from Supabase positions + live IBKR prices ─
+        # Avoids unreliable ib.portfolio() and reqAccountSummary() (causes Error 322).
+        # The same fetch_ibkr_delayed_price() used for monitoring works here too.
+        # Cash balance from get_available_cash() is always accurate.
+        cash_balance = get_available_cash(ib)
 
-        # ── Tier 1: Read from cached accountValues (no new subscription) ─────
-        # reqAccountSummary() creates a persistent IBKR subscription. Calling it
-        # again without cancelling causes Error 322. Read the cached values that
-        # ib_insync populates automatically on connection instead.
-        for av in ib.accountValues():
-            if av.currency != "USD":
-                continue
-            if av.tag == "NetLiquidation":
-                net_liq = float(av.value)
-            elif av.tag == "TotalCashValue":
-                cash_balance = float(av.value)
-            elif av.tag == "GrossPositionValue":
-                pos_value = float(av.value)
+        db_pos = client.table("portfolio_positions").select(
+            "ticker,shares,buy_price"
+        ).execute().data or []
 
-        # ── Tier 2: Request once if cache is empty (first cycle only) ─────────
-        if net_liq <= 0:
-            try:
-                ib.reqAccountSummary()
-                ib.sleep(3)
-                for av in ib.accountValues():
-                    if av.currency != "USD":
-                        continue
-                    if av.tag == "NetLiquidation":
-                        net_liq = float(av.value)
-                    elif av.tag == "TotalCashValue":
-                        cash_balance = float(av.value)
-                    elif av.tag == "GrossPositionValue":
-                        pos_value = float(av.value)
-            except Exception as e:
-                print(f"   ⚠️  reqAccountSummary failed ({e}) — falling back to position calculation")
+        pos_value = 0.0
+        for p in db_pos:
+            price = fetch_ibkr_delayed_price(p["ticker"])
+            if price <= 0:
+                price = float(p["buy_price"])   # cost-basis floor if price fails
+            pos_value += int(p["shares"]) * price
 
-        # ── Tier 3: Compute from Supabase positions + live IBKR prices ───────
-        # Used when IBKR account summary is unavailable (Error 322, gateway issue).
-        # Uses the same fetch_ibkr_delayed_price() that monitoring already calls.
-        if net_liq <= 0:
-            cash_balance = get_available_cash(ib)
-            db_pos = client.table("portfolio_positions").select(
-                "ticker,shares,buy_price"
-            ).execute().data or []
-            pos_value = 0.0
-            for p in db_pos:
-                price = fetch_ibkr_delayed_price(p["ticker"])
-                if price <= 0:
-                    price = float(p["buy_price"])   # cost-basis floor
-                pos_value += int(p["shares"]) * price
-            net_liq = cash_balance + pos_value
-            print(f"   ℹ️  Used Supabase+IBKR-price fallback: "
-                  f"cash=${cash_balance:,.2f} positions=${pos_value:,.2f}")
+        net_liq = cash_balance + pos_value
 
         if net_liq > 0:
             client.table("account_balances").upsert({
@@ -611,7 +577,8 @@ def reconcile_with_ibkr(ib: IB):
                 "ibkr_total_value":     round(net_liq, 2),
             }).execute()
             print(f"   💰 Balance synced: cash=${cash_balance:,.2f} "
-                  f"positions=${pos_value:,.2f} net_liq=${net_liq:,.2f}")
+                  f"positions=${pos_value:,.2f} net_liq=${net_liq:,.2f} "
+                  f"({len(db_pos)} position(s))")
     except Exception as e:
         notifier.notify_exception("reconcile_with_ibkr() cash sync — execution_agent.py", e)
         print(f"   ❌ Could not sync cash balance from IBKR: {e}")
