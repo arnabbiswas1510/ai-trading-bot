@@ -562,7 +562,8 @@ def reconcile_with_ibkr(ib: IB):
 
         pos_value = 0.0
         for p in db_pos:
-            price = fetch_ibkr_delayed_price(p["ticker"])
+            contract = Stock(p["ticker"], "SMART", "USD")
+            price, _ = fetch_ibkr_delayed_price(ib, contract)
             if price <= 0:
                 price = float(p["buy_price"])   # cost-basis floor if price fails
             pos_value += int(p["shares"]) * price
