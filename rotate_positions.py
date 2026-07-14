@@ -43,7 +43,7 @@ IB_PORT       = int(os.getenv("IB_GATEWAY_PORT", 4000))
 SUPABASE_URL  = os.getenv("SUPABASE_URL")
 SUPABASE_KEY  = os.getenv("SUPABASE_KEY")
 STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.07))
-CLIENT_ID     = 79   # unique — does not clash with agent (1) or force_sell (76)
+CLIENT_ID     = 1    # must match the original buyer session so IBKR cash account allows the sell
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_IDS  = os.getenv("TELEGRAM_CHAT_IDS", "").split(",")
@@ -86,6 +86,13 @@ def get_account(ib: IB) -> str:
     accounts = ib.managedAccounts()
     live = [a for a in accounts if not a.startswith("DU")]
     return live[0] if live else (accounts[0] if accounts else "")
+
+
+def get_ibkr_positions(ib: IB) -> dict:
+    """Return dict of {symbol: position_size} using reqPositions (reliable)."""
+    ib.reqPositions()
+    ib.sleep(3)   # give TWS time to push all position records
+    return {p.contract.symbol: p.position for p in ib.positions()}
 
 
 def get_ticker_snapshot(ib: IB, contract) -> tuple[float, float]:
@@ -185,7 +192,32 @@ def main():
         sys.exit(1)
 
     account = get_account(ib)
-    print(f"✅ Connected. Account: {account}\n")
+    print(f"✅ Connected. Account: {account}")
+
+    # Subscribe to account updates — this is what allows IBKR to recognise
+    # our long positions and NOT treat the sell as a short.
+    ib.reqAccountSummary()
+    ib.sleep(2)
+
+    # Subscribe to positions and verify we can see the holdings
+    ibkr_positions = get_ibkr_positions(ib)
+    print("IBKR positions confirmed:")
+    for sym, qty in ibkr_positions.items():
+        print(f"  {sym}: {qty} shares")
+    print()
+
+    # Sanity check — abort if neither WSFS nor EGP appears
+    for s in SELLS:
+        if s["ticker"] not in ibkr_positions:
+            print(f"\n⛔ ABORT — {s['ticker']} not found in IBKR positions. Cannot sell.")
+            print(f"   Positions seen: {list(ibkr_positions.keys())}")
+            ib.disconnect()
+            sys.exit(1)
+        actual_shares = int(ibkr_positions[s["ticker"]])
+        if actual_shares != s["shares"]:
+            print(f"   ⚠  {s['ticker']}: Supabase shows {s['shares']} shares, IBKR shows {actual_shares}. Using IBKR count.")
+            s["shares"] = actual_shares
+    print()
 
     # ── PHASE 1: SELL EGP and WSFS ────────────────────────────────────────────
     print("─" * 60)
@@ -216,9 +248,14 @@ def main():
             limit_price = s["limit_price"]
             print(f"   No live quote — using preset limit: ${limit_price:.2f}")
 
-        order = LimitOrder("SELL", shares, limit_price)
-        order.tif     = "DAY"
-        order.account = account
+        order = Order()
+        order.action        = 'SELL'
+        order.orderType     = 'LMT'
+        order.totalQuantity = shares
+        order.lmtPrice      = limit_price
+        order.tif           = 'DAY'
+        order.account       = account
+        order.transmit      = True
 
         trade = ib.placeOrder(contract, order)
         print(f"   ✅ SELL order placed: {shares} × {ticker} @ LIMIT ${limit_price:.2f}")

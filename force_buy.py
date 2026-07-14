@@ -53,18 +53,18 @@ notifier = TelegramNotifier(
     chat_ids=os.getenv("TELEGRAM_CHAT_IDS", "").split(",")
 )
 
-def get_live_price(ticker: str) -> float:
-    import requests
+def get_ibkr_price(ib: IB, ticker: str) -> float:
+    """Fetch price via IBKR delayed market data (same as execution_agent buy path)."""
+    from execution_agent import fetch_ibkr_delayed_price
     try:
-        r = requests.get(
-            f"https://financialmodelingprep.com/api/v3/quote/{ticker}",
-            params={"apikey": FMP_API_KEY}, timeout=10
-        )
-        data = r.json()
-        if data and isinstance(data, list):
-            return float(data[0].get("price", 0))
+        contract = Stock(ticker, "SMART", "USD")
+        ib.qualifyContracts(contract)
+        price, method = fetch_ibkr_delayed_price(ib, contract)
+        if price > 0:
+            print(f"   📡 {ticker} IBKR delayed price: ${price:.2f} ({method})")
+            return price
     except Exception as e:
-        print(f"   Warning: could not get live price for {ticker}: {e}")
+        print(f"   ⚠️ IBKR price fetch failed for {ticker}: {e}")
     return 0.0
 
 def get_available_cash(ib: IB) -> float:
@@ -153,9 +153,11 @@ def main():
             print(f"   Skip: position size ${position_size:,.0f} below minimum ${MIN_POSITION_SIZE:,.0f}.")
             break
 
-        current_price = get_live_price(ticker)
+        # Always use IBKR delayed quotes — FMP returns yesterday's close at market open
+        current_price = get_ibkr_price(ib, ticker)
         if current_price <= 0:
             current_price = float(trigger["close_price"])
+            print(f"   ⚠️ IBKR price unavailable for {ticker} — using prev close ${current_price:.2f}")
 
         pivot_price = float(trigger["close_price"])
         extension_pct = (current_price - pivot_price) / pivot_price if pivot_price > 0 else 0

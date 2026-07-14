@@ -979,11 +979,14 @@ def run_market_open_buys(ib: IB):
             current_price = ibkr_price
             price_source  = f"IBKR ({price_method})"
         else:
-            current_price = get_live_price(ticker)
-            price_source  = "FMP (fallback)"
-        if current_price <= 0:
+            # IBKR delayed price unavailable — fall back to previous close from screener.
+            # Do NOT use FMP here: FMP /stable/quote returns yesterday's close at market
+            # open, causing the same 5-10% lag issue we're trying to avoid.
             current_price = float(trigger["close_price"])
-            price_source  = "prev close"
+            price_source  = "prev close (IBKR delayed unavailable)"
+        if current_price <= 0:
+            print(f"   ⚠️ No valid price for {ticker} — skipping.")
+            continue
         print(f"   📡 {ticker} price: ${current_price:.2f} (source: {price_source})")
 
         # ── CANSLIM pivot extension check ────────────────────────────────────
@@ -1164,10 +1167,15 @@ def monitor_portfolio_intraday(ib: IB):
         except Exception:
             buy_date = datetime.datetime.now(datetime.timezone.utc)
 
-        current_price = get_live_price(ticker)
+        # Use IBKR delayed price for monitoring (same source as buys — no FMP lag).
+        _mon_contract = Stock(ticker, "SMART", "USD")
+        ib.qualifyContracts(_mon_contract)
+        ibkr_price, price_method = fetch_ibkr_delayed_price(ib, _mon_contract)
+        current_price = ibkr_price if ibkr_price > 0 else 0.0
         if current_price <= 0:
-            print(f"   ⚠️ Could not fetch price for {ticker} — skipping this cycle.")
+            print(f"   ⚠️ Could not fetch IBKR price for {ticker} — skipping this cycle.")
             continue
+
 
         print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
               f"| IBKR Trail: {STOP_LOSS_PCT*100:.0f}%")
