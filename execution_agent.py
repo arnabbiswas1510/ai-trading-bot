@@ -547,39 +547,48 @@ def reconcile_with_ibkr(ib: IB):
 
     # ── Sync live IBKR cash balance to Supabase (Do this FIRST) ────────
     try:
-        ibkr_cash = get_available_cash(ib)
-        if ibkr_cash > 0:
-            new_balance = round(ibkr_cash, 2)
-            tz = ZoneInfo("America/New_York")
-            today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
+        tz = ZoneInfo("America/New_York")
+        today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
 
-            # Calculate positions value and total value for TWR
-            ib_port = []
-            try: ib_port = ib.portfolio()
-            except Exception: pass
-            
-            positions_value = 0.0
-            for p in ib_port:
-                if p.contract.secType == "STK" and int(p.position) > 0:
-                    price = get_live_price(p.contract.symbol)
-                    if price <= 0: price = float(p.averageCost)
-                    positions_value += int(p.position) * price
+        # ── Use IBKR account summary for authoritative portfolio totals ────────
+        # ib.portfolio() often returns empty positions until account subscriptions
+        # fire, causing positions_value=0. NetLiquidation from reqAccountSummary
+        # is IBKR's own computed total (cash + all positions at market value).
+        ib.reqAccountSummary()
+        ib.sleep(3)
 
-            total_value = new_balance + positions_value
+        net_liq       = 0.0
+        cash_balance  = 0.0
+        pos_value     = 0.0
 
-            # Always record today's snapshot with the new time-series schema
-            client.table("account_balances").upsert(
-                {
-                    "date": today_str,
-                    "ibkr_cash_balance": new_balance,
-                    "ibkr_positions_value": round(positions_value, 2),
-                    "ibkr_total_value": round(total_value, 2)
-                }
-            ).execute()
-            print(f"   💰 Cash balance synced from IBKR: ${new_balance:,.2f}")
+        for av in ib.accountValues():
+            if av.currency != "USD":
+                continue
+            if av.tag == "NetLiquidation":
+                net_liq = float(av.value)
+            elif av.tag == "TotalCashValue":
+                cash_balance = float(av.value)
+            elif av.tag == "GrossPositionValue":
+                pos_value = float(av.value)
+
+        # Fallback: if account summary isn't available, use AvailableFunds
+        if net_liq <= 0:
+            cash_balance = get_available_cash(ib)
+            net_liq = cash_balance
+
+        if net_liq > 0:
+            client.table("account_balances").upsert({
+                "date":                 today_str,
+                "ibkr_cash_balance":    round(cash_balance, 2),
+                "ibkr_positions_value": round(pos_value, 2),
+                "ibkr_total_value":     round(net_liq, 2),
+            }).execute()
+            print(f"   💰 Balance synced: cash=${cash_balance:,.2f} "
+                  f"positions=${pos_value:,.2f} net_liq=${net_liq:,.2f}")
     except Exception as e:
         notifier.notify_exception("reconcile_with_ibkr() cash sync — execution_agent.py", e)
         print(f"   ❌ Could not sync cash balance from IBKR: {e}")
+
 
     # ── Fetch IBKR positions ────────────────────────────────────────────────
     try:
