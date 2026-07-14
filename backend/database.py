@@ -629,7 +629,15 @@ def get_daily_triggers():
                 "quality_score": row.get("quality_score"),
                 "ai_grade": row.get("ai_grade"),
                 "final_score": row.get("final_score"),
-                "company_size": watchlist_map.get(ticker)
+                "company_size": watchlist_map.get(ticker),
+                # 5-component scores (for expandable detail panel in BreakoutsView)
+                "technical_score": row.get("technical_score"),
+                "liquidity_score": row.get("liquidity_score"),
+                "sentiment_score": row.get("sentiment_score"),
+                "rs_score": row.get("rs_score"),
+                "score_rationale": row.get("score_rationale"),
+                "atr_pct": row.get("atr_pct"),
+                "est_days_to_target": row.get("est_days_to_target"),
             })
             
         removed_tickers = list(prev_tickers - curr_tickers) if prev_tickers else []
