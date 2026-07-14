@@ -1073,11 +1073,20 @@ def run_market_open_buys(ib: IB):
                 "buy_source": buy_source,
                 "stop_loss":  stop_loss_val,
                 "hwm_date":   datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
-                # ── Entry quality snapshot (for future rotation analysis) ──────
-                "entry_quality_score": trigger.get("quality_score"),
-                "entry_ai_rating":     trigger.get("ai_rating"),
-                "entry_ai_grade":      trigger.get("ai_grade"),
-                "entry_final_score":   trigger.get("final_score"),
+                # ── Entry conviction snapshot (all 5-component scores) ─────────
+                # Copied from the daily_triggers row so the Open Positions UI and
+                # future rotation analysis have the full picture at entry time.
+                "entry_quality_score":    trigger.get("quality_score"),
+                "entry_ai_rating":        trigger.get("ai_rating"),
+                "entry_ai_grade":         trigger.get("ai_grade"),
+                "entry_final_score":      trigger.get("final_score"),
+                "entry_technical_score":  trigger.get("technical_score"),
+                "entry_liquidity_score":  trigger.get("liquidity_score"),
+                "entry_rs_score":         trigger.get("rs_score"),
+                "entry_sentiment_score":  trigger.get("sentiment_score"),
+                "entry_atr_pct":          trigger.get("atr_pct"),
+                "entry_est_days_target":  trigger.get("est_days_to_target"),
+                "entry_score_rationale":  trigger.get("score_rationale"),
             }
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")

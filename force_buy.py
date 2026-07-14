@@ -209,14 +209,22 @@ def _place_buy(
             "buy_source": "daily_triggers",
             "hwm_date":   datetime.datetime.now(tz).date().isoformat(),
             "oca_group":  None,
-            # ── Entry conviction snapshot — shown in Open Positions UI ──────────
-            # Mirrors execution_agent.py so manual buys show the same conviction
-            # scores as automated buys.
-            "entry_quality_score": trigger.get("quality_score"),
-            "entry_ai_rating":     trigger.get("ai_rating"),
-            "entry_ai_grade":      trigger.get("ai_grade"),
-            "entry_final_score":   trigger.get("final_score"),
+            # ── Entry conviction snapshot (all 5-component scores) ──────────────
+            # Mirrors execution_agent.py exactly so manual/rotation buys show
+            # the same data in the Open Positions UI as automated buys.
+            "entry_quality_score":    trigger.get("quality_score"),
+            "entry_ai_rating":        trigger.get("ai_rating"),
+            "entry_ai_grade":         trigger.get("ai_grade"),
+            "entry_final_score":      trigger.get("final_score"),
+            "entry_technical_score":  trigger.get("technical_score"),
+            "entry_liquidity_score":  trigger.get("liquidity_score"),
+            "entry_rs_score":         trigger.get("rs_score"),
+            "entry_sentiment_score":  trigger.get("sentiment_score"),
+            "entry_atr_pct":          trigger.get("atr_pct"),
+            "entry_est_days_target":  trigger.get("est_days_to_target"),
+            "entry_score_rationale":  trigger.get("score_rationale"),
         }).execute()
+
     except Exception as e:
         print(f"   ⚠️ Supabase insert error for {ticker}: {e}")
 
