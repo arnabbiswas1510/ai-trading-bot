@@ -209,9 +209,17 @@ def _place_buy(
             "buy_source": "daily_triggers",
             "hwm_date":   datetime.datetime.now(tz).date().isoformat(),
             "oca_group":  None,
+            # ── Entry conviction snapshot — shown in Open Positions UI ──────────
+            # Mirrors execution_agent.py so manual buys show the same conviction
+            # scores as automated buys.
+            "entry_quality_score": trigger.get("quality_score"),
+            "entry_ai_rating":     trigger.get("ai_rating"),
+            "entry_ai_grade":      trigger.get("ai_grade"),
+            "entry_final_score":   trigger.get("final_score"),
         }).execute()
     except Exception as e:
         print(f"   ⚠️ Supabase insert error for {ticker}: {e}")
+
 
     # ── Trailing stop ─────────────────────────────────────────────────────────
     try:
