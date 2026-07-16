@@ -144,7 +144,16 @@ STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
 # Days without a new high-water mark before a position is considered plateaued.
 # If portfolio is full and a fresh breakout exists at 3:45pm, the most-stalled
 # position (largest days since HWM) is rotated out.
-PLATEAU_DAYS             = int(os.getenv("PLATEAU_DAYS", 10))
+PLATEAU_DAYS             = int(os.getenv("PLATEAU_DAYS", 7))
+# ── Tiered rotation thresholds ────────────────────────────────────────────────
+# Tier 1: RS Decay Gate — recommend rotation when live RS score has fallen this
+#   many points below the entry RS score (and >= RS_DECAY_MIN_DAYS have passed).
+RS_DECAY_GATE            = int(os.getenv("RS_DECAY_GATE", 15))
+RS_DECAY_MIN_DAYS        = int(os.getenv("RS_DECAY_MIN_DAYS", 3))
+# Tier 2: Score Differential — recommend rotation when the top unowned trigger's
+#   final_score exceeds the held position's entry_final_score by this many points.
+SCORE_UPGRADE_GAP        = int(os.getenv("SCORE_UPGRADE_GAP", 20))
+SCORE_GAP_MIN_DAYS       = int(os.getenv("SCORE_GAP_MIN_DAYS", 5))
 COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
@@ -778,6 +787,7 @@ def reconcile_with_ibkr(ib: IB):
             "buy_source": "daily_triggers",   # Bug fix: always set buy_source to prevent NULL
             "stop_loss": stop_loss,
             "hwm_date": datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),   # plateau clock starts at entry
+            "entry_rs_score": None,   # unknown for manual buys — Tier 1 RS check skipped
         }
         try:
             client.table("portfolio_positions").insert(position_data).execute()
@@ -1161,6 +1171,62 @@ def get_fresh_triggers_today(client: Client, active_tickers: list) -> list:
     except Exception:
         return []
 
+
+def _fetch_current_rs(ticker: str) -> int | None:
+
+    """Fetch the stock's current 12-week return vs SPY and return its live RS score.
+
+    Uses the same FMP endpoint as the screener — no new dependency.
+    Returns None on any API failure (caller must treat as 'no data, skip Tier 1').
+    Called once per position per EOD cycle (~4 FMP calls/day total).
+    """
+    from scoring import compute_rs_score
+    try:
+        tz_rs     = ZoneInfo("America/New_York")
+        to_date   = datetime.datetime.now(tz_rs).date()
+        from_date = to_date - datetime.timedelta(days=100)
+        url = (
+            "https://financialmodelingprep.com/stable/historical-price-eod/full"
+            f"?symbol={ticker}&from={from_date}&to={to_date}&apikey={FMP_API_KEY}"
+        )
+        r = fmp_session.get(url, timeout=10)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        if not data or not isinstance(data, list) or len(data) < 2:
+            return None
+        closes = sorted(data, key=lambda x: x["date"])
+        lookback = min(60, len(closes) - 1)
+        p_now  = float(closes[-1]["close"])
+        p_then = float(closes[-1 - lookback]["close"])
+        if p_then <= 0:
+            return None
+        stock_12w = round(((p_now / p_then) - 1.0) * 100.0, 2)
+        # Use SPY baseline from the screener module if available; fall back to 0.0
+        import sys as _sys
+        spy_12w = getattr(_sys.modules.get("technical_screener"), "_SPY_12W_RETURN", 0.0)
+        return compute_rs_score(stock_12w, spy_12w)
+    except Exception as _e:
+        print(f"   ⚠️ _fetch_current_rs({ticker}) failed: {_e}")
+        return None
+
+
+def _set_rotation_recommendation(client, ticker: str, tier: str | None):
+    """Write or clear rotation_recommendation in portfolio_positions.
+
+    tier: 'TIER_1', 'TIER_2', or None (to clear).
+    Safe to call even if the column does not yet exist — exception is caught.
+    """
+    try:
+        client.table("portfolio_positions").update(
+            {"rotation_recommendation": tier}
+        ).eq("ticker", ticker).execute()
+        label = tier or "cleared"
+        print(f"   💡 {ticker}: rotation_recommendation → {label}")
+    except Exception as _e:
+        print(f"   ⚠️ Could not set rotation_recommendation for {ticker}: {_e}")
+
+
 def monitor_portfolio_intraday(ib: IB):
     """Monitors open positions: updates hwm_date, self-heals trailing stops,
     applies the MA exit, and runs EOD plateau rotation."""
@@ -1269,55 +1335,137 @@ def monitor_portfolio_intraday(ib: IB):
                         continue
 
     # ── EOD Plateau Rotation (3:45–4:00 PM ET) ────────────────────────────────
-    # After the per-position loop: if portfolio is full and a fresh breakout trigger
-    # exists, sell the most-stalled position (longest since its last HWM) to free a
-    # slot. The replacement buy happens the next morning via run_market_open_buys().
+    # Runs once per day at 3:45 PM. Three-tier logic:
+    #   Tier 1 (RS Decay)      → writes rotation_recommendation='TIER_1'; user approves via UI
+    #   Tier 2 (Score Gap)     → writes rotation_recommendation='TIER_2'; user approves via UI
+    #   Tier 3 (Hard time-stop)→ auto-executes immediately (rule-based, no judgment required)
+    #
+    # All tiers also update 3 live metrics columns per position:
+    #   days_since_hwm, live_rs_score, top_trigger_score
     now_eod = datetime.datetime.now(tz)
     is_eod_window = (now_eod.hour == 15 and now_eod.minute >= 45)
 
     if is_eod_window and len(positions) >= MAX_POSITIONS:
+        today_eod = datetime.datetime.now(tz).date()
+
+        # ── Fetch fresh triggers (full rows for score comparison) ─────────────
         try:
             recent_date = (datetime.datetime.now(tz) - datetime.timedelta(days=TRIGGER_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
             triggers_res = client.table("daily_triggers") \
-                .select("ticker") \
+                .select("*") \
                 .gte("triggered_at", recent_date) \
                 .execute()
             held_tickers = {p["ticker"] for p in positions}
-            fresh_tickers = {t["ticker"] for t in (triggers_res.data or [])} - held_tickers
+            fresh_triggers = [
+                t for t in (triggers_res.data or [])
+                if t["ticker"] not in held_tickers
+            ]
+            fresh_triggers.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
+            fresh_tickers = {t["ticker"] for t in fresh_triggers}
+            best_trigger       = fresh_triggers[0] if fresh_triggers else None
+            best_trigger_score = (best_trigger.get("final_score") or 0) if best_trigger else 0
+            best_ticker        = best_trigger["ticker"] if best_trigger else None
         except Exception:
-            fresh_tickers = set()
+            fresh_tickers      = set()
+            best_trigger_score = 0
+            best_ticker        = None
 
-        if fresh_tickers:
-            today_eod = datetime.datetime.now(tz).date()
-            plateau_candidates = []
+        # ── Update live plateau health metrics for every position ─────────────
+        # Written once per EOD cycle so the UI and approval endpoint always have
+        # fresh data without needing client-side computation.
+        for pos in positions:
+            ticker_m = pos["ticker"]
+            hwm_str  = (pos.get("hwm_date") or str(today_eod))[:10]
+            hwm_d_m  = datetime.date.fromisoformat(hwm_str)
+            dsm      = trading_days_between(hwm_d_m, today_eod)
+            live_rs  = _fetch_current_rs(ticker_m)  # ~1 FMP call per position
+            try:
+                client.table("portfolio_positions").update({
+                    "days_since_hwm":    dsm,
+                    "live_rs_score":     live_rs,
+                    "top_trigger_score": best_trigger_score if fresh_tickers else None,
+                }).eq("ticker", ticker_m).execute()
+                # Cache updated values locally so tier checks below can use them
+                pos["days_since_hwm"]    = dsm
+                pos["live_rs_score"]     = live_rs
+                pos["top_trigger_score"] = best_trigger_score if fresh_tickers else None
+            except Exception as _me:
+                print(f"   ⚠️ Could not update plateau metrics for {ticker_m}: {_me}")
+
+        if fresh_tickers and best_ticker:
+
+            # ── Tier 1: RS Decay Gate ─────────────────────────────────────────
+            # Recommend rotation if live RS has dropped >= RS_DECAY_GATE points
+            # below the entry RS and the position has stalled >= RS_DECAY_MIN_DAYS.
             for p in positions:
-                hwm_date_str = p.get("hwm_date")
-                if not hwm_date_str:
+                entry_rs = p.get("entry_rs_score")
+                live_rs  = p.get("live_rs_score")
+                dsm      = p.get("days_since_hwm", 0)
+                if entry_rs is None or live_rs is None:
                     continue
-                hwm_d = datetime.date.fromisoformat(hwm_date_str)
-                days_since_hwm = trading_days_between(hwm_d, today_eod)
-                if days_since_hwm >= PLATEAU_DAYS:
-                    plateau_candidates.append((days_since_hwm, p))
+                if dsm < RS_DECAY_MIN_DAYS:
+                    continue
+                rs_decay = int(entry_rs) - int(live_rs)
+                if rs_decay >= RS_DECAY_GATE:
+                    print(f"   📊 Tier 1: {p['ticker']} RS decayed {rs_decay}pts "
+                          f"(entry={entry_rs} → live={live_rs}, {dsm}d stalled) "
+                          f"— recommending rotation to {best_ticker}")
+                    _set_rotation_recommendation(client, p["ticker"], "TIER_1")
+                    notifier.notify(
+                        f"💡 *Rotation Rec — Tier 1 (RS Decay)*\n"
+                        f"{p['ticker']}: RS {entry_rs} → {live_rs} (−{rs_decay}pts, {dsm}d stalled)\n"
+                        f"Upgrade candidate: {best_ticker} (score {best_trigger_score})\n"
+                        f"→ Approve or dismiss in the portfolio UI."
+                    )
 
-            if plateau_candidates:
-                plateau_candidates.sort(reverse=True)  # most stalled first
-                days_stalled, worst = plateau_candidates[0]
+            # ── Tier 2: Score Differential ────────────────────────────────────
+            # Recommend rotation if a materially higher-scored trigger exists
+            # and the position has stalled >= SCORE_GAP_MIN_DAYS.
+            for p in positions:
+                dsm        = p.get("days_since_hwm", 0)
+                entry_score = p.get("entry_final_score") or 0
+                score_gap   = best_trigger_score - entry_score
+                if dsm >= SCORE_GAP_MIN_DAYS and score_gap >= SCORE_UPGRADE_GAP:
+                    # Only set if not already set to TIER_1 for same ticker
+                    if p.get("rotation_recommendation") != "TIER_1":
+                        print(f"   📈 Tier 2: {p['ticker']} score gap +{score_gap} "
+                              f"(entry={entry_score} vs {best_ticker}={best_trigger_score}, {dsm}d stalled) "
+                              f"— recommending rotation")
+                        _set_rotation_recommendation(client, p["ticker"], "TIER_2")
+                        notifier.notify(
+                            f"💡 *Rotation Rec — Tier 2 (Score Upgrade)*\n"
+                            f"{p['ticker']}: entry score {entry_score} vs {best_ticker} score {best_trigger_score} (+{score_gap}pts, {dsm}d stalled)\n"
+                            f"→ Approve or dismiss in the portfolio UI."
+                        )
+
+            # ── Tier 3: Hard Time-Stop (auto-execute) ─────────────────────────
+            # If a position has stalled >= PLATEAU_DAYS, sell it immediately.
+            # No user approval needed — this is a rule, not a judgment call.
+            tier3_candidates = [
+                (p.get("days_since_hwm", 0), p)
+                for p in positions
+                if (p.get("days_since_hwm") or 0) >= PLATEAU_DAYS
+            ]
+            if tier3_candidates:
+                tier3_candidates.sort(reverse=True)  # most stalled first
+                days_stalled, worst = tier3_candidates[0]
                 wticker     = worst["ticker"]
                 wshares     = int(worst["shares"])
                 wbuy_price  = float(worst["buy_price"])
                 wbuy_date   = datetime.datetime.fromisoformat(worst["buy_date"].replace('Z', '+00:00'))
                 wbuy_reason = worst.get("buy_reason", "Unknown")
                 wprice      = get_live_price(wticker)
-                replacement = next(iter(fresh_tickers))
                 reason = (
-                    f"Plateau Rotation — no new HWM in {days_stalled} days. "
-                    f"Freeing slot for fresh breakout ({replacement})."
+                    f"Tier 3 Hard Time-Stop — no new HWM in {days_stalled} trading days. "
+                    f"Freeing slot for fresh breakout ({best_ticker})."
                 )
-                print(f"📉 Plateau Rotation: {wticker} ({days_stalled}d stalled) → slot freed for {replacement}")
+                print(f"📉 Tier 3 Auto-Rotate: {wticker} ({days_stalled}d stalled) → {best_ticker}")
                 cancel_ticker_sell_orders(ib, wticker)
                 ib.sleep(1)
                 execute_sell(ib, client, wticker, wshares, wbuy_price,
                              wbuy_date, wbuy_reason, wprice, reason)
+                # Clear any pending recommendation now that the position is gone
+                _set_rotation_recommendation(client, wticker, None)
 
 
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float, buy_date, buy_reason: str, current_price: float, reason: str) -> bool:

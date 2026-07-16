@@ -256,6 +256,133 @@ def get_account_balances():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/portfolio/{ticker}/approve-rotation")
+async def approve_rotation(ticker: str):
+    """
+    User approved a Tier 1 or Tier 2 rotation recommendation.
+
+    Flow (immediate execution):
+      1. Validate market hours (9:30 AM – 4:00 PM ET).
+      2. Verify recommendation is still set (idempotency guard).
+      3. Stop execution-agent container to free clientId=1.
+      4. Run rotate_positions.py <TICKER> via docker exec.
+      5. Restart execution-agent in the finally block (always).
+      6. Clear rotation_recommendation in Supabase.
+
+    Returns JSON with status, stdout, and stderr for the UI to display.
+    """
+    import subprocess
+    from zoneinfo import ZoneInfo as _ZI
+
+    ticker = ticker.upper().strip()
+    now_et = datetime.datetime.now(_ZI("America/New_York"))
+
+    # Guard: market hours only
+    market_open  = now_et.replace(hour=9,  minute=30, second=0, microsecond=0)
+    market_close = now_et.replace(hour=16, minute=0,  second=0, microsecond=0)
+    if not (market_open <= now_et <= market_close):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Market is closed (current ET time: {now_et.strftime('%H:%M')}). Rotation not executed."
+        )
+
+    # Idempotency guard: only proceed if recommendation is still set
+    try:
+        supabase = db.get_supabase_client()
+        res = supabase.table("portfolio_positions") \
+            .select("rotation_recommendation") \
+            .eq("ticker", ticker) \
+            .execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail=f"{ticker} not found in portfolio.")
+        rec = res.data[0].get("rotation_recommendation")
+        if not rec:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{ticker} has no pending rotation recommendation (may have already been executed or dismissed)."
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase check failed: {e}")
+
+    COMPOSE_DIR = "/home/dietpi/docker/ai-trading-bot"
+    stdout_log, stderr_log = "", ""
+
+    try:
+        # Step 1: Stop execution agent to free clientId=1
+        subprocess.run(
+            ["docker", "compose", "stop", "execution-agent"],
+            cwd=COMPOSE_DIR, check=True, timeout=30,
+            capture_output=True
+        )
+
+        # Step 2: Run rotation script for this ticker
+        result = subprocess.run(
+            ["docker", "compose", "run", "--rm",
+             "-e", f"ROTATE_TICKER={ticker}",
+             "execution-agent",
+             "python3", "/app/rotate_positions.py", ticker],
+            cwd=COMPOSE_DIR, timeout=180,
+            capture_output=True, text=True
+        )
+        stdout_log = result.stdout
+        stderr_log = result.stderr
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"rotate_positions.py exited with code {result.returncode}.\n"
+                f"stderr: {stderr_log[-2000:]}"
+            )
+
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    finally:
+        # Always restart the execution agent, even if rotation failed
+        subprocess.run(
+            ["docker", "compose", "start", "execution-agent"],
+            cwd=COMPOSE_DIR, timeout=30,
+            capture_output=True
+        )
+
+    # Step 3: Clear the recommendation in Supabase
+    try:
+        supabase.table("portfolio_positions") \
+            .update({"rotation_recommendation": None}) \
+            .eq("ticker", ticker).execute()
+    except Exception:
+        pass  # non-fatal — rotation already executed
+
+    return {
+        "status":  "rotated",
+        "ticker":  ticker,
+        "stdout":  stdout_log[-3000:] if stdout_log else "",
+        "stderr":  stderr_log[-500:]  if stderr_log else "",
+    }
+
+
+@app.post("/api/portfolio/{ticker}/dismiss-rotation")
+def dismiss_rotation(ticker: str):
+    """
+    User dismissed the rotation recommendation.
+    Clears rotation_recommendation in Supabase so the UI stops showing the alert.
+    The position continues to be monitored — the recommendation may reappear
+    at the next EOD cycle if conditions still hold.
+    """
+    ticker = ticker.upper().strip()
+    try:
+        supabase = db.get_supabase_client()
+        supabase.table("portfolio_positions") \
+            .update({"rotation_recommendation": None}) \
+            .eq("ticker", ticker).execute()
+        return {"status": "dismissed", "ticker": ticker}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
 
 @app.get("/api/breakouts")
 def get_breakouts():

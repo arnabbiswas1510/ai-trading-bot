@@ -19,7 +19,7 @@ import {
 
 // ── Constants mirrored from execution_agent.py env defaults ──────────────────
 const STOP_LOSS_PCT  = 0.07;  // 7% trailing stop
-const PLATEAU_DAYS   = 10;   // days without new HWM before plateau exit eligible
+const PLATEAU_DAYS   = 7;    // days without new HWM before plateau exit eligible (lowered from 10)
 
 // ── Stable module-level sort-key functions ────────────────────────────────────
 // Must be module-level so the === reference stays identical across renders
@@ -146,11 +146,20 @@ function getCleanExitReason(raw, pctReturn) {
   if (!raw) return 'Manual Close';
   const lower = raw.toLowerCase();
   
+  if (lower.includes('tier 3') || lower.includes('hard time-stop')) {
+    return 'Tier 3 Time-Stop';
+  }
+  if (lower.includes('tier 2') || lower.includes('score upgrade')) {
+    return 'Tier 2 Score Upgrade';
+  }
+  if (lower.includes('tier 1') || lower.includes('rs decay')) {
+    return 'Tier 1 RS Decay';
+  }
   if (lower.includes('ema-21') || lower.includes('exit ma')) {
     return 'EMA-21 Exit';
   }
-  if (lower.includes('stale rotation')) {
-    return 'Stale Rotation';
+  if (lower.includes('stale rotation') || lower.includes('plateau rotation')) {
+    return 'Plateau Rotation';
   }
   if (lower.includes('force sell') || lower.includes('user request')) {
     return 'Manual Force Sell';
@@ -261,28 +270,140 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             </div>
           </div>
 
-          {/* ── Plateau Risk ─────────────────────────── */}
+          {/* ── Plateau Health ───────────────────────────── */}
           {(() => {
-            const hwmDate = pos.hwm_date || pos.buy_date;
-            const daysSinceHWM = tradingDaysBetween(hwmDate, new Date());
-            const pct = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
+            // Prefer server-computed days_since_hwm (written each EOD cycle);
+            // fall back to client-side calculation from hwm_date for freshness.
+            const serverDays = pos.days_since_hwm;
+            const hwmDate    = pos.hwm_date || pos.buy_date;
+            const daysSinceHWM = serverDays != null
+              ? serverDays
+              : tradingDaysBetween(hwmDate, new Date());
+            const pct        = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
             const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
-            const color = isPlateauing ? '#f43f5e' : pct >= 0.7 ? '#f59e0b' : '#10b981';
+            const color      = isPlateauing ? '#f43f5e' : pct >= 0.7 ? '#f59e0b' : '#10b981';
+            const accentRGB  = isPlateauing ? '244,63,94' : pct >= 0.7 ? '245,158,11' : '52,211,153';
+
+            // RS Decay: entry vs live
+            const entryRS = pos.entry_rs_score;
+            const liveRS  = pos.live_rs_score;
+            const rsDecay = (entryRS != null && liveRS != null) ? (entryRS - liveRS) : null;
+            const rsDecayColor = rsDecay != null
+              ? (rsDecay >= 15 ? '#f43f5e' : rsDecay >= 8 ? '#f59e0b' : '#10b981')
+              : 'var(--text-muted)';
+
+            // Score gap: top trigger vs entry
+            const entryScore = pos.entry_final_score;
+            const topScore   = pos.top_trigger_score;
+            const scoreGap   = (entryScore != null && topScore != null) ? (topScore - entryScore) : null;
+            const scoreGapColor = scoreGap != null
+              ? (scoreGap >= 20 ? '#f43f5e' : scoreGap >= 10 ? '#f59e0b' : '#10b981')
+              : 'var(--text-muted)';
+
+            // Recommendation
+            const rec = pos.rotation_recommendation;
+            const tierColors = {
+              TIER_1: { bg: 'rgba(244,63,94,0.12)', border: 'rgba(244,63,94,0.4)', text: '#f43f5e', label: '⚠️ Tier 1 — RS Decay' },
+              TIER_2: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#f59e0b', label: '📈 Tier 2 — Score Upgrade' },
+            };
+            const tierInfo = rec ? tierColors[rec] : null;
+
+            const handleApprove = async () => {
+              if (!window.confirm(`Approve rotation of ${pos.ticker}? This will execute a live sell order.`)) return;
+              try {
+                const r = await fetch(`/api/portfolio/${pos.ticker}/approve-rotation`, { method: 'POST' });
+                const body = await r.json();
+                if (!r.ok) { alert(`Rotation failed: ${body.detail}`); return; }
+                alert(`✅ ${pos.ticker} rotated successfully.`);
+                window.location.reload();
+              } catch (e) { alert(`Network error: ${e.message}`); }
+            };
+
+            const handleDismiss = async () => {
+              try {
+                await fetch(`/api/portfolio/${pos.ticker}/dismiss-rotation`, { method: 'POST' });
+                window.location.reload();
+              } catch (e) { alert(`Network error: ${e.message}`); }
+            };
+
             return (
-              <div style={cardStyle(isPlateauing ? '244,63,94' : pct >= 0.7 ? '245,158,11' : '52,211,153')}>
+              <div style={cardStyle(accentRGB)}>
                 <div style={labelStyle}>⏱️ Plateau Exit</div>
+
+                {/* Progress bar */}
                 <div style={valueStyle(color)}>
                   {daysSinceHWM} / {PLATEAU_DAYS} trading days
-                  {isPlateauing && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem' }}>⚠️ ELIGIBLE</span>}
+                  {isPlateauing && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem' }}>⚠️ TIER 3 ELIGIBLE</span>}
                 </div>
                 <div style={{ height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', margin: '0.4rem 0' }}>
                   <div style={{ height: '100%', width: `${pct * 100}%`, background: color, borderRadius: '2px', transition: 'width 0.3s' }} />
                 </div>
                 <div style={noteStyle}>
                   HWM last set: {pos.hwm_date ? new Date(pos.hwm_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'at entry'}<br />
-                  Exit fires at {PLATEAU_DAYS} trading days with &lt;3% gain.<br />
-                  {isPlateauing ? '🚨 Plateau rotation eligible today.' : `${PLATEAU_DAYS - daysSinceHWM} trading days remaining.`}
+                  {isPlateauing ? '🚨 Tier 3 auto-rotate fires next EOD.' : `${PLATEAU_DAYS - daysSinceHWM} trading days to Tier 3.`}
                 </div>
+
+                {/* RS Decay metric */}
+                {entryRS != null && (
+                  <div style={{ marginTop: '0.6rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>RS Score</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: rsDecayColor }}>
+                      {liveRS != null ? `${entryRS} → ${liveRS}` : `${entryRS} (live pending)`}
+                      {rsDecay != null && rsDecay > 0 && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem' }}>(−{rsDecay} pts)</span>}
+                    </div>
+                    {rsDecay != null && rsDecay >= 15 && <div style={{ ...noteStyle, color: '#f43f5e', marginTop: '0.15rem' }}>Tier 1 threshold crossed.</div>}
+                  </div>
+                )}
+
+                {/* Score gap metric */}
+                {topScore != null && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Best Available Trigger</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: scoreGapColor }}>
+                      Score {topScore}{entryScore != null && <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--text-muted)' }}> vs entry {entryScore} ({scoreGap >= 0 ? '+' : ''}{scoreGap})</span>}
+                    </div>
+                    {scoreGap != null && scoreGap >= 20 && <div style={{ ...noteStyle, color: '#f59e0b', marginTop: '0.15rem' }}>Tier 2 threshold crossed.</div>}
+                  </div>
+                )}
+
+                {/* Recommendation banner */}
+                {tierInfo && (
+                  <div style={{
+                    marginTop: '0.75rem',
+                    padding: '0.6rem 0.75rem',
+                    background: tierInfo.bg,
+                    border: `1px solid ${tierInfo.border}`,
+                    borderRadius: '8px',
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.8rem', color: tierInfo.text, marginBottom: '0.35rem' }}>
+                      {tierInfo.label}
+                    </div>
+                    <div style={{ ...noteStyle, marginBottom: '0.5rem' }}>
+                      Bot recommends rotating this position. Tier 3 auto-executes at day {PLATEAU_DAYS}.
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        id={`approve-rotation-${pos.ticker}`}
+                        onClick={(e) => { e.stopPropagation(); handleApprove(); }}
+                        style={{
+                          padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700,
+                          background: tierInfo.text, color: '#fff', border: 'none',
+                          borderRadius: '6px', cursor: 'pointer',
+                        }}
+                      >Approve Rotation</button>
+                      <button
+                        id={`dismiss-rotation-${pos.ticker}`}
+                        onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
+                        style={{
+                          padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 600,
+                          background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          borderRadius: '6px', cursor: 'pointer',
+                        }}
+                      >Dismiss</button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -600,18 +721,34 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
                           {formatCurrency(trailStop)}
                         </td>
-                        {/* Plateau Days: trading days since HWM (weekends + holidays excluded) */}
+                        {/* Plateau Days + rotation badge */}
                         {(() => {
-                          const hwmDate = pos.hwm_date || pos.buy_date;
-                          const daysSinceHWM = tradingDaysBetween(hwmDate, new Date());
+                          const serverDays = pos.days_since_hwm;
+                          const hwmDate    = pos.hwm_date || pos.buy_date;
+                          const daysSinceHWM = serverDays != null
+                            ? serverDays
+                            : tradingDaysBetween(hwmDate, new Date());
                           const pct = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
                           const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
                           const color = isPlateauing ? 'var(--color-down)' : pct >= 0.7 ? '#f59e0b' : 'var(--color-up)';
+                          const rec = pos.rotation_recommendation;
+                          const recLabel = rec === 'TIER_1' ? 'T1' : rec === 'TIER_2' ? 'T2' : null;
+                          const recColor = rec === 'TIER_1' ? '#f43f5e' : '#f59e0b';
                           return (
                             <td>
                               <span style={{ fontWeight: 700, fontSize: '0.85rem', color }}>
                                 {daysSinceHWM}d
                               </span>
+                              {recLabel && (
+                                <span style={{
+                                  marginLeft: '0.35rem', fontSize: '0.6rem', fontWeight: 800,
+                                  padding: '0.1rem 0.3rem', borderRadius: '3px',
+                                  background: `${recColor}22`, color: recColor,
+                                  border: `1px solid ${recColor}55`,
+                                  verticalAlign: 'middle',
+                                  letterSpacing: '0.04em',
+                                }}>{recLabel}</span>
+                              )}
                             </td>
                           );
                         })()}

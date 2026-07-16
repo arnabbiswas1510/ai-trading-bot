@@ -68,7 +68,14 @@ def make_position(ticker: str,
                   high_water_mark: float | None = None,
                   is_power_hold: bool = False,
                   power_hold_expiry: str | None = None,
-                  profit_target: float | None = None) -> dict:
+                  profit_target: float | None = None,
+                  # Plateau rotation fields
+                  entry_rs_score: int | None = None,
+                  entry_final_score: int | None = None,
+                  days_since_hwm: int | None = None,
+                  live_rs_score: int | None = None,
+                  top_trigger_score: int | None = None,
+                  rotation_recommendation: str | None = None) -> dict:
     """Factory for a portfolio_positions Supabase row."""
     buy_date = (
         datetime.datetime.now(datetime.timezone.utc)
@@ -87,6 +94,12 @@ def make_position(ticker: str,
         "buy_reason": f"Test: {ticker}",
         "stop_loss": stop_loss if stop_loss is not None else round(buy_price * 0.93, 2),
         "hwm_date": hwm_date,
+        "entry_rs_score":         entry_rs_score,
+        "entry_final_score":      entry_final_score,
+        "days_since_hwm":         days_since_hwm,
+        "live_rs_score":          live_rs_score,
+        "top_trigger_score":      top_trigger_score,
+        "rotation_recommendation": rotation_recommendation,
     }
 
 
@@ -94,7 +107,9 @@ def make_trigger(ticker: str,
                  close_price: float = 100.0,
                  volume_surge: float = 1.5,
                  pivot_distance_pct: float = -0.5,
-                 days_ago: int = 0) -> dict:
+                 days_ago: int = 0,
+                 final_score: int | None = None,
+                 rs_score: int | None = None) -> dict:
     """Factory for a daily_triggers Supabase row."""
     triggered_at = (
         datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=days_ago)
@@ -105,6 +120,8 @@ def make_trigger(ticker: str,
         "close_price": close_price,
         "volume_surge": volume_surge,
         "pivot_distance_pct": pivot_distance_pct,
+        "final_score": final_score,
+        "rs_score": rs_score,
     }
 
 
