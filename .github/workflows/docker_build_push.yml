@@ -40,6 +40,10 @@ jobs:
           file: Dockerfile.agent
           push: true
           tags: ghcr.io/${{ env.OWNER_LC }}/ai-trading-bot-execution-agent:latest
+          # Pass commit SHA so execution agent logs always show the deployed version
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -50,5 +54,14 @@ jobs:
           file: Dockerfile
           push: true
           tags: ghcr.io/${{ env.OWNER_LC }}/ai-trading-bot:latest
+          # GIT_COMMIT changes every push → busts the GHA layer cache for the
+          # `npm run build` step, preventing stale frontend bundles from being
+          # reused. BUILD_TIME surfaces in /api/version for deployment tracing.
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
+          # Cache everything EXCEPT the frontend build layer (frontend-builder stage).
+          # `no-cache-filter` targets the stage name defined in the Dockerfile.
+          no-cache-filter: frontend-builder
           cache-from: type=gha
           cache-to: type=gha,mode=max

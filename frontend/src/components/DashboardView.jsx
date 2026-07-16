@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useSortableTable from '../hooks/useSortableTable';
 import { 
   TrendingUp, 
@@ -505,6 +505,14 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function DashboardView({ data, marketData, trades }) {
   const [expandedRow, setExpandedRow] = useState(null);
+  const [buildVersion, setBuildVersion] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/version')
+      .then(r => r.json())
+      .then(v => setBuildVersion(v))
+      .catch(() => {});
+  }, []);
 
   const summary = data?.summary || {
     initial_balance: 100000.0,
@@ -842,7 +850,42 @@ export default function DashboardView({ data, marketData, trades }) {
           </div>
         )}
       </div>
-      
+      {/* ── Deploy Version Badge ──────────────────────────────────────
+           Fetches /api/version for git SHA + build time.
+           Amber 'stale?' when build args were not injected (local/manual builds). */}
+      {buildVersion && (() => {
+        const sha     = buildVersion.git_commit;
+        const ts      = buildVersion.build_time;
+        const isKnown = sha && sha !== 'unknown';
+        const shortSha = isKnown ? sha.slice(0, 7) : '???????';
+        const buildDate = ts && ts !== 'unknown'
+          ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : 'unknown';
+        return (
+          <a
+            href="/api/version"
+            target="_blank"
+            rel="noreferrer"
+            title={`Deployed commit: ${sha}\nBuilt: ${ts}`}
+            style={{
+              position: 'fixed', bottom: '1rem', right: '1.25rem',
+              display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+              padding: '0.25rem 0.6rem',
+              background: isKnown ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.12)',
+              border: `1px solid ${isKnown ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.4)'}`,
+              borderRadius: '999px',
+              fontSize: '0.65rem', fontWeight: 700, fontFamily: 'var(--font-display)',
+              color: isKnown ? '#10b981' : '#f59e0b',
+              textDecoration: 'none', letterSpacing: '0.04em',
+              opacity: 0.75,
+              zIndex: 100,
+            }}
+          >
+            {isKnown ? '🟢' : '🟡'} {shortSha} · {buildDate}{!isKnown && ' — stale?'}
+          </a>
+        );
+      })()}
+
     </div>
   );
 }

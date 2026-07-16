@@ -99,6 +99,19 @@ async def startup_event():
 # Routes
 # -----------------
 
+@app.get("/api/version")
+def get_version():
+    """
+    Returns build metadata for the currently deployed image.
+    GIT_COMMIT and BUILD_TIME are injected as Docker build args → env vars.
+    The UI displays these so you can confirm exactly what code is running.
+    """
+    return {
+        "git_commit":  os.getenv("GIT_COMMIT", "unknown"),
+        "build_time":  os.getenv("BUILD_TIME",  "unknown"),
+        "service":     "can-slim-trading-bot",
+    }
+
 @app.get("/api/market")
 def get_market_health():
     try:

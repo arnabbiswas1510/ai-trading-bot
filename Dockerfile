@@ -8,9 +8,13 @@ WORKDIR /frontend
 COPY frontend/package.json ./
 RUN npm install
 
-# Copy source code and build assets
+# Copy source code (including verify-build.mjs in scripts/) and build
 COPY frontend/ ./
 RUN npm run build
+# ↑ `npm run build` = `vite build && node scripts/verify-build.mjs`
+# The verify script greps the compiled bundle for feature fingerprints.
+# If any fingerprint is missing the build exits non-zero → layer fails here,
+# preventing a stale/partial bundle from ever reaching the final image.
 
 # ==========================================
 # Stage 2: Package Python Backend & Assets
@@ -18,10 +22,17 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
+# Build args injected by GitHub Actions (git SHA + UTC timestamp).
+# Stored as env vars so /api/version can return them at runtime.
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=unknown
+
 # Set env configurations
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    DB_PATH=/app/data/trading_bot.db
+    DB_PATH=/app/data/trading_bot.db \
+    GIT_COMMIT=${GIT_COMMIT} \
+    BUILD_TIME=${BUILD_TIME}
 
 # Install backend dependencies
 COPY backend/requirements.txt ./backend/
