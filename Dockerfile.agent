@@ -13,8 +13,8 @@ RUN pip install --no-cache-dir \
     pandas==2.2.2 \
     httpx==0.28.1
 
-# Copy script files into the container
-COPY execution_agent.py telegram_notifier.py force_buy.py ./
+# Copy script files into the container (scoring.py included for RS calculations)
+COPY execution_agent.py telegram_notifier.py force_buy.py scoring.py ./
 
 # Execute the agent loop
 CMD ["python", "execution_agent.py"]

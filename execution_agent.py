@@ -1173,14 +1173,30 @@ def get_fresh_triggers_today(client: Client, active_tickers: list) -> list:
 
 
 def _fetch_current_rs(ticker: str) -> int | None:
-
     """Fetch the stock's current 12-week return vs SPY and return its live RS score.
 
     Uses the same FMP endpoint as the screener — no new dependency.
     Returns None on any API failure (caller must treat as 'no data, skip Tier 1').
     Called once per position per EOD cycle (~4 FMP calls/day total).
+
+    NOTE: scoring.py and technical_screener.py are NOT available in the
+    execution agent container (Dockerfile.agent only copies execution_agent.py).
+    The RS formula is inlined here verbatim from scoring.compute_rs_score.
+    SPY baseline defaults to 0.0 — acceptable because this is used only to
+    detect *decay* in RS (entry_rs_score vs live_rs_score), not absolute rank.
     """
-    from scoring import compute_rs_score
+    def _rs_from_excess(stock_12w: float, spy_12w: float = 0.0) -> int:
+        """Inline of scoring.compute_rs_score — no external module needed."""
+        excess = stock_12w - spy_12w
+        if excess >= 10:
+            return 100
+        elif excess >= 0:
+            return int(50 + excess * 5)
+        elif excess >= -10:
+            return max(0, int(50 + excess * 5))
+        else:
+            return 0
+
     try:
         tz_rs     = ZoneInfo("America/New_York")
         to_date   = datetime.datetime.now(tz_rs).date()
@@ -1191,6 +1207,7 @@ def _fetch_current_rs(ticker: str) -> int | None:
         )
         r = fmp_session.get(url, timeout=10)
         if r.status_code != 200:
+            print(f"   ⚠️ FMP historical API returned status code {r.status_code} for {ticker}.")
             return None
         data = r.json()
         if not data or not isinstance(data, list) or len(data) < 2:
@@ -1202,10 +1219,7 @@ def _fetch_current_rs(ticker: str) -> int | None:
         if p_then <= 0:
             return None
         stock_12w = round(((p_now / p_then) - 1.0) * 100.0, 2)
-        # Use SPY baseline from the screener module if available; fall back to 0.0
-        import sys as _sys
-        spy_12w = getattr(_sys.modules.get("technical_screener"), "_SPY_12W_RETURN", 0.0)
-        return compute_rs_score(stock_12w, spy_12w)
+        return _rs_from_excess(stock_12w)  # SPY baseline = 0.0 (decay detection only)
     except Exception as _e:
         print(f"   ⚠️ _fetch_current_rs({ticker}) failed: {_e}")
         return None
