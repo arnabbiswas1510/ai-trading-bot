@@ -441,9 +441,30 @@ def get_positions():
                 "is_power_hold": bool(row.get("is_power_hold", False)),
                 "power_hold_expiry": row.get("power_hold_expiry"),
                 # Entry conviction snapshot — written by execution_agent at buy time
-                "entry_final_score": row.get("entry_final_score"),
-                "entry_ai_rating": row.get("entry_ai_rating"),
-                "entry_ai_grade": row.get("entry_ai_grade"),
+                "entry_final_score":        row.get("entry_final_score"),
+                "entry_ai_rating":          row.get("entry_ai_rating"),
+                "entry_ai_grade":           row.get("entry_ai_grade"),
+                # ── Score components (shown as mini gauges in the panel) ─────────
+                "entry_technical_score":    row.get("entry_technical_score"),
+                "entry_quality_score":      row.get("entry_quality_score"),
+                "entry_liquidity_score":    row.get("entry_liquidity_score"),
+                "entry_rs_score":           row.get("entry_rs_score"),
+                "entry_sentiment_score":    row.get("entry_sentiment_score"),
+                "entry_atr_pct":            row.get("entry_atr_pct"),
+                "entry_est_days_target":    row.get("entry_est_days_target"),
+                # ── AI narrative rationale (the paragraph text from the screenshot) ──
+                "entry_score_rationale":    row.get("entry_score_rationale"),
+                # ── HWM / plateau fields ─────────────────────────────────────────
+                "hwm_price":                float(row.get("high_water_mark") or row["buy_price"]),
+                "days_since_hwm":           row.get("days_since_hwm"),
+                # ── Live RS score (for RS decay display) ─────────────────────────
+                "live_rs_score":            row.get("live_rs_score"),
+                "top_trigger_score":        row.get("top_trigger_score"),
+                # ── Rotation / parameter drift analysis ──────────────────────────
+                "rotation_recommendation":  row.get("rotation_recommendation"),
+                "analysis_reason":          row.get("analysis_reason"),
+                "analysis_ai_grade":        row.get("analysis_ai_grade"),
+                "param_drift":              row.get("param_drift"),
                 "active": 1,
             })
         return positions
