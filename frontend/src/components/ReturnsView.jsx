@@ -88,9 +88,12 @@ export default function ReturnsView({ trades }) {
     });
 
     let cumulativeTwrMultiplier = 1.0;
-    let investedCapital = dailyBalances[sortedDates[0]]['ibkr_total_value'] || 0; // Starting capital
+    // Starting capital = first day's total portfolio value (already includes initial deposit).
+    // Cash flows from account_balances are already baked into ibkr_total_value on that date,
+    // so we must NOT add the Day-1 cash flow again — that causes the $200K double-count.
+    let investedCapital = dailyBalances[sortedDates[0]]['ibkr_total_value'] || 0;
     const startingCapital = investedCapital;
-    
+
     let previousValue = startingCapital;
     let netDeposits = 0;
 
@@ -99,9 +102,14 @@ export default function ReturnsView({ trades }) {
     sortedDates.forEach((date, i) => {
       const todayTotal = dailyBalances[date]['ibkr_total_value'] || previousValue;
       const flowToday = flowsByDate[date] || 0;
-      
+
       netDeposits += flowToday;
-      investedCapital += flowToday;
+      // Only adjust investedCapital for flows AFTER Day 0.
+      // The Day-0 flow is already reflected in startingCapital (ibkr_total_value),
+      // so adding it here would double-count the initial deposit.
+      if (i > 0) {
+        investedCapital += flowToday;
+      }
 
       // Calculate Daily Return for TWR (excl. cash flows)
       let dailyReturn = 0;
