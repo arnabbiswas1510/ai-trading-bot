@@ -191,6 +191,28 @@ def get_portfolio():
         fmp = FMPClient()
         portfolio_value = cash
         updated_positions = []
+
+        # ── Enrich positions with company_name from the watchlist table ──────────
+        # The watchlist table holds the most recent screener snapshot which includes
+        # the human-readable company name (e.g. "NVIDIA Corporation" for NVDA).
+        # We fetch all tickers in one round-trip to avoid N+1 queries.
+        company_name_map = {}
+        if positions:
+            try:
+                tickers = [p["ticker"] for p in positions]
+                wl_res = db.get_supabase_client() \
+                    .table("watchlist") \
+                    .select("ticker, company_name") \
+                    .in_("ticker", tickers) \
+                    .order("created_at", desc=True) \
+                    .execute()
+                # Keep only the first (most recent) row per ticker
+                for row in (wl_res.data or []):
+                    t = row["ticker"]
+                    if t not in company_name_map and row.get("company_name"):
+                        company_name_map[t] = row["company_name"]
+            except Exception as ex:
+                print(f"Could not fetch company names from watchlist: {ex}")
         
         for pos in positions:
             ticker = pos['ticker']
@@ -218,6 +240,8 @@ def get_portfolio():
             pos['value'] = round(value, 2)
             pos['pnl'] = round(pnl, 2)
             pos['pnl_pct'] = round(pnl_pct, 2)
+            # Attach company name — falls back to ticker if watchlist has no entry
+            pos['company_name'] = company_name_map.get(ticker, ticker)
             updated_positions.append(pos)
             
         unrealized_pnl = portfolio_value - (cash + sum(pos['shares'] * pos['buy_price'] for pos in positions))

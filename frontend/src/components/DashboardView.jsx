@@ -596,6 +596,50 @@ export default function DashboardView({ data, marketData, trades }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+
+      {/* ── Company / Product Name Banner ────────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0.85rem 1.25rem',
+        background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.08) 50%, rgba(59,130,246,0.06) 100%)',
+        border: '1px solid rgba(99,102,241,0.25)',
+        borderRadius: '14px',
+        backdropFilter: 'blur(8px)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px', height: '36px', borderRadius: '10px',
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 0 12px rgba(99,102,241,0.4)',
+            fontSize: '1.1rem',
+          }}>📈</div>
+          <div>
+            <div style={{
+              fontSize: '1.05rem', fontWeight: 800,
+              fontFamily: 'var(--font-display)',
+              background: 'linear-gradient(90deg, #a5b4fc, #c4b5fd)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              letterSpacing: '-0.01em',
+            }}>O'Neil Growth Engine</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
+              CANSLIM-based AI Execution System · Interactive Brokers (U12941651)
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{
+            width: '7px', height: '7px', borderRadius: '50%',
+            background: '#10b981',
+            boxShadow: '0 0 6px rgba(16,185,129,0.7)',
+            animation: 'pulse 2s ease-in-out infinite',
+          }} />
+          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#10b981', letterSpacing: '0.04em' }}>LIVE</span>
+        </div>
+      </div>
+
       
       {/* Market Direction Alert Banner */}
       {marketData && (
@@ -647,8 +691,35 @@ export default function DashboardView({ data, marketData, trades }) {
           </div>
           <div className="metric-value">{formatCurrency(summary.cash_balance)}</div>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            Available to trade
+            IBKR Settled Cash
           </span>
+          {/* ── Margin Rationale Note ───────────────────────────────────────────
+               Explains why settled cash ≠ Net Liquidation Value on a margin
+               account. Cash here = ibkr_cash_balance (Settled Cash in IBKR UI);
+               NLV = Cash + Market Value of Positions - Margin Loan.
+               Margin loan is implicit: positions bought on margin reduce visible
+               cash but IBKR only applies it at T+1/T+2 settlement.           */}
+          <div style={{
+            marginTop: '0.65rem',
+            padding: '0.55rem 0.7rem',
+            background: 'rgba(245,158,11,0.07)',
+            border: '1px solid rgba(245,158,11,0.22)',
+            borderRadius: '8px',
+            fontSize: '0.7rem',
+            lineHeight: 1.55,
+            color: 'var(--text-muted)',
+          }}>
+            <div style={{ fontWeight: 700, color: '#f59e0b', marginBottom: '0.2rem', fontSize: '0.68rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              ⚠️ Margin Account Note
+            </div>
+            Settled Cash ≠ Net Liquidation Value (NLV). On a Reg-T margin account,
+            IBKR's <em>Settled Cash</em> reflects your cash component after margin borrowing.
+            Stocks bought on margin reduce visible cash; the full NLV is:
+            <div style={{ marginTop: '0.35rem', fontFamily: 'var(--font-display)', fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+              NLV = Cash + Position Market Value − Margin Loan
+            </div>
+            Cash is reconciled by IBKR at T+1/T+2 settlement — not intraday.
+          </div>
         </div>
 
         <div className="card metric-card">
@@ -735,7 +806,25 @@ export default function DashboardView({ data, marketData, trades }) {
                             ? <ChevronDown size={14} />
                             : <ChevronRight size={14} />}
                         </td>
-                        <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>{pos.ticker}</td>
+                        <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                          {pos.ticker}
+                          {pos.company_name && pos.company_name !== pos.ticker && (
+                            <div style={{
+                              fontSize: '0.67rem',
+                              fontWeight: 500,
+                              fontFamily: 'inherit',
+                              color: 'var(--text-muted)',
+                              marginTop: '0.1rem',
+                              letterSpacing: '0.01em',
+                              maxWidth: '9rem',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {pos.company_name}
+                            </div>
+                          )}
+                        </td>
                         {/* Conviction Score at entry */}
                         <td>
                           {(() => {
