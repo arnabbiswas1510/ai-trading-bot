@@ -783,7 +783,8 @@ def reconcile_with_ibkr(ib: IB):
             "buy_reason": "Manual IBKR order (reconciled)",
             "buy_source": "daily_triggers",   # Bug fix: always set buy_source to prevent NULL
             "stop_loss": stop_loss,
-            "hwm_date": datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),   # plateau clock starts at entry
+            "hwm_date":  datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
+            "hwm_price": avg_cost,   # initialised to buy price; ratchets up in monitor loop
             "entry_rs_score": _get_entry_rs(ticker, None),   # live-fetched so Rule 1 has a baseline
         }
         try:
@@ -1114,6 +1115,8 @@ def run_market_open_buys(ib: IB):
                 # new: breakout signal baselines for PARAM_DRIFT analysis
                 "entry_volume_surge":         trigger.get("volume_surge"),
                 "entry_pivot_distance_pct":   trigger.get("pivot_distance_pct"),
+                # hwm_price starts at fill price; ratchets up in monitor_portfolio_intraday
+                "hwm_price": fill_price,
             }
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
@@ -1491,20 +1494,21 @@ def monitor_portfolio_intraday(ib: IB):
         print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
               f"| IBKR Trail: {STOP_LOSS_PCT*100:.0f}%")
 
-        # ── Update hwm_date when a new intraday high is seen ───────────────────
+        # ── Update hwm_date and hwm_price when a new intraday high is seen ────
         # IBKR tracks the HWM price tick-by-tick for the trailing stop.
-        # We only record the DATE so we can detect plateau (N days without a new high).
+        # We record the DATE (plateau counter) and the PRICE (display accuracy).
         # Compare to our last-polled peak (in-memory), defaulting to buy_price.
         prev_peak = intraday_peak.get(ticker, buy_price)
         if current_price > prev_peak:
             intraday_peak[ticker] = current_price
             try:
                 client.table("portfolio_positions").update(
-                    {"hwm_date": today_ny.isoformat()}
+                    {"hwm_date":  today_ny.isoformat(),
+                     "hwm_price": round(float(current_price), 4)}
                 ).eq("ticker", ticker).execute()
             except Exception as e:
                 notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", e)
-                print(f"   ⚠️ Could not update hwm_date for {ticker}: {e}")
+                print(f"   ⚠️ Could not update hwm_date/hwm_price for {ticker}: {e}")
 
         # ── Self-healing: ensure trailing stop exists for this position ─────────
         # GTC trailing stops survive IBKR gateway restarts, but may be absent for

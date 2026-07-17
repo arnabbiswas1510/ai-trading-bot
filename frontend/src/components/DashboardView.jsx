@@ -213,7 +213,8 @@ function getStatusBadge(pos, days) {
 // ── Position Intelligence Panel (expandable) ─────────────────────────────────
 function ExitConditionsPanel({ pos, formatCurrency }) {
   const days = daysHeld(pos.buy_date);
-  const trailStop = parseFloat(((pos.high_water_mark || pos.buy_price) * (1 - STOP_LOSS_PCT)).toFixed(2));
+  const hwmPrice  = pos.hwm_price || pos.buy_price;  // hwm_price: highest price seen since buy
+  const trailStop = parseFloat((hwmPrice * (1 - STOP_LOSS_PCT)).toFixed(2));
 
   const panelStyle = {
     background: 'rgba(255,255,255,0.02)',
@@ -255,7 +256,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             <div style={noteStyle}>
               Bought {formatDate(pos.buy_date)}<br />
               Source: CANSLIM Breakout<br />
-              Entry: {formatCurrency(pos.buy_price)} · High: {formatCurrency(pos.high_water_mark || pos.buy_price)}
+              Entry: {formatCurrency(pos.buy_price)} · High: {formatCurrency(hwmPrice)}
             </div>
           </div>
 
@@ -264,7 +265,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             <div style={labelStyle}>🔴 Trail Stop (IBKR GTC)</div>
             <div style={valueStyle('#f87171')}>{formatCurrency(trailStop)}</div>
             <div style={noteStyle}>
-              7% below high of {formatCurrency(pos.high_water_mark || pos.buy_price)}<br />
+              7% below HWM price of {formatCurrency(hwmPrice)}<br />
               Managed by IBKR — fires automatically.<br />
               EMA-21 exit also active at end of each trading day.
             </div>
@@ -718,7 +719,8 @@ export default function DashboardView({ data, marketData, trades }) {
                 {sortedPositions.map((pos) => {
                   const days = daysHeld(pos.buy_date);
                   const isOpen = expandedRow === pos.ticker;
-                  const trailStop = parseFloat(((pos.high_water_mark || pos.buy_price) * (1 - STOP_LOSS_PCT)).toFixed(2));
+                  const hwmPrice  = pos.hwm_price || pos.buy_price;
+                  const trailStop = parseFloat((hwmPrice * (1 - STOP_LOSS_PCT)).toFixed(2));
 
                   return (
                     <React.Fragment key={pos.ticker}>
