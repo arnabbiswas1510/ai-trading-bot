@@ -145,14 +145,12 @@ STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
 # If portfolio is full and a fresh breakout exists at 3:45pm, the most-stalled
 # position (largest days since HWM) is rotated out.
 PLATEAU_DAYS             = int(os.getenv("PLATEAU_DAYS", 7))
-# ── Plateau rotation thresholds (2-rule system) ───────────────────────────────
-# Rule 1: RS Decay — recommend rotation when live RS has dropped >= RS_DECAY_GATE
-#   points below hwm_rs_score (RS on the day of the last HWM) and position has
-#   stalled >= RS_DECAY_MIN_DAYS trading days. Interactive — no auto-sell.
-RS_DECAY_GATE            = int(os.getenv("RS_DECAY_GATE", 15))
-RS_DECAY_MIN_DAYS        = int(os.getenv("RS_DECAY_MIN_DAYS", 3))
-# Rule 2: Hard Time-Stop — auto-sell when stalled >= PLATEAU_DAYS. See line above.
-# (SCORE_UPGRADE_GAP / SCORE_GAP_MIN_DAYS removed — Tier 2 score gap check eliminated)
+# ── Plateau rotation thresholds ────────────────────────────────────────────────
+# Rule 1 (PARAM_DRIFT): fires at Day 3+ when 3-day avg close < buy_price
+#   AND >= PARAM_DRIFT_MIN_FAILURES of 6 breakout parameters have decayed.
+#   Interactive — user approves or dismisses in UI.
+# Rule 2 (HARD_STOP): auto-sell when stalled >= PLATEAU_DAYS. No approval needed.
+PARAM_DRIFT_MIN_FAILURES = int(os.getenv("PARAM_DRIFT_MIN_FAILURES", 3))  # of 6 params
 COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
@@ -1113,6 +1111,9 @@ def run_market_open_buys(ib: IB):
                 "entry_atr_pct":          trigger.get("atr_pct"),
                 "entry_est_days_target":  trigger.get("est_days_to_target"),
                 "entry_score_rationale":  trigger.get("score_rationale"),
+                # new: breakout signal baselines for PARAM_DRIFT analysis
+                "entry_volume_surge":         trigger.get("volume_surge"),
+                "entry_pivot_distance_pct":   trigger.get("pivot_distance_pct"),
             }
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
@@ -1189,6 +1190,193 @@ def _get_entry_rs(ticker: str, trigger_rs_score) -> int | None:
     if live is not None:
         print(f"   📊 {ticker}: entry_rs_score backfilled live ({live}) — trigger had no rs_score")
     return live
+
+
+def _fetch_ohlcv(ticker: str, days: int = 100) -> list:
+    """Fetch OHLCV rows from FMP for the last `days` calendar days.
+
+    Returns a list of dicts sorted ascending by date, each containing at minimum:
+    {'date': str, 'open': float, 'high': float, 'low': float,
+     'close': float, 'volume': int}
+    Returns [] on any failure. Shared by _fetch_current_rs, _compute_3day_avg_close,
+    _compute_param_drift, and _get_market_regime so we don't duplicate FMP calls.
+    """
+    try:
+        tz_o    = ZoneInfo("America/New_York")
+        to_date = datetime.datetime.now(tz_o).date()
+        from_dt = to_date - datetime.timedelta(days=days)
+        url = (
+            "https://financialmodelingprep.com/stable/historical-price-eod/full"
+            f"?symbol={ticker}&from={from_dt}&to={to_date}&apikey={FMP_API_KEY}"
+        )
+        r = fmp_session.get(url, timeout=10)
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        if not data or not isinstance(data, list):
+            return []
+        return sorted(data, key=lambda x: x["date"])
+    except Exception as _e:
+        print(f"   ⚠️ _fetch_ohlcv({ticker}) failed: {_e}")
+        return []
+
+
+def _compute_3day_avg_close(ohlcv: list) -> float | None:
+    """Return the average of the last 3 EOD closing prices from an OHLCV list."""
+    if len(ohlcv) < 3:
+        return None
+    return sum(float(r["close"]) for r in ohlcv[-3:]) / 3
+
+
+def _compute_param_drift(pos: dict, ohlcv: list) -> dict:
+    """Compute drift for all 6 breakout parameters versus their entry values.
+
+    Returns a dict keyed by parameter name. Each value:
+        {"entry": N, "current": N, "drift": N, "failed": bool}
+
+    Failure thresholds (conservative — only flag material deterioration):
+        volume_surge:       drop > 0.6x from entry
+        rs_score:           drop > 10 pts
+        technical_score:    drop > 10 pts
+        pivot_distance_pct: retreated > 3% below pivot (more negative)
+        ai_rating:          placeholder — filled by AI re-eval call
+        sentiment_score:    drop > 10 pts
+    """
+    drift: dict = {}
+
+    # ── Volume surge (current vs 20-day avg from OHLCV) ──────────────────────
+    entry_vol = pos.get("entry_volume_surge")
+    curr_vol_ratio = None
+    if len(ohlcv) >= 21:
+        vols = [float(r.get("volume", 0)) for r in ohlcv]
+        avg20 = sum(vols[-21:-1]) / 20  # 20-day avg excludes today
+        today_vol = vols[-1]
+        curr_vol_ratio = round(today_vol / avg20, 2) if avg20 > 0 else None
+    drift["volume_surge"] = {
+        "entry":   entry_vol,
+        "current": curr_vol_ratio,
+        "drift":   round((curr_vol_ratio or 0) - (entry_vol or 0), 2) if entry_vol and curr_vol_ratio else None,
+        "failed":  bool(entry_vol and curr_vol_ratio and (entry_vol - curr_vol_ratio) > 0.6),
+    }
+
+    # ── RS score (live from pos, already computed in EOD metrics loop) ───────
+    entry_rs = pos.get("entry_rs_score")
+    live_rs  = pos.get("live_rs_score")
+    drift["rs_score"] = {
+        "entry":   entry_rs,
+        "current": live_rs,
+        "drift":   (live_rs - entry_rs) if entry_rs is not None and live_rs is not None else None,
+        "failed":  bool(entry_rs is not None and live_rs is not None and (entry_rs - live_rs) > 10),
+    }
+
+    # ── Technical score (re-compute from OHLCV vs SMA) ───────────────────────
+    entry_tech = pos.get("entry_technical_score")
+    curr_tech  = None
+    if len(ohlcv) >= 51:
+        closes  = [float(r["close"]) for r in ohlcv]
+        sma50   = sum(closes[-50:]) / 50
+        curr_close = closes[-1]
+        sma_margin = ((curr_close / sma50) - 1) * 100 if sma50 > 0 else 0
+        # Simplified technical score: only SMA component (volume handled separately)
+        curr_tech = max(0, min(100, int(50 + sma_margin * 5)))
+    drift["technical_score"] = {
+        "entry":   entry_tech,
+        "current": curr_tech,
+        "drift":   (curr_tech - entry_tech) if entry_tech is not None and curr_tech is not None else None,
+        "failed":  bool(entry_tech is not None and curr_tech is not None and (entry_tech - curr_tech) > 10),
+    }
+
+    # ── Pivot distance (current price vs entry pivot, estimated from entry data) ─
+    entry_pvt  = pos.get("entry_pivot_distance_pct")
+    buy_price  = float(pos.get("buy_price") or 0)
+    curr_close_p = float(ohlcv[-1]["close"]) if ohlcv else None
+    # entry_pivot_distance_pct was (close/pivot - 1)*100 at entry
+    # We approximate pivot = buy_price / (1 + entry_pvt/100)
+    pivot_price  = (buy_price / (1 + (entry_pvt or 0) / 100)) if buy_price > 0 and entry_pvt is not None else None
+    curr_pvt_pct = round(((curr_close_p / pivot_price) - 1) * 100, 2) if pivot_price and curr_close_p else None
+    drift["pivot_distance_pct"] = {
+        "entry":   entry_pvt,
+        "current": curr_pvt_pct,
+        "drift":   round((curr_pvt_pct or 0) - (entry_pvt or 0), 2) if entry_pvt is not None and curr_pvt_pct is not None else None,
+        "failed":  bool(entry_pvt is not None and curr_pvt_pct is not None and (curr_pvt_pct - entry_pvt) < -3),
+    }
+
+    # ── AI rating — placeholder, filled by evaluate_held_position() call ─────
+    drift["ai_rating"] = {
+        "entry":   pos.get("entry_ai_rating"),
+        "current": None,   # filled after AI re-eval
+        "drift":   None,
+        "failed":  False,
+    }
+
+    # ── Sentiment — re-eval through AI (placeholder, also filled post-call) ──
+    drift["sentiment_score"] = {
+        "entry":   pos.get("entry_sentiment_score"),
+        "current": None,
+        "drift":   None,
+        "failed":  False,
+    }
+
+    return drift
+
+
+def _get_market_regime() -> str:
+    """Return current market regime based on SPY vs its 21-day EMA.
+
+    'uptrend'    — SPY close > 21-day EMA (healthy market, consolidations more forgiving)
+    'correction' — SPY close < 21-day EMA (all stalls more suspect)
+    'neutral'    — SPY within 0.5% of 21-day EMA
+    Returns 'neutral' on any API failure.
+    """
+    try:
+        spy_ohlcv = _fetch_ohlcv("SPY", days=40)
+        if len(spy_ohlcv) < 22:
+            return "neutral"
+        closes = [float(r["close"]) for r in spy_ohlcv]
+        # 21-day EMA
+        k      = 2 / (21 + 1)
+        ema21  = closes[0]
+        for c in closes[1:]:
+            ema21 = c * k + ema21 * (1 - k)
+        spy_now = closes[-1]
+        diff_pct = (spy_now / ema21 - 1) * 100
+        if diff_pct > 0.5:
+            return "uptrend"
+        if diff_pct < -0.5:
+            return "correction"
+        return "neutral"
+    except Exception:
+        return "neutral"
+
+
+def _generate_analysis_reason(ticker: str, drift: dict, ai_grade: str,
+                              avg_close: float, buy_price: float) -> str:
+    """Build a deterministic human-readable string explaining parameter failures."""
+    failed = [k for k, v in drift.items() if v.get("failed")]
+    lines  = []
+    pnl_pct = round((avg_close / buy_price - 1) * 100, 1) if buy_price > 0 else 0
+    lines.append(
+        f"{ticker}: 3-day avg close ${avg_close:.2f} vs buy ${buy_price:.2f} ({pnl_pct:+.1f}%). "
+        f"AI re-eval: {ai_grade}. {len(failed)}/6 parameters failed."
+    )
+    detail_map = {
+        "volume_surge":       lambda v: f"Volume dried up ({v['entry']}x→{v['current']}x, −{abs(v['drift'] or 0):.1f}x)",
+        "rs_score":           lambda v: f"RS decayed ({v['entry']}→{v['current']}, {v['drift']:+d}pts)",
+        "technical_score":    lambda v: f"Technicals weakened ({v['entry']}→{v['current']}, {v['drift']:+d}pts)",
+        "pivot_distance_pct": lambda v: f"Price retreated to/below pivot ({v['entry']:+.1f}%→{v['current']:+.1f}%)",
+        "ai_rating":          lambda v: f"AI rating dropped ({v['entry']}→{v['current']})",
+        "sentiment_score":    lambda v: f"Sentiment turned negative ({v['entry']}→{v['current']})",
+    }
+    for param in failed:
+        v = drift.get(param, {})
+        try:
+            lines.append("  • " + detail_map[param](v))
+        except Exception:
+            lines.append(f"  • {param}: entry={v.get('entry')} current={v.get('current')}")
+    if not failed:
+        lines.append("  No individual parameter crossed failure threshold — aggregate underperformance.")
+    return "\n".join(lines)
+
 
 
 def _fetch_current_rs(ticker: str) -> int | None:
@@ -1373,15 +1561,12 @@ def monitor_portfolio_intraday(ib: IB):
     #   Tier 2 (Score Gap)     → writes rotation_recommendation='TIER_2'; user approves via UI
     #   Tier 3 (Hard time-stop)→ auto-executes immediately (rule-based, no judgment required)
     #
-    # All tiers also update 3 live metrics columns per position:
-    #   days_since_hwm, live_rs_score, top_trigger_score
     now_eod = datetime.datetime.now(tz)
     is_eod_window = (now_eod.hour == 15 and now_eod.minute >= 45)
 
     if is_eod_window and len(positions) >= MAX_POSITIONS:
         today_eod = datetime.datetime.now(tz).date()
 
-        # ── Fetch fresh triggers (full rows for score comparison) ─────────────
         try:
             recent_date = (datetime.datetime.now(tz) - datetime.timedelta(days=TRIGGER_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
             triggers_res = client.table("daily_triggers") \
@@ -1403,78 +1588,42 @@ def monitor_portfolio_intraday(ib: IB):
             best_trigger_score = 0
             best_ticker        = None
 
-        # ── Update live plateau health metrics for every position ─────────────
-        # Written once per EOD cycle so the UI and approval endpoint always have
-        # fresh data without needing client-side computation.
+        # Default market regime — overwritten by PARAM_DRIFT analysis block if FMP is available.
+        # Used by Hard Stop's execute_sell() call to write breakout_learnings.
+        market_regime: str = "neutral"
+
         for pos in positions:
             ticker_m = pos["ticker"]
             hwm_str  = (pos.get("hwm_date") or str(today_eod))[:10]
             hwm_d_m  = datetime.date.fromisoformat(hwm_str)
             dsm      = trading_days_between(hwm_d_m, today_eod)
-            live_rs  = _fetch_current_rs(ticker_m)  # ~1 FMP call per position
+            live_rs  = _fetch_current_rs(ticker_m)
             try:
                 update_payload = {
                     "days_since_hwm":    dsm,
                     "live_rs_score":     live_rs,
                     "top_trigger_score": best_trigger_score if fresh_tickers else None,
                 }
-                # Write hwm_rs_score when position made a new HWM today (dsm == 0).
-                # This captures RS at the peak — the correct anchor for Rule 1 decay check.
-                if dsm == 0 and live_rs is not None:
-                    update_payload["hwm_rs_score"] = live_rs
-                    print(f"   📈 {ticker_m}: new HWM today — hwm_rs_score set to {live_rs}")
                 client.table("portfolio_positions").update(update_payload).eq("ticker", ticker_m).execute()
-                # Cache updated values locally so rule checks below can use them
                 pos["days_since_hwm"]    = dsm
                 pos["live_rs_score"]     = live_rs
                 pos["top_trigger_score"] = best_trigger_score if fresh_tickers else None
-                if dsm == 0 and live_rs is not None:
-                    pos["hwm_rs_score"] = live_rs
             except Exception as _me:
                 print(f"   ⚠️ Could not update plateau metrics for {ticker_m}: {_me}")
 
+        # ── Hard Stop (auto-execute) ──────────────────────────────────────────
+        # If a position has stalled >= PLATEAU_DAYS with no new HWM, sell immediately.
+        # Requires a fresh replacement trigger (never sell to empty cash — this is a
+        # rotation, not a panic exit). No user approval required.
         if fresh_tickers and best_ticker:
-
-            # ── Rule 1: RS Decay ──────────────────────────────────────────────
-            # Recommend rotation if live RS has dropped >= RS_DECAY_GATE points
-            # below hwm_rs_score (RS on the day of the last HWM — not entry RS).
-            # Requires >= RS_DECAY_MIN_DAYS plateau days as a noise filter.
-            # If hwm_rs_score is NULL (no RS data available), skip — only Rule 2 applies.
-            _rule1_flagged = set()   # track tickers flagged this cycle
-            for p in positions:
-                hwm_rs  = p.get("hwm_rs_score")
-                live_rs = p.get("live_rs_score")
-                dsm     = p.get("days_since_hwm", 0)
-                if hwm_rs is None or live_rs is None:
-                    continue   # safe default: skip when RS data unavailable
-                if dsm < RS_DECAY_MIN_DAYS:
-                    continue
-                rs_decay = int(hwm_rs) - int(live_rs)
-                if rs_decay >= RS_DECAY_GATE:
-                    print(f"   📊 RS Decay: {p['ticker']} RS {hwm_rs}→{live_rs} "
-                          f"(−{rs_decay}pts from HWM, {dsm}d stalled) "
-                          f"— recommending rotation to {best_ticker}")
-                    _set_rotation_recommendation(client, p["ticker"], "RS_DECAY")
-                    _rule1_flagged.add(p["ticker"])
-                    notifier.notify(
-                        f"💡 *Rotation Rec — RS Decay*\n"
-                        f"{p['ticker']}: RS {hwm_rs} → {live_rs} (−{rs_decay}pts from HWM, {dsm}d stalled)\n"
-                        f"Upgrade candidate: {best_ticker} (score {best_trigger_score})\n"
-                        f"→ Approve or dismiss in the portfolio UI."
-                    )
-            # (Tier 2 score gap check removed — RS decay and Day-7 hard stop are sufficient)
-
-            # ── Tier 3: Hard Time-Stop (auto-execute) ─────────────────────────
-            # If a position has stalled >= PLATEAU_DAYS, sell it immediately.
-            # No user approval needed — this is a rule, not a judgment call.
-            tier3_candidates = [
+            hard_stop_candidates = [
                 (p.get("days_since_hwm", 0), p)
                 for p in positions
                 if (p.get("days_since_hwm") or 0) >= PLATEAU_DAYS
             ]
-            if tier3_candidates:
-                tier3_candidates.sort(reverse=True)  # most stalled first
-                days_stalled, worst = tier3_candidates[0]
+            if hard_stop_candidates:
+                hard_stop_candidates.sort(reverse=True)  # most stalled first
+                days_stalled, worst = hard_stop_candidates[0]
                 wticker     = worst["ticker"]
                 wshares     = int(worst["shares"])
                 wbuy_price  = float(worst["buy_price"])
@@ -1482,24 +1631,30 @@ def monitor_portfolio_intraday(ib: IB):
                 wbuy_reason = worst.get("buy_reason", "Unknown")
                 wprice      = get_live_price(wticker)
                 reason = (
-                    f"Tier 3 Hard Time-Stop — no new HWM in {days_stalled} trading days. "
+                    f"Hard Stop — no new HWM in {days_stalled} trading days. "
                     f"Freeing slot for fresh breakout ({best_ticker})."
                 )
-                print(f"📉 Tier 3 Auto-Rotate: {wticker} ({days_stalled}d stalled) → {best_ticker}")
+                print(f"📉 Hard Stop: {wticker} ({days_stalled}d stalled) → {best_ticker}")
                 cancel_ticker_sell_orders(ib, wticker)
                 ib.sleep(1)
                 execute_sell(ib, client, wticker, wshares, wbuy_price,
-                             wbuy_date, wbuy_reason, wprice, reason)
-                # Clear any pending recommendation now that the position is gone
+                             wbuy_date, wbuy_reason, wprice, reason,
+                             pos_row=worst, market_regime=market_regime)
                 _set_rotation_recommendation(client, wticker, None)
 
 
-def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float, buy_date, buy_reason: str, current_price: float, reason: str) -> bool:
+def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float,
+                 buy_date, buy_reason: str, current_price: float, reason: str,
+                 pos_row: dict | None = None,
+                 market_regime: str = "neutral") -> bool:
     """Executes a market sell order on IBKR and archives the transaction in Supabase.
 
     CRITICAL INVARIANT: Supabase position is ONLY deleted after confirming via
     ib.portfolio() that the position is truly gone from IBKR. This prevents phantom
     deletions when market orders are cancelled/rejected (e.g. paper trading no-data).
+
+    pos_row: the portfolio_positions dict for this ticker (used to write breakout_learnings).
+    market_regime: 'uptrend' | 'correction' | 'neutral' at time of sell.
     """
     try:
         # Cancel any open trailing stop SELL orders before placing
@@ -1563,7 +1718,39 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         # Database transaction — only reached after confirmed IBKR fill
         client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
         client.table("trade_history").insert(trade_log).execute()
-        
+
+        # ── Write to breakout_learnings for future screener feedback ─────────────
+        import json as _json2
+        try:
+            if pos_row:
+                buy_dt_d   = buy_date.date() if hasattr(buy_date, "date") else buy_date
+                days_held  = trading_days_between(buy_dt_d, datetime.datetime.now(ZoneInfo("America/New_York")).date())
+                # Determine exit type from reason string
+                r_lower    = reason.lower()
+                if "stop" in r_lower and "hard" in r_lower:
+                    exit_type = "hard_stop"
+                elif "stop" in r_lower:
+                    exit_type = "stop_loss"
+                elif "rotation" in r_lower or "param" in r_lower or "drift" in r_lower:
+                    exit_type = "rotation"
+                else:
+                    exit_type = "manual"
+                client.table("breakout_learnings").insert({
+                    "ticker":            ticker,
+                    "buy_date":          buy_dt_d.isoformat(),
+                    "exit_date":         datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
+                    "exit_type":         exit_type,
+                    "entry_final_score": pos_row.get("entry_final_score"),
+                    "failed_params":     _json2.loads(pos_row.get("param_drift") or "{}"),
+                    "lesson_text":       pos_row.get("analysis_reason"),
+                    "market_regime":     market_regime,
+                    "days_held":         days_held,
+                    "pnl_pct":           percent_return,
+                }).execute()
+                print(f"   📚 {ticker}: breakout_learnings row written (exit_type={exit_type}, pnl={percent_return:+.1f}%)")
+        except Exception as _le:
+            print(f"   ⚠️ Could not write breakout_learnings for {ticker}: {_le}")
+
         print(f"✅ Closed Position: Sold {shares} shares of {ticker} at ${fill_price:.2f}.")
         print(f"   PnL: ${profit_loss} ({percent_return}%) | Reason: {reason}")
         notifier.notify_sell(

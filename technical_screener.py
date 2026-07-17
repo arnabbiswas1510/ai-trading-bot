@@ -287,6 +287,44 @@ def write_triggers_to_supabase(triggers):
                 if ticker in existing_map else "1d"
             )
 
+        # ── Phase 2: Failure penalty from breakout_learnings ─────────────────
+        # Activate only when >= 10 learning rows exist (sufficient signal).
+        # Each trigger gets adjusted_score = final_score - failure_penalty.
+        try:
+            learning_count_res = client.table("breakout_learnings").select("id", count="exact").execute()
+            learning_count = learning_count_res.count or 0
+        except Exception:
+            learning_count = 0
+
+        if learning_count >= 10:
+            print(f"📚 Phase 2 active: {learning_count} breakout learnings — computing failure penalties...")
+            cutoff_90d = (datetime.datetime.now(datetime.timezone.utc).date()
+                          - datetime.timedelta(days=90)).isoformat()
+            try:
+                learnings_res = client.table("breakout_learnings") \
+                    .select("exit_date, failed_params, pnl_pct") \
+                    .gte("exit_date", cutoff_90d) \
+                    .lt("pnl_pct", 0) \
+                    .execute()
+                learnings = learnings_res.data or []
+            except Exception as _le:
+                print(f"  ⚠️ Could not fetch learnings for penalty: {_le}")
+                learnings = []
+
+            for t in triggers:
+                penalty, reason = _compute_failure_penalty(t, learnings)
+                t["adjusted_score"]  = max(0, int(t.get("final_score") or 0) - penalty)
+                t["failure_penalty"] = penalty
+                t["penalty_reason"]  = reason
+                if penalty > 0:
+                    print(f"  ⚠️ {t['ticker']}: penalty −{penalty}pts → adjusted={t['adjusted_score']} ({reason})")
+        else:
+            print(f"📚 Phase 2 inactive ({learning_count}/10 learnings). Using final_score as-is.")
+            for t in triggers:
+                t["adjusted_score"]  = t.get("final_score")
+                t["failure_penalty"] = 0
+                t["penalty_reason"]  = None
+
         print("🧹 Truncating daily_triggers table...")
         client.table("daily_triggers").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()
 
@@ -296,6 +334,65 @@ def write_triggers_to_supabase(triggers):
     except Exception as e:
         print(f"❌ Failed to log breakout signals: {e}")
         raise e
+
+
+def _compute_failure_penalty(trigger: dict, learnings: list) -> tuple[int, str]:
+    """Compute a time-decayed failure penalty for a trigger based on historical learnings.
+
+    Compares the trigger's parameter values against failed positions in breakout_learnings.
+    A 'match' occurs when the trigger's parameter falls in a similar range to a historical failure.
+
+    Time decay weights:
+        exit_date in last 30 days:  3× weight
+        exit_date in last 30–90d:   2× weight
+        (learnings older than 90d are not fetched — see write_triggers_to_supabase)
+
+    Penalty = weighted_match_count × 2 pts, capped at 20 pts.
+
+    Returns:
+        (penalty_points: int, reason_string: str)
+    """
+    import datetime as _dt
+    today = _dt.datetime.now(_dt.timezone.utc).date()
+    cutoff_30d = (today - _dt.timedelta(days=30)).isoformat()
+
+    weighted_matches = 0.0
+    matched_params   = []
+
+    PARAM_RANGES = {
+        # param_name: (trigger_key, tolerance — match if historical entry was within this % of trigger value)
+        "volume_surge":      ("volume_surge",       0.5),
+        "rs_score":          ("rs_score",            10),
+        "technical_score":   ("technical_score",     10),
+        "pivot_distance_pct":("pivot_distance_pct",  2),
+    }
+
+    for learning in learnings:
+        failed_params = learning.get("failed_params") or {}
+        exit_date     = str(learning.get("exit_date") or "")
+        weight        = 3.0 if exit_date >= cutoff_30d else 2.0   # 30d=3x, 30-90d=2x
+
+        for param, (tkey, tol) in PARAM_RANGES.items():
+            pdata = failed_params.get(param)
+            if not isinstance(pdata, dict) or not pdata.get("failed"):
+                continue   # only count genuinely failed params
+            entry_val = pdata.get("entry")
+            trig_val  = trigger.get(tkey)
+            if entry_val is None or trig_val is None:
+                continue
+            # Range match: trigger value is within tolerance of historical failure's entry value
+            try:
+                if abs(float(trig_val) - float(entry_val)) <= tol:
+                    weighted_matches += weight
+                    if param not in matched_params:
+                        matched_params.append(param)
+            except (TypeError, ValueError):
+                pass
+
+    penalty = min(20, int(weighted_matches * 2))
+    reason  = (f"Similar to {len(matched_params)} failed param(s): {', '.join(matched_params)}"
+               if matched_params else "")
+    return penalty, reason
 
 
 if __name__ == "__main__":

@@ -322,3 +322,82 @@ Return ONLY valid JSON in this exact format:
 
 if __name__ == "__main__":
     main()
+
+
+# ── Held-position re-evaluation (called by execution_agent.py EOD analysis) ──
+
+def evaluate_held_position(ticker: str, pos: dict, drift: dict) -> str:
+    """Re-evaluate a held position using the existing AI pipeline.
+
+    Called at EOD for positions where 3-day avg close < buy_price (Day 3+).
+    Passes current price action context and parameter drift to the AI model.
+
+    Args:
+        ticker: stock symbol
+        pos:    portfolio_positions row dict (has entry_* fields)
+        drift:  param_drift dict from _compute_param_drift() — quantitative context
+
+    Returns:
+        Letter grade 'A' | 'B' | 'C' | 'D' | 'F'
+        'C' is returned on any API failure (neutral — don't over-rotate on errors).
+    """
+    try:
+        _ai = OpenAI(api_key=OPENAI_API_KEY)
+
+        # Summarise the drift context for the AI
+        drift_lines = []
+        for param, v in drift.items():
+            entry   = v.get("entry")
+            current = v.get("current")
+            failed  = v.get("failed", False)
+            if entry is not None and current is not None:
+                flag = " ⚠️ FAILED" if failed else ""
+                drift_lines.append(f"  {param}: entry={entry} → current={current}{flag}")
+
+        drift_text = "\n".join(drift_lines) if drift_lines else "  (no drift data available)"
+
+        entry_rationale = pos.get("entry_score_rationale") or "Not available"
+        buy_price       = pos.get("buy_price") or "unknown"
+        days_held       = pos.get("days_since_hwm") or "unknown"
+
+        prompt = f"""You are an expert swing trader re-assessing a held position that is underperforming.
+
+Stock: {ticker}
+Original buy thesis: {entry_rationale}
+Buy price: ${buy_price}
+Days since last high-water mark: {days_held}
+
+Parameter drift since entry (negative = deteriorating):
+{drift_text}
+
+TASK: Grade the CURRENT conviction in this position continuing to recover.
+
+Grade scale:
+  A — Strong conviction: drift is minor, technical structure intact, hold
+  B — Moderate conviction: some drift, but core thesis intact, monitor closely
+  C — Low conviction: multiple signals weakened, consider rotating if opportunity arises
+  D — Weak: position structurally failing, should rotate soon
+  F — No conviction: breakout thesis has fully collapsed, rotate immediately
+
+Return ONLY a single JSON object: {{"grade": "B", "rationale": "one sentence"}}"""
+
+        response = _ai.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a swing trading analyst. Output only valid JSON."},
+                {"role": "user",   "content": prompt},
+            ],
+            timeout=15,
+        )
+        result = json.loads(response.choices[0].message.content)
+        grade  = str(result.get("grade", "C")).upper().strip()
+        if grade not in ("A", "B", "C", "D", "F"):
+            grade = "C"
+        rationale = result.get("rationale", "")
+        print(f"   🤖 {ticker} held-position AI grade: {grade} — {rationale[:80]}")
+        return grade
+
+    except Exception as _e:
+        print(f"   ⚠️ evaluate_held_position({ticker}) failed: {_e}. Defaulting to C.")
+        return "C"

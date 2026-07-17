@@ -82,150 +82,46 @@ def _update_call_strings(mock_sb):
 
 
 # ============================================================================
-# Rule 1: RS Decay
+# Rule 1: PARAM_DRIFT (replaces old RS_DECAY rule)
+# ============================================================================
+# NOTE: The RS_DECAY rotation rule was removed. RS score decay is now one of
+# 6 parameters tracked inside the PARAM_DRIFT system (see test_param_drift.py).
+# These tests verify the old RS_DECAY label is never emitted by the EOD loop.
 # ============================================================================
 
-class TestRule1RsDecay:
+class TestRule1RsDecayRemoved:
     """
-    Rule 1 fires when:
-      - hwm_rs_score is not NULL
-      - live_rs_score is not NULL
-      - days_since_hwm >= RS_DECAY_MIN_DAYS (default 3)
-      - (hwm_rs_score - live_rs_score) >= RS_DECAY_GATE (default 15)
-      - a fresh trigger exists (not already held)
-    Action: writes rotation_recommendation='RS_DECAY'. Does NOT auto-sell.
+    Regression tests confirming RS_DECAY recommendation is no longer written
+    under any circumstances. Replaced by PARAM_DRIFT in the EOD analysis loop.
     """
 
-    def test_writes_rs_decay_recommendation_when_threshold_met(self):
-        """RS decay >= 15 pts from HWM RS, stalled >= 3 trading days → RS_DECAY written."""
-        # hwm_date = 2026-06-17 = 3 trading days before mock date (meets RS_DECAY_MIN_DAYS=3)
+    def test_rs_decay_never_written_regardless_of_magnitude(self):
+        """Even with large RS decay (>15 pts from HWM), RS_DECAY is never recommended."""
         pos = make_position("AAPL", hwm_date=_hwm(3), hwm_rs_score=70)
         portfolio = _full_portfolio(pos)
         trigger = make_trigger("GOOG", final_score=80)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        # live_rs=50 → decay = 70-50 = 20 >= RS_DECAY_GATE=15
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=50)
+        # live_rs=50 → old decay = 70-50 = 20 pts — would have fired old Rule 1
+        _run_eod(ib, mock_sb, live_rs_return=50)
 
-        mock_sell.assert_not_called()
-        assert any("RS_DECAY" in c for c in _update_call_strings(mock_sb)), \
-            "Expected RS_DECAY recommendation to be written"
-
-    def test_no_recommendation_when_hwm_rs_missing(self):
-        """hwm_rs_score=None → Rule 1 skipped entirely. Only Rule 2 can act."""
-        pos = make_position("AAPL", hwm_date=_hwm(3), hwm_rs_score=None)
-        portfolio = _full_portfolio(pos)
-        mock_sb = make_supabase_mock(portfolio=portfolio,
-                                     daily_triggers=[make_trigger("GOOG", final_score=80)])
-        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
-
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=50)
-
-        mock_sell.assert_not_called()
         assert not any("RS_DECAY" in c for c in _update_call_strings(mock_sb)), \
-            "Rule 1 must not fire when hwm_rs_score is NULL"
+            "RS_DECAY must never be written — it was replaced by PARAM_DRIFT"
 
-    def test_no_recommendation_when_live_rs_missing(self):
-        """live_rs=None (FMP API failure) → Rule 1 skipped. Safe default."""
-        pos = make_position("AAPL", hwm_date=_hwm(3), hwm_rs_score=70)
-        portfolio = _full_portfolio(pos)
-        mock_sb = make_supabase_mock(portfolio=portfolio,
-                                     daily_triggers=[make_trigger("GOOG", final_score=80)])
-        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
-
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=None)
-
-        mock_sell.assert_not_called()
-        assert not any("RS_DECAY" in c for c in _update_call_strings(mock_sb))
-
-    def test_no_recommendation_when_stalled_below_min_days(self):
-        """1 trading day stalled < RS_DECAY_MIN_DAYS=3 → Rule 1 does not fire (noise filter)."""
-        pos = make_position("AAPL", hwm_date=_hwm(1), hwm_rs_score=70)
-        portfolio = _full_portfolio(pos)
-        mock_sb = make_supabase_mock(portfolio=portfolio,
-                                     daily_triggers=[make_trigger("GOOG", final_score=80)])
-        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
-
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=50)
-
-        mock_sell.assert_not_called()
-        assert not any("RS_DECAY" in c for c in _update_call_strings(mock_sb))
-
-    def test_no_recommendation_when_decay_below_gate(self):
-        """RS decay = 10 pts < RS_DECAY_GATE=15 → Rule 1 does not fire."""
-        pos = make_position("AAPL", hwm_date=_hwm(3), hwm_rs_score=70)
-        portfolio = _full_portfolio(pos)
-        mock_sb = make_supabase_mock(portfolio=portfolio,
-                                     daily_triggers=[make_trigger("GOOG", final_score=80)])
-        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
-
-        # live_rs=60 → decay = 70-60 = 10 < 15
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=60)
-
-        mock_sell.assert_not_called()
-        assert not any("RS_DECAY" in c for c in _update_call_strings(mock_sb))
-
-    def test_no_recommendation_when_no_fresh_trigger(self):
-        """RS decayed but no fresh trigger exists → Rule 1 does not fire."""
-        pos = make_position("AAPL", hwm_date=_hwm(3), hwm_rs_score=70)
+    def test_hwm_rs_score_not_written_on_new_hwm(self):
+        """hwm_rs_score write was removed from EOD metrics loop — column stays dormant."""
+        pos = make_position("AAPL", hwm_date=_hwm(0))   # new HWM today
         portfolio = _full_portfolio(pos)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=50)
+        _run_eod(ib, mock_sb, live_rs_return=85)
 
-        mock_sell.assert_not_called()
-        assert not any("RS_DECAY" in c for c in _update_call_strings(mock_sb))
-
-    def test_rs_decay_anchored_to_hwm_rs_not_entry_rs(self):
-        """
-        KEY REGRESSION TEST: RS decay must be measured from hwm_rs_score, NOT entry_rs_score.
-
-        Scenario: stock ran hard after entry, RS at HWM was 90 (higher than entry 70).
-        Current live RS is 70 (same as entry). Old code (entry anchor) would see 0 decay — no fire.
-        New code (HWM anchor) correctly sees 90-70=20 pts decay — fires Rule 1.
-        """
-        pos = make_position(
-            "AAPL",
-            hwm_date=_hwm(3),
-            entry_rs_score=70,   # RS at buy day
-            hwm_rs_score=90,     # RS at peak (higher than entry — stock ran hard)
-        )
-        portfolio = _full_portfolio(pos)
-        trigger = make_trigger("GOOG", final_score=80)
-        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
-        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
-
-        # live_rs=70 (same as entry, old code would see 0 decay)
-        # vs hwm_rs=90 → real decay = 20 pts ≥ RS_DECAY_GATE=15
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=70)
-
-        mock_sell.assert_not_called()  # Rule 1 → recommendation only, no auto-sell
-        assert any("RS_DECAY" in c for c in _update_call_strings(mock_sb)), \
-            "Rule 1 must use hwm_rs_score as anchor, not entry_rs_score"
-
-    def test_no_rs_decay_when_entry_rs_equal_but_hwm_rs_close(self):
-        """
-        Inverse of regression test: hwm_rs=72, live_rs=60 → decay=12 < 15 → no fire.
-        Ensures threshold still applies when anchored to HWM.
-        """
-        pos = make_position(
-            "AAPL",
-            hwm_date=_hwm(3),
-            entry_rs_score=50,   # very low entry RS
-            hwm_rs_score=72,     # moderate peak
-        )
-        portfolio = _full_portfolio(pos)
-        trigger = make_trigger("GOOG", final_score=80)
-        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
-        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
-
-        # live_rs=60 → decay from HWM = 72-60 = 12 < 15
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=60)
-
-        mock_sell.assert_not_called()
-        assert not any("RS_DECAY" in c for c in _update_call_strings(mock_sb))
+        # Verify hwm_rs_score is not in any update payload
+        update_strs = _update_call_strings(mock_sb)
+        assert not any("hwm_rs_score" in c for c in update_strs), \
+            "hwm_rs_score must not be written — column is dormant, use param_drift instead"
 
 
 # ============================================================================
@@ -331,26 +227,26 @@ class TestRule2HardStop:
 
 class TestHwmRsScoreTracking:
     """
-    Tests that hwm_rs_score is correctly written to the DB at EOD
-    when the position has set a new HWM today (days_since_hwm == 0).
+    Tests that hwm_rs_score is NOT written to the DB in any circumstance.
+    The column is dormant — RS decay is now tracked via param_drift instead.
     """
 
-    def test_hwm_rs_score_updated_when_new_high_today(self):
-        """days_since_hwm=0 (new HWM today) → hwm_rs_score written with live_rs value."""
+    def test_hwm_rs_score_not_written_when_new_high_today(self):
+        """days_since_hwm=0 (new HWM today) → hwm_rs_score must NOT be written (column dormant)."""
         pos = make_position("AAPL", hwm_date=_hwm(0), hwm_rs_score=None)
         portfolio = _full_portfolio(pos)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        # live_rs=85 — should be stored as hwm_rs_score since new HWM today
+        # live_rs=85 — old code would write hwm_rs_score=85, new code must not
         _run_eod(ib, mock_sb, live_rs_return=85)
 
         update_calls = _update_call_strings(mock_sb)
-        assert any("hwm_rs_score" in c and "85" in c for c in update_calls), \
-            f"Expected hwm_rs_score=85 to be written when days_since_hwm=0; calls: {update_calls}"
+        assert not any("hwm_rs_score" in c for c in update_calls), \
+            f"hwm_rs_score must never be written — column is dormant; calls: {update_calls}"
 
-    def test_hwm_rs_score_not_overwritten_when_stalled(self):
-        """days_since_hwm=3 (stalling, not a new HWM) → hwm_rs_score must NOT be updated."""
+    def test_hwm_rs_score_not_written_when_stalled(self):
+        """days_since_hwm=3 (stalling) → hwm_rs_score must NOT be in any update payload."""
         pos = make_position("AAPL", hwm_date=_hwm(3), hwm_rs_score=90)
         portfolio = _full_portfolio(pos)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[])
@@ -359,10 +255,8 @@ class TestHwmRsScoreTracking:
         _run_eod(ib, mock_sb, live_rs_return=70)
 
         update_calls = _update_call_strings(mock_sb)
-        # hwm_rs_score must not appear in an update call with the stale live_rs value
-        # (it may appear in backfill but not in an active overwrite)
-        assert not any("hwm_rs_score" in c and "70" in c for c in update_calls), \
-            "hwm_rs_score must not be overwritten while position is stalling (days_since_hwm > 0)"
+        assert not any("hwm_rs_score" in c for c in update_calls), \
+            "hwm_rs_score must not appear in any update — column is dormant"
 
 
 # ============================================================================
