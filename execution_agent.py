@@ -145,15 +145,14 @@ STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
 # If portfolio is full and a fresh breakout exists at 3:45pm, the most-stalled
 # position (largest days since HWM) is rotated out.
 PLATEAU_DAYS             = int(os.getenv("PLATEAU_DAYS", 7))
-# ── Tiered rotation thresholds ────────────────────────────────────────────────
-# Tier 1: RS Decay Gate — recommend rotation when live RS score has fallen this
-#   many points below the entry RS score (and >= RS_DECAY_MIN_DAYS have passed).
+# ── Plateau rotation thresholds (2-rule system) ───────────────────────────────
+# Rule 1: RS Decay — recommend rotation when live RS has dropped >= RS_DECAY_GATE
+#   points below hwm_rs_score (RS on the day of the last HWM) and position has
+#   stalled >= RS_DECAY_MIN_DAYS trading days. Interactive — no auto-sell.
 RS_DECAY_GATE            = int(os.getenv("RS_DECAY_GATE", 15))
 RS_DECAY_MIN_DAYS        = int(os.getenv("RS_DECAY_MIN_DAYS", 3))
-# Tier 2: Score Differential — recommend rotation when the top unowned trigger's
-#   final_score exceeds the held position's entry_final_score by this many points.
-SCORE_UPGRADE_GAP        = int(os.getenv("SCORE_UPGRADE_GAP", 20))
-SCORE_GAP_MIN_DAYS       = int(os.getenv("SCORE_GAP_MIN_DAYS", 5))
+# Rule 2: Hard Time-Stop — auto-sell when stalled >= PLATEAU_DAYS. See line above.
+# (SCORE_UPGRADE_GAP / SCORE_GAP_MIN_DAYS removed — Tier 2 score gap check eliminated)
 COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
@@ -787,7 +786,7 @@ def reconcile_with_ibkr(ib: IB):
             "buy_source": "daily_triggers",   # Bug fix: always set buy_source to prevent NULL
             "stop_loss": stop_loss,
             "hwm_date": datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),   # plateau clock starts at entry
-            "entry_rs_score": None,   # unknown for manual buys — Tier 1 RS check skipped
+            "entry_rs_score": _get_entry_rs(ticker, None),   # live-fetched so Rule 1 has a baseline
         }
         try:
             client.table("portfolio_positions").insert(position_data).execute()
@@ -1109,7 +1108,7 @@ def run_market_open_buys(ib: IB):
                 "entry_final_score":      trigger.get("final_score"),
                 "entry_technical_score":  trigger.get("technical_score"),
                 "entry_liquidity_score":  trigger.get("liquidity_score"),
-                "entry_rs_score":         trigger.get("rs_score"),
+                "entry_rs_score":         _get_entry_rs(ticker, trigger.get("rs_score")),
                 "entry_sentiment_score":  trigger.get("sentiment_score"),
                 "entry_atr_pct":          trigger.get("atr_pct"),
                 "entry_est_days_target":  trigger.get("est_days_to_target"),
@@ -1170,6 +1169,26 @@ def get_fresh_triggers_today(client: Client, active_tickers: list) -> list:
         return [r["ticker"] for r in res.data if r["ticker"] not in active_tickers]
     except Exception:
         return []
+
+
+def _get_entry_rs(ticker: str, trigger_rs_score) -> int | None:
+    """Return entry_rs_score for a newly opened position.
+
+    Prefers the rs_score already in the trigger row (written by ai_evaluator.py).
+    Falls back to a live FMP fetch if the trigger has no rs_score (e.g. the
+    AI evaluator hadn't run yet when the buy was executed, or this is a manual
+    reconcile buy). This guarantees every position has an RS baseline so that
+    Rule 1 (RS Decay) is never permanently blind due to a NULL entry_rs_score.
+
+    Returns None only if the live fetch also fails (FMP API down) — callers must
+    handle None gracefully (Rule 1 will skip that position and Rule 2 still applies).
+    """
+    if trigger_rs_score is not None:
+        return int(trigger_rs_score)
+    live = _fetch_current_rs(ticker)
+    if live is not None:
+        print(f"   📊 {ticker}: entry_rs_score backfilled live ({live}) — trigger had no rs_score")
+    return live
 
 
 def _fetch_current_rs(ticker: str) -> int | None:
@@ -1394,63 +1413,56 @@ def monitor_portfolio_intraday(ib: IB):
             dsm      = trading_days_between(hwm_d_m, today_eod)
             live_rs  = _fetch_current_rs(ticker_m)  # ~1 FMP call per position
             try:
-                client.table("portfolio_positions").update({
+                update_payload = {
                     "days_since_hwm":    dsm,
                     "live_rs_score":     live_rs,
                     "top_trigger_score": best_trigger_score if fresh_tickers else None,
-                }).eq("ticker", ticker_m).execute()
-                # Cache updated values locally so tier checks below can use them
+                }
+                # Write hwm_rs_score when position made a new HWM today (dsm == 0).
+                # This captures RS at the peak — the correct anchor for Rule 1 decay check.
+                if dsm == 0 and live_rs is not None:
+                    update_payload["hwm_rs_score"] = live_rs
+                    print(f"   📈 {ticker_m}: new HWM today — hwm_rs_score set to {live_rs}")
+                client.table("portfolio_positions").update(update_payload).eq("ticker", ticker_m).execute()
+                # Cache updated values locally so rule checks below can use them
                 pos["days_since_hwm"]    = dsm
                 pos["live_rs_score"]     = live_rs
                 pos["top_trigger_score"] = best_trigger_score if fresh_tickers else None
+                if dsm == 0 and live_rs is not None:
+                    pos["hwm_rs_score"] = live_rs
             except Exception as _me:
                 print(f"   ⚠️ Could not update plateau metrics for {ticker_m}: {_me}")
 
         if fresh_tickers and best_ticker:
 
-            # ── Tier 1: RS Decay Gate ─────────────────────────────────────────
+            # ── Rule 1: RS Decay ──────────────────────────────────────────────
             # Recommend rotation if live RS has dropped >= RS_DECAY_GATE points
-            # below the entry RS and the position has stalled >= RS_DECAY_MIN_DAYS.
+            # below hwm_rs_score (RS on the day of the last HWM — not entry RS).
+            # Requires >= RS_DECAY_MIN_DAYS plateau days as a noise filter.
+            # If hwm_rs_score is NULL (no RS data available), skip — only Rule 2 applies.
+            _rule1_flagged = set()   # track tickers flagged this cycle
             for p in positions:
-                entry_rs = p.get("entry_rs_score")
-                live_rs  = p.get("live_rs_score")
-                dsm      = p.get("days_since_hwm", 0)
-                if entry_rs is None or live_rs is None:
-                    continue
+                hwm_rs  = p.get("hwm_rs_score")
+                live_rs = p.get("live_rs_score")
+                dsm     = p.get("days_since_hwm", 0)
+                if hwm_rs is None or live_rs is None:
+                    continue   # safe default: skip when RS data unavailable
                 if dsm < RS_DECAY_MIN_DAYS:
                     continue
-                rs_decay = int(entry_rs) - int(live_rs)
+                rs_decay = int(hwm_rs) - int(live_rs)
                 if rs_decay >= RS_DECAY_GATE:
-                    print(f"   📊 Tier 1: {p['ticker']} RS decayed {rs_decay}pts "
-                          f"(entry={entry_rs} → live={live_rs}, {dsm}d stalled) "
+                    print(f"   📊 RS Decay: {p['ticker']} RS {hwm_rs}→{live_rs} "
+                          f"(−{rs_decay}pts from HWM, {dsm}d stalled) "
                           f"— recommending rotation to {best_ticker}")
-                    _set_rotation_recommendation(client, p["ticker"], "TIER_1")
+                    _set_rotation_recommendation(client, p["ticker"], "RS_DECAY")
+                    _rule1_flagged.add(p["ticker"])
                     notifier.notify(
-                        f"💡 *Rotation Rec — Tier 1 (RS Decay)*\n"
-                        f"{p['ticker']}: RS {entry_rs} → {live_rs} (−{rs_decay}pts, {dsm}d stalled)\n"
+                        f"💡 *Rotation Rec — RS Decay*\n"
+                        f"{p['ticker']}: RS {hwm_rs} → {live_rs} (−{rs_decay}pts from HWM, {dsm}d stalled)\n"
                         f"Upgrade candidate: {best_ticker} (score {best_trigger_score})\n"
                         f"→ Approve or dismiss in the portfolio UI."
                     )
-
-            # ── Tier 2: Score Differential ────────────────────────────────────
-            # Recommend rotation if a materially higher-scored trigger exists
-            # and the position has stalled >= SCORE_GAP_MIN_DAYS.
-            for p in positions:
-                dsm        = p.get("days_since_hwm", 0)
-                entry_score = p.get("entry_final_score") or 0
-                score_gap   = best_trigger_score - entry_score
-                if dsm >= SCORE_GAP_MIN_DAYS and score_gap >= SCORE_UPGRADE_GAP:
-                    # Only set if not already set to TIER_1 for same ticker
-                    if p.get("rotation_recommendation") != "TIER_1":
-                        print(f"   📈 Tier 2: {p['ticker']} score gap +{score_gap} "
-                              f"(entry={entry_score} vs {best_ticker}={best_trigger_score}, {dsm}d stalled) "
-                              f"— recommending rotation")
-                        _set_rotation_recommendation(client, p["ticker"], "TIER_2")
-                        notifier.notify(
-                            f"💡 *Rotation Rec — Tier 2 (Score Upgrade)*\n"
-                            f"{p['ticker']}: entry score {entry_score} vs {best_ticker} score {best_trigger_score} (+{score_gap}pts, {dsm}d stalled)\n"
-                            f"→ Approve or dismiss in the portfolio UI."
-                        )
+            # (Tier 2 score gap check removed — RS decay and Day-7 hard stop are sufficient)
 
             # ── Tier 3: Hard Time-Stop (auto-execute) ─────────────────────────
             # If a position has stalled >= PLATEAU_DAYS, sell it immediately.

@@ -72,11 +72,17 @@ def make_position(ticker: str,
                   # Plateau rotation fields
                   entry_rs_score: int | None = None,
                   entry_final_score: int | None = None,
+                  hwm_rs_score: int | None = None,
                   days_since_hwm: int | None = None,
                   live_rs_score: int | None = None,
                   top_trigger_score: int | None = None,
                   rotation_recommendation: str | None = None) -> dict:
-    """Factory for a portfolio_positions Supabase row."""
+    """Factory for a portfolio_positions Supabase row.
+
+    hwm_rs_score: RS score on the day the position last made a new HWM.
+                  Rule 1 (RS Decay) compares live_rs_score vs this value.
+                  Distinct from entry_rs_score (RS at buy day).
+    """
     buy_date = (
         datetime.datetime.now(datetime.timezone.utc)
         - datetime.timedelta(days=days_ago)
@@ -94,11 +100,12 @@ def make_position(ticker: str,
         "buy_reason": f"Test: {ticker}",
         "stop_loss": stop_loss if stop_loss is not None else round(buy_price * 0.93, 2),
         "hwm_date": hwm_date,
-        "entry_rs_score":         entry_rs_score,
-        "entry_final_score":      entry_final_score,
-        "days_since_hwm":         days_since_hwm,
-        "live_rs_score":          live_rs_score,
-        "top_trigger_score":      top_trigger_score,
+        "entry_rs_score":          entry_rs_score,
+        "entry_final_score":       entry_final_score,
+        "hwm_rs_score":            hwm_rs_score,       # Rule 1 decay anchor
+        "days_since_hwm":          days_since_hwm,
+        "live_rs_score":           live_rs_score,
+        "top_trigger_score":       top_trigger_score,
         "rotation_recommendation": rotation_recommendation,
     }
 

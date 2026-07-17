@@ -284,27 +284,30 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             const color      = isPlateauing ? '#f43f5e' : pct >= 0.7 ? '#f59e0b' : '#10b981';
             const accentRGB  = isPlateauing ? '244,63,94' : pct >= 0.7 ? '245,158,11' : '52,211,153';
 
-            // RS Decay: entry vs live
-            const entryRS = pos.entry_rs_score;
+            // RS Decay: HWM-day RS vs live (hwm_rs_score is the anchor, not entry_rs_score)
+            const hwmRS   = pos.hwm_rs_score ?? pos.entry_rs_score;  // fallback to entry if HWM not yet set
             const liveRS  = pos.live_rs_score;
-            const rsDecay = (entryRS != null && liveRS != null) ? (entryRS - liveRS) : null;
+            const rsDecay = (hwmRS != null && liveRS != null) ? (hwmRS - liveRS) : null;
             const rsDecayColor = rsDecay != null
               ? (rsDecay >= 15 ? '#f43f5e' : rsDecay >= 8 ? '#f59e0b' : '#10b981')
               : 'var(--text-muted)';
 
-            // Score gap: top trigger vs entry
+            // Best available trigger score (informational — no longer drives a rotation rule)
             const entryScore = pos.entry_final_score;
             const topScore   = pos.top_trigger_score;
             const scoreGap   = (entryScore != null && topScore != null) ? (topScore - entryScore) : null;
             const scoreGapColor = scoreGap != null
-              ? (scoreGap >= 20 ? '#f43f5e' : scoreGap >= 10 ? '#f59e0b' : '#10b981')
+              ? (scoreGap >= 20 ? '#f59e0b' : scoreGap >= 10 ? '#34d399' : 'var(--text-muted)')
               : 'var(--text-muted)';
 
-            // Recommendation
+            // Recommendation banner
             const rec = pos.rotation_recommendation;
             const tierColors = {
-              TIER_1: { bg: 'rgba(244,63,94,0.12)', border: 'rgba(244,63,94,0.4)', text: '#f43f5e', label: '⚠️ Tier 1 — RS Decay' },
-              TIER_2: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#f59e0b', label: '📈 Tier 2 — Score Upgrade' },
+              // Current value written by new code
+              RS_DECAY: { bg: 'rgba(244,63,94,0.12)', border: 'rgba(244,63,94,0.4)', text: '#f43f5e', label: '⚠️ RS Decay — Rotation Recommended' },
+              // Backward compat: existing DB rows that pre-date the rename
+              TIER_1:   { bg: 'rgba(244,63,94,0.12)', border: 'rgba(244,63,94,0.4)', text: '#f43f5e', label: '⚠️ RS Decay — Rotation Recommended' },
+              TIER_2:   { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#f59e0b', label: '📈 Score Upgrade — Rotation Recommended' },
             };
             const tierInfo = rec ? tierColors[rec] : null;
 
@@ -343,26 +346,25 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
                   {isPlateauing ? '🚨 Tier 3 auto-rotate fires next EOD.' : `${PLATEAU_DAYS - daysSinceHWM} trading days to Tier 3.`}
                 </div>
 
-                {/* RS Decay metric */}
-                {entryRS != null && (
+                {/* RS Decay metric (anchored to HWM-day RS, not entry RS) */}
+                {hwmRS != null && (
                   <div style={{ marginTop: '0.6rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>RS Score</div>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>RS Score (HWM→live)</div>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: rsDecayColor }}>
-                      {liveRS != null ? `${entryRS} → ${liveRS}` : `${entryRS} (live pending)`}
+                      {liveRS != null ? `${hwmRS} → ${liveRS}` : `${hwmRS} (live pending)`}
                       {rsDecay != null && rsDecay > 0 && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem' }}>(−{rsDecay} pts)</span>}
                     </div>
-                    {rsDecay != null && rsDecay >= 15 && <div style={{ ...noteStyle, color: '#f43f5e', marginTop: '0.15rem' }}>Tier 1 threshold crossed.</div>}
+                    {rsDecay != null && rsDecay >= 15 && <div style={{ ...noteStyle, color: '#f43f5e', marginTop: '0.15rem' }}>RS decay threshold crossed — rotation may be recommended at 3:45 PM.</div>}
                   </div>
                 )}
 
-                {/* Score gap metric */}
+                {/* Best Available Trigger — informational context (not a rotation rule) */}
                 {topScore != null && (
                   <div style={{ marginTop: '0.5rem' }}>
                     <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Best Available Trigger</div>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: scoreGapColor }}>
                       Score {topScore}{entryScore != null && <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--text-muted)' }}> vs entry {entryScore} ({scoreGap >= 0 ? '+' : ''}{scoreGap})</span>}
                     </div>
-                    {scoreGap != null && scoreGap >= 20 && <div style={{ ...noteStyle, color: '#f59e0b', marginTop: '0.15rem' }}>Tier 2 threshold crossed.</div>}
                   </div>
                 )}
 
@@ -379,7 +381,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
                       {tierInfo.label}
                     </div>
                     <div style={{ ...noteStyle, marginBottom: '0.5rem' }}>
-                      Bot recommends rotating this position. Tier 3 auto-executes at day {PLATEAU_DAYS}.
+                      Bot recommends rotating this position. Hard auto-sell fires at day {PLATEAU_DAYS} if no action taken.
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button
