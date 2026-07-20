@@ -59,7 +59,7 @@ def _run_monitor(ib, supabase_mock, live_prices=None, is_eod=False, is_bullish=T
     with patch("execution_agent.supabase", supabase_mock), \
          patch("execution_agent.get_live_price", side_effect=_price), \
          patch("execution_agent.cancel_ticker_sell_orders"), \
-         patch("execution_agent.place_trailing_stop", return_value="TS_MOCK") as mock_ts, \
+         patch("execution_agent.place_trailing_stop", return_value=("TS_MOCK", 0.07)) as mock_ts, \
          patch("execution_agent.execute_sell") as mock_sell, \
          patch("execution_agent.datetime") as mock_datetime:
         mock_datetime.datetime.now.side_effect = lambda *a, **kw: now_mock
@@ -429,15 +429,17 @@ class TestPlateauRotation:
         assert sold == [], f"Day 6 position should not be auto-sold, got {sold}"
 
     def test_rank_and_replace_swap(self):
-        """Days 3-6 position with RS decay is swapped if a +15 point gap trigger exists."""
+        """Days 3-6 position with RS decay is swapped if trigger score > live Mₜ + 15.
+        AAPL live Mₜ ≈ 63.3 (RS decayed 90→75). Trigger needs > 78.3. Use 85.
+        """
         portfolio = [
             make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50), # Day 4
             make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
             make_position("NVDA", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
             make_position("AMZN", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
         ]
-        # TSLA score 70 (+20 gap)
-        triggers = [make_trigger("TSLA", final_score=70)]
+        # TSLA score 85 (+21.7 gap over live Mₜ=63.3, exceeds the 15-point threshold)
+        triggers = [make_trigger("TSLA", final_score=85)]
 
         with patch("execution_agent.get_live_price", return_value=100.0), \
              patch("execution_agent._fetch_ohlcv", return_value=[]), \

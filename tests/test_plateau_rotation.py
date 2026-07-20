@@ -56,7 +56,7 @@ def _run_eod(ib, supabase_mock, live_rs_return=None, live_price=105.0):
     with patch("execution_agent.supabase", supabase_mock), \
          patch("execution_agent.get_live_price", return_value=live_price), \
          patch("execution_agent.cancel_ticker_sell_orders"), \
-         patch("execution_agent.place_trailing_stop", return_value="TS_MOCK"), \
+         patch("execution_agent.place_trailing_stop", return_value=("TS_MOCK", 0.07)), \
          patch("execution_agent.execute_sell") as mock_sell, \
          patch("execution_agent._fetch_current_rs", return_value=live_rs_return), \
          patch("execution_agent.datetime") as mock_dt:
@@ -178,11 +178,15 @@ class TestRule2HardStop:
         mock_sell.assert_not_called()
 
     def test_rank_and_replace_fires_at_3_6_days(self):
-        """Day 4 with RS decay and +15 score gap fresh trigger -> Rank & Replace auto-swaps."""
+        """Day 4 with RS decay and trigger score > live Mₜ + 15 → Rank & Replace auto-swaps.
+        AAPL: entry_rs=90, live_rs=75 → decayed (75 < 90*0.9=81) → rs_drifted=True
+        live Mₜ ≈ 63.3 (RS component penalised for decay, sent=50 baseline).
+        Trigger score must be > 63.3 + 15 = 78.3 to fire. Use 85 → +21.7 gap.
+        """
         pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50)
         portfolio = _full_portfolio(pos)
-        # Fresh trigger GOOG with score 70 (+20 points gap)
-        trigger = make_trigger("GOOG", final_score=70)
+        # Fresh trigger GOOG with score 85 (+21.7 gap over live Mₜ=63.3)
+        trigger = make_trigger("GOOG", final_score=85)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 

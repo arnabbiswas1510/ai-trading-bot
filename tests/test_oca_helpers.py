@@ -90,8 +90,12 @@ class TestPlaceTrailingStop:
         ib = make_ib_mock()
         contract = MagicMock()
         contract.symbol = "AMZN"
-        group = execution_agent.place_trailing_stop(ib, contract, shares=10, stop_loss_pct=0.07)
+        result = execution_agent.place_trailing_stop(ib, contract, shares=10, stop_loss_pct=0.07)
+        # place_trailing_stop now returns (group_label, confirmed_trail_pct)
+        assert isinstance(result, tuple) and len(result) == 2
+        group, confirmed_pct = result
         assert isinstance(group, str) and len(group) > 0
+        assert isinstance(confirmed_pct, float) and 0 < confirmed_pct <= 1.0
 
 
 # -- cancel_ticker_sell_orders() unit tests --
