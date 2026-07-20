@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir \
     supabase==2.31.0 \
     requests==2.32.3 \
     pandas==2.2.2 \
-    httpx==0.28.1
+    httpx==0.28.1 \
+    openai>=1.0.0
 
 # Copy script files into the container (scoring.py included for RS calculations)
 COPY execution_agent.py telegram_notifier.py force_buy.py scoring.py ./

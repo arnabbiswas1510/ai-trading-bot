@@ -619,30 +619,46 @@ def reconcile_with_ibkr(ib: IB):
         print(f"   ❌ Could not sync cash balance: {e}")
 
 
-    # ── Fetch IBKR positions via portfolio() ────────────────────────────────
-    # portfolio() uses the account subscription already active for monitoring;
-    # it returns PortfolioItem objects with .averageCost (not .avgCost).
-    # Bug #5: never use ib.positions() here — it may return [] transiently.
+    # ── Fetch IBKR positions via portfolio() with positions() fallback ───────
+    # portfolio() reads from the in-memory account cache which may be empty
+    # after a reconnect. We call reqPositions() first (unconditional TWS push)
+    # to populate ib.positions(), then prefer portfolio() for richer data but
+    # fall back to positions() if portfolio() is still empty.
     try:
-        ib_raw = ib.portfolio()
-        # Check for short positions and alert
-        for p in ib_raw:
-            if p.contract.secType == "STK" and int(p.position) < 0:
-                msg = f"🚨 SHORT POSITION DETECTED: {p.contract.symbol} has {int(p.position)} shares. Close this immediately in TWS!"
-                print(msg)
-                try:
-                    notifier.notify_error(msg)
-                except Exception:
-                    pass
+        try:
+            ib.reqPositions()
+            ib.sleep(2)   # let event loop populate ib.positions()
+        except Exception as _rp_err:
+            print(f"   ⚠️  reqPositions() failed (non-fatal): {_rp_err}")
 
-        # Only include equity positions with a positive share count
-        # PortfolioItem fields: contract, position, marketPrice, marketValue,
-        #                       averageCost, unrealizedPNL, realizedPNL, account
-        ib_map = {
-            p.contract.symbol: p
-            for p in ib_raw
-            if p.contract.secType == "STK" and int(p.position) > 0
-        }
+        ib_raw = ib.portfolio()
+
+        if not ib_raw:
+            _pos_fallback = [
+                p for p in ib.positions()
+                if p.contract.secType == "STK" and p.position > 0
+            ]
+            if _pos_fallback:
+                print(f"   ⚠️  portfolio() empty — using positions() fallback "
+                      f"({len(_pos_fallback)} position(s)).")
+                ib_map = {p.contract.symbol: p for p in _pos_fallback}
+            else:
+                ib_map = {}   # genuinely empty — guard below will handle
+        else:
+            for p in ib_raw:
+                if p.contract.secType == "STK" and int(p.position) < 0:
+                    msg = (f"🚨 SHORT POSITION DETECTED: {p.contract.symbol} "
+                           f"has {int(p.position)} shares. Close this immediately in TWS!")
+                    print(msg)
+                    try:
+                        notifier.notify_error(msg)
+                    except Exception:
+                        pass
+            ib_map = {
+                p.contract.symbol: p
+                for p in ib_raw
+                if p.contract.secType == "STK" and int(p.position) > 0
+            }
     except Exception as e:
         notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
         print(f"❌ Could not fetch IBKR positions during reconciliation: {e}")
@@ -664,16 +680,47 @@ def reconcile_with_ibkr(ib: IB):
 
     # ── Safety guard: empty IBKR response while Supabase has positions ──────
     # ib.portfolio() transiently returns [] when account data hasn't finished
-    # loading (e.g. after an internal reconnect). Without this guard, Case 1
-    # would delete every Supabase position on a false "not in IBKR" signal.
+    # loading after a reconnect. Without this guard, Case 1 would delete every
+    # Supabase position on a false "not in IBKR" signal.
+    #
+    # However: if portfolio() is empty but reqExecutions() shows a confirmed
+    # SLD fill for one of our tickers, that fill is real and must be processed
+    # regardless. We handle confirmed fills individually here, then return to
+    # skip bulk reconciliation (which is still unsafe on an empty read).
     if not ib_tickers and supabase_tickers:
         print(f"   ⚠️  IBKR returned empty portfolio but Supabase has "
-              f"{len(supabase_tickers)} position(s) — skipping reconcile to "
-              f"prevent false deletion. Will retry next cycle.")
-        return
+              f"{len(supabase_tickers)} position(s). "
+              f"Checking executions for confirmed fills before skipping...")
 
-    candidates_to_delete = supabase_tickers - ib_tickers
-    changes = 0
+        # Check each Supabase ticker for a confirmed SLD fill
+        try:
+            all_fills = ib.reqExecutions()
+        except Exception as _fe:
+            print(f"   ⚠️  reqExecutions() failed: {_fe}")
+            all_fills = []
+
+        confirmed_sold = set()
+        for fill in all_fills:
+            if (fill.contract.secType == "STK"
+                    and fill.execution.side == "SLD"
+                    and fill.contract.symbol in supabase_tickers):
+                confirmed_sold.add(fill.contract.symbol)
+
+        if confirmed_sold:
+            print(f"   🔍 Confirmed SLD fills found for: {confirmed_sold} — processing individually.")
+            # Temporarily set ib_map to empty (no live positions for these tickers)
+            # so Case 1 logic below handles them. We restrict candidates_to_delete
+            # to only confirmed fills to avoid false deletions on the others.
+            candidates_to_delete = confirmed_sold
+            changes = 0
+            # Fall through to Case 1 loop with restricted candidates
+        else:
+            print(f"   ℹ️  No confirmed SLD fills found — skipping reconcile to prevent false deletion.")
+            return
+
+    else:
+        candidates_to_delete = supabase_tickers - ib_tickers
+        changes = 0
 
     # ── Case 1: In Supabase but NOT in IBKR ─────────────────────────────────
     # IBKR is the single source of truth: it manages trailing stops via GTC
@@ -1908,14 +1955,31 @@ def monitor_portfolio_intraday(ib: IB):
                     "highest_unrealized_pct": round(highest_unrealized_pct, 4)
                 }
                 if hwm_updated:
-                    update_payload["hwm_date"] = today_ny.isoformat()
+                    update_payload["hwm_date"]  = today_ny.isoformat()
                     update_payload["hwm_price"] = round(float(current_price), 4)
 
                 client.table("portfolio_positions").update(update_payload).eq("ticker", ticker).execute()
                 pos["highest_unrealized_pct"] = highest_unrealized_pct
             except Exception as e:
-                notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", e)
-                print(f"   ⚠️ Could not update hwm/peak metrics for {ticker}: {e}")
+                err_str = str(e)
+                # PGRST204 = column missing in schema cache (migration not yet run).
+                # Degrade gracefully: write only hwm_date / hwm_price which always exist.
+                # Do NOT fire Telegram — this is a deploy-time setup issue, not a bug.
+                if "PGRST204" in err_str or "highest_unrealized_pct" in err_str:
+                    print(f"   ⚠️ {ticker}: highest_unrealized_pct column missing — run migration. "
+                          f"Writing hwm only.")
+                    if hwm_updated:
+                        try:
+                            client.table("portfolio_positions").update({
+                                "hwm_date":  today_ny.isoformat(),
+                                "hwm_price": round(float(current_price), 4),
+                            }).eq("ticker", ticker).execute()
+                        except Exception as _inner:
+                            print(f"   ⚠️ Could not update hwm for {ticker}: {_inner}")
+                else:
+                    notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", e)
+                    print(f"   ⚠️ Could not update hwm/peak metrics for {ticker}: {e}")
+
 
         # ── Break-Even Stop check (Days 3+) ──
         # Prevent early winners from turning into a loss.
@@ -2407,6 +2471,18 @@ def main_loop():
         try:
             ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
             print("✅ Connected to IBKR Gateway successfully!")
+            # Prime positions cache unconditionally via reqPositions().
+            # Unlike reqAccountUpdates(), reqPositions() does not require
+            # managedAccounts() to be populated — it forces IBKR to push
+            # all current Position objects, populating ib.positions().
+            try:
+                ib.reqPositions()
+                ib.sleep(3)   # let event loop process incoming Position items
+                _pos_count = len([p for p in ib.positions()
+                                  if p.contract.secType == 'STK' and p.position > 0])
+                print(f"   📡 Positions primed: {_pos_count} STK position(s) in cache.")
+            except Exception as _prime_err:
+                print(f"   ⚠️  Positions prime failed (non-fatal): {_prime_err}")
             _connect_silent_attempts = 0
             break
         except Exception as e:
