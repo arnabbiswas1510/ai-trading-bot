@@ -145,7 +145,19 @@ function formatDate(iso) {
 function getCleanExitReason(raw, pctReturn) {
   if (!raw) return 'Manual Close';
   const lower = raw.toLowerCase();
-  
+
+  if (lower.includes('rank & replace') || lower.includes('rank and replace')) {
+    return 'Rank & Replace';
+  }
+  if (lower.includes('time-stop') || (lower.includes('mandatory') && lower.includes('time'))) {
+    return 'Day 7 Time-Stop';
+  }
+  if (lower.includes('break-even') || lower.includes('hwm break')) {
+    return 'Break-Even Stop';
+  }
+  if (lower.includes('floor break') || lower.includes('floor_break') || lower.includes('consolidation floor')) {
+    return 'Floor Break';
+  }
   if (lower.includes('tier 3') || lower.includes('hard time-stop')) {
     return 'Tier 3 Time-Stop';
   }
@@ -155,7 +167,7 @@ function getCleanExitReason(raw, pctReturn) {
   if (lower.includes('tier 1') || lower.includes('rs decay')) {
     return 'Tier 1 RS Decay';
   }
-  if (lower.includes('ema-21') || lower.includes('exit ma')) {
+  if (lower.includes('ema-21') || lower.includes('exit ma') || lower.includes('moving average')) {
     return 'EMA-21 Exit';
   }
   if (lower.includes('stale rotation') || lower.includes('plateau rotation')) {
@@ -174,7 +186,7 @@ function getCleanExitReason(raw, pctReturn) {
       return 'Stop Loss (-7%)';
     }
   }
-  
+
   return raw;
 }
 
@@ -271,28 +283,28 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             </div>
           </div>
 
-          {/* ── Plateau Health ───────────────────────────── */}
+          {/* ── Time-Stop & Rotation Health ───────────────────────────── */}
           {(() => {
-            // Prefer server-computed days_since_hwm (written each EOD cycle);
-            // fall back to client-side calculation from hwm_date for freshness.
-            const serverDays = pos.days_since_hwm;
-            const hwmDate    = pos.hwm_date || pos.buy_date;
-            const daysSinceHWM = serverDays != null
-              ? serverDays
-              : tradingDaysBetween(hwmDate, new Date());
-            const pct        = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
-            const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
-            const color      = isPlateauing ? '#f43f5e' : pct >= 0.7 ? '#f59e0b' : '#10b981';
-            const accentRGB  = isPlateauing ? '244,63,94' : pct >= 0.7 ? '245,158,11' : '52,211,153';
+            const daysHeld = pos.days_held != null ? pos.days_held : 0;
+            const pct = Math.min(daysHeld / 7, 1.0);
+            
+            // Determine exit rule status
+            let timeStopStatus = "Relying on trailing stop";
+            let statusColor = "#10b981"; // green
+            if (daysHeld <= 2) {
+              timeStopStatus = "🛡️ Days 1-2: Room to breathe (Trailing stop active)";
+              statusColor = "#10b981";
+            } else if (daysHeld <= 6) {
+              timeStopStatus = "🔄 Days 3-6: Rank & Replace eligible (Drift check active)";
+              statusColor = "#f59e0b"; // orange
+            } else {
+              timeStopStatus = "⏱️ Day 7+: Mandatory Time-Stop if gain < 2.0% | EMA-21 active";
+              statusColor = pos.unrealized_gain_pct < 2.0 ? "#f43f5e" : "#10b981";
+            }
 
-            // RS decay display: entry_rs_score vs live_rs_score
-            // (hwm_rs_score anchor removed — rs_score is now tracked inside param_drift)
-            const entryRS = pos.entry_rs_score;
-            const liveRS  = pos.live_rs_score;
-            const rsDecay = (entryRS != null && liveRS != null) ? (entryRS - liveRS) : null;
-            const rsDecayColor = rsDecay != null
-              ? (rsDecay >= 15 ? '#f43f5e' : rsDecay >= 8 ? '#f59e0b' : '#10b981')
-              : 'var(--text-muted)';
+            // Break-even status
+            const hasCushion = pos.highest_unrealized_pct >= 5.0;
+            const breakEvenColor = hasCushion ? "#10b981" : "var(--text-muted)";
 
             // Best available trigger score (informational context only)
             const entryScore = pos.entry_final_score;
@@ -305,13 +317,13 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             // Recommendation banner
             const rec = pos.rotation_recommendation;
             const tierColors = {
-              // Current values written by new code
-              PARAM_DRIFT: { bg: 'rgba(244,63,94,0.12)', border: 'rgba(244,63,94,0.4)',  text: '#f43f5e', label: '⚠️ Breakout Parameters Failed — Rotation Recommended' },
-              HARD_STOP:   { bg: 'rgba(244,63,94,0.18)', border: 'rgba(244,63,94,0.5)',  text: '#f43f5e', label: '🛑 Hard Stop — Day 7 Auto-Sell Pending' },
-              // Backward compat: older DB rows
-              RS_DECAY:    { bg: 'rgba(244,63,94,0.12)', border: 'rgba(244,63,94,0.4)',  text: '#f43f5e', label: '⚠️ RS Decay — Rotation Recommended' },
-              TIER_1:      { bg: 'rgba(244,63,94,0.12)', border: 'rgba(244,63,94,0.4)',  text: '#f43f5e', label: '⚠️ RS Decay — Rotation Recommended' },
-              TIER_2:      { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#f59e0b', label: '📈 Score Upgrade — Rotation Recommended' },
+              PARAM_DRIFT:       { bg: 'rgba(244,63,94,0.12)',   border: 'rgba(244,63,94,0.4)',   text: '#f43f5e', label: '⚠️ Breakout Parameters Failed — Rotation Recommended',       hasApprove: true  },
+              HARD_STOP:         { bg: 'rgba(244,63,94,0.18)',   border: 'rgba(244,63,94,0.5)',   text: '#f43f5e', label: '🛑 Hard Stop — Day 7 Auto-Sell Pending',                      hasApprove: true  },
+              RS_DECAY:          { bg: 'rgba(244,63,94,0.12)',   border: 'rgba(244,63,94,0.4)',   text: '#f43f5e', label: '⚠️ RS Decay — Rotation Recommended',                          hasApprove: true  },
+              TIER_1:            { bg: 'rgba(244,63,94,0.12)',   border: 'rgba(244,63,94,0.4)',   text: '#f43f5e', label: '⚠️ RS Decay — Rotation Recommended',                          hasApprove: true  },
+              TIER_2:            { bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.4)',  text: '#f59e0b', label: '📈 Score Upgrade — Rotation Recommended',                     hasApprove: true  },
+              PROGRESS_DEFICIT:  { bg: 'rgba(251,191,36,0.10)',  border: 'rgba(251,191,36,0.38)', text: '#fbbf24', label: '📉 Progress Deficit — Position Behind Pace',                  hasApprove: false },
+              FLOOR_BREAK:       { bg: 'rgba(239,68,68,0.10)',   border: 'rgba(239,68,68,0.35)',  text: '#ef4444', label: '🚫 Floor Break — Consolidation Support Violated on Volume',     hasApprove: false },
             };
             const tierInfo = rec ? tierColors[rec] : null;
 
@@ -334,20 +346,50 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             };
 
             return (
-              <div style={cardStyle(accentRGB)}>
-                <div style={labelStyle}>⏱️ Plateau Exit</div>
+              <div style={cardStyle(hasCushion ? '16,185,129' : '245,158,11')}>
+                <div style={labelStyle}>⏱️ Rotation & Time-Stop Health</div>
 
                 {/* Progress bar */}
-                <div style={valueStyle(color)}>
-                  {daysSinceHWM} / {PLATEAU_DAYS} trading days
-                  {isPlateauing && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem' }}>⚠️ TIER 3 ELIGIBLE</span>}
+                <div style={valueStyle(statusColor)}>
+                  {daysHeld} / 7 trading days held
                 </div>
                 <div style={{ height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', margin: '0.4rem 0' }}>
-                  <div style={{ height: '100%', width: `${pct * 100}%`, background: color, borderRadius: '2px', transition: 'width 0.3s' }} />
+                  <div style={{ height: '100%', width: `${pct * 100}%`, background: statusColor, borderRadius: '2px', transition: 'width 0.3s' }} />
                 </div>
-                <div style={noteStyle}>
-                  HWM last set: {pos.hwm_date ? new Date(pos.hwm_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'at entry'}<br />
-                  {isPlateauing ? '🚨 Tier 3 auto-rotate fires next EOD.' : `${PLATEAU_DAYS - daysSinceHWM} trading days to Tier 3.`}
+                <div style={{ ...noteStyle, color: statusColor, fontWeight: 600, marginBottom: '0.6rem' }}>
+                  {timeStopStatus}
+                </div>
+
+                {/* Profit Cushion / Break-Even status */}
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Peak Cushion:</span>
+                    <span style={{ fontWeight: 700, color: pos.highest_unrealized_pct >= 5.0 ? '#10b981' : 'var(--text-secondary)' }}>
+                      {pos.highest_unrealized_pct ? `+${pos.highest_unrealized_pct.toFixed(2)}%` : '0.00%'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Break-Even Stop:</span>
+                    <span style={{ fontWeight: 700, color: breakEvenColor }}>
+                      {hasCushion ? '🔒 Active (Locked)' : '⏳ Inactive (Need +5.0% peak)'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Volume Distribution Status */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Volume Distribution:</span>
+                  <span style={{ fontWeight: 700, color: pos.volume_distribution_flag ? '#f43f5e' : '#10b981' }}>
+                    {pos.volume_distribution_flag ? '⚠️ Detected (High Vol Down)' : '✅ Normal'}
+                  </span>
+                </div>
+
+                {/* Custom ATR Trail Stop % */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Custom ATR Stop:</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>
+                    {pos.stop_loss_pct ? `${(pos.stop_loss_pct * 100).toFixed(2)}%` : '7.00%'}
+                  </span>
                 </div>
 
                 {/* RS Score (entry→live, informational) */}
@@ -412,44 +454,159 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
                   </div>
                 )}
 
+                {/* Momentum Health Score Mₜ */}
+                {pos.momentum_health_score != null && (() => {
+                  const mt = pos.momentum_health_score;
+                  const mtColor = mt >= 70 ? '#10b981' : mt >= 50 ? '#3b82f6' : mt >= 35 ? '#f59e0b' : '#f43f5e';
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Live Mₜ Score:</span>
+                      <span style={{ fontWeight: 700, color: mtColor }}>
+                        {mt.toFixed(1)} / 100
+                        {pos.live_sentiment_score != null && (
+                          <span style={{ marginLeft: '0.35rem', fontWeight: 400, color: 'var(--text-muted)' }}>
+                            (sent: {pos.live_sentiment_score})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 {/* Recommendation banner */}
-                {tierInfo && (
-                  <div style={{
-                    marginTop: '0.75rem',
-                    padding: '0.6rem 0.75rem',
-                    background: tierInfo.bg,
-                    border: `1px solid ${tierInfo.border}`,
-                    borderRadius: '8px',
-                  }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.8rem', color: tierInfo.text, marginBottom: '0.35rem' }}>
-                      {tierInfo.label}
+                {tierInfo && (() => {
+                  // Progress Deficit gets a special amber info card, no Approve button
+                  if (rec === 'PROGRESS_DEFICIT') {
+                    const daysHeld    = pos.days_held != null ? pos.days_held : 0;
+                    const estDays     = pos.entry_est_days_target;
+                    const buyPx       = pos.buy_price || 0;
+                    const currPx      = pos.current_price || buyPx;
+                    const actualPct   = buyPx > 0 ? ((currPx / buyPx) - 1) * 100 : 0;
+                    const expectedPct = estDays > 0 ? (25.0 * daysHeld / estDays) : null;
+                    const deficit     = expectedPct != null ? expectedPct - actualPct : null;
+                    const atrPct      = pos.entry_atr_pct;
+                    const remPct      = 25.0 - actualPct;
+                    const daysToTarget = atrPct > 0 ? Math.ceil(remPct / atrPct) : null;
+                    return (
+                      <div style={{
+                        marginTop: '0.75rem', padding: '0.6rem 0.75rem',
+                        background: tierInfo.bg, border: `1px solid ${tierInfo.border}`,
+                        borderRadius: '8px',
+                      }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.8rem', color: tierInfo.text, marginBottom: '0.4rem' }}>
+                          {tierInfo.label}
+                        </div>
+                        {expectedPct != null && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: '0.45rem' }}>
+                            Expected at day {daysHeld}:
+                            <strong style={{ color: tierInfo.text, marginLeft: '0.25rem' }}>+{expectedPct.toFixed(1)}%</strong>
+                            {' '}toward +25% goal — actual:
+                            <strong style={{ color: actualPct >= 0 ? '#10b981' : '#f43f5e', marginLeft: '0.25rem' }}>
+                              {actualPct >= 0 ? '+' : ''}{actualPct.toFixed(1)}%
+                            </strong>
+                            {deficit != null && (
+                              <span style={{ marginLeft: '0.3rem', color: '#f87171' }}>
+                                ({deficit.toFixed(1)} pts behind pace)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {daysToTarget != null && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.45rem' }}>
+                            At ATR {atrPct.toFixed(2)}%/day → est.
+                            <strong style={{ color: 'var(--text-secondary)', marginLeft: '0.2rem' }}>
+                              {daysToTarget}d
+                            </strong>{' '}more to reach +25%.
+                          </div>
+                        )}
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                          No auto-sell. Review and approve a rotation manually if desired.
+                        </div>
+                        <button
+                          id={`dismiss-rotation-${pos.ticker}`}
+                          onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
+                          style={{
+                            padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 600,
+                            background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: '6px', cursor: 'pointer',
+                          }}
+                        >Dismiss</button>
+                      </div>
+                    );
+                  }
+
+                  // Floor Break: red-orange info card, dismiss only
+                  if (rec === 'FLOOR_BREAK') {
+                    return (
+                      <div style={{
+                        marginTop: '0.75rem', padding: '0.6rem 0.75rem',
+                        background: tierInfo.bg, border: `1px solid ${tierInfo.border}`,
+                        borderRadius: '8px',
+                      }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.8rem', color: tierInfo.text, marginBottom: '0.4rem' }}>
+                          {tierInfo.label}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: '0.45rem' }}>
+                          Price closed below the 7-day trading range floor on above-average volume.
+                          This signals that the consolidation base has failed and institutions
+                          may be exiting. The trailing stop is still active via IBKR.
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                          No auto-sell. If the EMA-21 also fails, an automatic exit will fire.
+                          Dismiss if you believe this was a one-day shake-out.
+                        </div>
+                        <button
+                          id={`dismiss-rotation-${pos.ticker}`}
+                          onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
+                          style={{
+                            padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 600,
+                            background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: '6px', cursor: 'pointer',
+                          }}
+                        >Dismiss</button>
+                      </div>
+                    );
+                  }
+
+                  // All other rotation recommendations: Approve + Dismiss
+                  return (
+                    <div style={{
+                      marginTop: '0.75rem', padding: '0.6rem 0.75rem',
+                      background: tierInfo.bg, border: `1px solid ${tierInfo.border}`,
+                      borderRadius: '8px',
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.8rem', color: tierInfo.text, marginBottom: '0.35rem' }}>
+                        {tierInfo.label}
+                      </div>
+                      <div style={{ ...noteStyle, marginBottom: '0.5rem' }}>
+                        Hard auto-sell fires at day {PLATEAU_DAYS} if no action taken.
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          id={`approve-rotation-${pos.ticker}`}
+                          onClick={(e) => { e.stopPropagation(); handleApprove(); }}
+                          style={{
+                            padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700,
+                            background: tierInfo.text, color: '#fff', border: 'none',
+                            borderRadius: '6px', cursor: 'pointer',
+                          }}
+                        >Approve Rotation</button>
+                        <button
+                          id={`dismiss-rotation-${pos.ticker}`}
+                          onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
+                          style={{
+                            padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 600,
+                            background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: '6px', cursor: 'pointer',
+                          }}
+                        >Dismiss</button>
+                      </div>
                     </div>
-                    <div style={{ ...noteStyle, marginBottom: '0.5rem' }}>
-                      Hard auto-sell fires at day {PLATEAU_DAYS} if no action taken.
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        id={`approve-rotation-${pos.ticker}`}
-                        onClick={(e) => { e.stopPropagation(); handleApprove(); }}
-                        style={{
-                          padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 700,
-                          background: tierInfo.text, color: '#fff', border: 'none',
-                          borderRadius: '6px', cursor: 'pointer',
-                        }}
-                      >Approve Rotation</button>
-                      <button
-                        id={`dismiss-rotation-${pos.ticker}`}
-                        onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
-                        style={{
-                          padding: '0.3rem 0.75rem', fontSize: '0.75rem', fontWeight: 600,
-                          background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          borderRadius: '6px', cursor: 'pointer',
-                        }}
-                      >Dismiss</button>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })()}
@@ -876,8 +1033,16 @@ export default function DashboardView({ data, marketData, trades }) {
                           const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
                           const color = isPlateauing ? 'var(--color-down)' : pct >= 0.7 ? '#f59e0b' : 'var(--color-up)';
                           const rec = pos.rotation_recommendation;
-                          const recLabel = rec === 'TIER_1' ? 'T1' : rec === 'TIER_2' ? 'T2' : null;
-                          const recColor = rec === 'TIER_1' ? '#f43f5e' : '#f59e0b';
+                          const recLabel = rec === 'TIER_1'           ? 'T1'
+                                         : rec === 'TIER_2'           ? 'T2'
+                                         : rec === 'PROGRESS_DEFICIT' ? 'PD'
+                                         : rec === 'FLOOR_BREAK'      ? 'FB'
+                                         : null;
+                          const recColor = rec === 'TIER_1'           ? '#f43f5e'
+                                         : rec === 'TIER_2'           ? '#f59e0b'
+                                         : rec === 'PROGRESS_DEFICIT' ? '#fbbf24'
+                                         : rec === 'FLOOR_BREAK'      ? '#ef4444'
+                                         : '#f59e0b';
                           return (
                             <td>
                               <span style={{ fontWeight: 700, fontSize: '0.85rem', color }}>

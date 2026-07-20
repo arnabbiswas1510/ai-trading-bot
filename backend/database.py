@@ -455,8 +455,12 @@ def get_positions():
                 # ── AI narrative rationale (the paragraph text from the screenshot) ──
                 "entry_score_rationale":    row.get("entry_score_rationale"),
                 # ── HWM / plateau fields ─────────────────────────────────────────
-                "hwm_price":                float(row.get("high_water_mark") or row["buy_price"]),
+                "hwm_price":                float(row.get("hwm_price") or row.get("high_water_mark") or row["buy_price"]),
                 "days_since_hwm":           row.get("days_since_hwm"),
+                "days_held":                row.get("days_held"),
+                "highest_unrealized_pct":   float(row.get("highest_unrealized_pct") or 0.0),
+                "stop_loss_pct":            float(row.get("stop_loss_pct") or 0.07),
+                "volume_distribution_flag": bool(row.get("volume_distribution_flag", False)),
                 # ── Live RS score (for RS decay display) ─────────────────────────
                 "live_rs_score":            row.get("live_rs_score"),
                 "top_trigger_score":        row.get("top_trigger_score"),

@@ -49,12 +49,12 @@ def _hwm(calendar_days_ago: int) -> str:
     return (_MOCK_DATE - datetime.timedelta(days=calendar_days_ago)).isoformat()
 
 
-def _run_eod(ib, supabase_mock, live_rs_return=None):
+def _run_eod(ib, supabase_mock, live_rs_return=None, live_price=105.0):
     """Run monitor_portfolio_intraday at 3:50 PM ET (EOD window).
     Returns the mock_sell object for assertion.
     """
     with patch("execution_agent.supabase", supabase_mock), \
-         patch("execution_agent.get_live_price", return_value=105.0), \
+         patch("execution_agent.get_live_price", return_value=live_price), \
          patch("execution_agent.cancel_ticker_sell_orders"), \
          patch("execution_agent.place_trailing_stop", return_value="TS_MOCK"), \
          patch("execution_agent.execute_sell") as mock_sell, \
@@ -136,89 +136,93 @@ class TestRule2HardStop:
     Action: calls execute_sell immediately. No user approval. Clears recommendation afterward.
     """
 
-    def test_auto_executes_at_7_trading_days(self):
-        """days_since_hwm >= 7, fresh trigger → execute_sell called on most-stalled position."""
-        # hwm = 2026-06-11 (Wed). Trading days to 2026-06-20 (Fri):
-        # Jun 12(Thu), 13(Fri), 16(Mon), 17(Tue), 18(Wed), 19(Thu), 20(Fri) = 7 days
-        pos = make_position("AAPL",
-                            hwm_date="2026-06-11",
-                            hwm_rs_score=None,
-                            entry_final_score=50)
+    def test_mandatory_time_stop_fires_at_7_days_with_low_return(self):
+        """Days held >= 7 and unrealized return < 2% -> auto-sells (no triggers required)."""
+        # AAPL bought 10 days ago (roughly 7 trading days held)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         portfolio = _full_portfolio(pos)
-        trigger = make_trigger("GOOG", final_score=55)
-        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
+        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=None)
+        # Current price = 101.0 (+1.0% return)
+        mock_sell = _run_eod(ib, mock_sb, live_rs_return=None, live_price=101.0)
 
         mock_sell.assert_called_once()
         sell_ticker = mock_sell.call_args.args[2]
         sell_reason = mock_sell.call_args.args[8]
         assert sell_ticker == "AAPL"
-        assert "Tier 3" in sell_reason or "Hard" in sell_reason or "time" in sell_reason.lower()
+        assert "7-Day Time-Stop" in sell_reason
 
-    def test_clears_recommendation_after_auto_sell(self):
-        """After Rule 2 auto-sell, rotation_recommendation is cleared to None."""
-        pos = make_position("AAPL",
-                            hwm_date="2026-06-11",
-                            rotation_recommendation="RS_DECAY",
-                            hwm_rs_score=None)
-        portfolio = _full_portfolio(pos)
-        trigger = make_trigger("GOOG", final_score=55)
-        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
-        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
-
-        _run_eod(ib, mock_sb, live_rs_return=None)
-
-        update_calls = _update_call_strings(mock_sb)
-        assert any("None" in c or "rotation_recommendation': None" in c
-                   for c in update_calls), \
-            f"Expected rotation_recommendation cleared to None after sell; calls: {update_calls}"
-
-    def test_does_not_fire_at_6_trading_days(self):
-        """6 trading days stalled < PLATEAU_DAYS=7 → Rule 2 does NOT auto-sell."""
-        # 2026-06-12 → Jun 13,16,17,18,19,20 = 6 trading days
-        pos = make_position("AAPL",
-                            hwm_date="2026-06-12",
-                            hwm_rs_score=None,
-                            entry_final_score=50)
-        portfolio = _full_portfolio(pos)
-        trigger = make_trigger("GOOG", final_score=55)
-        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
-        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
-
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=None)
-
-        mock_sell.assert_not_called()
-
-    def test_does_not_fire_without_fresh_trigger(self):
-        """7 days stalled but no fresh trigger → Rule 2 does NOT fire (never sell to cash)."""
-        pos = make_position("AAPL",
-                            hwm_date="2026-06-11",
-                            hwm_rs_score=None)
+    def test_mandatory_time_stop_does_not_fire_with_high_return(self):
+        """Days held >= 7 but return is >= 2% -> does NOT auto-sell."""
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         portfolio = _full_portfolio(pos)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=None)
+        # Current price = 103.0 (+3.0% return)
+        mock_sell = _run_eod(ib, mock_sb, live_rs_return=None, live_price=103.0)
 
         mock_sell.assert_not_called()
 
-    def test_most_stalled_position_is_sold_first(self):
-        """When multiple positions >= 7 days, only the most stalled is sold per EOD cycle."""
-        pos_a = make_position("AAPL", hwm_date="2026-06-11")  # 7 days
-        pos_b = make_position("MSFT", hwm_date="2026-06-06")  # ~10 days — worse
-        portfolio = [pos_a, pos_b] + [make_position(t) for t in ["NVDA", "META"]]
-        trigger = make_trigger("GOOG", final_score=80)
+    def test_mandatory_time_stop_does_not_fire_at_6_days(self):
+        """Days held = 6 (< 7) and return is < 2% -> does NOT mandatory sell."""
+        # buy date 8 calendar days ago (roughly 6 trading days)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-12T12:00:00+00:00")
+        portfolio = _full_portfolio(pos)
+        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[])
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        mock_sell = _run_eod(ib, mock_sb, live_rs_return=None, live_price=101.0)
+
+        mock_sell.assert_not_called()
+
+    def test_rank_and_replace_fires_at_3_6_days(self):
+        """Day 4 with RS decay and +15 score gap fresh trigger -> Rank & Replace auto-swaps."""
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50)
+        portfolio = _full_portfolio(pos)
+        # Fresh trigger GOOG with score 70 (+20 points gap)
+        trigger = make_trigger("GOOG", final_score=70)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=None)
+        # live_rs = 75 (decayed below 90 * 0.9 = 81)
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_rs_return=75, live_price=100.0)
 
         mock_sell.assert_called_once()
         sell_ticker = mock_sell.call_args.args[2]
-        assert sell_ticker == "MSFT", \
-            "Most-stalled position (MSFT, ~10d) should be sold before AAPL (7d)"
+        sell_reason = mock_sell.call_args.args[8]
+        assert sell_ticker == "AAPL"
+        assert "Rank & Replace" in sell_reason
+
+    def test_rank_and_replace_does_not_fire_with_small_score_gap(self):
+        """Day 4 with RS decay but trigger score gap <= 15 -> does NOT auto-swap."""
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50)
+        portfolio = _full_portfolio(pos)
+        # Fresh trigger GOOG with score 60 (+10 points gap)
+        trigger = make_trigger("GOOG", final_score=60)
+        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_rs_return=75, live_price=100.0)
+
+        mock_sell.assert_not_called()
+
+    def test_rank_and_replace_does_not_fire_without_drift(self):
+        """Day 4 but no RS decay or volume distribution -> does NOT auto-swap."""
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50)
+        portfolio = _full_portfolio(pos)
+        trigger = make_trigger("GOOG", final_score=75)
+        mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        # live_rs = 85 (no decay since 85 >= 90 * 0.9)
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_rs_return=85, live_price=100.0)
+
+        mock_sell.assert_not_called()
 
 
 # ============================================================================
@@ -265,70 +269,63 @@ class TestHwmRsScoreTracking:
 
 class TestEdgeCases:
 
-    def test_no_action_without_fresh_trigger_any_condition(self):
-        """No fresh triggers → no sell, no recommendation, regardless of stall length."""
+    def test_no_action_without_triggers_if_within_6_days(self):
+        """Within 3-6 days, even with param drift, no swap occurs if there are no fresh triggers."""
         pos = make_position("AAPL",
-                            hwm_date="2026-05-20",  # >30 trading days — very stale
-                            hwm_rs_score=90,
-                            entry_rs_score=70,
+                            buy_price=100.0,
+                            buy_date="2026-06-14T12:00:00+00:00",
+                            entry_rs_score=90,
                             entry_final_score=50)
         portfolio = _full_portfolio(pos)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=50)
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_rs_return=70, live_price=100.0)
 
         mock_sell.assert_not_called()
-        assert not any("RS_DECAY" in c or "TIER_" in c
-                       for c in _update_call_strings(mock_sb))
 
     def test_eod_block_skipped_when_portfolio_not_full(self):
-        """Only 2 positions (< MAX_POSITIONS=4) → EOD rotation block skipped entirely."""
-        pos = make_position("AAPL", hwm_date="2026-05-20", hwm_rs_score=70)
+        """Only 2 positions (< MAX_POSITIONS=4) -> EOD Rank & Replace swap block skipped (capacity check)."""
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50)
         portfolio = [pos, make_position("MSFT")]  # only 2
         trigger = make_trigger("GOOG", final_score=90)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=50)
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_rs_return=70, live_price=100.0)
 
         mock_sell.assert_not_called()
 
     def test_tier2_recommendation_not_written(self):
-        """
-        REMOVED FEATURE TEST: Tier 2 score gap should NEVER be written to the DB.
-        Even if the score gap is large and the position is 5 days stalled,
-        'TIER_2' must not appear in any update call.
-        """
-        pos = make_position("AAPL",
-                            hwm_date="2026-06-13",  # 5 trading days stalled
-                            entry_final_score=50,
-                            hwm_rs_score=None)
+        """TIER_2 score gap recommendation is obsolete and must never be written."""
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00")
         portfolio = _full_portfolio(pos)
-        trigger = make_trigger("GOOG", final_score=85)  # gap=35 — old Tier 2 would have fired
+        trigger = make_trigger("GOOG", final_score=85)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
         _run_eod(ib, mock_sb, live_rs_return=None)
 
-        assert not any("TIER_2" in c for c in _update_call_strings(mock_sb)), \
-            "TIER_2 score gap recommendation must never be written (feature removed)"
+        assert not any("TIER_2" in c for c in _update_call_strings(mock_sb))
 
-    def test_rule1_and_rule2_independent(self):
+    def test_timestop_precedes_rankreplace_at_7_days(self):
         """
-        Position stalled exactly 7 days with RS decay → Rule 2 auto-sell fires.
-        Rule 1 (RS_DECAY recommendation) should NOT also fire since position is sold.
+        At Day 7+, if a position qualifies for Time-Stop (gain < 2%) and also has a
+        better trigger (which would trigger Rank & Replace swap), Time-Stop takes precedence.
         """
-        pos = make_position("AAPL",
-                            hwm_date="2026-06-11",  # 7 days
-                            hwm_rs_score=80)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00", entry_rs_score=90, entry_final_score=50)
         portfolio = _full_portfolio(pos)
+        # Fresh trigger GOOG with score 80
         trigger = make_trigger("GOOG", final_score=80)
         mock_sb = make_supabase_mock(portfolio=portfolio, daily_triggers=[trigger])
         ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
 
-        # RS also decayed: 80 → 55 = 25 pts decay, 7 days stalled
-        mock_sell = _run_eod(ib, mock_sb, live_rs_return=55)
+        # live_rs = 70 (drifted)
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_rs_return=70, live_price=101.0)
 
-        # Rule 2 should fire (hard stop takes precedence at Day 7)
         mock_sell.assert_called_once()
+        sell_reason = mock_sell.call_args.args[8]
+        assert "7-Day Time-Stop" in sell_reason

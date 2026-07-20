@@ -189,7 +189,15 @@ def _place_buy(
 
     fill_price    = round(trade.orderStatus.avgFillPrice, 2)
     actual_shares = int(trade.orderStatus.filled)
-    stop_loss     = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+    
+    # Calculate dynamic stop loss percentage (2.5x ATR, fallback to standard STOP_LOSS_PCT)
+    trigger_atr_pct = trigger.get("atr_pct")
+    if trigger_atr_pct and float(trigger_atr_pct) > 0:
+        pos_stop_loss_pct = round((2.5 * float(trigger_atr_pct)) / 100.0, 4)
+    else:
+        pos_stop_loss_pct = STOP_LOSS_PCT
+        
+    stop_loss = round(fill_price * (1 - pos_stop_loss_pct), 2)
 
     print(f"   ✅ FILLED: {actual_shares} shares @ ${fill_price:.2f} | Stop: ${stop_loss:.2f}")
 
@@ -205,9 +213,12 @@ def _place_buy(
             "shares":     actual_shares,
             "buy_price":  fill_price,
             "stop_loss":  stop_loss,
+            "stop_loss_pct": pos_stop_loss_pct,
             "buy_reason": buy_reason,
             "buy_source": "daily_triggers",
             "hwm_date":   datetime.datetime.now(tz).date().isoformat(),
+            "highest_unrealized_pct": 0.0,
+            "highest_rs_score": trigger.get("rs_score"),
             "oca_group":  None,
             # ── Entry conviction snapshot (all 5-component scores) ──────────────
             # Mirrors execution_agent.py exactly so manual/rotation buys show
@@ -232,7 +243,7 @@ def _place_buy(
     # ── Trailing stop ─────────────────────────────────────────────────────────
     try:
         cancel_ticker_sell_orders(ib, ticker)
-        oca = place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
+        oca = place_trailing_stop(ib, contract, actual_shares, pos_stop_loss_pct)
         client.table("portfolio_positions").update({"oca_group": oca}).eq("ticker", ticker).execute()
     except Exception as e:
         print(f"   ⚠️ Trailing stop failed for {ticker}: {e} — self-healing will re-place.")

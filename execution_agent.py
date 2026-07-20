@@ -169,6 +169,23 @@ EXIT_MA_WINDOW           = int(os.getenv("EXIT_MA_WINDOW", 21))
 EXIT_MA_BUFFER_PCT       = float(os.getenv("EXIT_MA_BUFFER_PCT", 0.01))
 EXIT_MA_EOD_ONLY         = os.getenv("EXIT_MA_EOD_ONLY", "true").lower() == "true"
 
+# ── Momentum Health Score (Mₜ) — live conviction for held positions ────────────
+# Computed EOD from live RS, volume ratio, and real sentiment (FMP news + GPT).
+# Weights: RS decay 40%, Volume ratio 35%, Sentiment 25%.
+# Rank & Replace compares new trigger's final_score against held position's Mₜ.
+MOMENTUM_HEALTH_RS_WEIGHT   = float(os.getenv("MOMENTUM_HEALTH_RS_WEIGHT",   0.40))
+MOMENTUM_HEALTH_VOL_WEIGHT  = float(os.getenv("MOMENTUM_HEALTH_VOL_WEIGHT",  0.35))
+MOMENTUM_HEALTH_SENT_WEIGHT = float(os.getenv("MOMENTUM_HEALTH_SENT_WEIGHT", 0.25))
+# Minimum score gap (trigger Mₜ vs held Mₜ) to auto-swap in Rank & Replace.
+RANK_REPLACE_THRESHOLD      = int(os.getenv("RANK_REPLACE_THRESHOLD", 15))
+
+# ── Progress Deficit check ─────────────────────────────────────────────────────
+# From Day PROGRESS_DEFICIT_START, if actual gain is more than PROGRESS_DEFICIT_PCT
+# below the linear expected progress toward +25%, writes rotation_recommendation =
+# 'PROGRESS_DEFICIT' for user review in the UI. No auto-sell.
+PROGRESS_DEFICIT_ENABLED    = os.getenv("PROGRESS_DEFICIT_ENABLED", "true").lower() == "true"
+PROGRESS_DEFICIT_START      = int(os.getenv("PROGRESS_DEFICIT_START", 5))   # days held before checking
+PROGRESS_DEFICIT_PCT        = float(os.getenv("PROGRESS_DEFICIT_PCT", 10.0)) # points behind pace to flag
 
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
@@ -1081,7 +1098,14 @@ def run_market_open_buys(ib: IB):
             if fill_price <= 0:
                 fill_price = current_price
 
-            stop_loss_val = round(fill_price * (1 - STOP_LOSS_PCT), 2)
+            # Calculate dynamic stop loss percentage (2.5x ATR, fallback to standard STOP_LOSS_PCT)
+            trigger_atr_pct = trigger.get("atr_pct")
+            if trigger_atr_pct and float(trigger_atr_pct) > 0:
+                pos_stop_loss_pct = round((2.5 * float(trigger_atr_pct)) / 100.0, 4)
+            else:
+                pos_stop_loss_pct = STOP_LOSS_PCT
+
+            stop_loss_val = round(fill_price * (1 - pos_stop_loss_pct), 2)
 
             # ── Record position in Supabase FIRST ─────────────────────────────
             # CRITICAL: insert BEFORE place_trailing_stop() so that any exception
@@ -1097,7 +1121,9 @@ def run_market_open_buys(ib: IB):
                 "buy_reason": f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x",
                 "buy_source": buy_source,
                 "stop_loss":  stop_loss_val,
+                "stop_loss_pct": pos_stop_loss_pct,
                 "hwm_date":   datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
+                "highest_unrealized_pct": 0.0,
                 # ── Entry conviction snapshot (all 5-component scores) ─────────
                 # Copied from the daily_triggers row so the Open Positions UI and
                 # future rotation analysis have the full picture at entry time.
@@ -1120,7 +1146,7 @@ def run_market_open_buys(ib: IB):
             }
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
-            print(f"   Stop-Loss: ${stop_loss_val} | Trail: {STOP_LOSS_PCT*100:.0f}% (IBKR-managed)")
+            print(f"   Stop-Loss: ${stop_loss_val} | Trail: {pos_stop_loss_pct*100:.2f}% (IBKR-managed)")
 
             # Update loop capacity state immediately after DB write.
             # Must happen before notify_buy so the tracker is correct even if
@@ -1134,7 +1160,7 @@ def run_market_open_buys(ib: IB):
             # Wrapped separately so a stop-placement failure never prevents the
             # position from being recorded above or the loop from continuing.
             try:
-                place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
+                place_trailing_stop(ib, contract, actual_shares, pos_stop_loss_pct)
             except Exception as stop_err:
                 print(f"   ⚠️ Trailing stop placement failed for {ticker}: {stop_err} — position recorded, manual stop required.")
                 notifier.notify_exception("place_trailing_stop() — execution_agent.py", stop_err)
@@ -1323,6 +1349,337 @@ def _compute_param_drift(pos: dict, ohlcv: list) -> dict:
     return drift
 
 
+def fetch_held_position_sentiment(ticker: str) -> int:
+    """Fetch live sentiment score (1-100) for a held position using FMP news + GPT-4o-mini.
+
+    Calls FMP /api/v3/stock_news (limit=8, 1 credit) and asks GPT-4o-mini to score
+    headline tone on a 1-100 scale. Falls back to 50 (neutral) on any failure.
+    Called once per position at EOD (3:45 PM) — ~4 calls/day, ~80/month.
+    """
+    import json as _json_sent
+    from openai import OpenAI as _OpenAI
+
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if not openai_key or not FMP_API_KEY:
+        return 50   # graceful degradation: neutral score
+
+    # ── 1. Fetch headlines ───────────────────────────────────────────────────
+    try:
+        url = (f"https://financialmodelingprep.com/api/v3/stock_news"
+               f"?tickers={ticker}&limit=8&apikey={FMP_API_KEY}")
+        r = fmp_session.get(url, timeout=8)
+        if r.status_code != 200:
+            return 50
+        headlines = [item.get("title", "") for item in r.json() if item.get("title")]
+    except Exception as _e:
+        print(f"   ⚠️ fetch_held_position_sentiment({ticker}) news fetch failed: {_e}")
+        return 50
+
+    if not headlines:
+        return 50
+
+    # ── 2. Score with GPT-4o-mini ────────────────────────────────────────────
+    try:
+        ai = _OpenAI(api_key=openai_key)
+        headlines_text = "\n".join(f"- {h}" for h in headlines[:8])
+        resp = ai.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "Output ONLY valid JSON."},
+                {"role": "user", "content": (
+                    f"Score the overall news sentiment for ${ticker} based on these recent headlines.\n\n"
+                    f"{headlines_text}\n\n"
+                    "Return a single JSON object: {{\"sentiment\": <integer 1-100>}}\n"
+                    "80-100=very positive, 40-60=neutral/mixed, 1-39=negative."
+                )},
+            ],
+            max_tokens=30,
+        )
+        result = _json_sent.loads(resp.choices[0].message.content)
+        score = int(result.get("sentiment", 50))
+        score = max(1, min(100, score))
+        print(f"   📰 {ticker}: live sentiment score {score}/100 ({len(headlines)} headlines)")
+        return score
+    except Exception as _ge:
+        print(f"   ⚠️ fetch_held_position_sentiment({ticker}) GPT failed: {_ge}")
+        return 50
+
+
+def compute_rsi(closes: list, period: int = 14) -> list:
+    """Wilder's smoothed RSI from a list of closing prices.
+
+    Returns a list of RSI values the same length as closes (first `period`
+    values are None — insufficient history). Uses Wilder's exponential
+    smoothing (alpha = 1/period), consistent with TradingView / standard
+    charting platforms.
+
+    Pure function — no side effects, no I/O.
+    """
+    if len(closes) < period + 1:
+        return [None] * len(closes)
+
+    rsi = [None] * period  # first `period` values have no RSI
+
+    # ── Seed: simple average of first `period` gains/losses ──────────────────
+    gains, losses = [], []
+    for i in range(1, period + 1):
+        delta = closes[i] - closes[i - 1]
+        gains.append(max(delta, 0.0))
+        losses.append(max(-delta, 0.0))
+
+    avg_gain = sum(gains) / period
+    avg_loss = sum(losses) / period
+
+    def _rsi_from_avgs(ag, al):
+        if al == 0:
+            return 100.0
+        return round(100.0 - (100.0 / (1.0 + ag / al)), 2)
+
+    rsi.append(_rsi_from_avgs(avg_gain, avg_loss))
+
+    # ── Wilder's smoothing for remaining bars ─────────────────────────────────
+    alpha = 1.0 / period
+    for i in range(period + 1, len(closes)):
+        delta    = closes[i] - closes[i - 1]
+        g        = max(delta, 0.0)
+        l        = max(-delta, 0.0)
+        avg_gain = avg_gain * (1 - alpha) + g * alpha
+        avg_loss = avg_loss * (1 - alpha) + l * alpha
+        rsi.append(_rsi_from_avgs(avg_gain, avg_loss))
+
+    return rsi
+
+
+def detect_candlestick_reversals(ohlcv: list, hwm_price: float) -> int:
+    """Detect bearish reversal candles on the last 3 bars near the plateau zone.
+
+    Returns the total Mₜ penalty to subtract (0, -8, -15, or -20).
+
+    Location filter: only applies when current close >= hwm_price * 0.97.
+    Reversal candles during deep pullbacks (> 3% from HWM) are noise.
+
+    Shooting Star / Pin Bar (penalty -8):
+      - Upper shadow > 2× lower shadow
+      - Close < open  (bearish body)
+      - Upper shadow > 60% of full candle range
+
+    Bearish Engulfing (penalty -15):
+      - Today's open > yesterday's close   (gap up / opens above)
+      - Today's close < yesterday's open   (body engulfs prior body)
+      - Today's volume > 20-day avg volume (institutional confirmation)
+
+    Both detected: -20 pts (capped).
+    """
+    if len(ohlcv) < 22:      # need 20-day vol baseline + 2 candles
+        return 0
+
+    # Location filter — only care when near the HWM
+    current_close = float(ohlcv[-1].get("close", 0))
+    if hwm_price <= 0 or current_close < hwm_price * 0.97:
+        return 0
+
+    vols  = [float(r.get("volume", 0)) for r in ohlcv]
+    avg20 = sum(vols[-21:-1]) / 20 if sum(vols[-21:-1]) > 0 else 0
+
+    shooting_star = False
+    engulfing     = False
+
+    # ── Shooting Star / Pin Bar: check last 3 bars ────────────────────────────
+    for i in range(-3, 0):
+        bar = ohlcv[i]
+        o = float(bar.get("open",  0))
+        h = float(bar.get("high",  0))
+        l = float(bar.get("low",   0))
+        c = float(bar.get("close", 0))
+        full_range   = h - l
+        if full_range <= 0:
+            continue
+        upper_shadow = h - max(o, c)
+        lower_shadow = min(o, c) - l
+        if (c < o
+                and upper_shadow > 2 * max(lower_shadow, 0.0001)
+                and upper_shadow / full_range > 0.60):
+            shooting_star = True
+            break
+
+    # ── Bearish Engulfing: last 2 bars ────────────────────────────────────────
+    if len(ohlcv) >= 2:
+        prev   = ohlcv[-2]
+        curr   = ohlcv[-1]
+        prev_o = float(prev.get("open",  0))
+        prev_c = float(prev.get("close", 0))
+        curr_o = float(curr.get("open",  0))
+        curr_c = float(curr.get("close", 0))
+        curr_v = float(curr.get("volume", 0))
+        if (prev_c > prev_o          # prior bar bullish
+                and curr_o > prev_c  # today gapped up
+                and curr_c < prev_o  # today engulfs prior body
+                and avg20 > 0
+                and curr_v > avg20): # volume confirmation
+            engulfing = True
+
+    if shooting_star and engulfing:
+        return -20
+    if engulfing:
+        return -15
+    if shooting_star:
+        return -8
+    return 0
+
+
+def check_consolidation_floor_break(ohlcv: list, current_price: float) -> bool:
+    """Returns True if current price broke below the 7-day consolidation floor on volume.
+
+    Consolidation floor = min close over the 7 trading days BEFORE today.
+    Triggered if:
+      1. current_price < floor * 0.99  (closed below floor with 1% buffer)
+      2. today's volume > 20-day avg volume * 1.10  (volume surge confirms)
+
+    Called at EOD (Day 7+). Returns False on insufficient history.
+    """
+    if len(ohlcv) < 28:    # 20 vol baseline + 7 floor days + 1 today
+        return False
+
+    closes = [float(r.get("close", 0)) for r in ohlcv]
+    vols   = [float(r.get("volume", 0)) for r in ohlcv]
+
+    # Floor = min close over the 7 days before today (ohlcv[-8] to ohlcv[-2])
+    floor_closes = closes[-8:-1]
+    if not floor_closes or min(floor_closes) <= 0:
+        return False
+    floor_price = min(floor_closes)
+
+    avg20     = sum(vols[-21:-1]) / 20 if len(vols) >= 21 else 0
+    today_vol = vols[-1]
+
+    broke_floor  = current_price < floor_price * 0.99
+    vol_confirms = avg20 > 0 and today_vol > avg20 * 1.10
+
+    return broke_floor and vol_confirms
+
+
+def compute_momentum_health_score(
+    pos: dict,
+    ohlcv: list,
+    live_sentiment: int = 50,
+    days_held: int = 0,
+) -> tuple[float, dict]:
+    """Live Momentum Health Score Mₜ (0–100) for a held position.
+
+    Returns (score, debug_info) where debug_info has keys:
+      rs_component, vol_component, sentiment_component,
+      rsi_penalty, candle_penalty, raw_score, final_score.
+
+    Formula:
+      Mₜ_raw = 0.40 * RS + 0.35 * Vol + 0.25 * Sentiment
+      Mₜ     = max(0, Mₜ_raw - RSI_divergence_penalty - candle_reversal_penalty)
+
+    Day 7+ only: RSI divergence and candlestick penalties activate after
+    days_held >= 7. Before that they are 0 (breakout consolidation phase).
+
+    RS component (0-100):
+        (live_rs / entry_rs) * 100, capped at 100. Default 50 if no baseline.
+
+    Volume component (0-100):
+        V_ratio = today_vol / 20-day_avg_vol
+        ≥ 1.5x → 100 | 1.0-1.5x → 50-100 | 0.5-1.0x → 0-50 | < 0.5x → 0
+
+    Sentiment component (0-100):
+        live_sentiment from GPT-4o-mini / FMP stock_news.
+
+    RSI Divergence penalty (Day 7+, applied post-blend):
+        Price made higher high vs 5 days ago, but RSI made lower high.
+        Gap < 5 RSI pts → -10 | 5-15 pts → -18 | > 15 pts → -25
+
+    Candlestick Reversal penalty (Day 7+, applied post-blend):
+        Shooting star/pin bar → -8 | Bearish engulfing (vol) → -15 | Both → -20
+        Only when price is within 3% of HWM (near plateau top).
+    """
+    # ── RS component ─────────────────────────────────────────────────────────
+    entry_rs = pos.get("entry_rs_score")
+    live_rs  = pos.get("live_rs_score")
+    if entry_rs and entry_rs > 0 and live_rs is not None:
+        rs_ratio     = live_rs / entry_rs
+        rs_component = min(100.0, rs_ratio * 100.0)
+    else:
+        rs_component = 50.0
+
+    # ── Volume component ─────────────────────────────────────────────────────
+    vol_component = 50.0
+    if len(ohlcv) >= 21:
+        vols      = [float(r.get("volume", 0)) for r in ohlcv]
+        avg20     = sum(vols[-21:-1]) / 20
+        today_vol = vols[-1]
+        if avg20 > 0:
+            v_ratio = today_vol / avg20
+            if v_ratio >= 1.5:
+                vol_component = 100.0
+            elif v_ratio >= 1.0:
+                vol_component = 50.0 + (v_ratio - 1.0) / 0.5 * 50.0
+            elif v_ratio >= 0.5:
+                vol_component = (v_ratio - 0.5) / 0.5 * 50.0
+            else:
+                vol_component = 0.0
+
+    # ── Sentiment component ───────────────────────────────────────────────────
+    sentiment_component = float(max(1, min(100, live_sentiment)))
+
+    # ── Weighted blend ───────────────────────────────────────────────────────
+    raw_score = (
+        MOMENTUM_HEALTH_RS_WEIGHT   * rs_component +
+        MOMENTUM_HEALTH_VOL_WEIGHT  * vol_component +
+        MOMENTUM_HEALTH_SENT_WEIGHT * sentiment_component
+    )
+
+    # ── Day 7+ penalty signals ───────────────────────────────────────────────
+    rsi_penalty    = 0
+    candle_penalty = 0
+
+    if days_held >= 7 and len(ohlcv) >= 20:
+        closes = [float(r.get("close", 0)) for r in ohlcv]
+        rsi_vals = compute_rsi(closes, period=14)
+
+        # RSI divergence: price up, RSI down (compare today vs 5 days ago)
+        lookback = 5
+        if (len(rsi_vals) >= lookback + 1
+                and rsi_vals[-1] is not None
+                and rsi_vals[-1 - lookback] is not None):
+            price_now  = closes[-1]
+            price_then = closes[-1 - lookback]
+            rsi_now    = rsi_vals[-1]
+            rsi_then   = rsi_vals[-1 - lookback]
+
+            # Bearish divergence: price higher but RSI lower
+            if price_now > price_then and rsi_now < rsi_then:
+                div_gap = rsi_then - rsi_now  # positive number
+                if div_gap > 15:
+                    rsi_penalty = 25
+                elif div_gap >= 5:
+                    rsi_penalty = 18
+                else:
+                    rsi_penalty = 10
+
+        # Candlestick reversal near HWM plateau
+        hwm_price = float(pos.get("hwm_price") or pos.get("buy_price") or 0)
+        candle_penalty_raw = detect_candlestick_reversals(ohlcv, hwm_price)
+        candle_penalty = abs(candle_penalty_raw)  # stored as positive for subtraction
+
+    penalty_total = rsi_penalty + candle_penalty
+    final_score   = max(0.0, raw_score - penalty_total)
+
+    debug = {
+        "rs_component":        round(rs_component, 1),
+        "vol_component":       round(vol_component, 1),
+        "sentiment_component": round(sentiment_component, 1),
+        "rsi_penalty":         -rsi_penalty,
+        "candle_penalty":      -candle_penalty,
+        "raw_score":           round(raw_score, 1),
+        "final_score":         round(final_score, 1),
+    }
+    return round(final_score, 1), debug
+
+
 def _get_market_regime() -> str:
     """Return current market regime based on SPY vs its 21-day EMA.
 
@@ -1451,6 +1808,37 @@ def _set_rotation_recommendation(client, ticker: str, tier: str | None):
         print(f"   ⚠️ Could not set rotation_recommendation for {ticker}: {_e}")
 
 
+def check_volume_distribution(ticker: str, ohlcv: list) -> bool:
+    """
+    Check if the stock closed sideways/down on above-average volume
+    on at least 2 of the last 3 trading days.
+    """
+    if len(ohlcv) < 54:  # Need 50 days baseline + 3 check days + 1 day for prev_close
+        return False
+        
+    closes = [float(r["close"]) for r in ohlcv]
+    volumes = [float(r.get("volume", 0)) for r in ohlcv]
+    
+    distribution_days = 0
+    # Check last 3 trading days
+    for i in range(-3, 0):
+        # 50-day average volume up to day i (excluding day i)
+        hist_vols = volumes[i-50:i]
+        if not hist_vols:
+            continue
+        avg_vol = sum(hist_vols) / len(hist_vols)
+        
+        day_close = closes[i]
+        prev_close = closes[i-1]
+        day_vol = volumes[i]
+        
+        # Sideways/down (close is <= previous close * 1.002) on above-average volume
+        if day_close <= prev_close * 1.002 and day_vol > avg_vol:
+            distribution_days += 1
+            
+    return distribution_days >= 2
+
+
 def monitor_portfolio_intraday(ib: IB):
     """Monitors open positions: updates hwm_date, self-heals trailing stops,
     applies the MA exit, and runs EOD plateau rotation."""
@@ -1472,7 +1860,7 @@ def monitor_portfolio_intraday(ib: IB):
     # relative to the last price we polled (not the stored HWM price, which
     # IBKR now owns).
     intraday_peak: dict = {}
-
+    active_positions = []
     for pos in positions:
         ticker     = pos["ticker"]
         shares     = int(pos["shares"])
@@ -1480,35 +1868,66 @@ def monitor_portfolio_intraday(ib: IB):
         buy_reason = pos.get("buy_reason", "Unknown")
         try:
             buy_date = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
+            buy_date_d = buy_date.date()
         except Exception:
-            buy_date = datetime.datetime.now(datetime.timezone.utc)
+            buy_date_d = today_ny
+
+        # Calculate trading days held
+        days_held = trading_days_between(buy_date_d, today_ny)
 
         # Use FMP live price for monitoring. This is reliable, mockable in tests,
         # and avoids IBKR reqTickers() blocking when the data farm is down.
         current_price = get_live_price(ticker)
         if current_price <= 0:
             print(f"   ⚠️ Could not fetch price for {ticker} — skipping this cycle.")
+            active_positions.append(pos)
             continue
 
+        pos_stop_loss_pct = float(pos.get("stop_loss_pct") or STOP_LOSS_PCT)
 
         print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
-              f"| IBKR Trail: {STOP_LOSS_PCT*100:.0f}%")
+              f"| Held: {days_held}d | IBKR Trail: {pos_stop_loss_pct*100:.2f}%")
 
-        # ── Update hwm_date and hwm_price when a new intraday high is seen ────
-        # IBKR tracks the HWM price tick-by-tick for the trailing stop.
-        # We record the DATE (plateau counter) and the PRICE (display accuracy).
-        # Compare to our last-polled peak (in-memory), defaulting to buy_price.
+        # ── Calculate current unrealized percentage ──
+        unrealized_pct = round(((current_price / buy_price) - 1.0) * 100.0, 4)
+
+        # ── Update highest_unrealized_pct in Supabase & memory ──
+        prev_highest = float(pos.get("highest_unrealized_pct") or 0.0)
+        highest_unrealized_pct = max(prev_highest, unrealized_pct)
+
+        # ── Update hwm_date, hwm_price and highest_unrealized_pct when a new intraday high is seen ────
         prev_peak = intraday_peak.get(ticker, buy_price)
+        hwm_updated = False
         if current_price > prev_peak:
             intraday_peak[ticker] = current_price
+            hwm_updated = True
+
+        if hwm_updated or highest_unrealized_pct > prev_highest:
             try:
-                client.table("portfolio_positions").update(
-                    {"hwm_date":  today_ny.isoformat(),
-                     "hwm_price": round(float(current_price), 4)}
-                ).eq("ticker", ticker).execute()
+                update_payload = {
+                    "highest_unrealized_pct": round(highest_unrealized_pct, 4)
+                }
+                if hwm_updated:
+                    update_payload["hwm_date"] = today_ny.isoformat()
+                    update_payload["hwm_price"] = round(float(current_price), 4)
+
+                client.table("portfolio_positions").update(update_payload).eq("ticker", ticker).execute()
+                pos["highest_unrealized_pct"] = highest_unrealized_pct
             except Exception as e:
                 notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", e)
-                print(f"   ⚠️ Could not update hwm_date/hwm_price for {ticker}: {e}")
+                print(f"   ⚠️ Could not update hwm/peak metrics for {ticker}: {e}")
+
+        # ── Break-Even Stop check (Days 3+) ──
+        # Prevent early winners from turning into a loss.
+        # If profit cushion reached >= 5.0% and has now retraced back to or below entry price, trigger market sell.
+        if days_held >= 3 and highest_unrealized_pct >= 5.0 and current_price <= buy_price:
+            reason = (
+                f"HWM Break-Even Stop — profit cushion of {highest_unrealized_pct:.1f}% "
+                f"retraced back to entry price (${current_price:.2f})"
+            )
+            print(f"🚨 {ticker} triggered Break-Even Stop! {reason}")
+            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+            continue
 
         # ── Self-healing: ensure trailing stop exists for this position ─────────
         # GTC trailing stops survive IBKR gateway restarts, but may be absent for
@@ -1528,9 +1947,7 @@ def monitor_portfolio_intraday(ib: IB):
                 _heal_contract = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_heal_contract)
                 # Anchor from current price — IBKR tracks HWM from here onward.
-                # Slightly conservative vs. the true peak but acceptable for this
-                # rare self-healing edge case.
-                place_trailing_stop(ib, _heal_contract, shares, STOP_LOSS_PCT)
+                place_trailing_stop(ib, _heal_contract, shares, pos_stop_loss_pct)
             except Exception as _heal_err:
                 notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", _heal_err)
                 print(f"   ⚠️ Self-healing failed for {ticker}: {_heal_err}")
@@ -1538,8 +1955,8 @@ def monitor_portfolio_intraday(ib: IB):
         # Trailing stop is fully managed by IBKR. reconcile_with_ibkr() (Case 1)
         # detects when it fires and archives the position to trade_history.
 
-        # ── Moving Average Exit Check ──────────────────────────────────────────
-        if EXIT_MA_TRIGGER_ENABLED:
+        # ── Moving Average Exit Check (Only Day 7+) ──────────────────────────────
+        if EXIT_MA_TRIGGER_ENABLED and days_held >= 7:
             is_ma_window = True
             if EXIT_MA_EOD_ONLY:
                 now_ny = datetime.datetime.now(tz)
@@ -1559,18 +1976,24 @@ def monitor_portfolio_intraday(ib: IB):
                         execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
                         continue
 
-    # ── EOD Plateau Rotation (3:45–4:00 PM ET) ────────────────────────────────
-    # Runs once per day at 3:45 PM. Three-tier logic:
-    #   Tier 1 (RS Decay)      → writes rotation_recommendation='TIER_1'; user approves via UI
-    #   Tier 2 (Score Gap)     → writes rotation_recommendation='TIER_2'; user approves via UI
-    #   Tier 3 (Hard time-stop)→ auto-executes immediately (rule-based, no judgment required)
+        # Position remained active
+        active_positions.append(pos)
+
+    positions = active_positions
+
+    # ── EOD Plateau Rotation & Risk Optimization (3:45–4:00 PM ET) ────────────
+    # Runs once per day at 3:45 PM. Implements:
+    # 1. Update EOD metrics (days_held, days_since_hwm, volume_distribution_flag, live_rs_score)
+    # 2. Day 7 Mandatory Time-Stop (auto-sell if days_held >= 7 and gain < 2.0%)
+    # 3. Days 3-6 Rank & Replace Swaps (auto-swap if parameter drift is flagged and a +15 score trigger exists)
     #
     now_eod = datetime.datetime.now(tz)
     is_eod_window = (now_eod.hour == 15 and now_eod.minute >= 45)
 
-    if is_eod_window and len(positions) >= MAX_POSITIONS:
+    if is_eod_window:
         today_eod = datetime.datetime.now(tz).date()
 
+        # Fetch today's triggers (or triggers from the last 3 days to handle weekends/holidays)
         try:
             recent_date = (datetime.datetime.now(tz) - datetime.timedelta(days=TRIGGER_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
             triggers_res = client.table("daily_triggers") \
@@ -1582,69 +2005,235 @@ def monitor_portfolio_intraday(ib: IB):
                 t for t in (triggers_res.data or [])
                 if t["ticker"] not in held_tickers
             ]
-            fresh_triggers.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
+            fresh_triggers.sort(
+                key=lambda x: x.get("final_score") or x.get("quality_score") or x.get("ai_rating") or 0,
+                reverse=True
+            )
             fresh_tickers = {t["ticker"] for t in fresh_triggers}
             best_trigger       = fresh_triggers[0] if fresh_triggers else None
             best_trigger_score = (best_trigger.get("final_score") or 0) if best_trigger else 0
             best_ticker        = best_trigger["ticker"] if best_trigger else None
         except Exception:
+            fresh_triggers     = []
             fresh_tickers      = set()
             best_trigger_score = 0
             best_ticker        = None
 
-        # Default market regime — overwritten by PARAM_DRIFT analysis block if FMP is available.
-        # Used by Hard Stop's execute_sell() call to write breakout_learnings.
-        market_regime: str = "neutral"
+        market_regime = _get_market_regime()
 
+        # 1. Update EOD metrics for all open positions
         for pos in positions:
             ticker_m = pos["ticker"]
             hwm_str  = (pos.get("hwm_date") or str(today_eod))[:10]
             hwm_d_m  = datetime.date.fromisoformat(hwm_str)
             dsm      = trading_days_between(hwm_d_m, today_eod)
+            
+            try:
+                buy_date_m = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
+                buy_date_d_m = buy_date_m.date()
+            except Exception:
+                buy_date_d_m = today_eod
+            days_held_m = trading_days_between(buy_date_d_m, today_eod)
+            
             live_rs  = _fetch_current_rs(ticker_m)
+
+            ohlcv = _fetch_ohlcv(ticker_m, days=100)
+            vol_dist = check_volume_distribution(ticker_m, ohlcv)
+
+            # ── Live sentiment re-score for Mₜ (FMP news + GPT-4o-mini) ──────
+            # Only run at EOD — ~4 calls/day, negligible cost.
+            live_sentiment = fetch_held_position_sentiment(ticker_m)
+
+            # ── Compute live Momentum Health Score Mₜ ────────────────────────
+            # Temporarily inject live_rs into pos dict so compute_momentum_health_score
+            # can read it. The real DB write happens in update_payload below.
+            pos["live_rs_score"] = live_rs
+            mt_score, mt_debug = compute_momentum_health_score(
+                pos, ohlcv, live_sentiment, days_held=days_held_m
+            )
+
+            rsi_p    = mt_debug["rsi_penalty"]
+            candle_p = mt_debug["candle_penalty"]
+            penalties_str = ""
+            if rsi_p != 0:
+                penalties_str += f", RSI div {rsi_p:+.0f}"
+            if candle_p != 0:
+                penalties_str += f", candle {candle_p:+.0f}"
+
+            print(f"   📊 {ticker_m}: Mₜ={mt_score:.1f} "
+                  f"(RS {pos.get('entry_rs_score')}→{live_rs}, "
+                  f"vol_dist={vol_dist}, sent={live_sentiment}"
+                  f"{penalties_str})")
+
+            # ── Consolidation Floor Break check (Day 7+) ──────────────────
+            # Flags rotation_recommendation = 'FLOOR_BREAK' in UI.
+            # Auto-clears when price recovers above the floor.
+            if days_held_m >= 7:
+                current_price_m = get_live_price(ticker_m)
+                if current_price_m > 0:
+                    floor_broken = check_consolidation_floor_break(ohlcv, current_price_m)
+                    existing_rec = pos.get("rotation_recommendation")
+                    if floor_broken and existing_rec not in (
+                        "FLOOR_BREAK", "PARAM_DRIFT", "HARD_STOP",
+                        "RS_DECAY", "TIER_1", "TIER_2"
+                    ):
+                        _set_rotation_recommendation(client, ticker_m, "FLOOR_BREAK")
+                        pos["rotation_recommendation"] = "FLOOR_BREAK"
+                        print(f"   🚫 {ticker_m}: Consolidation floor broken on volume — flagging FLOOR_BREAK")
+                    elif not floor_broken and existing_rec == "FLOOR_BREAK":
+                        # Price recovered — clear the flag
+                        _set_rotation_recommendation(client, ticker_m, None)
+                        pos["rotation_recommendation"] = None
+                        print(f"   ✅ {ticker_m}: Price recovered above consolidation floor — FLOOR_BREAK cleared")
+
             try:
                 update_payload = {
-                    "days_since_hwm":    dsm,
-                    "live_rs_score":     live_rs,
-                    "top_trigger_score": best_trigger_score if fresh_tickers else None,
+                    "days_since_hwm":           dsm,
+                    "days_held":                days_held_m,
+                    "live_rs_score":            live_rs,
+                    "volume_distribution_flag": vol_dist,
+                    "top_trigger_score":        best_trigger_score if fresh_tickers else None,
+                    "momentum_health_score":    mt_score,
+                    "live_sentiment_score":     live_sentiment,
                 }
                 client.table("portfolio_positions").update(update_payload).eq("ticker", ticker_m).execute()
-                pos["days_since_hwm"]    = dsm
-                pos["live_rs_score"]     = live_rs
-                pos["top_trigger_score"] = best_trigger_score if fresh_tickers else None
+                pos["days_since_hwm"]           = dsm
+                pos["days_held"]                = days_held_m
+                pos["live_rs_score"]            = live_rs
+                pos["volume_distribution_flag"] = vol_dist
+                pos["top_trigger_score"]        = best_trigger_score if fresh_tickers else None
+                pos["momentum_health_score"]    = mt_score
+                pos["live_sentiment_score"]     = live_sentiment
             except Exception as _me:
-                print(f"   ⚠️ Could not update plateau metrics for {ticker_m}: {_me}")
+                print(f"   ⚠️ Could not update EOD plateau metrics for {ticker_m}: {_me}")
 
-        # ── Hard Stop (auto-execute) ──────────────────────────────────────────
-        # If a position has stalled >= PLATEAU_DAYS with no new HWM, sell immediately.
-        # Requires a fresh replacement trigger (never sell to empty cash — this is a
-        # rotation, not a panic exit). No user approval required.
-        if fresh_tickers and best_ticker:
-            hard_stop_candidates = [
-                (p.get("days_since_hwm", 0), p)
-                for p in positions
-                if (p.get("days_since_hwm") or 0) >= PLATEAU_DAYS
-            ]
-            if hard_stop_candidates:
-                hard_stop_candidates.sort(reverse=True)  # most stalled first
-                days_stalled, worst = hard_stop_candidates[0]
-                wticker     = worst["ticker"]
-                wshares     = int(worst["shares"])
-                wbuy_price  = float(worst["buy_price"])
-                wbuy_date   = datetime.datetime.fromisoformat(worst["buy_date"].replace('Z', '+00:00'))
-                wbuy_reason = worst.get("buy_reason", "Unknown")
-                wprice      = get_live_price(wticker)
-                reason = (
-                    f"Hard Stop — no new HWM in {days_stalled} trading days. "
-                    f"Freeing slot for fresh breakout ({best_ticker})."
-                )
-                print(f"📉 Hard Stop: {wticker} ({days_stalled}d stalled) → {best_ticker}")
-                cancel_ticker_sell_orders(ib, wticker)
-                ib.sleep(1)
-                execute_sell(ib, client, wticker, wshares, wbuy_price,
-                             wbuy_date, wbuy_reason, wprice, reason,
-                             pos_row=worst, market_regime=market_regime)
-                _set_rotation_recommendation(client, wticker, None)
+        # 2. Strict Day 7 Mandatory Time-Stop Exit (Auto-execute, regardless of portfolio slots or triggers)
+        # Sell if held >= 7 trading days and return is < +2.0%
+        active_positions = list(positions)
+        for pos in active_positions:
+            ticker_m = pos["ticker"]
+            days_held = pos.get("days_held") or 0
+            buy_price = float(pos["buy_price"])
+            
+            current_price = get_live_price(ticker_m)
+            if current_price <= 0:
+                continue
+                
+            unrealized_pct = ((current_price / buy_price) - 1.0) * 100.0
+            
+            if days_held >= 7 and unrealized_pct < 2.0:
+                shares = int(pos["shares"])
+                buy_date = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
+                buy_reason = pos.get("buy_reason", "Unknown")
+                reason = f"Mandatory 7-Day Time-Stop — held {days_held} trading days with return {unrealized_pct:.1f}% (< 2.0%)"
+                print(f"🚨 Mandatory Time-Stop: Selling {ticker_m} ({days_held}d held, {unrealized_pct:.1f}% return)")
+                
+                success = execute_sell(ib, client, ticker_m, shares, buy_price,
+                                       buy_date, buy_reason, current_price, reason,
+                                       pos_row=pos, market_regime=market_regime)
+                if success:
+                    # Remove from local list so it won't be processed by rotation logic in the same cycle
+                    positions = [p for p in positions if p["ticker"] != ticker_m]
+
+        # 3. Days 3-6 Rank & Replace Swaps (Auto-execute when slot filled and fresh triggers exist)
+        # Uses live Mₜ (momentum_health_score) as the comparator — a position that entered
+        # at 80 but whose live Mₜ has decayed to 45 loses to a new 62-score trigger.
+        if fresh_triggers and best_ticker and len(positions) >= MAX_POSITIONS:
+            replacement_candidates = []
+            for pos in positions:
+                ticker_m  = pos["ticker"]
+                days_held = pos.get("days_held") or 0
+
+                if 3 <= days_held <= 6:
+                    entry_rs = pos.get("entry_rs_score")
+                    live_rs  = pos.get("live_rs_score")
+
+                    rs_drifted = (
+                        entry_rs is not None
+                        and live_rs is not None
+                        and live_rs < (entry_rs * 0.90)
+                    )
+                    distribution_detected = bool(pos.get("volume_distribution_flag"))
+
+                    # Flagged for replacement if any decay condition is met
+                    if rs_drifted or distribution_detected:
+                        # Prefer live Mₜ; fall back to entry_final_score if Mₜ not yet computed
+                        mt = pos.get("momentum_health_score")
+                        comparator_score = mt if mt is not None else (
+                            pos.get("entry_final_score") or pos.get("entry_quality_score") or 0
+                        )
+                        replacement_candidates.append((comparator_score, pos))
+
+            if replacement_candidates:
+                # Sort so we swap the weakest live-Mₜ candidate first
+                replacement_candidates.sort(key=lambda x: x[0])
+                for comparator_score, pos in replacement_candidates:
+                    ticker_m = pos["ticker"]
+
+                    if best_trigger_score > comparator_score + RANK_REPLACE_THRESHOLD:
+                        mt_label = f"Mₜ={comparator_score:.1f}" if pos.get("momentum_health_score") is not None else f"entry={comparator_score}"
+                        reason = (
+                            f"Rank & Replace Swap — replaced with superior breakout {best_ticker} "
+                            f"(New trigger: {best_trigger_score} vs held {mt_label})"
+                        )
+                        print(f"🔄 Rank & Replace: {ticker_m} ({mt_label}) → {best_ticker} ({best_trigger_score})")
+
+                        shares        = int(pos["shares"])
+                        buy_price     = float(pos["buy_price"])
+                        buy_date      = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
+                        buy_reason    = pos.get("buy_reason", "Unknown")
+                        current_price = get_live_price(ticker_m)
+
+                        sold = execute_sell(ib, client, ticker_m, shares, buy_price,
+                                            buy_date, buy_reason, current_price, reason,
+                                            pos_row=pos, market_regime=market_regime)
+                        if sold:
+                            # Trigger immediate buy to fill the freed slot at 3:45 PM ET
+                            print("   Slot freed. Running buy loop to fill slot...")
+                            run_market_open_buys(ib)
+                            break
+
+        # 4. Progress Deficit flag (Day PROGRESS_DEFICIT_START+, user reviews in UI)
+        # If a position was expected to reach +25% in N days but actual progress is
+        # more than PROGRESS_DEFICIT_PCT points behind the linear pace, flag it.
+        # Writes rotation_recommendation = 'PROGRESS_DEFICIT' — no auto-sell.
+        if PROGRESS_DEFICIT_ENABLED:
+            for pos in positions:
+                ticker_m   = pos["ticker"]
+                days_held  = pos.get("days_held") or 0
+                est_days   = pos.get("entry_est_days_target")
+
+                if days_held < PROGRESS_DEFICIT_START or not est_days or int(est_days) <= 0:
+                    continue
+
+                # Only flag if not already flagged for something more urgent
+                existing_rec = pos.get("rotation_recommendation")
+                if existing_rec and existing_rec not in (None, "PROGRESS_DEFICIT"):
+                    continue
+
+                buy_price_pd    = float(pos.get("buy_price") or 0)
+                current_price_pd = get_live_price(ticker_m)
+                if current_price_pd <= 0 or buy_price_pd <= 0:
+                    continue
+
+                unrealized_pct_pd = ((current_price_pd / buy_price_pd) - 1.0) * 100.0
+                # Linear expected progress: how far toward +25% should we be by now?
+                expected_pct = 25.0 * days_held / int(est_days)
+                deficit = expected_pct - unrealized_pct_pd
+
+                if deficit >= PROGRESS_DEFICIT_PCT:
+                    print(
+                        f"   📉 {ticker_m}: Progress Deficit — expected {expected_pct:.1f}% "
+                        f"by day {days_held}, actual {unrealized_pct_pd:.1f}% "
+                        f"(deficit {deficit:.1f}pts ≥ {PROGRESS_DEFICIT_PCT}pts threshold)"
+                    )
+                    _set_rotation_recommendation(client, ticker_m, "PROGRESS_DEFICIT")
+                    pos["rotation_recommendation"] = "PROGRESS_DEFICIT"
+                else:
+                    # Clear stale PROGRESS_DEFICIT flag if position has caught up
+                    if existing_rec == "PROGRESS_DEFICIT":
+                        _set_rotation_recommendation(client, ticker_m, None)
+                        pos["rotation_recommendation"] = None
 
 
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float,
@@ -1729,9 +2318,18 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
             if pos_row:
                 buy_dt_d   = buy_date.date() if hasattr(buy_date, "date") else buy_date
                 days_held  = trading_days_between(buy_dt_d, datetime.datetime.now(ZoneInfo("America/New_York")).date())
-                # Determine exit type from reason string
-                r_lower    = reason.lower()
-                if "stop" in r_lower and "hard" in r_lower:
+                # Determine exit type from reason string — explicit checks first,
+                # generic catch-all last so new exit types don't silently become 'manual'.
+                r_lower = reason.lower()
+                if "rank & replace" in r_lower or "rank and replace" in r_lower:
+                    exit_type = "rank_replace"
+                elif "time-stop" in r_lower or "mandatory" in r_lower and "time" in r_lower:
+                    exit_type = "time_stop"
+                elif "break-even" in r_lower or "hwm break" in r_lower:
+                    exit_type = "break_even"
+                elif "ema" in r_lower or "moving average" in r_lower:
+                    exit_type = "ma_exit"
+                elif "hard stop" in r_lower:
                     exit_type = "hard_stop"
                 elif "stop" in r_lower:
                     exit_type = "stop_loss"

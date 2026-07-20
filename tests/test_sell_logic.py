@@ -213,7 +213,7 @@ class TestMovingAverageExits:
 
     def test_ma_exit_triggers_on_eod_breach(self):
         """Price below threshold near market close -> execute_sell called."""
-        pos = make_position("AAPL", buy_price=100.0)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
         mock_trade = MagicMock()
@@ -400,76 +400,82 @@ class TestPlateauRotation:
 
         return sold_tickers
 
-    def test_plateau_rotation_fires_when_portfolio_full_and_trigger_exists(self):
-        """Portfolio full + fresh trigger + stalled position -> execute_sell called."""
-        stale_date = (datetime.date(2026, 6, 20) - datetime.timedelta(days=15)).isoformat()
+    def test_mandatory_time_stop_at_day_7_low_return(self):
+        """Position held >= 7 trading days with < 2% return is sold unconditionally at EOD."""
         portfolio = [
-            make_position("AAPL", buy_price=100.0, hwm_date=stale_date),
-            make_position("MSFT", buy_price=100.0, hwm_date=datetime.date(2026, 6, 20).isoformat()),
-            make_position("NVDA", buy_price=100.0, hwm_date=datetime.date(2026, 6, 20).isoformat()),
-            make_position("AMZN", buy_price=100.0, hwm_date=datetime.date(2026, 6, 20).isoformat()),
-        ]
-        triggers = [make_trigger("TSLA")]
-
-        sold = self._eod_monitor(portfolio, triggers)
-        assert "AAPL" in sold, f"Most stalled position (AAPL) should have been rotated out, got {sold}"
-
-    def test_plateau_rotation_skips_fresh_stock(self):
-        """Position with recent hwm_date (< PLATEAU_DAYS) is NOT rotated."""
-        fresh_date = (datetime.date(2026, 6, 20) - datetime.timedelta(days=3)).isoformat()
-        portfolio = [
-            make_position("AAPL", buy_price=100.0, hwm_date=fresh_date),
-            make_position("MSFT", buy_price=100.0, hwm_date=fresh_date),
-            make_position("NVDA", buy_price=100.0, hwm_date=fresh_date),
-            make_position("AMZN", buy_price=100.0, hwm_date=fresh_date),
-        ]
-        triggers = [make_trigger("TSLA")]
-
-        sold = self._eod_monitor(portfolio, triggers)
-        assert sold == [], f"No position should be rotated when all hwm_dates are fresh, got {sold}"
-
-    def test_plateau_rotation_skips_when_no_triggers(self):
-        """No fresh triggers -> no rotation even if positions are stale."""
-        stale_date = (datetime.date(2026, 6, 20) - datetime.timedelta(days=15)).isoformat()
-        portfolio = [
-            make_position("AAPL", buy_price=100.0, hwm_date=stale_date),
-            make_position("MSFT", buy_price=100.0, hwm_date=stale_date),
-            make_position("NVDA", buy_price=100.0, hwm_date=stale_date),
-            make_position("AMZN", buy_price=100.0, hwm_date=stale_date),
+            make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00"), # ~8 trading days
+            make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+            make_position("NVDA", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+            make_position("AMZN", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
         ]
 
-        sold = self._eod_monitor(portfolio, daily_triggers=[])
-        assert sold == [], f"No rotation when no fresh triggers, got {sold}"
+        with patch("execution_agent.get_live_price", return_value=101.0):
+            sold = self._eod_monitor(portfolio, daily_triggers=[])
+        
+        assert "AAPL" in sold, f"Day 7 position AAPL should have been sold via Time-Stop, got {sold}"
 
-    def test_plateau_rotation_skips_when_portfolio_not_full(self):
-        """Portfolio not at MAX_POSITIONS -> no rotation."""
-        stale_date = (datetime.date(2026, 6, 20) - datetime.timedelta(days=15)).isoformat()
+    def test_mandatory_time_stop_does_not_fire_at_day_6(self):
+        """Position held 6 trading days with < 2% return is NOT sold if no triggers / no drift."""
         portfolio = [
-            make_position("AAPL", buy_price=100.0, hwm_date=stale_date),
-            make_position("MSFT", buy_price=100.0, hwm_date=stale_date),
+            make_position("AAPL", buy_price=100.0, buy_date="2026-06-12T12:00:00+00:00"), # ~6 trading days
+            make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+            make_position("NVDA", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+            make_position("AMZN", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
         ]
-        triggers = [make_trigger("TSLA")]
 
-        sold = self._eod_monitor(portfolio, triggers)
-        assert sold == [], f"No rotation when portfolio not full, got {sold}"
+        with patch("execution_agent.get_live_price", return_value=101.0):
+            sold = self._eod_monitor(portfolio, daily_triggers=[])
+        
+        assert sold == [], f"Day 6 position should not be auto-sold, got {sold}"
 
-    def test_plateau_rotation_picks_most_stalled(self):
-        """If multiple positions are stale, the one with the oldest hwm_date is rotated."""
-        oldest = (datetime.date(2026, 6, 20) - datetime.timedelta(days=20)).isoformat()
-        older  = (datetime.date(2026, 6, 20) - datetime.timedelta(days=12)).isoformat()
-        recent = (datetime.date(2026, 6, 20) - datetime.timedelta(days=2)).isoformat()
+    def test_rank_and_replace_swap(self):
+        """Days 3-6 position with RS decay is swapped if a +15 point gap trigger exists."""
         portfolio = [
-            make_position("AAPL", buy_price=100.0, hwm_date=oldest),   # most stale -- should be sold
-            make_position("MSFT", buy_price=100.0, hwm_date=older),
-            make_position("NVDA", buy_price=100.0, hwm_date=recent),
-            make_position("AMZN", buy_price=100.0, hwm_date=recent),
+            make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50), # Day 4
+            make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+            make_position("NVDA", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+            make_position("AMZN", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
         ]
-        triggers = [make_trigger("TSLA")]
+        # TSLA score 70 (+20 gap)
+        triggers = [make_trigger("TSLA", final_score=70)]
 
-        sold = self._eod_monitor(portfolio, triggers)
-        assert "AAPL" in sold, f"Most stalled position (AAPL, {oldest}) should be rotated, got {sold}"
-        assert "NVDA" not in sold
-        assert "AMZN" not in sold
+        with patch("execution_agent.get_live_price", return_value=100.0), \
+             patch("execution_agent._fetch_ohlcv", return_value=[]), \
+             patch("execution_agent._fetch_current_rs", return_value=75): # decay 90 -> 75
+            sold = self._eod_monitor(portfolio, triggers)
+
+        assert "AAPL" in sold, f"AAPL should be rotated out for TSLA, got {sold}"
+
+    def test_rank_and_replace_skips_when_no_triggers(self):
+        """Days 3-6 position with decay is NOT swapped if no triggers exist."""
+        portfolio = [
+            make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50),
+            make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+            make_position("NVDA", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+            make_position("AMZN", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+        ]
+
+        with patch("execution_agent.get_live_price", return_value=100.0), \
+             patch("execution_agent._fetch_ohlcv", return_value=[]), \
+             patch("execution_agent._fetch_current_rs", return_value=75):
+            sold = self._eod_monitor(portfolio, daily_triggers=[])
+
+        assert sold == [], f"No rotation should occur without triggers, got {sold}"
+
+    def test_rank_and_replace_skips_when_portfolio_not_full(self):
+        """Days 3-6 position with decay is NOT swapped if portfolio has open slots (not full)."""
+        portfolio = [
+            make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50),
+            make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
+        ]
+        triggers = [make_trigger("TSLA", final_score=70)]
+
+        with patch("execution_agent.get_live_price", return_value=100.0), \
+             patch("execution_agent._fetch_ohlcv", return_value=[]), \
+             patch("execution_agent._fetch_current_rs", return_value=75):
+            sold = self._eod_monitor(portfolio, triggers)
+
+        assert sold == [], f"No rotation should occur if portfolio not full, got {sold}"
 
 
 # -- No LMT at buy time --

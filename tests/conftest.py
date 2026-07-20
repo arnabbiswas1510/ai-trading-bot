@@ -76,17 +76,21 @@ def make_position(ticker: str,
                   days_since_hwm: int | None = None,
                   live_rs_score: int | None = None,
                   top_trigger_score: int | None = None,
-                  rotation_recommendation: str | None = None) -> dict:
+                  rotation_recommendation: str | None = None,
+                  buy_date: str | None = None,
+                  stop_loss_pct: float | None = None,
+                  highest_unrealized_pct: float | None = None) -> dict:
     """Factory for a portfolio_positions Supabase row.
 
     hwm_rs_score: RS score on the day the position last made a new HWM.
                   Rule 1 (RS Decay) compares live_rs_score vs this value.
                   Distinct from entry_rs_score (RS at buy day).
     """
-    buy_date = (
-        datetime.datetime.now(datetime.timezone.utc)
-        - datetime.timedelta(days=days_ago)
-    ).isoformat()
+    if buy_date is None:
+        buy_date = (
+            datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=days_ago)
+        ).isoformat()
     # Default hwm_date to today if not provided
     if hwm_date is None:
         from zoneinfo import ZoneInfo
@@ -99,6 +103,8 @@ def make_position(ticker: str,
         "buy_source": buy_source,
         "buy_reason": f"Test: {ticker}",
         "stop_loss": stop_loss if stop_loss is not None else round(buy_price * 0.93, 2),
+        "stop_loss_pct": stop_loss_pct if stop_loss_pct is not None else 0.07,
+        "highest_unrealized_pct": highest_unrealized_pct if highest_unrealized_pct is not None else 0.0,
         "hwm_date": hwm_date,
         "entry_rs_score":          entry_rs_score,
         "entry_final_score":       entry_final_score,
