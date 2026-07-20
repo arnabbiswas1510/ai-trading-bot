@@ -152,12 +152,28 @@ class TelegramNotifier:
         pivot_dist_pct: float,
         slot_used: int,
         max_slots: int,
+        trail_pct: float = None,
+        stop_method: str = None,
         profit_target: float = None,  # kept for backwards-compat; no longer used
     ) -> None:
         """Fires after a successful IBKR market buy order is filled and recorded."""
         position_size = shares * fill_price
         stop_pct = ((stop_loss / fill_price) - 1.0) * 100.0
         dist_str = f"{pivot_dist_pct:+.1f}%" if pivot_dist_pct != 0 else "At high"
+
+        # Trail stop line — show ATR-derived % and method label if available
+        if trail_pct is not None:
+            trail_pct_display = f"{trail_pct * 100:.1f}%"
+            method_label = stop_method or "dynamic"
+            trail_line = (
+                f"  Trail Stop:    <code>${stop_loss:,.2f}</code>  "
+                f"({trail_pct_display} — {method_label})\n"
+            )
+        else:
+            trail_line = (
+                f"  Trail Stop:    <code>${stop_loss:,.2f}</code>  "
+                f"({stop_pct:.1f}%)\n"
+            )
 
         msg = (
             f"🟢 <b>BUY EXECUTED</b> — ${ticker}\n"
@@ -172,7 +188,7 @@ class TelegramNotifier:
             f"  52w High Dist: <code>{dist_str}</code>\n"
             f"\n"
             f"🛡️ <b>Risk Management</b>\n"
-            f"  Trail Stop:    <code>${stop_loss:,.2f}</code>  ({stop_pct:.1f}%)\n"
+            f"{trail_line}"
             f"  Exit Rule:     EMA-21 end-of-day | plateau rotation\n"
             f"\n"
             f"🗂️ Portfolio: {slot_used} / {max_slots} slots used\n"

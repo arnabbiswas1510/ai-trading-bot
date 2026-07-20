@@ -470,16 +470,19 @@ def TrailingStopOrder(action: str, totalQuantity: float,
         setattr(o, k, v)
     return o
 
-def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> str:
+def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> tuple:
     """
     Places a GTC Trailing Stop for an open stock position.
     Trails stop_loss_pct% below the running peak price.
 
-    IBKR tracks the high-water mark internally (tick-by-tick) — no HWM
+    IBKR tracks the high-water mark internally (tick-by-tick) -- no HWM
     parameter is needed. Winners run freely until the stop fires or EOD
     plateau rotation acts.
 
-    Returns an order group label (informational).
+    Returns (group_label, confirmed_trail_pct) where confirmed_trail_pct
+    is the trailingPercent IBKR echoed back on the Trade object (as a
+    decimal, e.g. 0.091 for 9.1%). Falls back to stop_loss_pct if the
+    echo is unavailable.
     """
     import time as _time
     group = f"TS_{contract.symbol}_{int(_time.time())}"
@@ -488,9 +491,21 @@ def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> 
                              trailingPercent=round(stop_loss_pct * 100, 2))
     stop.tif = 'GTC'
     stop.account = get_ibkr_account(ib)
-    ib.placeOrder(contract, stop)
-    print(f"   🛡️  IBKR trailing stop placed: {stop_loss_pct*100:.0f}% trail")
-    return group
+    trade = ib.placeOrder(contract, stop)
+
+    # Read back the confirmed trailingPercent from the echoed Trade order.
+    # IBKR populates trade.order.trailingPercent synchronously after placeOrder.
+    try:
+        confirmed_pct_raw = getattr(trade.order, 'trailingPercent', None)
+        if confirmed_pct_raw and float(confirmed_pct_raw) > 0:
+            confirmed_trail_pct = float(confirmed_pct_raw) / 100.0
+        else:
+            confirmed_trail_pct = stop_loss_pct  # fallback to calculated
+    except Exception:
+        confirmed_trail_pct = stop_loss_pct
+
+    print(f"   \U0001f6e1\ufe0f  IBKR trailing stop placed: {confirmed_trail_pct*100:.2f}% trail (confirmed)")
+    return group, confirmed_trail_pct
 
 
 def cancel_ticker_sell_orders(ib: IB, ticker: str) -> int:
@@ -1145,12 +1160,17 @@ def run_market_open_buys(ib: IB):
             if fill_price <= 0:
                 fill_price = current_price
 
-            # Calculate dynamic stop loss percentage (2.5x ATR, fallback to standard STOP_LOSS_PCT)
+            # Calculate dynamic stop loss percentage (2.5x ATR, fallback to STOP_LOSS_PCT)
+            # Floor: 7% (never tighter than static, protects against bad fills)
+            # Cap:  14% (prevents runaway stops on extremely volatile names)
             trigger_atr_pct = trigger.get("atr_pct")
             if trigger_atr_pct and float(trigger_atr_pct) > 0:
-                pos_stop_loss_pct = round((2.5 * float(trigger_atr_pct)) / 100.0, 4)
+                atr_derived = round((2.5 * float(trigger_atr_pct)) / 100.0, 4)
+                pos_stop_loss_pct = round(max(0.07, min(0.14, atr_derived)), 4)
+                stop_method = f"ATR-based ({float(trigger_atr_pct):.2f}% ATR × 2.5)"
             else:
                 pos_stop_loss_pct = STOP_LOSS_PCT
+                stop_method = "static fallback"
 
             stop_loss_val = round(fill_price * (1 - pos_stop_loss_pct), 2)
 
@@ -1216,6 +1236,8 @@ def run_market_open_buys(ib: IB):
             notifier.notify_buy(
                 ticker=ticker, shares=actual_shares, fill_price=fill_price,
                 stop_loss=stop_loss_val,
+                trail_pct=pos_stop_loss_pct,
+                stop_method=stop_method,
                 volume_surge=float(trigger.get("volume_surge", 0)),
                 pivot_dist_pct=float(trigger.get("pivot_distance_pct", 0)),
                 slot_used=slot_used, max_slots=MAX_POSITIONS
@@ -2011,7 +2033,7 @@ def monitor_portfolio_intraday(ib: IB):
                 _heal_contract = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_heal_contract)
                 # Anchor from current price — IBKR tracks HWM from here onward.
-                place_trailing_stop(ib, _heal_contract, shares, pos_stop_loss_pct)
+                _grp, _confirmed = place_trailing_stop(ib, _heal_contract, shares, pos_stop_loss_pct)
             except Exception as _heal_err:
                 notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", _heal_err)
                 print(f"   ⚠️ Self-healing failed for {ticker}: {_heal_err}")
