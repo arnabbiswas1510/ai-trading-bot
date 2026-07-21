@@ -400,54 +400,6 @@ class TestPlateauRotation:
 
         return sold_tickers
 
-    def test_mandatory_time_stop_at_day_7_low_return(self):
-        """Position held >= 7 trading days with < 2% return is sold unconditionally at EOD."""
-        portfolio = [
-            make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00"), # ~8 trading days
-            make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-            make_position("NVDA", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-            make_position("AMZN", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-        ]
-
-        with patch("execution_agent.get_live_price", return_value=101.0):
-            sold = self._eod_monitor(portfolio, daily_triggers=[])
-        
-        assert "AAPL" in sold, f"Day 7 position AAPL should have been sold via Time-Stop, got {sold}"
-
-    def test_mandatory_time_stop_does_not_fire_at_day_6(self):
-        """Position held 6 trading days with < 2% return is NOT sold if no triggers / no drift."""
-        portfolio = [
-            make_position("AAPL", buy_price=100.0, buy_date="2026-06-12T12:00:00+00:00"), # ~6 trading days
-            make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-            make_position("NVDA", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-            make_position("AMZN", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-        ]
-
-        with patch("execution_agent.get_live_price", return_value=101.0):
-            sold = self._eod_monitor(portfolio, daily_triggers=[])
-        
-        assert sold == [], f"Day 6 position should not be auto-sold, got {sold}"
-
-    def test_rank_and_replace_swap(self):
-        """Days 3-6 position with RS decay is swapped if trigger score > live Mₜ + 15.
-        AAPL live Mₜ ≈ 63.3 (RS decayed 90→75). Trigger needs > 78.3. Use 85.
-        """
-        portfolio = [
-            make_position("AAPL", buy_price=100.0, buy_date="2026-06-14T12:00:00+00:00", entry_rs_score=90, entry_final_score=50), # Day 4
-            make_position("MSFT", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-            make_position("NVDA", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-            make_position("AMZN", buy_price=100.0, buy_date="2026-06-18T12:00:00+00:00"),
-        ]
-        # TSLA score 85 (+21.7 gap over live Mₜ=63.3, exceeds the 15-point threshold)
-        triggers = [make_trigger("TSLA", final_score=85)]
-
-        with patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent._fetch_ohlcv", return_value=[]), \
-             patch("execution_agent._fetch_current_rs", return_value=75): # decay 90 -> 75
-            sold = self._eod_monitor(portfolio, triggers)
-
-        assert "AAPL" in sold, f"AAPL should be rotated out for TSLA, got {sold}"
-
     def test_rank_and_replace_skips_when_no_triggers(self):
         """Days 3-6 position with decay is NOT swapped if no triggers exist."""
         portfolio = [

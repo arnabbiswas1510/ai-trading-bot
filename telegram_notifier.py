@@ -236,6 +236,37 @@ class TelegramNotifier:
         )
         self._send(msg)
 
+    def notify_breakout_verdict_fail(
+        self,
+        ticker: str,
+        buy_price: float,
+        current_price: float,
+        price_pass: bool,
+        vol_pass: bool,
+    ) -> None:
+        """Sent at EOD of Day 3 when a position fails the breakout verdict.
+        Activates the Intraday Loss Minimiser from Day 4 onwards.
+        """
+        if not self._is_configured():
+            return
+        try:
+            ret_pct = ((current_price / buy_price) - 1.0) * 100.0
+            price_icon = "✅" if price_pass else "❌"
+            vol_icon   = "✅" if vol_pass   else "❌"
+            msg = (
+                f"❌ <b>BREAKOUT VERDICT FAILED — ${ticker}</b>\n\n"
+                f"{price_icon} Price check:  {ret_pct:+.2f}% "
+                f"{'(passed)' if price_pass else '(needed +1.0%)'}\n"
+                f"{vol_icon} Volume check: "
+                f"{'above 75% avg (passed)' if vol_pass else 'below 75% avg'}\n\n"
+                f"⚡ <b>Intraday Loss Minimiser now active.</b>\n"
+                f"   Bot will sell on next 0.5% pullback from intraday high.\n"
+                f"🕒 {self._now_et()}"
+            )
+            self._send(msg)
+        except Exception:
+            pass
+
     def notify_sell(
         self,
         ticker: str,

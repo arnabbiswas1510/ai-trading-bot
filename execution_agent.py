@@ -145,21 +145,12 @@ STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
 # If portfolio is full and a fresh breakout exists at 3:45pm, the most-stalled
 # position (largest days since HWM) is rotated out.
 PLATEAU_DAYS             = int(os.getenv("PLATEAU_DAYS", 7))
-# ── Plateau rotation thresholds ────────────────────────────────────────────────
-# Rule 1 (PARAM_DRIFT): fires at Day 3+ when 3-day avg close < buy_price
-#   AND >= PARAM_DRIFT_MIN_FAILURES of 6 breakout parameters have decayed.
-#   Interactive — user approves or dismisses in UI.
-# Rule 2 (HARD_STOP): auto-sell when stalled >= PLATEAU_DAYS. No approval needed.
-PARAM_DRIFT_MIN_FAILURES = int(os.getenv("PARAM_DRIFT_MIN_FAILURES", 3))  # of 6 params
 COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 1))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
 # Flat cash reserve per buy order: absorbs the 15-20 min lag between IBKR delayed
-# price and actual fill price. Unlike a percentage, this doesn't scale with position
-# size — the price-lag risk is constant regardless of order size. $1,000 covers
-# ~4% movement on a $25K position; minimises idle cash vs a 5% percentage buffer.
-# Override via PRICE_SAFETY_RESERVE env var (e.g. 500 for smaller reserve).
+# price and actual fill price. $1,000 covers ~4% movement on a $25K position.
 PRICE_SAFETY_RESERVE     = float(os.getenv("PRICE_SAFETY_RESERVE", 1000.0))
 
 # ── Moving Average Exit parameters ────────────────────────────────────────────
@@ -172,20 +163,21 @@ EXIT_MA_EOD_ONLY         = os.getenv("EXIT_MA_EOD_ONLY", "true").lower() == "tru
 # ── Momentum Health Score (Mₜ) — live conviction for held positions ────────────
 # Computed EOD from live RS, volume ratio, and real sentiment (FMP news + GPT).
 # Weights: RS decay 40%, Volume ratio 35%, Sentiment 25%.
-# Rank & Replace compares new trigger's final_score against held position's Mₜ.
+# Used by Rank & Replace (Day 7+) to compare trigger vs held position quality.
 MOMENTUM_HEALTH_RS_WEIGHT   = float(os.getenv("MOMENTUM_HEALTH_RS_WEIGHT",   0.40))
 MOMENTUM_HEALTH_VOL_WEIGHT  = float(os.getenv("MOMENTUM_HEALTH_VOL_WEIGHT",  0.35))
 MOMENTUM_HEALTH_SENT_WEIGHT = float(os.getenv("MOMENTUM_HEALTH_SENT_WEIGHT", 0.25))
-# Minimum score gap (trigger Mₜ vs held Mₜ) to auto-swap in Rank & Replace.
+# Minimum score gap (trigger Mₜ vs held Mₜ) to auto-swap in Rank & Replace (Day 7+).
 RANK_REPLACE_THRESHOLD      = int(os.getenv("RANK_REPLACE_THRESHOLD", 15))
 
-# ── Progress Deficit check ─────────────────────────────────────────────────────
-# From Day PROGRESS_DEFICIT_START, if actual gain is more than PROGRESS_DEFICIT_PCT
-# below the linear expected progress toward +25%, writes rotation_recommendation =
-# 'PROGRESS_DEFICIT' for user review in the UI. No auto-sell.
-PROGRESS_DEFICIT_ENABLED    = os.getenv("PROGRESS_DEFICIT_ENABLED", "true").lower() == "true"
-PROGRESS_DEFICIT_START      = int(os.getenv("PROGRESS_DEFICIT_START", 5))   # days held before checking
-PROGRESS_DEFICIT_PCT        = float(os.getenv("PROGRESS_DEFICIT_PCT", 10.0)) # points behind pace to flag
+# ── Breakout Verdict + Intraday Loss Minimiser ─────────────────────────────────
+# Day 3 EOD verdict: position must close >= +1% above entry AND have Day 3 volume
+# >= 75% of 20-day average. Failure activates the Intraday Loss Minimiser (Day 4+).
+BREAKOUT_VERDICT_MIN_GAIN    = float(os.getenv("BREAKOUT_VERDICT_MIN_GAIN",    0.01))  # 1% above entry
+BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0.75)) # 75% of 20d avg
+# Intraday Loss Minimiser: sell when price drops this % below today's rolling intraday
+# high, provided that high is near (within 0.5%) or above the entry price.
+INTRADAY_PULLBACK_PCT        = float(os.getenv("INTRADAY_PULLBACK_PCT",        0.005)) # 0.5%
 
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
@@ -412,13 +404,15 @@ def get_available_cash(ib: IB) -> float:
     """
     try:
         account_values = ib.accountValues()
-        # TotalCashValue = settled + unsettled (correct for portfolio valuation)
+        # AvailableFunds: cash IBKR will allow for new purchases without margin.
+        # On a cash account this equals settled funds only — prevents same-day
+        # reuse of unsettled sale proceeds (no involuntary margin trading).
+        for av in account_values:
+            if av.tag == "AvailableFunds" and av.currency == "USD":
+                return float(av.value)
+        # Fallback: TotalCashValue (settled + unsettled — used only if AvailableFunds absent)
         for av in account_values:
             if av.tag == "TotalCashValue" and av.currency == "USD":
-                return float(av.value)
-        # Fallback to CashBalance (settled only — may be low on trade days)
-        for av in account_values:
-            if av.tag == "CashBalance" and av.currency == "USD":
                 return float(av.value)
     except Exception as e:
         notifier.notify_exception(f"get_available_cash() — execution_agent.py", e)
@@ -2003,17 +1997,44 @@ def monitor_portfolio_intraday(ib: IB):
                     print(f"   ⚠️ Could not update hwm/peak metrics for {ticker}: {e}")
 
 
-        # ── Break-Even Stop check (Days 3+) ──
-        # Prevent early winners from turning into a loss.
-        # If profit cushion reached >= 5.0% and has now retraced back to or below entry price, trigger market sell.
-        if days_held >= 3 and highest_unrealized_pct >= 5.0 and current_price <= buy_price:
-            reason = (
-                f"HWM Break-Even Stop — profit cushion of {highest_unrealized_pct:.1f}% "
-                f"retraced back to entry price (${current_price:.2f})"
-            )
-            print(f"🚨 {ticker} triggered Break-Even Stop! {reason}")
-            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
-            continue
+        # ── Intraday Loss Minimiser (Day 4+, FAIL verdict positions) ─────────────
+        # For positions that failed the Day 3 breakout verdict, sell on the first
+        # 0.5% pullback from today's intraday high — provided that high is within
+        # 0.5% of entry price (near breakeven or above), preserving any intraday gain.
+        if days_held >= 4 and pos.get("breakout_verdict") == "FAIL":
+            prev_high  = float(pos.get("intraday_high_today") or 0)
+            today_high = max(prev_high, current_price)
+
+            if today_high > prev_high:
+                try:
+                    client.table("portfolio_positions").update(
+                        {"intraday_high_today": today_high}
+                    ).eq("ticker", ticker).execute()
+                    pos["intraday_high_today"] = today_high
+                except Exception as _ihe:
+                    print(f"   ⚠️ Could not update intraday_high_today for {ticker}: {_ihe}")
+
+            pullback_level = today_high * (1 - INTRADAY_PULLBACK_PCT)
+            near_entry     = today_high >= buy_price * 0.995  # high is within 0.5% of or above entry
+            pulled_back    = current_price <= pullback_level
+
+            if near_entry and pulled_back:
+                reason = (
+                    f"Intraday Loss Minimiser — Day 3 verdict FAIL, "
+                    f"selling on {INTRADAY_PULLBACK_PCT*100:.1f}% pullback from "
+                    f"intraday high ${today_high:.2f} (current ${current_price:.2f})"
+                )
+                print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser firing — {reason}")
+                execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                continue
+
+            # Hard fallback: no qualifying intraday rally materialised by Day 7 — sell at market
+            if days_held >= 7:
+                reason = f"Intraday Loss Minimiser fallback — no qualifying intraday rally by Day 7 ({days_held}d)"
+                print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser fallback sell (Day 7)")
+                execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                continue
+
 
         # ── Self-healing: ensure trailing stop exists for this position ─────────
         # GTC trailing stops survive IBKR gateway restarts, but may be absent for
@@ -2067,11 +2088,11 @@ def monitor_portfolio_intraday(ib: IB):
 
     positions = active_positions
 
-    # ── EOD Plateau Rotation & Risk Optimization (3:45–4:00 PM ET) ────────────
+    # ── EOD Block (3:45–4:00 PM ET) ─────────────────────────────────────────────
     # Runs once per day at 3:45 PM. Implements:
-    # 1. Update EOD metrics (days_held, days_since_hwm, volume_distribution_flag, live_rs_score)
-    # 2. Day 7 Mandatory Time-Stop (auto-sell if days_held >= 7 and gain < 2.0%)
-    # 3. Days 3-6 Rank & Replace Swaps (auto-swap if parameter drift is flagged and a +15 score trigger exists)
+    # 1. Update EOD metrics (days_held, days_since_hwm, volume_distribution_flag, live_rs_score, Mₜ)
+    # 2. Day 3 Breakout Verdict (PASS/FAIL based on price +1% + volume >= 75% avg)
+    # 3. Rank & Replace Swaps (Day 7+ only: auto-swap if Mₜ gap > 15pts vs best trigger)
     #
     now_eod = datetime.datetime.now(tz)
     is_eod_window = (now_eod.hour == 15 and now_eod.minute >= 45)
@@ -2151,26 +2172,39 @@ def monitor_portfolio_intraday(ib: IB):
                   f"vol_dist={vol_dist}, sent={live_sentiment}"
                   f"{penalties_str})")
 
-            # ── Consolidation Floor Break check (Day 7+) ──────────────────
-            # Flags rotation_recommendation = 'FLOOR_BREAK' in UI.
-            # Auto-clears when price recovers above the floor.
-            if days_held_m >= 7:
+            # ── Day 3 Breakout Verdict (evaluated once at EOD of Day 3) ──────
+            # PASS: close >= entry×1.01 AND Day 3 volume >= 75% of 20-day avg
+            # FAIL: either condition not met → activates Intraday Loss Minimiser
+            if days_held_m == 3 and pos.get("breakout_verdict") is None:
                 current_price_m = get_live_price(ticker_m)
-                if current_price_m > 0:
-                    floor_broken = check_consolidation_floor_break(ohlcv, current_price_m)
-                    existing_rec = pos.get("rotation_recommendation")
-                    if floor_broken and existing_rec not in (
-                        "FLOOR_BREAK", "PARAM_DRIFT", "HARD_STOP",
-                        "RS_DECAY", "TIER_1", "TIER_2"
-                    ):
-                        _set_rotation_recommendation(client, ticker_m, "FLOOR_BREAK")
-                        pos["rotation_recommendation"] = "FLOOR_BREAK"
-                        print(f"   🚫 {ticker_m}: Consolidation floor broken on volume — flagging FLOOR_BREAK")
-                    elif not floor_broken and existing_rec == "FLOOR_BREAK":
-                        # Price recovered — clear the flag
-                        _set_rotation_recommendation(client, ticker_m, None)
-                        pos["rotation_recommendation"] = None
-                        print(f"   ✅ {ticker_m}: Price recovered above consolidation floor — FLOOR_BREAK cleared")
+                buy_price_m     = float(pos["buy_price"])
+                price_pass      = current_price_m > buy_price_m * (1 + BREAKOUT_VERDICT_MIN_GAIN)
+
+                day3_vol  = ohlcv[0]["volume"] if ohlcv else None
+                avg_vol   = (sum(b["volume"] for b in ohlcv[1:21]) / 20) if len(ohlcv) >= 21 else None
+                vol_pass  = (day3_vol >= avg_vol * BREAKOUT_VERDICT_MIN_VOL_PCT) if (day3_vol and avg_vol) else True
+
+                verdict = "PASS" if (price_pass and vol_pass) else "FAIL"
+                try:
+                    client.table("portfolio_positions").update(
+                        {"breakout_verdict": verdict}
+                    ).eq("ticker", ticker_m).execute()
+                    pos["breakout_verdict"] = verdict
+                except Exception as _ve:
+                    print(f"   \u26a0\ufe0f Could not write breakout_verdict for {ticker_m}: {_ve}")
+
+                icon = "\u2705" if verdict == "PASS" else "\u274c"
+                print(
+                    f"   {icon} {ticker_m}: Day 3 verdict = {verdict} "
+                    f"(price {'\u2705' if price_pass else '\u274c'} "
+                    f"{((current_price_m/buy_price_m)-1)*100:+.2f}%, "
+                    f"vol {'\u2705' if vol_pass else '\u274c'} "
+                    f"{f'{day3_vol/avg_vol:.2f}\u00d7' if day3_vol and avg_vol else 'N/A'})"
+                )
+                if verdict == "FAIL":
+                    notifier.notify_breakout_verdict_fail(
+                        ticker_m, buy_price_m, current_price_m, price_pass, vol_pass
+                    )
 
             try:
                 update_payload = {
@@ -2193,133 +2227,44 @@ def monitor_portfolio_intraday(ib: IB):
             except Exception as _me:
                 print(f"   ⚠️ Could not update EOD plateau metrics for {ticker_m}: {_me}")
 
-        # 2. Strict Day 7 Mandatory Time-Stop Exit (Auto-execute, regardless of portfolio slots or triggers)
-        # Sell if held >= 7 trading days and return is < +2.0%
-        active_positions = list(positions)
-        for pos in active_positions:
-            ticker_m = pos["ticker"]
-            days_held = pos.get("days_held") or 0
-            buy_price = float(pos["buy_price"])
-            
-            current_price = get_live_price(ticker_m)
-            if current_price <= 0:
-                continue
-                
-            unrealized_pct = ((current_price / buy_price) - 1.0) * 100.0
-            
-            if days_held >= 7 and unrealized_pct < 2.0:
-                shares = int(pos["shares"])
-                buy_date = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
-                buy_reason = pos.get("buy_reason", "Unknown")
-                reason = f"Mandatory 7-Day Time-Stop — held {days_held} trading days with return {unrealized_pct:.1f}% (< 2.0%)"
-                print(f"🚨 Mandatory Time-Stop: Selling {ticker_m} ({days_held}d held, {unrealized_pct:.1f}% return)")
-                
-                success = execute_sell(ib, client, ticker_m, shares, buy_price,
-                                       buy_date, buy_reason, current_price, reason,
-                                       pos_row=pos, market_regime=market_regime)
-                if success:
-                    # Remove from local list so it won't be processed by rotation logic in the same cycle
-                    positions = [p for p in positions if p["ticker"] != ticker_m]
-
-        # 3. Days 3-6 Rank & Replace Swaps (Auto-execute when slot filled and fresh triggers exist)
-        # Uses live Mₜ (momentum_health_score) as the comparator — a position that entered
-        # at 80 but whose live Mₜ has decayed to 45 loses to a new 62-score trigger.
+        # 2. Rank & Replace Swaps (Day 7+ only)
+        # Uses live Mₜ (momentum_health_score) as the comparator.
+        # Only runs for positions held >= 7 days that passed the Day 3 verdict.
         if fresh_triggers and best_ticker and len(positions) >= MAX_POSITIONS:
-            replacement_candidates = []
             for pos in positions:
                 ticker_m  = pos["ticker"]
-                days_held = pos.get("days_held") or 0
+                days_held_rr = pos.get("days_held") or 0
+                verdict_rr   = pos.get("breakout_verdict")
 
-                if 3 <= days_held <= 6:
-                    entry_rs = pos.get("entry_rs_score")
-                    live_rs  = pos.get("live_rs_score")
+                if days_held_rr < 7 or verdict_rr != "PASS":
+                    continue
 
-                    rs_drifted = (
-                        entry_rs is not None
-                        and live_rs is not None
-                        and live_rs < (entry_rs * 0.90)
+                mt = pos.get("momentum_health_score")
+                comparator_score = mt if mt is not None else (
+                    pos.get("entry_final_score") or pos.get("entry_quality_score") or 0
+                )
+
+                if best_trigger_score > comparator_score + RANK_REPLACE_THRESHOLD:
+                    mt_label = f"M\u209c={comparator_score:.1f}" if mt is not None else f"entry={comparator_score}"
+                    reason = (
+                        f"Rank & Replace Swap (Day 7+) — replaced with superior breakout {best_ticker} "
+                        f"(New trigger: {best_trigger_score} vs held {mt_label})"
                     )
-                    distribution_detected = bool(pos.get("volume_distribution_flag"))
+                    print(f"\U0001f504 Rank & Replace: {ticker_m} ({mt_label}) \u2192 {best_ticker} ({best_trigger_score})")
 
-                    # Flagged for replacement if any decay condition is met
-                    if rs_drifted or distribution_detected:
-                        # Prefer live Mₜ; fall back to entry_final_score if Mₜ not yet computed
-                        mt = pos.get("momentum_health_score")
-                        comparator_score = mt if mt is not None else (
-                            pos.get("entry_final_score") or pos.get("entry_quality_score") or 0
-                        )
-                        replacement_candidates.append((comparator_score, pos))
+                    shares_rr    = int(pos["shares"])
+                    buy_price_rr = float(pos["buy_price"])
+                    buy_date_rr  = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
+                    buy_reason_rr = pos.get("buy_reason", "Unknown")
+                    current_price_rr = get_live_price(ticker_m)
 
-            if replacement_candidates:
-                # Sort so we swap the weakest live-Mₜ candidate first
-                replacement_candidates.sort(key=lambda x: x[0])
-                for comparator_score, pos in replacement_candidates:
-                    ticker_m = pos["ticker"]
-
-                    if best_trigger_score > comparator_score + RANK_REPLACE_THRESHOLD:
-                        mt_label = f"Mₜ={comparator_score:.1f}" if pos.get("momentum_health_score") is not None else f"entry={comparator_score}"
-                        reason = (
-                            f"Rank & Replace Swap — replaced with superior breakout {best_ticker} "
-                            f"(New trigger: {best_trigger_score} vs held {mt_label})"
-                        )
-                        print(f"🔄 Rank & Replace: {ticker_m} ({mt_label}) → {best_ticker} ({best_trigger_score})")
-
-                        shares        = int(pos["shares"])
-                        buy_price     = float(pos["buy_price"])
-                        buy_date      = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
-                        buy_reason    = pos.get("buy_reason", "Unknown")
-                        current_price = get_live_price(ticker_m)
-
-                        sold = execute_sell(ib, client, ticker_m, shares, buy_price,
-                                            buy_date, buy_reason, current_price, reason,
-                                            pos_row=pos, market_regime=market_regime)
-                        if sold:
-                            # Trigger immediate buy to fill the freed slot at 3:45 PM ET
-                            print("   Slot freed. Running buy loop to fill slot...")
-                            run_market_open_buys(ib)
-                            break
-
-        # 4. Progress Deficit flag (Day PROGRESS_DEFICIT_START+, user reviews in UI)
-        # If a position was expected to reach +25% in N days but actual progress is
-        # more than PROGRESS_DEFICIT_PCT points behind the linear pace, flag it.
-        # Writes rotation_recommendation = 'PROGRESS_DEFICIT' — no auto-sell.
-        if PROGRESS_DEFICIT_ENABLED:
-            for pos in positions:
-                ticker_m   = pos["ticker"]
-                days_held  = pos.get("days_held") or 0
-                est_days   = pos.get("entry_est_days_target")
-
-                if days_held < PROGRESS_DEFICIT_START or not est_days or int(est_days) <= 0:
-                    continue
-
-                # Only flag if not already flagged for something more urgent
-                existing_rec = pos.get("rotation_recommendation")
-                if existing_rec and existing_rec not in (None, "PROGRESS_DEFICIT"):
-                    continue
-
-                buy_price_pd    = float(pos.get("buy_price") or 0)
-                current_price_pd = get_live_price(ticker_m)
-                if current_price_pd <= 0 or buy_price_pd <= 0:
-                    continue
-
-                unrealized_pct_pd = ((current_price_pd / buy_price_pd) - 1.0) * 100.0
-                # Linear expected progress: how far toward +25% should we be by now?
-                expected_pct = 25.0 * days_held / int(est_days)
-                deficit = expected_pct - unrealized_pct_pd
-
-                if deficit >= PROGRESS_DEFICIT_PCT:
-                    print(
-                        f"   📉 {ticker_m}: Progress Deficit — expected {expected_pct:.1f}% "
-                        f"by day {days_held}, actual {unrealized_pct_pd:.1f}% "
-                        f"(deficit {deficit:.1f}pts ≥ {PROGRESS_DEFICIT_PCT}pts threshold)"
-                    )
-                    _set_rotation_recommendation(client, ticker_m, "PROGRESS_DEFICIT")
-                    pos["rotation_recommendation"] = "PROGRESS_DEFICIT"
-                else:
-                    # Clear stale PROGRESS_DEFICIT flag if position has caught up
-                    if existing_rec == "PROGRESS_DEFICIT":
-                        _set_rotation_recommendation(client, ticker_m, None)
-                        pos["rotation_recommendation"] = None
+                    sold = execute_sell(ib, client, ticker_m, shares_rr, buy_price_rr,
+                                        buy_date_rr, buy_reason_rr, current_price_rr, reason,
+                                        pos_row=pos, market_regime=market_regime)
+                    if sold:
+                        print("   Slot freed. Running buy loop to fill slot...")
+                        run_market_open_buys(ib)
+                        break
 
 
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float,
