@@ -151,7 +151,7 @@ PLATEAU_DAYS             = int(os.getenv("PLATEAU_DAYS", 7))
 #   Interactive — user approves or dismisses in UI.
 # Rule 2 (HARD_STOP): auto-sell when stalled >= PLATEAU_DAYS. No approval needed.
 PARAM_DRIFT_MIN_FAILURES = int(os.getenv("PARAM_DRIFT_MIN_FAILURES", 3))  # of 6 params
-COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 3))
+COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 1))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
