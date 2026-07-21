@@ -81,13 +81,23 @@ class TelegramNotifier:
     def notify_breakouts_detected(self, breakouts: list[dict]) -> None:
         """Fires from technical_screener.py when breakouts are pushed to the database.
         Silent when no breakouts found — only notifies when there are actual signals.
+        Shows 🔥 for confirmed breakouts and ⏳ for pre-breakout coilers.
         """
         if not breakouts:
             return  # No alert on quiet days — don't noise the channel
 
-        msg = f"🚀 <b>CANSLIM Breakouts Detected!</b>\n\nFound {len(breakouts)} breakout(s) today:\n\n"
-        for t in breakouts:
-            msg += f"• <b>{t['ticker']}</b> — ${t['close_price']} (Vol: {t['volume_surge']}x)\n"
+        confirmed    = [t for t in breakouts if t.get("trigger_type") != "PRE_BREAKOUT"]
+        pre_breakout = [t for t in breakouts if t.get("trigger_type") == "PRE_BREAKOUT"]
+
+        header = f"📡 <b>CANSLIM Signals Detected!</b>\n"
+        header += f"Found {len(confirmed)} confirmed breakout(s) + {len(pre_breakout)} pre-breakout coiler(s):\n\n"
+
+        msg = header
+        for t in confirmed:
+            msg += f"🔥 <b>{t['ticker']}</b> — ${t['close_price']} (Vol: {t['volume_surge']}x) <i>Confirmed Breakout</i>\n"
+        for t in pre_breakout:
+            msg += (f"⏳ <b>{t['ticker']}</b> — ${t['close_price']} "
+                    f"({abs(t.get('pivot_distance_pct', 0)):.1f}% below pivot) <i>Coiling — breakout imminent</i>\n")
 
         msg += f"\n<i>AI evaluation running... scores will follow shortly.</i>\n\n🕒 {self._now_et()}"
         self._send(msg)
@@ -97,6 +107,7 @@ class TelegramNotifier:
         Fires from ai_evaluator.py after all 5-component scores are computed.
         Shows final score, grade, component breakdown, and AI rationale for each trigger.
         Triggers are expected to be sorted by final_score descending before calling.
+        Shows 🔥 for confirmed breakouts and ⏳ for pre-breakout coilers.
         """
         if not triggers:
             return
@@ -119,6 +130,7 @@ class TelegramNotifier:
             atr_pct    = t.get("atr_pct", 0) or 0
             est_days   = t.get("est_days_to_target", 999) or 999
             rationale  = t.get("score_rationale", "").strip()
+            ttype      = t.get("trigger_type", "BREAKOUT")
 
             grade_emoji = {"A": "🟢", "B": "🟡", "C": "🟠", "D": "🔴"}.get(grade, "⚪")
             swing_emoji = (
@@ -127,10 +139,11 @@ class TelegramNotifier:
                 "⚠️" if est_days <= 60 else
                 "❌"
             )
+            type_badge = "⏳ <i>Pre-Breakout +10</i>" if ttype == "PRE_BREAKOUT" else "🔥 <i>Breakout</i>"
 
             msg += (
                 f"{grade_emoji} <b>{ticker}</b>  ${price}  →  "
-                f"<b>Score: {final}</b> ({grade})\n"
+                f"<b>Score: {final}</b> ({grade})  {type_badge}\n"
                 f"  Tech:{tech} | Liq:{liq} | AI:{ai_s} | Sent:{sent} | RS:{rs}\n"
                 f"  {swing_emoji} ATR: {atr_pct}%/day  →  Est. {est_days} days to +25%\n"
             )

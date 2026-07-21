@@ -284,11 +284,21 @@ Return ONLY valid JSON in this exact format:
             technical_score, liq_score, ai_score, sentiment_score, rs_score
         )
 
+        # ── Pre-Breakout early-entry bonus ────────────────────────────────────
+        # Pre-breakout candidates get a +10pt boost to compensate for the fact
+        # that they haven't yet triggered the volume surge. This reflects the
+        # lower-risk entry at the base price vs buying after the gap-up.
+        trigger_type  = str(t.get("trigger_type") or "BREAKOUT")
+        if trigger_type == "PRE_BREAKOUT":
+            boost = int(os.environ.get("PRE_BREAKOUT_SCORE_BOOST", 10))
+            final_score = min(100, final_score + boost)
+            print(f"   ⏳ {ticker}: PRE_BREAKOUT +{boost}pt boost applied → final_score={final_score}")
+
         atr_pct        = float(t.get("atr_pct") or 0.0)
         est_days       = int(t.get("est_days_to_target") or 999)
 
         print(f"   {ticker}: tech={technical_score} liq={liq_score} ai={ai_score} "
-              f"sent={sentiment_score} rs={rs_score} atr={atr_pct}% est={est_days}d -> final={final_score} ({grade})")
+              f"sent={sentiment_score} rs={rs_score} atr={atr_pct}% est={est_days}d -> final={final_score} ({grade}) [{trigger_type}]")
         print(f"     Rationale: {rationale}")
 
         fields = {
@@ -303,6 +313,7 @@ Return ONLY valid JSON in this exact format:
             # swing-trade velocity fields (written by screener, confirmed here for display)
             "atr_pct":            atr_pct,
             "est_days_to_target": est_days,
+            "trigger_type":       trigger_type,
         }
         update_trigger_scores(ticker, fields)
 

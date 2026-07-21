@@ -37,11 +37,25 @@ FMP_HISTORY_DAYS    = int(os.environ.get("FMP_HISTORY_DAYS", 380))
 # Set to 40 to allow slight laggards that are recovering but still show volume.
 RS_MIN_GATE         = int(os.environ.get("RS_MIN_GATE", 40))
 
+# ── Pre-Breakout (coiling) detection configuration ──────────────────────────
+# Augments confirmed breakouts with stocks that are setting up for an imminent
+# breakout but haven't yet triggered the volume surge. Stocks are bought before
+# the gap-up, allowing entry at the base price (VCP / handle setup).
+#
+# Proximity: how close to the 52-week high the stock must be to qualify.
+# Volume contraction: last 3-day avg volume must be BELOW this ratio of 50d avg.
+# Uptrend minimum: min number of higher closes in the last 3 days (of 3 checked).
+# Score boost: pts added to final_score for pre-breakout candidates (early entry premium).
+PRE_BREAKOUT_PROXIMITY    = float(os.environ.get("PRE_BREAKOUT_PROXIMITY",   0.08))  # within 8%
+PRE_BREAKOUT_VOL_MAX      = float(os.environ.get("PRE_BREAKOUT_VOL_MAX",     1.00))  # < 100% of 50d avg
+PRE_BREAKOUT_UPTREND_MIN  = int(os.environ.get("PRE_BREAKOUT_UPTREND_MIN",   2))     # 2 of last 3 closes up
+PRE_BREAKOUT_SCORE_BOOST  = int(os.environ.get("PRE_BREAKOUT_SCORE_BOOST",   10))    # +10 to final_score
+
 
 def compute_quality_score(volume_surge_ratio: float, pivot_dist_pct: float,
                           current_close: float, sma_50: float) -> int:
     """
-    Composite quality score 0-100 for a breakout trigger.
+    Composite quality score 0-100 for a confirmed breakout trigger.
 
     Weights:
       Volume surge   40% -- normalised against 3x average (>=3x -> full marks)
@@ -57,6 +71,40 @@ def compute_quality_score(volume_surge_ratio: float, pivot_dist_pct: float,
     sma_norm       = min(max(sma_margin_pct / 10.0, 0.0), 1.0)
     score          = (vol_norm * 40.0) + (prox_norm * 40.0) + (sma_norm * 20.0)
     return int(round(score))
+
+
+def compute_pre_breakout_quality_score(pivot_dist_pct: float,
+                                       vol_contraction_ratio: float,
+                                       rising_closes: int,
+                                       current_close: float,
+                                       sma_50: float) -> int:
+    """
+    Quality score 0-100 for a pre-breakout (coiling) trigger.
+
+    Weights:
+      Pivot proximity   40% -- closer to 52-week high = higher score
+                               within 1% = 40pts, 1-3% = 35pts, 3-5% = 28pts, 5-8% = 20pts
+      Volume contraction 40% -- lower recent volume vs 50d avg = more conviction
+                               0% of avg = 40pts, 100% of avg = 0pts (linear)
+      Uptrend strength  20% -- rising closes in the last 3 days (0-2 of 3)
+                               3/3 = 20pts, 2/3 = 10pts (min required)
+    """
+    abs_dist = abs(pivot_dist_pct)  # positive value, distance below 52w high
+    if abs_dist <= 1.0:
+        prox_pts = 40
+    elif abs_dist <= 3.0:
+        prox_pts = 35
+    elif abs_dist <= 5.0:
+        prox_pts = 28
+    else:
+        prox_pts = 20
+
+    # vol_contraction_ratio = last 3d avg / 50d avg (lower is better)
+    contraction_pts = int(max(0.0, (1.0 - vol_contraction_ratio) * 40.0))
+
+    uptrend_pts = 20 if rising_closes >= 3 else (10 if rising_closes >= 2 else 0)
+
+    return int(round(prox_pts + contraction_pts + uptrend_pts))
 
 
 def fetch_spy_return_12w() -> float:
@@ -261,10 +309,109 @@ def check_technical_breakout(ticker):
                 "atr_pct":             atr_pct,           # daily ATR as % of price
                 "est_days_to_target":  est_days_to_target, # trading days to +25% at ATR pace
                 "triggered_at":        today_ny,
+                "trigger_type":        "BREAKOUT",
             }
 
     except Exception as e:
         print(f"❌ Error processing technical indicators for {ticker}: {e}")
+    return None
+
+
+def check_pre_breakout_coil(ticker: str, df: "pd.DataFrame",
+                             sma_50: float, avg_vol_50: float,
+                             rolling_high_52w: float,
+                             stock_12w_return: float,
+                             today_ny: str,
+                             atr_pct: float,
+                             est_days_to_target: int) -> dict | None:
+    """
+    Detects stocks coiling toward an imminent breakout (VCP / handle setup).
+
+    ALL conditions must be met:
+      A. close within PRE_BREAKOUT_PROXIMITY (8%) of 52-week high
+      B. close > SMA-50 (above trend — not a breakdown)
+      C. RS >= RS_MIN_GATE (market leadership confirmed)
+      D. Last 3-day avg volume < PRE_BREAKOUT_VOL_MAX × 50d avg (sellers drying up)
+      E. At least PRE_BREAKOUT_UPTREND_MIN of last 3 closes are higher (orderly advance)
+
+    Returns a trigger dict with trigger_type='PRE_BREAKOUT' and a quality_score
+    computed via compute_pre_breakout_quality_score(). The caller applies the
+    +PRE_BREAKOUT_SCORE_BOOST to final_score after AI evaluation.
+    """
+    try:
+        if len(df) < 4:   # need at least 4 rows for 3-day trend check
+            return None
+
+        today_row     = df.iloc[-1]
+        current_close = float(today_row["close"])
+        volume_today  = float(today_row["volume"])
+
+        # ── Gate A: close within PRE_BREAKOUT_PROXIMITY of 52w high ──────────
+        if rolling_high_52w <= 0:
+            return None
+        dist_from_high = (current_close / rolling_high_52w) - 1.0   # negative value
+        if dist_from_high < -(PRE_BREAKOUT_PROXIMITY):              # too far from high
+            return None
+        if dist_from_high >= 0:                                       # at or above high — confirmed breakout territory
+            return None
+
+        # ── Gate B: close > SMA-50 ────────────────────────────────────────────
+        if sma_50 <= 0 or current_close <= sma_50:
+            return None
+
+        # ── Gate C: RS gate ───────────────────────────────────────────────────
+        rs = compute_rs_score(stock_12w_return, _SPY_12W_RETURN)
+        if rs < RS_MIN_GATE:
+            return None
+
+        # ── Gate D: volume contraction (last 3-day avg < PRE_BREAKOUT_VOL_MAX × 50d avg) ──
+        if avg_vol_50 <= 0:
+            return None
+        recent_3d_vols = [float(df.iloc[-(i+1)]["volume"]) for i in range(min(3, len(df)))]
+        recent_3d_avg  = sum(recent_3d_vols) / len(recent_3d_vols)
+        vol_contraction_ratio = recent_3d_avg / avg_vol_50
+        if vol_contraction_ratio >= PRE_BREAKOUT_VOL_MAX:
+            return None   # volume not contracting — sellers still active
+
+        # ── Gate E: orderly uptrend (PRE_BREAKOUT_UPTREND_MIN of last 3 closes rising) ──
+        rising_closes = 0
+        for i in range(min(3, len(df) - 1)):
+            if float(df.iloc[-(i+1)]["close"]) > float(df.iloc[-(i+2)]["close"]):
+                rising_closes += 1
+        if rising_closes < PRE_BREAKOUT_UPTREND_MIN:
+            return None
+
+        # ── All gates passed — compute score ──────────────────────────────────
+        pivot_dist_pct = dist_from_high * 100.0   # negative pct (e.g. -3.2 = 3.2% below high)
+        quality_score  = compute_pre_breakout_quality_score(
+            pivot_dist_pct, vol_contraction_ratio, rising_closes, current_close, sma_50
+        )
+
+        print(
+            f"  ⏳ Pre-Breakout coil: {ticker}  ${current_close:.2f}  "
+            f"({abs(pivot_dist_pct):.1f}% below high, vol {vol_contraction_ratio:.2f}x avg, "
+            f"{rising_closes}/3 closes up, RS:{rs})"
+        )
+
+        return {
+            "ticker":              ticker,
+            "close_price":         float(round(current_close, 2)),
+            "volume_surge":        float(round(vol_contraction_ratio, 2)),  # contraction ratio stored here
+            "sma_50":              float(round(sma_50, 2)),
+            "rolling_high_52w":    float(round(rolling_high_52w, 2)),
+            "pivot_distance_pct":  float(round(pivot_dist_pct, 2)),
+            "quality_score":       quality_score,
+            "technical_score":     quality_score,
+            "avg_volume_50":       int(avg_vol_50) if avg_vol_50 == avg_vol_50 else 0,
+            "rs_score":            rs,
+            "atr_pct":             atr_pct,
+            "est_days_to_target":  est_days_to_target,
+            "triggered_at":        today_ny,
+            "trigger_type":        "PRE_BREAKOUT",
+        }
+
+    except Exception as e:
+        print(f"❌ Error in pre-breakout check for {ticker}: {e}")
     return None
 
 
@@ -412,14 +559,113 @@ if __name__ == "__main__":
             print("💭 Target tracking watchlist is empty or could not be retrieved.")
             notifier.notify_breakouts_detected([])
         else:
-            print(f"🔍 Analyzing {len(watchlist)} assets for volume breakouts...")
+            print(f"🔍 Analyzing {len(watchlist)} assets for breakout signals...")
             active_triggers = []
+
+            # ── Pass 1: Confirmed Breakouts ────────────────────────────────────
+            # Stocks that have already broken out today with a volume surge.
             for ticker in watchlist:
                 trigger_data = check_technical_breakout(ticker)
                 if trigger_data:
+                    trigger_data["trigger_type"] = "BREAKOUT"
                     print(f"🔥 Breakout: {ticker}  ${trigger_data['close_price']}  "
                           f"Vol:{trigger_data['volume_surge']}x  RS:{trigger_data['rs_score']}")
                     active_triggers.append(trigger_data)
+
+            # ── Pass 2: Pre-Breakout Coilers ───────────────────────────────────
+            # Stocks coiling toward their pivot (VCP / handle setup) — not yet broken out.
+            # Skips any ticker that already fired in Pass 1.
+            confirmed_tickers = {t["ticker"] for t in active_triggers}
+            print(f"\n🔍 Scanning {len(watchlist) - len(confirmed_tickers)} remaining tickers for pre-breakout setups...")
+
+            for ticker in watchlist:
+                if ticker in confirmed_tickers:
+                    continue   # already a confirmed breakout — don't duplicate
+
+                # Re-use the same OHLCV fetch logic to avoid a second API call per ticker
+                try:
+                    to_date   = datetime.datetime.now(ZoneInfo('America/New_York')).date()
+                    from_date = to_date - datetime.timedelta(days=FMP_HISTORY_DAYS)
+                    url = (f"{FMP_BASE_URL}/stable/historical-price-eod/full"
+                           f"?symbol={ticker}&from={from_date}&to={to_date}&apikey={FMP_API_KEY}")
+                    response = fetch_with_retry_sync(url)
+                    if response is None or response.status_code != 200:
+                        continue
+                    data = response.json()
+                    if not data or not isinstance(data, list):
+                        continue
+
+                    import pandas as pd
+                    df = pd.DataFrame(data)
+                    df['date'] = pd.to_datetime(df['date'])
+                    df = df.sort_values('date', ascending=True).reset_index(drop=True)
+
+                    if len(df) < MIN_PRICE_HISTORY:
+                        continue
+
+                    df['sma_50']           = df['close'].rolling(window=SMA_WINDOW).mean()
+                    df['avg_volume_50']    = df['volume'].rolling(window=VOLUME_AVG_WINDOW).mean()
+                    window_size            = min(ROLLING_HIGH_WINDOW, len(df))
+                    df['rolling_high_52w'] = df['high'].rolling(
+                        window=window_size,
+                        min_periods=min(MIN_PRICE_HISTORY, window_size)
+                    ).max()
+
+                    today_row      = df.iloc[-1]
+                    sma_50         = float(today_row['sma_50'])
+                    avg_vol_50     = float(today_row['avg_volume_50'])
+                    rolling_high   = float(today_row['rolling_high_52w'])
+                    current_close  = float(today_row['close'])
+
+                    # 12-week stock return for RS
+                    stock_12w_return = 0.0
+                    try:
+                        lookback = min(60, len(df) - 1)
+                        p_now    = float(df.iloc[-1]['close'])
+                        p_then   = float(df.iloc[-1 - lookback]['close'])
+                        if p_then > 0:
+                            stock_12w_return = round(((p_now / p_then) - 1.0) * 100.0, 2)
+                    except Exception:
+                        pass
+
+                    # ATR-14
+                    atr_pct = 0.0
+                    est_days_to_target = 999
+                    try:
+                        df['prev_close'] = df['close'].shift(1)
+                        df['tr'] = (
+                            pd.concat([
+                                df['high'] - df['low'],
+                                (df['high'] - df['prev_close']).abs(),
+                                (df['low']  - df['prev_close']).abs(),
+                            ], axis=1)
+                        ).max(axis=1)
+                        atr_14 = df['tr'].rolling(window=14).mean().iloc[-1]
+                        if current_close > 0 and atr_14 == atr_14:
+                            atr_pct = round((atr_14 / current_close) * 100.0, 2)
+                            if atr_pct > 0:
+                                est_days_to_target = int(round(25.0 / atr_pct))
+                    except Exception:
+                        pass
+
+                    today_ny = datetime.datetime.now(ZoneInfo("America/New_York")).date().strftime("%Y-%m-%d")
+
+                    pre_result = check_pre_breakout_coil(
+                        ticker, df, sma_50, avg_vol_50, rolling_high,
+                        stock_12w_return, today_ny, atr_pct, est_days_to_target
+                    )
+                    if pre_result:
+                        active_triggers.append(pre_result)
+
+                except Exception as _pe:
+                    print(f"⚠️ Pre-breakout check failed for {ticker}: {_pe}")
+                    continue
+
+            confirmed_count    = sum(1 for t in active_triggers if t["trigger_type"] == "BREAKOUT")
+            pre_breakout_count = sum(1 for t in active_triggers if t["trigger_type"] == "PRE_BREAKOUT")
+            print(f"\n📊 Summary: {confirmed_count} confirmed breakout(s), "
+                  f"{pre_breakout_count} pre-breakout coiler(s), "
+                  f"{len(active_triggers)} total triggers")
 
             write_triggers_to_supabase(active_triggers)
             notifier.notify_breakouts_detected(active_triggers)
