@@ -64,3 +64,34 @@ We maintain a strict separation between the `execution-agent` and the `trading-b
   * **Isolated Failure Domain**: Risk monitoring (7% stop-loss and 25% profit targets) is mission-critical and must not crash if the web dashboard, API endpoints, or database clients experience downtime.
   * **Security**: Only the isolated execution agent has brokerage gateway write access, keeping the public/dashboard web app credentials footprint clean.
   * **Single Responsibility**: Cleaner Dockerfiles, focused dependencies, and easier testing.
+
+---
+
+## 📝 Architectural Decision Records (ADRs)
+
+The `decisions/` folder contains ADR files that explain **why** design choices were made.
+These are ingested by graphify to link decisions to code nodes in the knowledge graph.
+
+### When I must write an ADR
+
+After any of the following, **automatically** create or update a file in `decisions/`:
+
+- Changes to core trading logic: buy gates, sell logic, stop-loss rules, screening thresholds
+- Schema migrations that reflect a data model change
+- Removal or replacement of a feature (capture what was removed and why)
+- Significant refactors that solve a named problem (e.g. the TRV incident)
+
+Do NOT write ADRs for: obvious bug fixes, test additions, UI tweaks, or dependency bumps.
+
+### File naming
+
+```
+decisions/YYYY-MM-DD_short-slug.md
+```
+
+Use the actual date of the change. Use the commit message as a starting point for the slug.
+
+### After writing an ADR
+
+Run `python -m graphify update .` from the repo root to re-extract changed files
+and keep the knowledge graph current (no API key needed — AST-only update).
