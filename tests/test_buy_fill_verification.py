@@ -72,7 +72,9 @@ def test_smart_polling_fast_fill(mock_get_live_price, mock_get_supabase_client, 
     triggers = [{"ticker": "AAPL", "close_price": 99.0, "volume_surge": 2.0}]
     mock_get_supabase_client.return_value = FakeSupabaseClient(triggers, [])
     
-    with patch('execution_agent.get_available_cash', return_value=100000.0):
+    with patch('execution_agent.get_own_cash', return_value=100000.0), \
+         patch('execution_agent.get_margin_loan', return_value=0.0), \
+         patch('execution_agent.fetch_ibkr_delayed_price', return_value=(0.0, '')):
         execution_agent.run_market_open_buys(mock_ib)
         assert mock_ib.sleep.call_count == 3
 
@@ -95,7 +97,9 @@ def test_smart_polling_timeout(mock_get_live_price, mock_get_supabase_client, mo
     triggers = [{"ticker": "AAPL", "close_price": 99.0, "volume_surge": 2.0}]
     mock_get_supabase_client.return_value = FakeSupabaseClient(triggers, [])
     
-    with patch('execution_agent.get_available_cash', return_value=100000.0):
+    with patch('execution_agent.get_own_cash', return_value=100000.0), \
+         patch('execution_agent.get_margin_loan', return_value=0.0), \
+         patch('execution_agent.fetch_ibkr_delayed_price', return_value=(0.0, '')):
         execution_agent.run_market_open_buys(mock_ib)
         # 60 calls in loop + 1 call (sleep 2) in cancel block
         assert mock_ib.sleep.call_count == 61

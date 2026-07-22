@@ -35,17 +35,25 @@ def _run_buys(ib, supabase_mock, live_price=105.0, available_cash=20_000.0,
     Runs run_market_open_buys() with standard patches applied.
     Returns the mock_ib so callers can inspect placeOrder calls.
 
-    NOTE: notifier is patched here to prevent real Telegram messages from
-    firing when tests run on the server where live credentials are present.
+    NOTE: patches get_own_cash and get_margin_loan (the real margin-safe
+    functions) rather than the deprecated get_available_cash alias.
+    get_margin_loan is patched to 0.0 so the margin hard-block gate does NOT
+    fire in these tests — each test here is focused on a different gate.
+    fetch_ibkr_delayed_price is patched to (0.0, '') so the buy loop falls
+    back to trigger["close_price"] for share sizing (avoids MagicMock arithmetic).
+    notifier is patched to prevent real Telegram messages on the server.
     """
     with patch("execution_agent.supabase", supabase_mock), \
          patch("execution_agent.get_live_price", return_value=live_price), \
-         patch("execution_agent.get_available_cash", return_value=available_cash), \
+         patch("execution_agent.get_own_cash", return_value=available_cash), \
+         patch("execution_agent.get_margin_loan", return_value=0.0), \
+         patch("execution_agent.fetch_ibkr_delayed_price", return_value=(0.0, "")), \
          patch("execution_agent.is_market_bullish", return_value=is_bullish), \
          patch("execution_agent.notifier"), \
          patch("execution_agent.execute_sell"):
         execution_agent.run_market_open_buys(ib)
     return ib
+
 
 
 # ── Gate 1: Stock slot capacity ───────────────────────────────────────────────

@@ -7,6 +7,7 @@ Key design decisions:
   - ib.portfolio() is always used (never ib.positions()) — Bug 5 compliance
   - PortfolioItem mock uses .averageCost (not .avgCost) — PortfolioItem API
   - Supabase mock uses side_effect per table name for clean isolation
+  - ibkr_fills table is mocked in make_supabase_mock() — fill persistence tests
 """
 
 import datetime
@@ -138,6 +139,23 @@ def make_trigger(ticker: str,
     }
 
 
+def make_ibkr_fill(ticker: str, price: float, shares: float,
+                   side: str = "SLD", fill_date: str = "2026-07-17",
+                   exec_id: str | None = None) -> dict:
+    """Factory for an ibkr_fills Supabase row."""
+    return {
+        "exec_id":    exec_id or f"test-{ticker}-{side}-{shares}",
+        "ticker":     ticker,
+        "side":       side,
+        "shares":     shares,
+        "price":      price,
+        "commission": 0.0,
+        "fill_time":  f"{fill_date}T13:30:00",
+        "order_id":   1234,
+        "account_id": "U12941651",
+    }
+
+
 # ── Supabase mock ─────────────────────────────────────────────────────────────
 
 def make_supabase_mock(
@@ -145,6 +163,7 @@ def make_supabase_mock(
     portfolio: list | None = None,
     trade_history_recent: list | None = None,
     cash_balance: float | None = None,
+    ibkr_fills: list | None = None,
 ) -> MagicMock:
     """
     Returns a MagicMock Supabase client where each table's queries return
@@ -153,14 +172,14 @@ def make_supabase_mock(
     IMPORTANT: table mocks are CACHED — every call to client.table("X") returns
     the SAME mock object, allowing post-hoc assertions on .insert, .update, etc.
 
-    Usage:
-        client = make_supabase_mock(daily_triggers=[make_trigger("NVDA")],
-                                    portfolio=[make_position("AAPL")])
-        with patch("execution_agent.supabase", client): ...
+    ibkr_fills: list of fill dicts (use make_ibkr_fill()). Defaults to [].
+                Supports .select().eq("ticker",x).eq("side","SLD").order().execute()
+                chain used by Case 1 three-tier sell-price lookup.
     """
-    daily_triggers = daily_triggers or []
-    portfolio = portfolio or []
+    daily_triggers       = daily_triggers or []
+    portfolio            = portfolio or []
     trade_history_recent = trade_history_recent or []
+    ibkr_fills_data      = ibkr_fills or []
 
     stock_positions = portfolio
 
@@ -195,13 +214,11 @@ def make_supabase_mock(
                 if column == "buy_source" and value == "etf_parking":
                     m.execute.return_value.data = etf_positions
                 elif column == "buy_source":
-                    # e.g. eq("buy_source", "daily_triggers") — return matching
                     m.execute.return_value.data = [
                         p for p in portfolio if p.get("buy_source") == value
                     ]
                 else:
                     m.execute.return_value.data = portfolio
-                # Support chaining: .eq().gte(), .eq().lt()
                 m.gte.return_value.execute.return_value.data = portfolio
                 m.lt.return_value.execute.return_value.data = portfolio
                 return m
@@ -224,7 +241,6 @@ def make_supabase_mock(
 
         elif name == "account_balances":
             bal_data = [{"value": str(cash_balance)}] if cash_balance else []
-            # We chain select().eq().order().limit().execute()
             m_select = MagicMock()
             m_eq = MagicMock()
             m_order = MagicMock()
@@ -232,13 +248,38 @@ def make_supabase_mock(
             m_limit.execute.return_value.data = bal_data
             m_order.limit.return_value = m_limit
             m_eq.order.return_value = m_order
-            m_eq.execute.return_value.data = bal_data # in case order isn't used
+            m_eq.execute.return_value.data = bal_data
             m_select.eq.return_value = m_eq
             t.select.return_value = m_select
             t.upsert.return_value.execute.return_value = MagicMock()
 
         elif name == "cash_flows":
             t.insert.return_value.execute.return_value = MagicMock()
+
+        elif name == "ibkr_fills":
+            # Support: .select(...).eq("ticker",x).eq("side","SLD").order(...).execute()
+            _fills_by_ticker: dict[str, list] = {}
+            for f in ibkr_fills_data:
+                _fills_by_ticker.setdefault(f["ticker"], []).append(f)
+
+            def _fills_eq1(col1, val1):
+                m1 = MagicMock()
+                matching = _fills_by_ticker.get(val1, []) if col1 == "ticker" else ibkr_fills_data
+
+                def _fills_eq2(col2, val2):
+                    m2 = MagicMock()
+                    filtered = [f for f in matching if f.get("side") == val2] if col2 == "side" else matching
+                    m2.order.return_value.execute.return_value.data = filtered
+                    m2.execute.return_value.data = filtered
+                    return m2
+
+                m1.eq.side_effect = _fills_eq2
+                m1.order.return_value.execute.return_value.data = matching
+                m1.execute.return_value.data = matching
+                return m1
+
+            t.select.return_value.eq.side_effect = _fills_eq1
+            t.upsert.return_value.execute.return_value = MagicMock()
 
         _cache[name] = t
         return t
