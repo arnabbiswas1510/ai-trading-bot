@@ -61,6 +61,7 @@ def _run_monitor(ib, supabase_mock, live_prices=None, is_eod=False, is_bullish=T
          patch("execution_agent.cancel_ticker_sell_orders"), \
          patch("execution_agent.place_trailing_stop", return_value=("TS_MOCK", 0.07)) as mock_ts, \
          patch("execution_agent.execute_sell") as mock_sell, \
+         patch("execution_agent._compute_dynamic_trail_pct", return_value=None), \
          patch("execution_agent.datetime") as mock_datetime:
         mock_datetime.datetime.now.side_effect = lambda *a, **kw: now_mock
         mock_datetime.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
@@ -81,17 +82,21 @@ class TestSelfHealingTrailingStop:
     """
 
     def test_self_healing_places_trailing_stop_when_no_sell_orders(self):
-        """No open SELL orders -> place_trailing_stop called for self-healing."""
+        """No open SELL orders -> place_trailing_stop called for self-healing.
+        Use price=buy_price (0% gain) so the dynamic tightening tier doesn't fire,
+        keeping the test focused purely on the self-heal path."""
         pos = make_position("NVDA", buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["NVDA"])
         ib.openTrades.return_value = []  # No open sell orders
 
-        _, mock_ts = _run_monitor(ib, supabase, live_prices={"NVDA": 105.0})
+        _, mock_ts = _run_monitor(ib, supabase, live_prices={"NVDA": 100.0})
         mock_ts.assert_called_once()
 
     def test_self_healing_not_called_when_sell_order_exists(self):
-        """Trailing stop already in IBKR -> no self-healing."""
+        """Trailing stop already in IBKR -> no self-healing.
+        Use price=buy_price (0% gain) so the dynamic tightening tier doesn't fire
+        and the only possible call path is the self-heal block."""
         pos = make_position("AAPL", buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
@@ -101,7 +106,7 @@ class TestSelfHealingTrailingStop:
         mock_trade.orderStatus.status = "Submitted"
         ib.openTrades.return_value = [mock_trade]
 
-        _, mock_ts = _run_monitor(ib, supabase, live_prices={"AAPL": 105.0})
+        _, mock_ts = _run_monitor(ib, supabase, live_prices={"AAPL": 100.0})
         mock_ts.assert_not_called()
 
     def test_ibkr_stop_not_python_code_enforced(self):
@@ -456,8 +461,10 @@ class TestBuyBracketNoLimitAtBuyTime:
                 getattr(order, "orderType", "?"),
             ))
             trade_mock = MagicMock()
-            trade_mock.orderStatus.status = "Submitted"
+            trade_mock.orderStatus.status = "Filled"
+            trade_mock.orderStatus.filled = 99
             trade_mock.orderStatus.avgFillPrice = 101.0
+            trade_mock.log = []
             return trade_mock
 
         ib.placeOrder.side_effect = _track_place
@@ -467,7 +474,8 @@ class TestBuyBracketNoLimitAtBuyTime:
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent.get_available_cash", return_value=10000.0), \
+             patch("execution_agent.get_own_cash", return_value=10000.0), \
+             patch("execution_agent.get_margin_loan", return_value=0.0), \
              patch("execution_agent.MAX_POSITIONS", 1):
             execution_agent.run_market_open_buys(ib)
 

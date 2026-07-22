@@ -27,7 +27,8 @@ def _reconcile(ib, supabase_mock):
     """Runs reconcile_with_ibkr with the given mocks."""
     with patch("execution_agent.supabase", supabase_mock), \
          patch("execution_agent.get_live_price", return_value=100.0), \
-         patch("execution_agent.get_available_cash", return_value=10_000.0):
+         patch("execution_agent.get_own_cash", return_value=10_000.0), \
+         patch("execution_agent.get_margin_loan", return_value=0.0):
         execution_agent.reconcile_with_ibkr(ib)
 
 
@@ -47,7 +48,8 @@ class TestReconcileCase1:
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent.get_available_cash", return_value=10_000.0), \
+             patch("execution_agent.get_own_cash", return_value=10_000.0), \
+             patch("execution_agent.get_margin_loan", return_value=0.0), \
              patch("execution_agent.cancel_ticker_sell_orders"):
             execution_agent.reconcile_with_ibkr(ib)
 
@@ -66,7 +68,8 @@ class TestReconcileCase1:
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=150.0) as mock_price, \
-             patch("execution_agent.get_available_cash", return_value=10_000.0), \
+             patch("execution_agent.get_own_cash", return_value=10_000.0), \
+             patch("execution_agent.get_margin_loan", return_value=0.0), \
              patch("execution_agent.cancel_ticker_sell_orders"):
             execution_agent.reconcile_with_ibkr(ib)
 
@@ -191,7 +194,8 @@ class TestReconcileCase4:
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent.get_available_cash", return_value=10_000.0):
+             patch("execution_agent.get_own_cash", return_value=10_000.0), \
+             patch("execution_agent.get_margin_loan", return_value=0.0):
             execution_agent.reconcile_with_ibkr(ib)
 
         # Either upsert was called (change ≥ $1) OR it's a first-write scenario
@@ -208,7 +212,8 @@ class TestReconcileCase4:
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent.get_available_cash", return_value=10_000.50):
+             patch("execution_agent.get_own_cash", return_value=10_000.50), \
+             patch("execution_agent.get_margin_loan", return_value=0.0):
             execution_agent.reconcile_with_ibkr(ib)
 
         assert supabase.table("account_balances").upsert.call_count >= 1
@@ -220,7 +225,8 @@ class TestReconcileCase4:
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
-             patch("execution_agent.get_available_cash", return_value=11_000.00):
+             patch("execution_agent.get_own_cash", return_value=11_000.00), \
+             patch("execution_agent.get_margin_loan", return_value=0.0):
             execution_agent.reconcile_with_ibkr(ib)
 
         # Supabase should not insert anything unless it is an automated deposit (which isn't tested here)
