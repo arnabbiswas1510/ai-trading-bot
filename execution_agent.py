@@ -11,6 +11,12 @@ from ib_insync import IB, Stock, MarketOrder, Order
 from telegram_notifier import TelegramNotifier
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+try:
+    from flex_query_sync import fetch_trade_confirms_for_ticker
+except ImportError:
+    # flex_query_sync not available in test environments — provide no-op stub
+    def fetch_trade_confirms_for_ticker(ticker: str) -> None:
+        return None
 
 
 # ── Persistent log tee: writes every print() to both Docker stdout ─────────────
@@ -141,6 +147,25 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 7497))
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
+# ── Dynamic trailing stop tightening tiers ───────────────────────────────────
+# Two independent levers — the TIGHTER of the two always wins.
+# Lever 1: profit-based  (unrealized gain % → trail %)
+# Lever 2: time-based    (calendar days held → trail %)
+# Entries are (threshold, trail_pct), listed highest-threshold-first.
+TRAIL_PROFIT_TIERS: list[tuple[float, float]] = [
+    (20.0, 0.020),   # ≥ 20% gain  → 2% trail  (+18% locked)
+    (14.0, 0.030),   # ≥ 14% gain  → 3% trail  (+11% locked)
+    ( 8.0, 0.040),   # ≥  8% gain  → 4% trail  ( +4% locked)
+    ( 3.0, 0.050),   # ≥  3% gain  → 5% trail  (breakeven+)
+    ( 0.0, None),    # <  3%       → no change
+]
+TRAIL_TIME_TIERS: list[tuple[int, float]] = [
+    (30, 0.035),     # > 30 cal days → 3.5% trail
+    (22, 0.040),     # > 22 cal days → 4.0% trail
+    (15, 0.050),     # > 15 cal days → 5.0% trail
+    ( 8, 0.060),     # >  8 cal days → 6.0% trail
+    ( 0, None),      # ≤  7 cal days → no change
+]
 # Days without a new high-water mark before a position is considered plateaued.
 # If portfolio is full and a fresh breakout exists at 3:45pm, the most-stalled
 # position (largest days since HWM) is rotated out.
@@ -395,29 +420,90 @@ def get_ma_value(ticker: str, current_price: float, ma_type: str, window: int) -
     else:
         return calculate_ema(closes, window)
 
-def get_available_cash(ib: IB) -> float:
-    """Query account values for total cash balance in USD.
+def get_own_cash(ib: IB) -> float:
+    """Return only the agent's own (non-borrowed) cash balance in USD.
 
-    Prefers TotalCashValue (IBKR's full cash including unsettled T+1 proceeds)
-    over CashBalance (settled cash only, which excludes same-day sale proceeds
-    until next-day settlement — giving an artificially low figure on trade days).
+    Reads ``TotalCashValue`` — IBKR's signed sum of all cash in the account.
+    A positive value means we have our own deposited cash.
+    A **negative** value means we are already carrying a margin loan (IBKR lent
+    us money to cover positions), and NO new buys should be placed.
+
+    This is the correct value to use for position sizing because:
+      • ``AvailableFunds`` includes margin lending capacity → leads to over-buying
+        with borrowed money (the root cause of the TRV incident on 2026-07-21).
+      • ``TotalCashValue`` is purely our own settled + unsettled cash.
+
+    Returns:
+        float: own cash in USD (>= 0.0).  Returns 0.0 if a margin loan is
+               detected OR if the IBKR query fails.
     """
     try:
         account_values = ib.accountValues()
-        # AvailableFunds: cash IBKR will allow for new purchases without margin.
-        # On a cash account this equals settled funds only — prevents same-day
-        # reuse of unsettled sale proceeds (no involuntary margin trading).
+
+        total_cash = None
+        net_liq    = None
+
         for av in account_values:
-            if av.tag == "AvailableFunds" and av.currency == "USD":
-                return float(av.value)
-        # Fallback: TotalCashValue (settled + unsettled — used only if AvailableFunds absent)
-        for av in account_values:
-            if av.tag == "TotalCashValue" and av.currency == "USD":
-                return float(av.value)
+            if av.currency != "USD":
+                continue
+            if av.tag == "TotalCashValue":
+                total_cash = float(av.value)
+            elif av.tag == "NetLiquidation":
+                net_liq = float(av.value)
+
+        if total_cash is None:
+            print("⚠️ get_own_cash(): TotalCashValue tag not found in IBKR account values. Returning 0.")
+            return 0.0
+
+        if total_cash < 0:
+            # Negative TotalCashValue = margin loan is active.
+            # Hard block: return 0 so the buy loop skips all purchases.
+            margin_loan = abs(total_cash)
+            print(
+                f"🚨 MARGIN LOAN DETECTED: TotalCashValue = ${total_cash:,.2f} "
+                f"(margin borrowed: ${margin_loan:,.2f}). "
+                f"Returning 0 — no new buys until loan is repaid."
+            )
+            return 0.0
+
+        # Cap own_cash at NetLiquidation as a sanity guard.
+        if net_liq is not None and total_cash > net_liq > 0:
+            print(f"⚠️ get_own_cash(): TotalCashValue (${total_cash:,.2f}) > NetLiquidation "
+                  f"(${net_liq:,.2f}). Capping to NetLiquidation.")
+            return round(net_liq, 2)
+
+        return round(total_cash, 2)
+
     except Exception as e:
-        notifier.notify_exception(f"get_available_cash() — execution_agent.py", e)
-        print(f"❌ Error querying cash balance from IBKR: {e}")
+        notifier.notify_exception(f"get_own_cash() — execution_agent.py", e)
+        print(f"❌ Error querying own cash from IBKR: {e}")
     return 0.0
+
+
+def get_margin_loan(ib: IB) -> float:
+    """Return the current margin loan amount in USD (0.0 if no loan).
+
+    A positive return value means IBKR has lent this amount to the account.
+    Used for logging/alerting and recording to account_balances.
+    """
+    try:
+        for av in ib.accountValues():
+            if av.tag == "TotalCashValue" and av.currency == "USD":
+                raw = float(av.value)
+                return round(abs(raw), 2) if raw < 0 else 0.0
+    except Exception as e:
+        print(f"⚠️ get_margin_loan(): could not fetch TotalCashValue: {e}")
+    return 0.0
+
+
+def get_available_cash(ib: IB) -> float:
+    """Deprecated alias for get_own_cash().
+
+    DEPRECATED: Previously read AvailableFunds (which includes margin lending).
+    Now delegates to get_own_cash() which reads TotalCashValue and hard-blocks
+    when a margin loan is active. All new code should call get_own_cash() directly.
+    """
+    return get_own_cash(ib)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # IBKR Order Management Helpers
@@ -500,6 +586,45 @@ def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> 
 
     print(f"   \U0001f6e1\ufe0f  IBKR trailing stop placed: {confirmed_trail_pct*100:.2f}% trail (confirmed)")
     return group, confirmed_trail_pct
+
+
+def _compute_dynamic_trail_pct(
+    unrealized_pct: float,
+    calendar_days: int,
+    current_pct: float,
+) -> float | None:
+    """
+    Returns a tighter trailing stop % if the position has crossed a new tier,
+    otherwise returns None (no change needed).
+
+    Two independent levers — the tighter of the two always wins:
+      Lever 1 (profit): unrealized gain % -> TRAIL_PROFIT_TIERS
+      Lever 2 (time):   calendar days held -> TRAIL_TIME_TIERS
+
+    One-way only: result is always strictly less than current_pct.
+    Never loosens a stop (a position at 5% trail stays at 5% even if it
+    briefly dips below a profit tier threshold).
+    """
+    # Profit lever: find highest threshold the gain has crossed
+    profit_trail: float | None = None
+    for threshold, pct in TRAIL_PROFIT_TIERS:
+        if unrealized_pct >= threshold:
+            profit_trail = pct
+            break
+
+    # Time lever: find highest day threshold crossed
+    time_trail: float | None = None
+    for threshold, pct in TRAIL_TIME_TIERS:
+        if calendar_days >= threshold:
+            time_trail = pct
+            break
+
+    candidates = [p for p in (profit_trail, time_trail) if p is not None]
+    if not candidates:
+        return None
+
+    new_pct = min(candidates)   # tighter of the two levers
+    return new_pct if new_pct < current_pct else None
 
 
 def cancel_ticker_sell_orders(ib: IB, ticker: str) -> int:
@@ -588,7 +713,13 @@ def reconcile_with_ibkr(ib: IB):
         tz = ZoneInfo("America/New_York")
         today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
 
-        cash_balance = get_available_cash(ib)
+        # own_cash: only our deposited money (TotalCashValue ≥ 0).
+        # margin_loan: borrowed amount when TotalCashValue < 0 (0 if no loan).
+        own_cash    = get_own_cash(ib)
+        margin_loan = get_margin_loan(ib)
+        # ibkr_cash_balance historically stored AvailableFunds; we now write own_cash
+        # so the column remains meaningful (own money only, no margin).
+        cash_balance = own_cash
 
         db_pos = client.table("portfolio_positions").select(
             "ticker,shares,buy_price"
@@ -614,18 +745,23 @@ def reconcile_with_ibkr(ib: IB):
         net_liq = cash_balance + pos_value
 
         if net_liq > 0:
-            client.table("account_balances").upsert({
+            upsert_payload = {
                 "date":                 today_str,
                 "ibkr_cash_balance":    round(cash_balance, 2),
                 "ibkr_positions_value": round(pos_value, 2),
                 "ibkr_total_value":     round(net_liq, 2),
-            }).execute()
-            print(f"   💰 Balance synced: cash=${cash_balance:,.2f} "
+                "ibkr_own_cash":        round(own_cash, 2),
+                "ibkr_margin_loan":     round(margin_loan, 2),
+            }
+            client.table("account_balances").upsert(upsert_payload).execute()
+            margin_note = f" ⚠️ MARGIN LOAN: ${margin_loan:,.2f}" if margin_loan > 0 else ""
+            print(f"   💰 Balance synced: own_cash=${cash_balance:,.2f} "
                   f"positions=${pos_value:,.2f} net_liq=${net_liq:,.2f} "
-                  f"({len(db_pos)} position(s))")
+                  f"({len(db_pos)} position(s)){margin_note}")
     except Exception as e:
         notifier.notify_exception("reconcile_with_ibkr() cash sync — execution_agent.py", e)
         print(f"   ❌ Could not sync cash balance: {e}")
+
 
 
     # ── Fetch IBKR positions via portfolio() with positions() fallback ───────
@@ -740,27 +876,92 @@ def reconcile_with_ibkr(ib: IB):
         pos = supabase_map[ticker]
         print(f"   ✅ {ticker}: position closed in IBKR — archiving to trade_history.")
 
-        # ── Determine sell price from IBKR execution history ─────────────
-        sell_price = 0.0
+        # ── Determine sell price — three-tier lookup ──────────────────────
+        #
+        # Tier 1: ibkr_fills Supabase table (real-time hook writes fills here
+        #         the instant they happen — durable across restarts)
+        # Tier 2: reqExecutions() TWS session cache (fast path for fills that
+        #         arrived in the current session, < few minutes old)
+        # Tier 3: Flex Query TradeConfirm (IBKR Transaction History API,
+        #         on-demand, 5-10 min lag — requires IBKR_FLEX_EXEC_QUERY_ID)
+        # Fallback: PRICE_UNCERTAIN alert — Telegram + flagged sell_reason
+        #
+        # This architecture was introduced 2026-07-21 after the RSI incident
+        # where a trailing stop fill from 2026-07-17 was recorded at the wrong
+        # day's FMP price because reqExecutions() lost the fill over a weekend.
+        sell_price        = 0.0
         sell_price_source = "unknown"
-        has_sld_fill = False
-        try:
-            fills = ib.reqExecutions()
-            sell_fills = [
-                f for f in fills
-                if f.contract.symbol == ticker and f.execution.side == "SLD"
-            ]
-            if sell_fills:
-                sell_fills.sort(key=lambda f: f.execution.time, reverse=True)
-                sell_price = float(sell_fills[0].execution.avgPrice)
-                sell_price_source = f"IBKR fill (execId {sell_fills[0].execution.execId})"
-                has_sld_fill = True
-        except Exception as ex:
-            notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", ex)
-            print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex}")
+        sell_date_fill    = None
+        has_sld_fill      = False
 
-        # If no SLD fill (e.g. manual TWS close), do a single double-check
-        # to rule out a transient partial portfolio read.
+        # ── Tier 1: ibkr_fills (persistent Supabase table) ───────────────
+        try:
+            sb_fills_res = client.table("ibkr_fills") \
+                .select("exec_id,shares,price,fill_time") \
+                .eq("ticker", ticker).eq("side", "SLD") \
+                .order("fill_time", desc=False) \
+                .execute()
+            sb_fills = sb_fills_res.data or []
+            if sb_fills:
+                total_qty  = sum(float(f["shares"]) for f in sb_fills)
+                sell_price = (
+                    sum(float(f["shares"]) * float(f["price"]) for f in sb_fills)
+                    / total_qty
+                ) if total_qty > 0 else 0.0
+                exec_ids   = ", ".join(f["exec_id"] for f in sb_fills)
+                sell_date_fill = sb_fills[0]["fill_time"][:10]   # earliest fill
+                sell_price_source = (
+                    f"ibkr_fills (persistent DB, {len(sb_fills)} fill(s), "
+                    f"execIds: {exec_ids})"
+                )
+                has_sld_fill = True
+                print(f"        💾 Tier 1 — ibkr_fills: {len(sb_fills)} fill(s) → "
+                      f"weighted avg ${sell_price:.4f} on {sell_date_fill}")
+        except Exception as ex:
+            print(f"        ⚠️  ibkr_fills lookup failed (non-fatal): {ex}")
+
+        # ── Tier 2: reqExecutions() session cache ─────────────────────────
+        if not has_sld_fill:
+            try:
+                session_fills = ib.reqExecutions()
+                sell_fills = [
+                    f for f in session_fills
+                    if f.contract.symbol == ticker and f.execution.side == "SLD"
+                ]
+                if sell_fills:
+                    total_qty  = sum(f.execution.shares for f in sell_fills)
+                    sell_price = (
+                        sum(f.execution.shares * f.execution.price for f in sell_fills)
+                        / total_qty
+                    ) if total_qty > 0 else 0.0
+                    exec_ids   = ", ".join(f.execution.execId for f in sell_fills)
+                    sell_fills_sorted = sorted(sell_fills, key=lambda f: f.execution.time)
+                    sell_date_fill    = sell_fills_sorted[0].execution.time.date().isoformat()
+                    sell_price_source = (
+                        f"reqExecutions session cache weighted avg "
+                        f"({len(sell_fills)} fill(s), execIds: {exec_ids})"
+                    )
+                    has_sld_fill = True
+                    print(f"        📡 Tier 2 — reqExecutions: {len(sell_fills)} fill(s) → "
+                          f"weighted avg ${sell_price:.4f} on {sell_date_fill}")
+            except Exception as ex:
+                notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", ex)
+                print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex}")
+
+        # ── Tier 3: Flex Query TradeConfirm (IBKR Transaction History) ────
+        if not has_sld_fill:
+            print(f"        🔍 Tier 3 — trying Flex TradeConfirm for {ticker}...")
+            flex_data = fetch_trade_confirms_for_ticker(ticker)
+            if flex_data:
+                sell_price        = flex_data["sell_price"]
+                sell_date_fill    = flex_data["sell_date"]
+                sell_price_source = flex_data["source"]
+                has_sld_fill      = True
+                print(f"        📋 Tier 3 — Flex TradeConfirm: "
+                      f"weighted avg ${sell_price:.4f} on {sell_date_fill}")
+
+        # If no SLD fill (e.g. manual TWS close or stale session), do a single
+        # double-check to rule out a transient partial portfolio read.
         if not has_sld_fill:
             ib.sleep(3)
             _ib_recheck = {
@@ -770,45 +971,66 @@ def reconcile_with_ibkr(ib: IB):
             if ticker in _ib_recheck:
                 print(f"        ⚠️  {ticker} reappeared on double-check — skipping (transient IBKR glitch).")
                 continue
-            print(f"        ℹ️  No SLD fill but position confirmed gone from IBKR — archiving.")
+            print(f"        ℹ️  No SLD fill in current TWS session — "
+                  f"fills from prior sessions are NOT in cache.")
 
         # Cancel any remaining SELL orders for this ticker (cleanup)
         cancel_ticker_sell_orders(ib, ticker)
 
-
-        # Fallback 1: live FMP quote (price at reconciliation moment, up to 15 min late)
+        # ── FIX (Bug 2 & 4): FMP fallback — flag as PRICE_UNCERTAIN ─────────
+        # When fills are not in the current session (e.g. trailing stop fired
+        # over a weekend), the FMP live price is the WRONG DAY's price.
+        # We still record it (to avoid a zero-price row) but prefix with
+        # PRICE_UNCERTAIN so the record is visibly flagged for manual correction.
         if sell_price <= 0:
-            sell_price = get_live_price(ticker)
-            sell_price_source = "FMP live quote (fill not found in current session)"
+            fmp_price = get_live_price(ticker)
+            if fmp_price > 0:
+                sell_price        = fmp_price
+                sell_price_source = (
+                    "⚠️ PRICE_UNCERTAIN — FMP live quote used as fallback "
+                    "(fill not in current TWS session; actual fill may differ — "
+                    "verify against IBKR transaction history)"
+                )
+                notifier.notify_error(
+                    f"⚠️ {ticker} sell price is UNCERTAIN\n"
+                    f"reqExecutions() found no fills in the current TWS session.\n"
+                    f"Using FMP live price ${fmp_price:.2f} as a placeholder.\n"
+                    f"Check IBKR transaction history and correct manually."
+                )
+                print(f"        ⚠️  PRICE_UNCERTAIN: using FMP ${fmp_price:.2f} as placeholder. "
+                      f"Verify in IBKR transaction history.")
 
-        # Fallback 2: buy_price (prevents a zero-division or zero-price log entry)
+        # Fallback 2: buy_price (last resort — prevents a zero-price DB row)
         if sell_price <= 0:
-            sell_price = float(pos["buy_price"])
+            sell_price        = float(pos["buy_price"])
             sell_price_source = "buy_price (no price source available)"
 
         print(f"        Sell price source: {sell_price_source} → ${sell_price:.2f}")
 
-
-        shares = int(pos["shares"])
-        buy_price = float(pos["buy_price"])
-        buy_date = pos["buy_date"]
+        shares     = int(pos["shares"])
+        buy_price  = float(pos["buy_price"])
+        buy_date   = pos["buy_date"]
         buy_reason = pos.get("buy_reason", "Unknown")
-        profit_loss = round((sell_price - buy_price) * shares, 2)
+        profit_loss    = round((sell_price - buy_price) * shares, 2)
         percent_return = round(((sell_price / buy_price) - 1.0) * 100.0, 2)
 
-        sell_reason = "Manual close in IBKR (reconciled)"
+        # ── FIX (Bug 4): correct sell_reason based on whether a fill was found ─
         if has_sld_fill:
-            sell_reason = "IBKR order filled (reconciled)"
+            sell_reason = "Trailing stop (IBKR GTC TRAIL order)"
+        else:
+            sell_reason = "Manual close in IBKR (reconciled) — PRICE_UNCERTAIN"
 
+        # ── FIX (Bug 3): write explicit sell_date from fill timestamp ─────────
         trade_log = {
-            "ticker": ticker,
-            "shares": shares,
-            "buy_price": buy_price,
-            "buy_date": buy_date,
-            "buy_reason": buy_reason,
-            "sell_price": sell_price,
-            "sell_reason": sell_reason,
-            "profit_loss": profit_loss,
+            "ticker":         ticker,
+            "shares":         shares,
+            "buy_price":      buy_price,
+            "buy_date":       buy_date,
+            "buy_reason":     buy_reason,
+            "sell_price":     sell_price,
+            "sell_reason":    sell_reason,
+            "sell_date":      sell_date_fill,   # None when fill not in session (Supabase auto-stamps)
+            "profit_loss":    profit_loss,
             "percent_return": percent_return,
         }
         try:
@@ -957,6 +1179,28 @@ def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
     print("⏳ Running Market Open Buy checks...")
     client = get_supabase_client()
+
+    # ── Margin-loan hard block ────────────────────────────────────────────────
+    # Before evaluating any triggers, verify we are investing only our own money.
+    # If TotalCashValue is negative, IBKR has lent us money and we must not buy
+    # anything until the margin balance is restored to zero.
+    margin_loan = get_margin_loan(ib)
+    if margin_loan > 0:
+        msg = (
+            f"🚨 *MARGIN LOAN ACTIVE — Buys Blocked*\n"
+            f"IBKR TotalCashValue is negative.\n"
+            f"Margin borrowed: ${margin_loan:,.2f}\n"
+            f"No new positions will be opened until the loan is fully repaid.\n"
+            f"Action: check IBKR account and repay or close positions to reduce margin."
+        )
+        print(f"🚨 MARGIN LOAN ACTIVE (${margin_loan:,.2f} borrowed). "
+              f"All buys blocked for this cycle.")
+        try:
+            notifier.notify_error(msg)
+        except Exception:
+            pass
+        return
+
     
     # Fetch today's triggers (or triggers from the last 3 days to handle weekends/holidays)
     tz = ZoneInfo("America/New_York")
@@ -1030,10 +1274,11 @@ def run_market_open_buys(ib: IB):
         # Size the position as an equal share of remaining capital across unfilled slots
         stock_held_count = len(holdings)
         remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
-        available_cash = get_available_cash(ib)
-        print(f"💰 Available Cash Balance in IBKR: ${available_cash:,.2f}")
+        available_cash = get_own_cash(ib)   # own deposited cash only — never margin
+        print(f"💰 Own Cash (margin-free) in IBKR: ${available_cash:,.2f}")
         position_size = available_cash / remaining_slots
         print(f"   Position sizing: ${available_cash:,.2f} / {remaining_slots} slot(s) = ${position_size:,.2f} per position (${PRICE_SAFETY_RESERVE:,.0f} safety reserve applied at share count)")
+
 
         # Double check active holdings size again (in case we bought one earlier in this loop)
         portfolio_res = client.table("portfolio_positions").select("*").execute()
@@ -1997,6 +2242,41 @@ def monitor_portfolio_intraday(ib: IB):
                     print(f"   ⚠️ Could not update hwm/peak metrics for {ticker}: {e}")
 
 
+        # ── Dynamic trailing stop tightening ─────────────────────────────────────
+        # Compute calendar days (not trading days) — time lever uses calendar.
+        calendar_days = (today_ny - buy_date_d).days
+        new_trail_pct = _compute_dynamic_trail_pct(
+            unrealized_pct, calendar_days, pos_stop_loss_pct
+        )
+        if new_trail_pct is not None:
+            try:
+                _contract_tighten = Stock(ticker, 'SMART', 'USD')
+                ib.qualifyContracts(_contract_tighten)
+                cancel_ticker_sell_orders(ib, ticker)
+                ib.sleep(1)
+                _, confirmed_trail = place_trailing_stop(
+                    ib, _contract_tighten, shares, new_trail_pct
+                )
+                client.table("portfolio_positions").update(
+                    {"stop_loss_pct": confirmed_trail}
+                ).eq("ticker", ticker).execute()
+                pos_stop_loss_pct = confirmed_trail   # update in-memory for self-heal below
+                msg = (
+                    f"\U0001f512 <b>{ticker}</b> trail tightened: "
+                    f"{pos_stop_loss_pct * 100:.1f}% → {confirmed_trail * 100:.1f}%\n"
+                    f"Gain: +{unrealized_pct:.1f}% | Days held: {calendar_days}d\n"
+                    f"New stop floor: ${current_price * (1 - confirmed_trail):.2f}"
+                )
+                notifier._send(msg)
+                print(f"   \U0001f512 {ticker}: trail tightened "
+                      f"{pos_stop_loss_pct * 100:.1f}% → {confirmed_trail * 100:.1f}% "
+                      f"(+{unrealized_pct:.1f}% gain, {calendar_days}d held)")
+            except Exception as _tighten_err:
+                notifier.notify_exception(
+                    "monitor_portfolio_intraday() trail tighten", _tighten_err
+                )
+                print(f"   ⚠️ {ticker}: trail tightening failed: {_tighten_err}")
+
         # ── Intraday Loss Minimiser (Day 4+, FAIL verdict positions) ─────────────
         # For positions that failed the Day 3 breakout verdict, sell on the first
         # 0.5% pullback from today's intraday high — provided that high is within
@@ -2194,12 +2474,15 @@ def monitor_portfolio_intraday(ib: IB):
                     print(f"   \u26a0\ufe0f Could not write breakout_verdict for {ticker_m}: {_ve}")
 
                 icon = "\u2705" if verdict == "PASS" else "\u274c"
+                price_icon = "\u2705" if price_pass else "\u274c"
+                vol_icon = "\u2705" if vol_pass else "\u274c"
+                vol_str = f"{day3_vol/avg_vol:.2f}\u00d7" if day3_vol and avg_vol else "N/A"
                 print(
                     f"   {icon} {ticker_m}: Day 3 verdict = {verdict} "
-                    f"(price {'\u2705' if price_pass else '\u274c'} "
+                    f"(price {price_icon} "
                     f"{((current_price_m/buy_price_m)-1)*100:+.2f}%, "
-                    f"vol {'\u2705' if vol_pass else '\u274c'} "
-                    f"{f'{day3_vol/avg_vol:.2f}\u00d7' if day3_vol and avg_vol else 'N/A'})"
+                    f"vol {vol_icon} "
+                    f"{vol_str})"
                 )
                 if verdict == "FAIL":
                     notifier.notify_breakout_verdict_fail(
@@ -2438,6 +2721,39 @@ def main_loop():
         try:
             ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
             print("✅ Connected to IBKR Gateway successfully!")
+
+            # ── Real-time fill persistence hook (Layer 1) ─────────────────
+            # Write every IBKR fill to ibkr_fills table the instant it fires.
+            # This makes fills durable across session resets and container
+            # restarts, eliminating the reqExecutions() session-cache problem
+            # that caused RSI's sell price to be recorded incorrectly (2026-07-17).
+            def _persist_fill_to_supabase(trade, fill):
+                """execDetailsEvent handler — persists each fill immediately."""
+                try:
+                    exec_id = fill.execution.execId
+                    if not exec_id:
+                        return
+                    supabase.table("ibkr_fills").upsert({
+                        "exec_id":    exec_id,
+                        "ticker":     fill.contract.symbol,
+                        "side":       fill.execution.side,    # 'BOT' or 'SLD'
+                        "shares":     fill.execution.shares,
+                        "price":      fill.execution.price,
+                        "commission": getattr(fill.commissionReport, 'commission', 0) or 0,
+                        "fill_time":  fill.execution.time.isoformat(),
+                        "order_id":   fill.execution.orderId,
+                        "account_id": fill.execution.acctNumber,
+                    }, on_conflict="exec_id").execute()
+                    print(f"   💾 Fill persisted: {fill.contract.symbol} "
+                          f"{fill.execution.side} {fill.execution.shares:.0f}sh "
+                          f"@ ${fill.execution.price:.4f} (execId: {exec_id})")
+                except Exception as _fe:
+                    # Non-fatal — don't crash the agent on a DB write error
+                    print(f"   ⚠️  fill_persist: failed to write {fill.contract.symbol} fill: {_fe}")
+
+            ib.execDetailsEvent += _persist_fill_to_supabase
+            print("   🔗 execDetailsEvent hook registered (fills will be persisted to ibkr_fills).")
+
             # Prime positions cache unconditionally via reqPositions().
             # Unlike reqAccountUpdates(), reqPositions() does not require
             # managedAccounts() to be populated — it forces IBKR to push
