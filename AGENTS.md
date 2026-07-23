@@ -2,6 +2,21 @@
 
 ---
 
+## 🖥️ New Machine Setup (REQUIRED BEFORE ANY WORK)
+
+If `graphify-out/graph.json` exists but the `graphify` CLI is missing, install it first:
+
+```bash
+pip install -r requirements-dev.txt
+# Verify:
+python -m graphify --version   # should print 0.9.24 or later
+```
+
+The `graphify` CLI is mandatory for this project (see Graph-First Rule below).
+The graph is pre-built and committed — no API key or rebuild needed on a fresh clone.
+
+---
+
 ## 🔍 MANDATORY: Graph-First Rule
 
 > **Before reading any source file or running grep for any architectural, structural,
@@ -117,11 +132,11 @@ The application has been migrated from a monolithic SQLite setup to a modern, de
 * **America/New_York Sync**:
   Because Docker containers run in UTC by default, using raw `datetime.datetime.now()` caused a critical timezone mismatch (checking for market open at 9:30 AM UTC / 5:30 AM EST). The execution agent was updated to explicitly compute dates and times using the `America/New_York` timezone (`zoneinfo`), ensuring proper alignment with US trading hours.
 * **Portfolio Sizing**:
-  Capped at exactly **5 concurrent active positions**, allocation size is a flat **`$20,000 USD`** block per position.
+  Capped at exactly **4 concurrent active positions**, allocation size is a flat **`$20,000 USD`** block per position.
 * **Risk Boundaries**:
-  * **Absolute Stop-Loss**: 7% below average fill price.
-  * **Profit Target**: 25% above average fill price.
-  * **8-Week Power Holding Rule**: If a stock gains 20%+ in less than 21 days from purchase, the execution agent activates a power hold flag in Supabase. The stock is exempt from the 25% target until the 8-week hold period expires.
+  * **Trailing Stop**: 7% from the position's peak price (not a fixed stop from entry).
+  * **EMA-21 Exit**: Close below EMA-21 × 0.99 triggers EOD sell.
+  * **8-Week Power Holding Rule**: If a stock gains 20%+ in less than 21 days from purchase, the execution agent activates a power hold flag in Supabase.
 
 ---
 
@@ -139,8 +154,8 @@ The application has been migrated from a monolithic SQLite setup to a modern, de
 
 We maintain a strict separation between the `execution-agent` and the `trading-bot` containers:
 * **Pros**:
-  * **Isolated Failure Domain**: Risk monitoring (7% stop-loss and 25% profit targets) is mission-critical and must not crash if the web dashboard, API endpoints, or database clients experience downtime.
-  * **Security**: Only the isolated execution agent has brokerage gateway write access, keeping the public/dashboard web app credentials footprint clean.
+  * **Isolated Failure Domain**: Risk monitoring (trailing stop, EMA exit) is mission-critical and must not crash if the web dashboard or API experiences downtime.
+  * **Security**: Only the isolated execution agent has brokerage gateway write access.
   * **Single Responsibility**: Cleaner Dockerfiles, focused dependencies, and easier testing.
 
 ---

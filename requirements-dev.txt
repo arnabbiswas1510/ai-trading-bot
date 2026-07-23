@@ -1,0 +1,22 @@
+# Developer dependencies — install on any machine used for AI-assisted development
+#
+# This file is intentionally separate from requirements.txt so that Docker
+# runtime images stay lean (graphifyy is not needed in the container).
+#
+# Setup on a new machine:
+#   pip install -r requirements-dev.txt
+#
+# What this installs:
+#   graphifyy — provides the `graphify` CLI used by the AI coding agent to query
+#               the codebase knowledge graph (graphify-out/graph.json) before
+#               reading source files. See AGENTS.md §Graph-First Rule.
+#
+# After installing, verify:
+#   python -m graphify --version
+#   python -m graphify explain "run_backtest" --graph graphify-out/graph.json
+
+# Runtime deps (included so a single install covers everything)
+-r requirements.txt
+
+# ── AI agent tooling ──────────────────────────────────────────────────────────
+graphifyy>=0.9.24
