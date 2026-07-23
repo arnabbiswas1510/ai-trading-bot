@@ -23,7 +23,7 @@ The graph is pre-built and committed — no API key or rebuild needed on a fresh
 > or cross-file question — ALWAYS query the knowledge graph first.**
 
 `graphify-out/graph.json` is the persistent, pre-computed knowledge graph of this
-entire codebase. It covers 1,196 nodes, 1,901 edges, and 95 named communities
+entire codebase. It covers 1,210 nodes, 1,920 edges, and 97 named communities
 including code, SQL migrations, docs, and ADRs in `decisions/`.
 
 ### Step 1 — Query the graph
@@ -94,63 +94,75 @@ The ADR is only required for meaningful architectural decisions.
 ---
 
 ## Project Overview
-A live growth-stock trading bot implementing the CAN SLIM methodology from William J. O'Neil's *"How to Make Money in Stocks (Fourth Edition)"*.
+
+A **live** growth-stock trading bot implementing the CAN SLIM methodology from William J. O'Neil's *"How to Make Money in Stocks (Fourth Edition)"*.
 Executes live IBKR trades, screens watchlists for breakouts, monitors positions every 15 minutes, and runs historical backtests.
 
 ---
 
 ## ⚡ Tech Stack & Architecture
 
-The application has been migrated from a monolithic SQLite setup to a modern, decoupled cloud screening and local execution environment:
+The application uses a decoupled cloud screening and local execution environment:
 
 1. **Cloud Screener (GitHub Actions + Supabase)**:
    * Weekend fundamental scans and daily technical breakout scans run on GitHub Actions.
    * Scans write results directly to a Supabase cloud database (`watchlist` and `daily_triggers` tables).
-   * **`execution-agent`**: Python daemon (`execution_agent.py`) checking daily triggers, placing orders at market open, and checking positions every 15 minutes.
-   * **`trading-bot`**: FastAPI backend and static React user interface serving the dashboard at `http://localhost:8000`.
+2. **Local Self-Hosted Execution (DietPi Docker)**:
+   * **`ib-gateway`**: Headless Interactive Brokers Gateway container (`ghcr.io/gnzsnz/ib-gateway`) managing the live brokerage connection (port 4000).
+   * **`execution-agent`**: Python daemon (`execution_agent.py`) checking daily triggers, placing live orders at market open, and monitoring positions every 15 minutes.
+   * **`trading-bot`**: FastAPI backend and React dashboard served at `http://localhost:8000`.
 3. **Database Sync Split**:
    * **Supabase (Cloud)**: Stores active watchlists, daily breakout triggers, open portfolio positions (`portfolio_positions`), and trade history (`trade_history`).
-   * **SQLite (Local `trading_bot.db`)**: Kept inside the web application container to store user settings (initial balance, stop-loss and profit target percentages, FMP API keys) to avoid polluting the cloud DB.
+   * **SQLite (Local `trading_bot.db`)**: User settings only (initial balance, stop-loss %, FMP API keys) — avoids polluting the cloud DB.
 
 ---
 
 ## ⚙️ Network & API Integrations
 
 * **Gateway Socket Bridge**:
-  The headless IB Gateway binds internally to loopback (`127.0.0.1:4002`) inside its container. To allow the `execution-agent` container to connect, we mapped the container's external `socat` TCP tunnel port (`4004`) to host port `4002` in `docker-compose.yml`, and configured the agent to connect to `ib-gateway:4004`.
+  The headless IB Gateway binds internally to port 4000. The `execution-agent` container connects to `ib-gateway:4000`.
+* **IBKR Account Selection**:
+  `get_ibkr_account()` prefers live accounts (`U...`). If both live and paper (`DU...`) accounts are visible, it raises — set `IBKR_ACCOUNT=<live_id>` in `.env` to be explicit.
 * **Brokerage Write Access**:
-  To resolve the `The API interface is currently in Read-Only mode` order error, we set the environment variable `READ_ONLY_API=no` inside the `ib-gateway` container config, enabling automated setting reconfiguration.
+  `READ_ONLY_API=no` is set in the `ib-gateway` container config to allow order submission.
 * **FMP Pricing Integration**:
-  The system queries current real-time stock prices from the Financial Modeling Prep (FMP) Stable Quote API.
+  Real-time stock prices via Financial Modeling Prep (FMP) Stable Quote API.
 
 ---
 
 ## 🚨 Timezone & Execution Rules
 
 * **America/New_York Sync**:
-  Because Docker containers run in UTC by default, using raw `datetime.datetime.now()` caused a critical timezone mismatch (checking for market open at 9:30 AM UTC / 5:30 AM EST). The execution agent was updated to explicitly compute dates and times using the `America/New_York` timezone (`zoneinfo`), ensuring proper alignment with US trading hours.
+  All market-hours logic uses `zoneinfo` with `America/New_York` to avoid UTC mismatches.
 * **Portfolio Sizing**:
-  Capped at exactly **4 concurrent active positions**, allocation size is a flat **`$20,000 USD`** block per position.
+  Capped at exactly **4 concurrent active positions**, fixed **`$20,000 USD`** block per position.
 * **Risk Boundaries**:
-  * **Trailing Stop**: 7% from the position's peak price (not a fixed stop from entry).
+  * **Trailing Stop**: 7% from the position's peak price (tightens dynamically with profit and age).
   * **EMA-21 Exit**: Close below EMA-21 × 0.99 triggers EOD sell.
-  * **8-Week Power Holding Rule**: If a stock gains 20%+ in less than 21 days from purchase, the execution agent activates a power hold flag in Supabase.
+  * **8-Week Power Hold**: Stocks up 20%+ in < 21 days are held exempt from normal exits until the 8-week period expires.
 
 ---
 
 ## 🧮 Cash & State Synchronization
 
 * **Dynamic Cash Balance Formula**:
-  To prevent data drift between the local SQLite database and the background execution agent, the web app's API calculates cash balance on-the-fly:
+  The web app API calculates cash on-the-fly to avoid drift between SQLite and the execution agent:
+
+  `Cash = Initial Balance + Realized P&L (trade_history) − Open Position Cost (portfolio_positions)`
+
+* **Portfolio Balance Reset**:
+  To reset tracked balances, clear rows from the Supabase `trade_history` table.
+  ⚠️ This does **NOT** affect live IBKR positions — only local accounting state.
+
 ---
 
 ## 📐 Separate Container Architectural Rationale
 
-We maintain a strict separation between the `execution-agent` and the `trading-bot` containers:
-* **Pros**:
-  * **Isolated Failure Domain**: Risk monitoring (trailing stop, EMA exit) is mission-critical and must not crash if the web dashboard or API experiences downtime.
-  * **Security**: Only the isolated execution agent has brokerage gateway write access.
-  * **Single Responsibility**: Cleaner Dockerfiles, focused dependencies, and easier testing.
+We maintain strict separation between the `execution-agent` and the `trading-bot` containers:
+
+* **Isolated Failure Domain**: Risk monitoring (trailing stop, EMA exit) must not crash if the dashboard or API goes down.
+* **Security**: Only the execution agent has brokerage gateway write access.
+* **Single Responsibility**: Cleaner Dockerfiles, focused dependencies, easier testing.
 
 ---
 
