@@ -1,5 +1,47 @@
 # CAN SLIM AI Trading Bot — Project Context & Memory
 
+---
+
+## 🔍 MANDATORY: Graph-First Rule
+
+> **Before reading any source file or running grep for any architectural, structural,
+> or cross-file question — ALWAYS query the knowledge graph first.**
+
+`graphify-out/graph.json` is the persistent, pre-computed knowledge graph of this
+entire codebase. It covers 1,196 nodes, 1,901 edges, and 95 named communities
+including code, SQL migrations, docs, and ADRs in `decisions/`.
+
+### Step 1 — Query the graph
+
+```bash
+# Ask a free-form question (BFS traversal across the graph)
+python -m graphify query "what controls hold duration and exit timing"
+
+# Explain a specific node and all its neighbours
+python -m graphify explain "monitor_portfolio_intraday"
+
+# Shortest path between two concepts
+python -m graphify path "execute_sell" "TelegramNotifier"
+```
+
+### Step 2 — Only go to source files if the graph is insufficient
+
+| The graph answers these directly ✅ | Go to source files for these ❌ |
+|---|---|
+| What calls / imports X? | Exact literal value of a constant |
+| What breaks if I change X? | Live logs / runtime state |
+| How do modules connect? | Syntax errors / line-level edits |
+| Why was X designed this way? (→ `decisions/`) | Current portfolio / Supabase data |
+| What communities / subsystems exist? | SSH / server diagnostics |
+
+### Step 3 — Keep the graph fresh after code changes
+
+```bash
+python -m graphify update .   # free, no API key, re-extracts changed files only
+```
+
+---
+
 ## Project Overview
 A premium growth-stock screening and paper-trading bot implementing the methodology described in William J. O'Neil's classic, *"How to Make Money in Stocks (Fourth Edition)"*.
 This full-stack application scores watchlists, visualizes price breakouts with moving averages, simulates paper trading with automated risk boundaries, and runs historical backtests.
@@ -70,7 +112,7 @@ We maintain a strict separation between the `execution-agent` and the `trading-b
 ## 📝 Architectural Decision Records (ADRs)
 
 The `decisions/` folder contains ADR files that explain **why** design choices were made.
-These are ingested by graphify to link decisions to code nodes in the knowledge graph.
+These are ingested by graphify so decisions are linked to the code nodes they produced.
 
 ### When I must write an ADR
 
@@ -93,44 +135,4 @@ Use the actual date of the change. Use the commit message as a starting point fo
 
 ### After writing an ADR
 
-Run `python -m graphify update .` from the repo root to re-extract changed files
-and keep the knowledge graph current (no API key needed — AST-only update).
-
----
-
-## 🔍 Graph-First Query Rule
-
-`graphify-out/graph.json` is the persistent knowledge graph of this codebase.
-**Before grepping or reading raw source files for architectural or cross-file questions, query the graph first.**
-
-### When to use the graph
-
-| Question type | Graph first? | Then |
-|---|---|---|
-| "What calls X?" / "What does X depend on?" | ✅ Yes | `graphify path` or graph traversal |
-| "What breaks if I change X?" | ✅ Yes | Reverse edge traversal |
-| "How do modules connect?" | ✅ Yes | Community + betweenness query |
-| "Why was X designed this way?" | ✅ Yes | Graph links to `decisions/` ADRs |
-| "What is the exact value of constant Y?" | ❌ No | Read the file directly |
-| "What did the logs say?" | ❌ No | SSH to server |
-| "Fix this syntax error" | ❌ No | Read and edit file directly |
-
-### How to query
-
-```bash
-# Shortest path between two concepts
-python -m graphify path "execute_sell" "TelegramNotifier"
-
-# Plain-language explanation of a node and its neighbours
-python -m graphify explain "monitor_portfolio_intraday"
-
-# Traverse the graph for a question (run from repo root)
-python -m graphify query "what controls hold duration and exit timing"
-```
-
-### Keeping the graph fresh
-
-Run after any code change (free, no API key):
-```bash
-python -m graphify update .
-```
+Run `python -m graphify update .` to keep the graph current.
