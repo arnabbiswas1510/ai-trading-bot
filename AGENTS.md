@@ -95,3 +95,42 @@ Use the actual date of the change. Use the commit message as a starting point fo
 
 Run `python -m graphify update .` from the repo root to re-extract changed files
 and keep the knowledge graph current (no API key needed — AST-only update).
+
+---
+
+## 🔍 Graph-First Query Rule
+
+`graphify-out/graph.json` is the persistent knowledge graph of this codebase.
+**Before grepping or reading raw source files for architectural or cross-file questions, query the graph first.**
+
+### When to use the graph
+
+| Question type | Graph first? | Then |
+|---|---|---|
+| "What calls X?" / "What does X depend on?" | ✅ Yes | `graphify path` or graph traversal |
+| "What breaks if I change X?" | ✅ Yes | Reverse edge traversal |
+| "How do modules connect?" | ✅ Yes | Community + betweenness query |
+| "Why was X designed this way?" | ✅ Yes | Graph links to `decisions/` ADRs |
+| "What is the exact value of constant Y?" | ❌ No | Read the file directly |
+| "What did the logs say?" | ❌ No | SSH to server |
+| "Fix this syntax error" | ❌ No | Read and edit file directly |
+
+### How to query
+
+```bash
+# Shortest path between two concepts
+python -m graphify path "execute_sell" "TelegramNotifier"
+
+# Plain-language explanation of a node and its neighbours
+python -m graphify explain "monitor_portfolio_intraday"
+
+# Traverse the graph for a question (run from repo root)
+python -m graphify query "what controls hold duration and exit timing"
+```
+
+### Keeping the graph fresh
+
+Run after any code change (free, no API key):
+```bash
+python -m graphify update .
+```
