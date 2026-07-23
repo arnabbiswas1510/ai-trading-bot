@@ -42,6 +42,42 @@ python -m graphify update .   # free, no API key, re-extracts changed files only
 
 ---
 
+## ✏️ MANDATORY: Update Graph & Decisions After Every Code Change
+
+> **After making any code change — before committing — you MUST:**
+> 1. **Run `python -m graphify update .`** to keep `graphify-out/graph.json` current
+> 2. **Write or update a `decisions/` ADR** if the change qualifies (see ADR rules below)
+
+### What triggers both actions
+
+| Change type | Update graph? | Write ADR? |
+|---|---|---|
+| Core trading logic (buy/sell/stop/screen) | ✅ Always | ✅ Always |
+| Schema migration (new SQL file) | ✅ Always | ✅ Always |
+| Feature removed or replaced | ✅ Always | ✅ Always |
+| Significant refactor | ✅ Always | ✅ Always |
+| Bug fix (obvious root cause) | ✅ Always | ❌ Skip |
+| Test added or updated | ✅ Always | ❌ Skip |
+| UI tweak / dependency bump | ✅ Always | ❌ Skip |
+
+The graph update is **always** required after any code change (it is fast and free).
+The ADR is only required for meaningful architectural decisions.
+
+### Commit order
+
+```
+1. Make code changes
+2. Write ADR in decisions/ (if required)
+3. python -m graphify update .
+4. git add decisions/ graphify-out/ <changed files>
+5. git commit
+6. git push
+```
+
+> ⚠️ Do NOT skip step 3. A stale graph silently gives wrong answers to future queries.
+
+---
+
 ## Project Overview
 A premium growth-stock screening and paper-trading bot implementing the methodology described in William J. O'Neil's classic, *"How to Make Money in Stocks (Fourth Edition)"*.
 This full-stack application scores watchlists, visualizes price breakouts with moving averages, simulates paper trading with automated risk boundaries, and runs historical backtests.
