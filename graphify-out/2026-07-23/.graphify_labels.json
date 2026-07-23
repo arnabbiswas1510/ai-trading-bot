@@ -93,5 +93,7 @@
   "91": "Decision: Pre-Breakout (VCP/Handle) Detection as Second Pass",
   "92": "Decision: Replace get_available_cash with margin-safe functions",
   "93": "decisions/",
-  "94": "Local SQLite (trading_bot.db)"
+  "94": "Local SQLite (trading_bot.db)",
+  "95": "Decision: Backtester Accuracy Rewrite",
+  "96": "increment_retention"
 }

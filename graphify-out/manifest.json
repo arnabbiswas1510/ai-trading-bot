@@ -55,9 +55,9 @@
     "semantic_hash": "627d9abc6e222252418be455b6cc708a"
   },
   "execution_agent.py": {
-    "mtime": 1784686870.4030087,
-    "ast_hash": "196e550e19c09e590131209a8f473c43",
-    "semantic_hash": "196e550e19c09e590131209a8f473c43"
+    "mtime": 1784827601.6502805,
+    "ast_hash": "aa5100164fa7db3b9c61a0b3202cb275",
+    "semantic_hash": ""
   },
   "flex_query_sync.py": {
     "mtime": 1784652573.6818125,
@@ -410,8 +410,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1784771302.4545026,
-    "ast_hash": "17771e8a94b4481bc2352b86cbec2d93",
+    "mtime": 1784827665.7924292,
+    "ast_hash": "ed2bb02033927cc2ff37892dc2db268c",
     "semantic_hash": ""
   },
   "README.md": {
@@ -490,8 +490,8 @@
     "semantic_hash": ""
   },
   "requirements.txt": {
-    "mtime": 1782955161.082752,
-    "ast_hash": "67a3b268ca7ca51b5b0594b0477811ea",
+    "mtime": 1784804113.09144,
+    "ast_hash": "3b9c9596bc9f7c485c795fd307b33abb",
     "semantic_hash": ""
   },
   "rootcause.txt": {
@@ -542,6 +542,11 @@
   "decisions/2026-07-23_backtester-accuracy-rewrite.md": {
     "mtime": 1784802745.291095,
     "ast_hash": "4a09a0d463c050c18878509addbd27a1",
+    "semantic_hash": ""
+  },
+  "requirements-dev.txt": {
+    "mtime": 1784804124.1909263,
+    "ast_hash": "36f0ee5b434157d807f40e8d1f088ccf",
     "semantic_hash": ""
   }
 }

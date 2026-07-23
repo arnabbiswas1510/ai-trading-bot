@@ -94,8 +94,8 @@ The ADR is only required for meaningful architectural decisions.
 ---
 
 ## Project Overview
-A premium growth-stock screening and paper-trading bot implementing the methodology described in William J. O'Neil's classic, *"How to Make Money in Stocks (Fourth Edition)"*.
-This full-stack application scores watchlists, visualizes price breakouts with moving averages, simulates paper trading with automated risk boundaries, and runs historical backtests.
+A live growth-stock trading bot implementing the CAN SLIM methodology from William J. O'Neil's *"How to Make Money in Stocks (Fourth Edition)"*.
+Executes live IBKR trades, screens watchlists for breakouts, monitors positions every 15 minutes, and runs historical backtests.
 
 ---
 
@@ -106,8 +106,6 @@ The application has been migrated from a monolithic SQLite setup to a modern, de
 1. **Cloud Screener (GitHub Actions + Supabase)**:
    * Weekend fundamental scans and daily technical breakout scans run on GitHub Actions.
    * Scans write results directly to a Supabase cloud database (`watchlist` and `daily_triggers` tables).
-2. **Local Self-Hosted Execution (WSL Docker Setup)**:
-   * **`ib-gateway`**: Headless Interactive Brokers Gateway container (`ghcr.io/gnzsnz/ib-gateway`) managing the paper trading connection.
    * **`execution-agent`**: Python daemon (`execution_agent.py`) checking daily triggers, placing orders at market open, and checking positions every 15 minutes.
    * **`trading-bot`**: FastAPI backend and static React user interface serving the dashboard at `http://localhost:8000`.
 3. **Database Sync Split**:
@@ -144,10 +142,6 @@ The application has been migrated from a monolithic SQLite setup to a modern, de
 
 * **Dynamic Cash Balance Formula**:
   To prevent data drift between the local SQLite database and the background execution agent, the web app's API calculates cash balance on-the-fly:
-  $$\text{Cash Balance} = \text{Initial Balance (SQLite settings)} + \text{Realized P\&L (Supabase trade history)} - \text{Open Positions Cost (Supabase portfolio positions)}$$
-* **Paper Trading Slate Reset**:
-  To reset the paper trading account cash to a clean `$100,000.00` balance, clear all test rows from the Supabase `trade_history` table.
-
 ---
 
 ## 📐 Separate Container Architectural Rationale

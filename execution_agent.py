@@ -140,7 +140,7 @@ FMP_API_KEY = os.getenv("FMP_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 IB_GATEWAY_HOST = os.getenv("IB_GATEWAY_HOST", "localhost")
-IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 7497))
+IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway; paper = 7497
 
 # ── Strategy configuration (set in .env) ──────────────────────────────────────
 # Maximum concurrent open positions. Each slot gets an equal share of available cash.
@@ -511,24 +511,45 @@ def get_available_cash(ib: IB) -> float:
 
 def get_ibkr_account(ib: IB) -> str:
     """
-    Returns the configured IBKR account.
-    Defaults to the Paper Trading account ('DU...') if multiple exist.
-    Can be overridden with the IBKR_ACCOUNT environment variable.
+    Returns the configured IBKR live account.
+    Priority: IBKR_ACCOUNT env var → first live account (U...) → accounts[0].
+    Raises if both live and paper (DU...) accounts are visible without
+    IBKR_ACCOUNT being set — prevents accidentally trading on the wrong account.
     """
     accounts = ib.managedAccounts()
     if not accounts:
         raise ValueError("No IBKR accounts found for this login.")
-        
+
+    # Explicit override always wins
     env_account = os.getenv("IBKR_ACCOUNT")
-    if env_account and env_account in accounts:
+    if env_account:
+        if env_account not in accounts:
+            raise ValueError(
+                f"IBKR_ACCOUNT='{env_account}' not in managed accounts {accounts}. "
+                "Check your .env file."
+            )
         return env_account
-        
-    # Default to Paper account if available
-    paper_accounts = [acc for acc in accounts if acc.startswith('DU')]
-    if paper_accounts:
+
+    # Prefer live accounts (U...) over paper (DU...)
+    live_accounts   = [acc for acc in accounts if acc.startswith('U') and not acc.startswith('DU')]
+    paper_accounts  = [acc for acc in accounts if acc.startswith('DU')]
+
+    if paper_accounts and not live_accounts:
+        # Only paper accounts visible — warn loudly but continue
+        print(
+            f"⚠️  WARNING: Only paper account(s) found: {paper_accounts}. "
+            "Set IBKR_ACCOUNT=<live_account_id> in .env to trade live."
+        )
         return paper_accounts[0]
-        
-    return accounts[0]
+
+    if paper_accounts and live_accounts:
+        # Both exist — refuse to guess, require explicit config
+        raise ValueError(
+            f"Both live {live_accounts} and paper {paper_accounts} accounts visible. "
+            "Set IBKR_ACCOUNT=<live_account_id> in .env to avoid ambiguity."
+        )
+
+    return live_accounts[0] if live_accounts else accounts[0]
 
 def TrailingStopOrder(action: str, totalQuantity: float,
                      trailingPercent: float = None,
