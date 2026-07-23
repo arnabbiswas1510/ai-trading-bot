@@ -40,8 +40,9 @@ class BacktestRequest(BaseModel):
     end_date: str
     initial_capital: float
     stop_loss_pct: float
-    profit_target_pct: float
+    profit_target_pct: float   # kept for API compat — ignored by backtester (no fixed target)
     max_positions: int
+    position_size: float = 20_000.0  # fixed $ per position (matches live bot)
 
 # -----------------
 # Background Scheduler
@@ -446,8 +447,9 @@ def run_backtest_simulation(req: BacktestRequest):
             end_date_str=req.end_date,
             initial_capital=req.initial_capital,
             stop_loss_pct=req.stop_loss_pct,
-            profit_target_pct=req.profit_target_pct,
-            max_positions=req.max_positions
+            profit_target_pct=req.profit_target_pct,  # passed through, ignored internally
+            max_positions=req.max_positions,
+            position_size=req.position_size,
         )
         return results
     except Exception as e:
