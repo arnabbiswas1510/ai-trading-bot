@@ -36,7 +36,7 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Tier 1 label",              string: "Tier 1" },
   { feature: "Tier 2 label",              string: "Tier 2" },
   { feature: "Tier 3 label",              string: "Tier 3" },
-  { feature: "Plateau Health card",       string: "Tier 3 auto-rotate fires at day" },
+  { feature: "Plateau Health card",       string: "data-plateau-health-card" },
   // Entry Conviction scorecard
   { feature: "Entry Conviction card",     string: "Entry Conviction" },
 ];

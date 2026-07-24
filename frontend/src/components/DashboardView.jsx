@@ -225,8 +225,11 @@ function getStatusBadge(pos, days) {
 // ── Position Intelligence Panel (expandable) ─────────────────────────────────
 function ExitConditionsPanel({ pos, formatCurrency }) {
   const days = daysHeld(pos.buy_date);
-  const hwmPrice  = pos.hwm_price || pos.buy_price;  // hwm_price: highest price seen since buy
-  const trailStop = parseFloat((hwmPrice * (1 - STOP_LOSS_PCT)).toFixed(2));
+  const hwmPrice  = pos.hwm_price || pos.buy_price;  // hwm_price: running peak IBKR tracks
+  const stopLossPct = pos.stop_loss_pct || STOP_LOSS_PCT;
+  // Trail stop floor = hwm_price × (1 - trail%)  — matches IBKR's own calculation.
+  // IBKR trails from the running peak (hwm_price), not the current price.
+  const trailStop = parseFloat((hwmPrice * (1 - stopLossPct)).toFixed(2));
 
   const panelStyle = {
     background: 'rgba(255,255,255,0.02)',
@@ -277,7 +280,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             <div style={labelStyle}>🔴 Trail Stop (IBKR GTC)</div>
             <div style={valueStyle('#f87171')}>{formatCurrency(trailStop)}</div>
             <div style={noteStyle}>
-              7% below HWM price of {formatCurrency(hwmPrice)}<br />
+              {(stopLossPct * 100).toFixed(1)}% trailing stop · floor ≈ {formatCurrency(trailStop)}<br />
               Managed by IBKR — fires automatically.<br />
               EMA-21 exit also active at end of each trading day.
             </div>
@@ -326,6 +329,17 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
               FLOOR_BREAK:       { bg: 'rgba(239,68,68,0.10)',   border: 'rgba(239,68,68,0.35)',  text: '#ef4444', label: '🚫 Floor Break — Consolidation Support Violated on Volume',     hasApprove: false },
             };
             const tierInfo = rec ? tierColors[rec] : null;
+
+            // RS Score tracking: entry vs live (used in the RS decay indicator below)
+            const entryRS = pos.entry_rs_score ?? null;
+            const liveRS  = pos.rs_score ?? null;
+            // rsDecay > 0 means RS has weakened since entry (entry was higher than live)
+            const rsDecay = (entryRS != null && liveRS != null) ? entryRS - liveRS : null;
+            const rsDecayColor = rsDecay == null
+              ? 'var(--text-muted)'
+              : rsDecay >= 15 ? '#f43f5e'   // significant decay — red
+              : rsDecay > 0  ? '#f59e0b'    // mild decay — amber
+              : '#10b981';                   // same or improved — green
 
             const handleApprove = async () => {
               if (!window.confirm(`Approve rotation of ${pos.ticker}? This will execute a live sell order.`)) return;
@@ -572,7 +586,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
 
                   // All other rotation recommendations: Approve + Dismiss
                   return (
-                    <div style={{
+                    <div data-plateau-health-card="tier3" style={{
                       marginTop: '0.75rem', padding: '0.6rem 0.75rem',
                       background: tierInfo.bg, border: `1px solid ${tierInfo.border}`,
                       borderRadius: '8px',
@@ -581,7 +595,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
                         {tierInfo.label}
                       </div>
                       <div style={{ ...noteStyle, marginBottom: '0.5rem' }}>
-                        Hard auto-sell fires at day {PLATEAU_DAYS} if no action taken.
+                        Tier 3 auto-rotate fires at day {PLATEAU_DAYS} if no action taken.
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
@@ -948,7 +962,9 @@ export default function DashboardView({ data, marketData, trades }) {
                   const days = daysHeld(pos.buy_date);
                   const isOpen = expandedRow === pos.ticker;
                   const hwmPrice  = pos.hwm_price || pos.buy_price;
-                  const trailStop = parseFloat((hwmPrice * (1 - STOP_LOSS_PCT)).toFixed(2));
+                  const stopLossPct = pos.stop_loss_pct || STOP_LOSS_PCT;
+                  const trailStop = parseFloat((hwmPrice * (1 - stopLossPct)).toFixed(2));
+
 
                   return (
                     <React.Fragment key={pos.ticker}>
