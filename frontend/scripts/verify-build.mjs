@@ -2,7 +2,7 @@
  * verify-build.mjs
  *
  * Post-build integrity check. Runs automatically after `npm run build`.
- * Greps the compiled Vite bundle for known feature fingerprints — literal
+ * Greps the compiled Vite bundle for known feature fingerprints â€” literal
  * strings (API paths, UI labels) that survive JS minification.
  *
  * If any fingerprint is missing the script exits with code 1, which:
@@ -13,7 +13,7 @@
  * HOW TO ADD A FINGERPRINT:
  *   Pick a literal string from the new feature (preferably an API path or
  *   a unique UI label). Add it to FEATURE_FINGERPRINTS with a description.
- *   Avoid variable names — they get mangled by the minifier.
+ *   Avoid variable names â€” they get mangled by the minifier.
  */
 
 import { readFileSync, readdirSync } from "fs";
@@ -36,7 +36,7 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Tier 1 label",              string: "Tier 1" },
   { feature: "Tier 2 label",              string: "Tier 2" },
   { feature: "Tier 3 label",              string: "Tier 3" },
-  { feature: "Plateau Health card",       string: "Tier 3 auto-rotate" },
+  { feature: "Plateau Health card",       string: "Tier 3 auto-rotate fires at day" },
   // Entry Conviction scorecard
   { feature: "Entry Conviction card",     string: "Entry Conviction" },
 ];
@@ -55,7 +55,7 @@ try {
   }
   console.log(`\n??  verify-build: checking ${jsFiles.length} bundle file(s)...`);
 } catch (err) {
-  console.error(`?  verify-build: Could not read dist/assets/ — ${err.message}`);
+  console.error(`?  verify-build: Could not read dist/assets/ â€” ${err.message}`);
   process.exit(1);
 }
 
@@ -69,7 +69,7 @@ for (const { feature, string } of FEATURE_FINGERPRINTS) {
     console.log(`  ?  ${feature}`);
     passed++;
   } else {
-    console.error(`  ?  ${feature} — "${string}" not found in bundle`);
+    console.error(`  ?  ${feature} â€” "${string}" not found in bundle`);
     failures.push({ feature, string });
     failed++;
   }
@@ -79,9 +79,9 @@ console.log(`\n    ${passed} passed / ${failed} failed\n`);
 
 if (failed > 0) {
   console.error("????????????????????????????????????????????????????????????");
-  console.error("?  BUILD REJECTED — missing features in compiled bundle:");
+  console.error("?  BUILD REJECTED â€” missing features in compiled bundle:");
   for (const { feature, string } of failures) {
-    console.error(`     • ${feature}: expected "${string}"`);
+    console.error(`     â€¢ ${feature}: expected "${string}"`);
   }
   console.error("");
   console.error("   This usually means a JSX file was not saved before building,");

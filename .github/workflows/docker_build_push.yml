@@ -62,6 +62,6 @@ jobs:
             BUILD_TIME=${{ github.event.head_commit.timestamp }}
           # Cache everything EXCEPT the frontend build layer (frontend-builder stage).
           # `no-cache-filter` targets the stage name defined in the Dockerfile.
-          no-cache-filter: frontend-builder
+          no-cache-filters: frontend-builder
           cache-from: type=gha
           cache-to: type=gha,mode=max
