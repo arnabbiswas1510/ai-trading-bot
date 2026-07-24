@@ -140,8 +140,7 @@ The application uses a decoupled cloud screening and local execution environment
   where `remaining_slots = MAX_POSITIONS - len(open_positions)`, recomputed at each buy.
 * **Risk Boundaries**:
   * **Trailing Stop**: 7% from the position's peak price (tightens dynamically with profit and age).
-  * **EMA-21 Exit**: Close below EMA-21 × 0.99 triggers EOD sell.
-  * **8-Week Power Hold**: Stocks up 20%+ in < 21 days are held exempt from normal exits until the 8-week period expires.
+  * **EMA-21 Exit**: Close below EMA-21 × 0.99 triggers EOD sell (only after day 7 — breakout consolidation phase is protected).
 
 ---
 
@@ -150,7 +149,8 @@ The application uses a decoupled cloud screening and local execution environment
 * **Dynamic Cash Balance Formula**:
   The web app API calculates cash on-the-fly to avoid drift between SQLite and the execution agent:
 
-  `Cash = Initial Balance + Realized P&L (trade_history) − Open Position Cost (portfolio_positions)`
+  **Primary**: live `ibkr_cash_balance` synced from IBKR by the execution agent (stored in `account_balances` table).
+  **Fallback** (when no synced value yet): `Initial Balance + Realized P&L − Open Position Cost`
 
 * **Portfolio Balance Reset**:
   To reset tracked balances, clear rows from the Supabase `trade_history` table.
