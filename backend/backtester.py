@@ -7,7 +7,7 @@ Key design decisions (matching live execution_agent.py behaviour):
   - Entry:  Breakout detected on day T using EOD data; buy at day T+1 OPEN
             (no look-ahead bias — screener runs after close, bot buys next morning)
   - Stops:  Trailing stop from peak price (rises with winners, never drops)
-  - Size:   Fixed $POSITION_SIZE block per trade, capped at available cash
+  - Size:   available_cash / remaining_slots  (proportional — matches live bot)
   - Exit:   Trailing stop fires OR close < EMA-21 × 0.99 (no fixed profit target)
   - Market: Bullish when SPY close > SPY EMA-21 (matches live market filter)
   - Slots:  4 concurrent positions (matches live MAX_POSITIONS=4)
@@ -22,12 +22,12 @@ import pandas as pd
 from fmp_client import FMPClient
 
 # ── Constants matching execution_agent.py ─────────────────────────────────────
-DEFAULT_MAX_POSITIONS = 4        # live bot uses 4 (was 5 — bug fix)
-DEFAULT_POSITION_SIZE = 20_000   # fixed $ block per position
+DEFAULT_MAX_POSITIONS = 4        # live bot uses MAX_POSITIONS=4
 DEFAULT_STOP_LOSS_PCT = 7.0      # trailing stop % from peak price
 DEFAULT_EMA_WINDOW    = 21       # EMA for market direction + exit signal
 DEFAULT_EXIT_BUFFER   = 0.01     # exit when close < EMA × (1 - buffer)
 MIN_VOLUME_MULTIPLIER = 1.4      # breakout volume must be ≥ 1.4× 50d avg
+# No fixed position size — sizing: available_cash / remaining_slots (live bot L1300)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -76,12 +76,16 @@ def run_backtest(
     initial_capital: float = 100_000.0,
     stop_loss_pct: float   = DEFAULT_STOP_LOSS_PCT,
     max_positions: int     = DEFAULT_MAX_POSITIONS,
-    position_size: float   = DEFAULT_POSITION_SIZE,
     # kept for API backward-compat; ignored — live bot has no fixed profit target
     profit_target_pct: float = 25.0,
 ) -> dict:
     """
     Historical simulation of the CAN SLIM breakout strategy.
+
+    Position sizing matches live execution_agent.py (L1295-1300):
+        remaining_slots = max(1, MAX_POSITIONS - len(open_positions))
+        position_size   = available_cash / remaining_slots
+    There is NO fixed dollar block — sizing is proportional to remaining cash.
 
     Parameters
     ----------
@@ -89,10 +93,9 @@ def run_backtest(
     start_date_str    Backtest window start  (YYYY-MM-DD)
     end_date_str      Backtest window end    (YYYY-MM-DD)
     initial_capital   Starting cash          (default $100,000)
-    stop_loss_pct     Trailing stop %        (default 7.0)
+    stop_loss_pct     Trailing stop % from peak price (default 7.0)
     max_positions     Max concurrent positions (default 4)
-    position_size     Fixed $ per position   (default $20,000)
-    profit_target_pct Legacy — accepted but unused (live bot removed fixed targets)
+    profit_target_pct Legacy — accepted but unused (live bot has no fixed target)
 
     Returns
     -------
@@ -147,7 +150,8 @@ def run_backtest(
         date_str = current_date.strftime("%Y-%m-%d")
 
         # ── A. Execute pending buys at today's OPEN (no look-ahead) ──────────
-        # Buys are queued at EOD on day T and filled at day T+1 open.
+        # Buys queued at EOD on day T; filled at day T+1 open.
+        # Sizing mirrors live bot: cash / remaining_slots, recomputed per buy.
         still_pending = []
         if pending and i > 0:
             for ticker in pending:
@@ -157,10 +161,12 @@ def run_backtest(
                     continue
                 row        = data[ticker].loc[current_date]
                 open_price = float(row.get("Open", row["Close"]))
-                if open_price <= 0 or cash < min(position_size, 500):
-                    still_pending.append(ticker)   # retry tomorrow if no cash
+                if open_price <= 0 or cash <= 0:
+                    still_pending.append(ticker)
                     continue
-                alloc  = min(position_size, cash)
+                # Proportional: spread cash equally across unfilled slots
+                remaining_slots = max(1, max_positions - len(positions))
+                alloc  = cash / remaining_slots          # equal share of cash
                 shares = int(alloc // open_price)
                 if shares <= 0:
                     continue
@@ -171,8 +177,9 @@ def run_backtest(
                     "buy_price":  open_price,
                     "peak_price": open_price,   # trailing stop tracks this
                     "buy_date":   date_str,
+                    "alloc":      alloc,         # record allocation for expectancy calc
                 }
-        pending = still_pending   # keep any that couldn't fill (no cash)
+        pending = still_pending   # keep any that couldn't fill
 
         # ── B. Update trailing stops & check exits ────────────────────────────
         tickers_to_close: list[str] = []
@@ -222,6 +229,7 @@ def run_backtest(
                     "percent_return": round(pct, 2),
                     "hold_days":      hold_days,
                     "exit_reason":    exit_reason,
+                    "alloc":          round(pos.get("alloc", 0), 2),
                 })
                 cash += pos["shares"] * exit_price
                 tickers_to_close.append(ticker)
@@ -276,7 +284,7 @@ def run_backtest(
             candidates.sort(key=lambda x: x[1])
             open_slots = max_positions - len(positions) - len(pending)
             for ticker, _ in candidates[:open_slots]:
-                if cash >= position_size * 0.5:   # only queue if we can likely fill
+                if cash > 0:   # queue as long as any cash remains
                     pending.append(ticker)
 
         # ── E. Record daily equity value ─────────────────────────────────────
@@ -335,18 +343,22 @@ def run_backtest(
     avg_win_pct  = float(np.mean([t["percent_return"] for t in wins]))   if wins   else 0.0
     avg_loss_pct = float(np.mean([t["percent_return"] for t in losses]))  if losses else 0.0
 
-    gross_profit  = sum(t["profit_loss"] for t in wins)
+    gross_profit   = sum(t["profit_loss"] for t in wins)
     gross_loss_abs = abs(sum(t["profit_loss"] for t in losses))
-    profit_factor = round(gross_profit / gross_loss_abs, 2) if gross_loss_abs > 0 else 0.0
+    profit_factor  = round(gross_profit / gross_loss_abs, 2) if gross_loss_abs > 0 else 0.0
 
-    # Expectancy per trade in $
+    # Expectancy per trade in $ — uses actual per-trade allocation stored at buy time
+    if trades:
+        avg_alloc  = float(np.mean([t.get("alloc", initial_capital / max_positions) for t in trades]))
+    else:
+        avg_alloc  = initial_capital / max_positions
     expectancy = round(
-        (win_rate / 100.0 * avg_win_pct / 100.0 * position_size)
-        + ((1.0 - win_rate / 100.0) * avg_loss_pct / 100.0 * position_size),
+        (win_rate / 100.0 * avg_win_pct / 100.0 * avg_alloc)
+        + ((1.0 - win_rate / 100.0) * avg_loss_pct / 100.0 * avg_alloc),
         2,
     )
 
-    wl_ratio     = round(avg_win_pct / abs(avg_loss_pct), 2) if avg_loss_pct != 0 else 0.0
+    wl_ratio      = round(avg_win_pct / abs(avg_loss_pct), 2) if avg_loss_pct != 0 else 0.0
     avg_hold_days = round(float(np.mean([t["hold_days"] for t in trades])), 1) if trades else 0.0
     max_consec_losses = _max_consecutive_losses(trades)
 
@@ -360,8 +372,8 @@ def run_backtest(
     # Exit reason breakdown
     exit_reasons: dict[str, int] = {}
     for t in trades:
-        exit_reasons[t["exit_reason"].split(" (")[0]] = \
-            exit_reasons.get(t["exit_reason"].split(" (")[0], 0) + 1
+        key = t["exit_reason"].split(" (")[0]
+        exit_reasons[key] = exit_reasons.get(key, 0) + 1
 
     return {
         "summary": {
@@ -371,7 +383,7 @@ def run_backtest(
             "total_return_pct":  round(total_return_pct, 2),
             "cagr_pct":          round(cagr, 2),
             # ── Risk ─────────────────────────────────────────────────────────
-            "max_drawdown_pct":  round(max_dd_pct, 2),
+            "max_drawdown":      round(max_dd_pct, 2),
             "underwater_days":   underwater_days,
             "sharpe_ratio":      sharpe,
             "sortino_ratio":     sortino,

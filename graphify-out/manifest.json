@@ -15,8 +15,8 @@
     "semantic_hash": "923c0586c5278c58ccc2bad0236e98b9"
   },
   "backend/backtester.py": {
-    "mtime": 1784802708.8092353,
-    "ast_hash": "88e23d8daa1add38bafa9e2c86a490c9",
+    "mtime": 1784863007.1283572,
+    "ast_hash": "12a37f9648461e20676776bd85c7f5e0",
     "semantic_hash": ""
   },
   "backend/database.py": {
@@ -35,8 +35,8 @@
     "semantic_hash": "cc9e06d2fa6e31ddc2c50f789fb6ae95"
   },
   "backend/main.py": {
-    "mtime": 1784802723.275259,
-    "ast_hash": "1cc836beb22be191f531975a533089bc",
+    "mtime": 1784863088.6478748,
+    "ast_hash": "a412cd7f869b817ea76cf8aa3e8cf359",
     "semantic_hash": ""
   },
   "backend/screener.py": {
@@ -90,9 +90,9 @@
     "semantic_hash": "6f62e15367e038bf16dd908e6b410849"
   },
   "frontend/src/components/BacktesterView.jsx": {
-    "mtime": 1782955160.9819875,
-    "ast_hash": "a68e7bf15045001c771bb1ed72c7fafb",
-    "semantic_hash": "a68e7bf15045001c771bb1ed72c7fafb"
+    "mtime": 1784863209.367492,
+    "ast_hash": "63c674d43b7b537ffa7b15be9be35892",
+    "semantic_hash": ""
   },
   "frontend/src/components/BreakoutsView.jsx": {
     "mtime": 1783906964.4427452,
@@ -410,8 +410,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1784827665.7924292,
-    "ast_hash": "ed2bb02033927cc2ff37892dc2db268c",
+    "mtime": 1784863155.4693666,
+    "ast_hash": "9d51af65633f1e028cab8367b79b5e89",
     "semantic_hash": ""
   },
   "README.md": {
@@ -540,8 +540,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-07-23_backtester-accuracy-rewrite.md": {
-    "mtime": 1784802745.291095,
-    "ast_hash": "4a09a0d463c050c18878509addbd27a1",
+    "mtime": 1784863115.0346367,
+    "ast_hash": "3ad6be113c24f00589660989af9e09b6",
     "semantic_hash": ""
   },
   "requirements-dev.txt": {

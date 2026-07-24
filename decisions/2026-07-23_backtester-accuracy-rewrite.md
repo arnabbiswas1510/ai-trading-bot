@@ -1,7 +1,7 @@
 # Decision: Backtester Accuracy Rewrite
 
 **Date:** 2026-07-23
-**Status:** Implemented
+**Status:** Implemented (sizing corrected 2026-07-24)
 
 ## Problem
 
@@ -19,8 +19,14 @@ misrepresent live bot behaviour, producing inflated or misleading backtest resul
 
 3. **max_positions=5 (wrong default)** — live bot runs `MAX_POSITIONS=4`.
 
-4. **Proportional position sizing** — `allocation = total_equity / N`. Live bot uses
-   a fixed `$20,000` block per position regardless of portfolio size.
+4. **Proportional sizing using total equity** — original used `allocation = total_equity / N`.
+   Correct logic (matching live bot `execution_agent.py` L1295–1300):
+   ```python
+   remaining_slots = max(1, MAX_POSITIONS - len(open_positions))
+   position_size   = available_cash / remaining_slots
+   ```
+   This means each buy gets an equal share of *remaining cash* divided by *unfilled slots*,
+   recomputed fresh at each buy — not a fixed dollar block, not total equity.
 
 Additionally, 6 moderate divergences in exit logic and 13 metrics were missing.
 
@@ -31,7 +37,7 @@ Full rewrite of `backtester.py` to match production `execution_agent.py` behavio
 - **Entry**: breakout detected on day T (EOD), bought at day T+1 open price
 - **Trailing stop**: `peak_price` advances with each new intraday high; stop = `peak × (1 − 7%)`
 - **Positions**: `max_positions=4` default
-- **Sizing**: fixed `$20,000` block, capped at available cash
+- **Sizing**: `cash / remaining_slots` — proportional, recomputed per buy (matches live bot)
 - **Exit 1**: trailing stop fires when `low ≤ peak × 0.93`
 - **Exit 2**: EMA-21 exit when `close < EMA21 × 0.99` (replaces SMA-50 break)
 - **Market filter**: SPY `close > EMA-21` (replaces SMA-200 — matches live)
@@ -46,10 +52,18 @@ Underwater Days, Alpha vs S&P 500.
 ## API Compatibility
 
 `BacktestRequest` in `main.py`:
-- Added `position_size: float = 20_000.0` (new, optional with default)
+- `position_size` field removed — sizing is internal to the backtester
 - `profit_target_pct` retained for frontend compatibility — passed through but ignored
 
 ## Files Changed
 
 - `backend/backtester.py` — full rewrite
-- `backend/main.py` — added `position_size` to `BacktestRequest` and call site
+- `backend/main.py` — removed `position_size` from `BacktestRequest` and call site
+- `frontend/src/components/BacktesterView.jsx` — removed Profit Target and Position Size fields
+
+## Correction Note (2026-07-24)
+
+The initial ADR incorrectly described sizing as "fixed $20,000 block" — this was a mistake
+in the ADR (and initial rewrite). The live bot **never** uses a fixed block. The correct
+formula was always `cash / remaining_slots`. Both the backtester and this ADR have been
+corrected to reflect actual live bot behaviour.

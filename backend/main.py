@@ -40,9 +40,9 @@ class BacktestRequest(BaseModel):
     end_date: str
     initial_capital: float
     stop_loss_pct: float
-    profit_target_pct: float   # kept for API compat — ignored by backtester (no fixed target)
+    profit_target_pct: float = 25.0  # kept for API compat - ignored (live bot has no fixed target)
     max_positions: int
-    position_size: float = 20_000.0  # fixed $ per position (matches live bot)
+    # position_size intentionally absent - sizing is cash/remaining_slots inside backtester
 
 # -----------------
 # Background Scheduler

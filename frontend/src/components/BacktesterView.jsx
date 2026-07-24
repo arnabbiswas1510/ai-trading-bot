@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, TrendingUp, BarChart2, Calendar, ShieldAlert, Award } from 'lucide-react';
+import { Play, TrendingUp, BarChart2, Calendar, ShieldAlert, Award, DollarSign } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function BacktesterView() {
@@ -11,9 +11,9 @@ export default function BacktesterView() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [capital, setCapital] = useState(100000);
   const [stopLoss, setStopLoss] = useState(7.0);
-  const [profitTarget, setProfitTarget] = useState(25.0);
-  const [maxPositions, setMaxPositions] = useState(5);
-  
+  const [maxPositions, setMaxPositions] = useState(4);  // matches live MAX_POSITIONS=4
+  // No positionSize field — backtester uses available_cash / remaining_slots (matches live bot)
+
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -21,7 +21,7 @@ export default function BacktesterView() {
     e.preventDefault();
     setLoading(true);
     setResults(null);
-    
+
     try {
       const res = await fetch('/api/backtest', {
         method: 'POST',
@@ -31,16 +31,15 @@ export default function BacktesterView() {
           end_date: endDate,
           initial_capital: parseFloat(capital),
           stop_loss_pct: parseFloat(stopLoss),
-          profit_target_pct: parseFloat(profitTarget),
-          max_positions: parseInt(maxPositions)
+          max_positions: parseInt(maxPositions),
         })
       });
-      
+
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.detail || "Failed to run backtest");
       }
-      
+
       const data = await res.json();
       setResults(data);
     } catch (err) {
@@ -50,85 +49,96 @@ export default function BacktesterView() {
     }
   };
 
-  const formatCurrency = (val) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+  const formatCurrency = (val) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+
+  // Map backtester exit_reason strings to badge styles
+  const exitBadgeClass = (reason) => {
+    if (!reason) return 'badge-warning';
+    const r = reason.toLowerCase();
+    if (r.includes('trailing') || r.includes('stop')) return 'badge-danger';
+    if (r.includes('ema') || r.includes('ma exit')) return 'badge-warning';
+    return 'badge-info';
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      
+
       {/* Parameters Form Card */}
       <div className="card">
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
           <BarChart2 size={20} color="var(--accent-primary)" />
           Setup Backtest Parameters
         </h3>
+        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+          Matches live bot: trailing stop from peak · EMA-21 exit · cash/slots sizing · 4 positions · no profit target
+        </p>
         <form onSubmit={handleRunBacktest}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+
             <div className="form-group">
               <label>Start Date</label>
-              <input 
-                type="date" 
-                className="form-control" 
-                value={startDate} 
-                onChange={(e) => setStartDate(e.target.value)} 
-                required 
+              <input
+                id="bt-start-date"
+                type="date"
+                className="form-control"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
               />
             </div>
+
             <div className="form-group">
               <label>End Date</label>
-              <input 
-                type="date" 
-                className="form-control" 
-                value={endDate} 
-                onChange={(e) => setEndDate(e.target.value)} 
-                required 
+              <input
+                id="bt-end-date"
+                type="date"
+                className="form-control"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                required
               />
             </div>
+
             <div className="form-group">
               <label>Initial Capital ($)</label>
-              <input 
-                type="number" 
-                className="form-control" 
-                value={capital} 
-                onChange={(e) => setCapital(Math.max(1000, parseInt(e.target.value) || 0))} 
-                required 
+              <input
+                id="bt-initial-capital"
+                type="number"
+                className="form-control"
+                value={capital}
+                onChange={(e) => setCapital(Math.max(1000, parseInt(e.target.value) || 0))}
+                required
               />
             </div>
+
             <div className="form-group">
               <label>Max Open Positions</label>
-              <input 
-                type="number" 
-                className="form-control" 
-                value={maxPositions} 
-                onChange={(e) => setMaxPositions(Math.max(1, parseInt(e.target.value) || 0))} 
-                required 
+              <input
+                id="bt-max-positions"
+                type="number"
+                className="form-control"
+                value={maxPositions}
+                onChange={(e) => setMaxPositions(Math.max(1, parseInt(e.target.value) || 0))}
+                required
               />
             </div>
+
             <div className="form-group">
-              <label>Stop Loss (%)</label>
-              <input 
-                type="number" 
+              <label>Trailing Stop Base (%)</label>
+              <input
+                id="bt-stop-loss"
+                type="number"
                 step="0.5"
-                className="form-control" 
-                value={stopLoss} 
-                onChange={(e) => setStopLoss(Math.max(0.5, parseFloat(e.target.value) || 0))} 
-                required 
+                className="form-control"
+                value={stopLoss}
+                onChange={(e) => setStopLoss(Math.max(0.5, parseFloat(e.target.value) || 0))}
+                required
               />
             </div>
-            <div className="form-group">
-              <label>Profit Target (%)</label>
-              <input 
-                type="number" 
-                step="0.5"
-                className="form-control" 
-                value={profitTarget} 
-                onChange={(e) => setProfitTarget(Math.max(1, parseFloat(e.target.value) || 0))} 
-                required 
-              />
-            </div>
+
           </div>
-          <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+          <button type="submit" id="bt-run-btn" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
             {loading ? (
               <>
                 <div className="spinner"></div>
@@ -147,7 +157,7 @@ export default function BacktesterView() {
       {/* Results Section */}
       {results && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          
+
           {/* Performance Widgets */}
           <div className="metrics-grid">
             <div className="card metric-card">
@@ -165,7 +175,7 @@ export default function BacktesterView() {
 
             <div className="card metric-card">
               <div className="metric-header">
-                <span>S&P 500 Buy & Hold</span>
+                <span>S&amp;P 500 Buy &amp; Hold</span>
                 <div className="metric-icon-wrap" style={{ color: 'var(--text-secondary)' }}>
                   <Calendar size={16} />
                 </div>
@@ -205,6 +215,38 @@ export default function BacktesterView() {
                 {results.summary.winning_trades} wins / {results.summary.total_trades} trades
               </span>
             </div>
+
+            {results.summary.sharpe_ratio != null && (
+              <div className="card metric-card">
+                <div className="metric-header">
+                  <span>Sharpe / Sortino</span>
+                  <div className="metric-icon-wrap" style={{ color: 'var(--accent-primary)' }}>
+                    <BarChart2 size={16} />
+                  </div>
+                </div>
+                <div className="metric-value">{results.summary.sharpe_ratio.toFixed(2)}</div>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                  Sortino: {results.summary.sortino_ratio?.toFixed(2) ?? '—'}
+                </span>
+              </div>
+            )}
+
+            {results.summary.profit_factor != null && (
+              <div className="card metric-card">
+                <div className="metric-header">
+                  <span>Profit Factor</span>
+                  <div className="metric-icon-wrap" style={{ color: 'var(--color-up)' }}>
+                    <DollarSign size={16} />
+                  </div>
+                </div>
+                <div className="metric-value" style={{ color: results.summary.profit_factor >= 1 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                  {results.summary.profit_factor.toFixed(2)}x
+                </div>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                  Calmar: {results.summary.calmar_ratio?.toFixed(2) ?? '—'}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Equity Curve Chart */}
@@ -220,22 +262,22 @@ export default function BacktesterView() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" />
                 <XAxis dataKey="date" stroke="#6b7280" fontSize={11} />
-                <YAxis 
-                  stroke="#6b7280" 
+                <YAxis
+                  stroke="#6b7280"
                   fontSize={11}
-                  tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} 
+                  tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
                 />
-                <Tooltip 
+                <Tooltip
                   formatter={(value) => [formatCurrency(value), 'Equity']}
                   contentStyle={{ backgroundColor: '#111827', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 8 }}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="equity" 
-                  stroke="var(--accent-primary)" 
+                <Area
+                  type="monotone"
+                  dataKey="equity"
+                  stroke="var(--accent-primary)"
                   strokeWidth={2}
-                  fillOpacity={1} 
-                  fill="url(#colorEquity)" 
+                  fillOpacity={1}
+                  fill="url(#colorEquity)"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -280,7 +322,7 @@ export default function BacktesterView() {
                           {trade.percent_return.toFixed(2)}%
                         </td>
                         <td>
-                          <span className={`badge ${trade.exit_reason === 'Profit Target' ? 'badge-success' : trade.exit_reason === 'Stop Loss' ? 'badge-danger' : 'badge-warning'}`}>
+                          <span className={`badge ${exitBadgeClass(trade.exit_reason)}`}>
                             {trade.exit_reason}
                           </span>
                         </td>

@@ -135,7 +135,9 @@ The application uses a decoupled cloud screening and local execution environment
 * **America/New_York Sync**:
   All market-hours logic uses `zoneinfo` with `America/New_York` to avoid UTC mismatches.
 * **Portfolio Sizing**:
-  Capped at exactly **4 concurrent active positions**, fixed **`$20,000 USD`** block per position.
+  Capped at exactly **4 concurrent active positions**. Per-trade allocation:
+  `position_size = available_cash / remaining_slots`
+  where `remaining_slots = MAX_POSITIONS - len(open_positions)`, recomputed at each buy.
 * **Risk Boundaries**:
   * **Trailing Stop**: 7% from the position's peak price (tightens dynamically with profit and age).
   * **EMA-21 Exit**: Close below EMA-21 × 0.99 triggers EOD sell.
