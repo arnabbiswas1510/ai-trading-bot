@@ -34,6 +34,8 @@ from execution_agent import (
     fetch_ibkr_delayed_price,
     place_trailing_stop,
     cancel_ticker_sell_orders,
+    get_own_cash,
+    get_margin_loan,
 )
 from telegram_notifier import TelegramNotifier
 
@@ -82,15 +84,6 @@ def get_ibkr_price(ib: IB, ticker: str) -> float:
     return 0.0
 
 
-def get_available_cash(ib: IB) -> float:
-    """Return settled available funds from IBKR."""
-    try:
-        for av in ib.accountValues():
-            if av.tag == "AvailableFunds" and av.currency == "USD":
-                return float(av.value)
-    except Exception as e:
-        print(f"Warning: could not fetch cash balance: {e}")
-    return 0.0
 
 
 def _place_buy(
@@ -318,11 +311,19 @@ def main():
         print(f"❌ Failed to connect: {e}")
         sys.exit(1)
 
-    acct = next((a for a in ib.managedAccounts() if not a.startswith("DU")),
-                ib.managedAccounts()[0] if ib.managedAccounts() else "")
+    acct = os.getenv("IBKR_ACCOUNT") or ("U12941651" if "U12941651" in ib.managedAccounts() else next((a for a in ib.managedAccounts() if not a.startswith("DU")), ib.managedAccounts()[0] if ib.managedAccounts() else ""))
 
-    available_cash = get_available_cash(ib)
-    print(f"Available cash: ${available_cash:,.2f}")
+    # ── Margin-loan hard block ────────────────────────────────────────────────
+    # Only invest own deposited money — never margin / borrowed cash.
+    margin_loan = get_margin_loan(ib)
+    if margin_loan > 0:
+        print(f"\n🚨 MARGIN LOAN ACTIVE (${margin_loan:,.2f} borrowed). "
+              f"Buys blocked — cannot invest borrowed money.")
+        ib.disconnect()
+        sys.exit(1)
+
+    available_cash = get_own_cash(ib)   # own deposited cash only — never margin
+    print(f"Available own cash (margin-free): ${available_cash:,.2f}")
     position_size = available_cash / free_slots if free_slots > 0 else 0
 
     bought = 0

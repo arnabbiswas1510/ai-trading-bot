@@ -34,7 +34,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 print("Connecting to IBKR...")
 ib = IB()
 ib.connect(IB_HOST, IB_PORT, clientId=1, timeout=15)
-acct = [a for a in ib.managedAccounts() if not a.startswith("DU")][0]
+acct = os.getenv("IBKR_ACCOUNT") or ("U12941651" if "U12941651" in ib.managedAccounts() else next((a for a in ib.managedAccounts() if not a.startswith("DU")), ib.managedAccounts()[0] if ib.managedAccounts() else ""))
 print(f"Connected: {acct}")
 
 # Get settled available funds (T+1 from yesterday's sells)
@@ -42,6 +42,8 @@ ib.reqAccountSummary()
 ib.sleep(2)
 cash = 0.0
 for av in ib.accountValues():
+    if hasattr(av, "account") and av.account and av.account != acct:
+        continue
     if av.tag == "AvailableFunds" and av.currency == "USD":
         cash = float(av.value)
         break

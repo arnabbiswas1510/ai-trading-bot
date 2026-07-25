@@ -269,15 +269,14 @@ def main():
         sys.exit(1)
 
     # Subscribe — critical: IBKR must see our long positions before we sell
-    acct = next((a for a in ib.managedAccounts() if not a.startswith("DU")),
-                ib.managedAccounts()[0] if ib.managedAccounts() else "")
+    acct = os.getenv("IBKR_ACCOUNT") or ("U12941651" if "U12941651" in ib.managedAccounts() else next((a for a in ib.managedAccounts() if not a.startswith("DU")), ib.managedAccounts()[0] if ib.managedAccounts() else ""))
     print(f"✅ Connected. Account: {acct}")
 
     ib.reqAccountSummary()
     ib.reqPositions()
     ib.sleep(3)
 
-    ibkr_positions = {p.contract.symbol: int(p.position) for p in ib.positions()}
+    ibkr_positions = {p.contract.symbol: int(p.position) for p in ib.positions() if not hasattr(p, 'account') or not p.account or p.account == acct}
     print(f"\nIBKR confirms {len(ibkr_positions)} position(s): {', '.join(sorted(ibkr_positions))}")
 
     # Validate all sell tickers exist in IBKR

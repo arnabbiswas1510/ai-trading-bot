@@ -420,30 +420,37 @@ def get_ma_value(ticker: str, current_price: float, ma_type: str, window: int) -
     else:
         return calculate_ema(closes, window)
 
-def get_own_cash(ib: IB) -> float:
+def _matches_account(obj, target_account: str | None) -> bool:
+    """Return True if obj belongs to target_account, or if obj has no account string set (e.g. test mocks)."""
+    if not target_account:
+        return True
+    acc = getattr(obj, "account", None)
+    if acc is None or not isinstance(acc, str):
+        return True
+    return acc == target_account
+
+
+def get_own_cash(ib: IB, account: str = None) -> float:
     """Return only the agent's own (non-borrowed) cash balance in USD.
 
     Reads ``TotalCashValue`` — IBKR's signed sum of all cash in the account.
-    A positive value means we have our own deposited cash.
-    A **negative** value means we are already carrying a margin loan (IBKR lent
-    us money to cover positions), and NO new buys should be placed.
-
-    This is the correct value to use for position sizing because:
-      • ``AvailableFunds`` includes margin lending capacity → leads to over-buying
-        with borrowed money (the root cause of the TRV incident on 2026-07-21).
-      • ``TotalCashValue`` is purely our own settled + unsettled cash.
+    Filters by target account (`account` param or `get_ibkr_account(ib)`) to
+    prevent reading cash balances from other sub-accounts under the same login.
 
     Returns:
         float: own cash in USD (>= 0.0).  Returns 0.0 if a margin loan is
                detected OR if the IBKR query fails.
     """
     try:
+        target_account = account or get_ibkr_account(ib)
         account_values = ib.accountValues()
 
         total_cash = None
         net_liq    = None
 
         for av in account_values:
+            if not _matches_account(av, target_account):
+                continue
             if av.currency != "USD":
                 continue
             if av.tag == "TotalCashValue":
@@ -452,7 +459,7 @@ def get_own_cash(ib: IB) -> float:
                 net_liq = float(av.value)
 
         if total_cash is None:
-            print("⚠️ get_own_cash(): TotalCashValue tag not found in IBKR account values. Returning 0.")
+            print(f"⚠️ get_own_cash(): TotalCashValue tag not found for account {target_account}. Returning 0.")
             return 0.0
 
         if total_cash < 0:
@@ -460,7 +467,7 @@ def get_own_cash(ib: IB) -> float:
             # Hard block: return 0 so the buy loop skips all purchases.
             margin_loan = abs(total_cash)
             print(
-                f"🚨 MARGIN LOAN DETECTED: TotalCashValue = ${total_cash:,.2f} "
+                f"🚨 MARGIN LOAN DETECTED [{target_account}]: TotalCashValue = ${total_cash:,.2f} "
                 f"(margin borrowed: ${margin_loan:,.2f}). "
                 f"Returning 0 — no new buys until loan is repaid."
             )
@@ -469,7 +476,7 @@ def get_own_cash(ib: IB) -> float:
         # Cap own_cash at NetLiquidation as a sanity guard.
         if net_liq is not None and total_cash > net_liq > 0:
             print(f"⚠️ get_own_cash(): TotalCashValue (${total_cash:,.2f}) > NetLiquidation "
-                  f"(${net_liq:,.2f}). Capping to NetLiquidation.")
+                  f"(${net_liq:,.2f}) for {target_account}. Capping to NetLiquidation.")
             return round(net_liq, 2)
 
         return round(total_cash, 2)
@@ -480,14 +487,17 @@ def get_own_cash(ib: IB) -> float:
     return 0.0
 
 
-def get_margin_loan(ib: IB) -> float:
+def get_margin_loan(ib: IB, account: str = None) -> float:
     """Return the current margin loan amount in USD (0.0 if no loan).
 
     A positive return value means IBKR has lent this amount to the account.
-    Used for logging/alerting and recording to account_balances.
+    Filters by target account (`account` param or `get_ibkr_account(ib)`).
     """
     try:
+        target_account = account or get_ibkr_account(ib)
         for av in ib.accountValues():
+            if not _matches_account(av, target_account):
+                continue
             if av.tag == "TotalCashValue" and av.currency == "USD":
                 raw = float(av.value)
                 return round(abs(raw), 2) if raw < 0 else 0.0
@@ -512,7 +522,7 @@ def get_available_cash(ib: IB) -> float:
 def get_ibkr_account(ib: IB) -> str:
     """
     Returns the configured IBKR live account.
-    Priority: IBKR_ACCOUNT env var → first live account (U...) → accounts[0].
+    Priority: IBKR_ACCOUNT env var → U12941651 (if present) → first live account (U...) → accounts[0].
     Raises if both live and paper (DU...) accounts are visible without
     IBKR_ACCOUNT being set — prevents accidentally trading on the wrong account.
     """
@@ -529,6 +539,10 @@ def get_ibkr_account(ib: IB) -> str:
                 "Check your .env file."
             )
         return env_account
+
+    # Default to primary trading account U12941651 if available
+    if "U12941651" in accounts:
+        return "U12941651"
 
     # Prefer live accounts (U...) over paper (DU...)
     live_accounts   = [acc for acc in accounts if acc.startswith('U') and not acc.startswith('DU')]
@@ -734,10 +748,12 @@ def reconcile_with_ibkr(ib: IB):
         tz = ZoneInfo("America/New_York")
         today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
 
+        target_account = get_ibkr_account(ib)
+
         # own_cash: only our deposited money (TotalCashValue ≥ 0).
         # margin_loan: borrowed amount when TotalCashValue < 0 (0 if no loan).
-        own_cash    = get_own_cash(ib)
-        margin_loan = get_margin_loan(ib)
+        own_cash    = get_own_cash(ib, target_account)
+        margin_loan = get_margin_loan(ib, target_account)
         # ibkr_cash_balance historically stored AvailableFunds; we now write own_cash
         # so the column remains meaningful (own money only, no margin).
         cash_balance = own_cash
@@ -776,7 +792,7 @@ def reconcile_with_ibkr(ib: IB):
             }
             client.table("account_balances").upsert(upsert_payload).execute()
             margin_note = f" ⚠️ MARGIN LOAN: ${margin_loan:,.2f}" if margin_loan > 0 else ""
-            print(f"   💰 Balance synced: own_cash=${cash_balance:,.2f} "
+            print(f"   💰 Balance synced [{target_account}]: own_cash=${cash_balance:,.2f} "
                   f"positions=${pos_value:,.2f} net_liq=${net_liq:,.2f} "
                   f"({len(db_pos)} position(s)){margin_note}")
     except Exception as e:
@@ -797,12 +813,16 @@ def reconcile_with_ibkr(ib: IB):
         except Exception as _rp_err:
             print(f"   ⚠️  reqPositions() failed (non-fatal): {_rp_err}")
 
-        ib_raw = ib.portfolio()
+        target_account = get_ibkr_account(ib)
+        ib_raw = [
+            p for p in ib.portfolio()
+            if _matches_account(p, target_account)
+        ]
 
         if not ib_raw:
             _pos_fallback = [
                 p for p in ib.positions()
-                if p.contract.secType == "STK" and p.position > 0
+                if p.contract.secType == "STK" and p.position > 0 and _matches_account(p, target_account)
             ]
             if _pos_fallback:
                 print(f"   ⚠️  portfolio() empty — using positions() fallback "

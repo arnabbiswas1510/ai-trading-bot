@@ -310,13 +310,12 @@ def main():
         sys.exit(1)
 
     # Subscribe to account + verify positions
-    acct = next((a for a in ib.managedAccounts() if not a.startswith("DU")),
-                ib.managedAccounts()[0] if ib.managedAccounts() else "")
+    acct = os.getenv("IBKR_ACCOUNT") or ("U12941651" if "U12941651" in ib.managedAccounts() else next((a for a in ib.managedAccounts() if not a.startswith("DU")), ib.managedAccounts()[0] if ib.managedAccounts() else ""))
     ib.reqAccountSummary()
     ib.reqPositions()
     ib.sleep(3)
 
-    ibkr_positions = {p.contract.symbol: int(p.position) for p in ib.positions()}
+    ibkr_positions = {p.contract.symbol: int(p.position) for p in ib.positions() if not hasattr(p, 'account') or not p.account or p.account == acct}
     if ticker not in ibkr_positions:
         print(f"\n  ✗ {ticker} not found in IBKR positions (found: {list(ibkr_positions.keys())})")
         print("  IBKR and Supabase may be out of sync. Check IBKR TWS manually.")

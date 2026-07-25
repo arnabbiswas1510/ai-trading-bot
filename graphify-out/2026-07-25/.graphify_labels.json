@@ -95,5 +95,6 @@
   "93": "decisions/",
   "94": "Local SQLite (trading_bot.db)",
   "95": "Decision: Backtester Accuracy Rewrite",
-  "96": "increment_retention"
+  "96": "increment_retention",
+  "97": "TrailingStopOrder"
 }
