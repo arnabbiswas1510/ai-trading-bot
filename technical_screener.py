@@ -51,7 +51,8 @@ PRE_BREAKOUT_SCORE_BOOST  = int(os.environ.get("PRE_BREAKOUT_SCORE_BOOST",   0))
 
 # ── Daily candidate quota waterfall ───────────────────────────────────────────
 # Strong filters first; controlled relaxation only if strict pass yields < target.
-DAILY_TRIGGER_TARGET            = int(os.environ.get("DAILY_TRIGGER_TARGET", 4))
+# Target = MAX_POSITIONS so the waterfall always aims to fill the portfolio.
+MAX_POSITIONS                   = int(os.environ.get("MAX_POSITIONS", 4))
 RELAXED_PRE_BREAKOUT_PROXIMITY  = float(os.environ.get("RELAXED_PRE_BREAKOUT_PROXIMITY", 0.10))
 RELAXED_PRE_BREAKOUT_VOL_MAX    = float(os.environ.get("RELAXED_PRE_BREAKOUT_VOL_MAX", 1.10))
 RELAXED_PRE_BREAKOUT_UPTREND_MIN = int(os.environ.get("RELAXED_PRE_BREAKOUT_UPTREND_MIN", 2))
@@ -676,10 +677,9 @@ if __name__ == "__main__":
                         active_triggers.append(pre_result)
                         continue
 
-                    # Quota waterfall fallback: if strict scan yields < target,
-                    # allow a controlled, weaker pre-breakout gate to fill up
-                    # to DAILY_TRIGGER_TARGET options.
-                    if len(active_triggers) < DAILY_TRIGGER_TARGET:
+                    # to MAX_POSITIONS options (keeps daily option count up
+                    # without fully dropping quality gates).
+                    if len(active_triggers) < MAX_POSITIONS:
                         relaxed_pre = check_pre_breakout_coil(
                             ticker, df, sma_50, avg_vol_50, rolling_high,
                             stock_12w_return, today_ny, atr_pct, est_days_to_target,

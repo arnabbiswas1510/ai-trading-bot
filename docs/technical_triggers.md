@@ -118,17 +118,17 @@ Price must be at or near a new 52-week high — the CANSLIM "pivot point" / brea
 | `MIN_PRICE_HISTORY` | `50` |
 | `FMP_HISTORY_DAYS` | `380` |
 | `RS_MIN_GATE` | `50` |
-| `DAILY_TRIGGER_TARGET` | `4` |
+| `MAX_POSITIONS` | `4` |
 | `RELAXED_PRE_BREAKOUT_PROXIMITY` | `0.10` |
 | `RELAXED_PRE_BREAKOUT_VOL_MAX` | `1.10` |
 | `RELAXED_RS_MIN_GATE` | `50` |
 
 ---
 
-## Quota Waterfall (`at least DAILY_TRIGGER_TARGET options`)
+## Quota Waterfall (`at least MAX_POSITIONS options`)
 
 - Screener runs strict `BREAKOUT` + strict `PRE_BREAKOUT` first.
-- If total triggers are still below `DAILY_TRIGGER_TARGET` (default `4`), it runs a controlled fallback:
+- If total triggers are still below `MAX_POSITIONS`, it runs a controlled fallback:
   - `trigger_type=PRE_BREAKOUT_RELAXED`
   - Uses relaxed pre-breakout thresholds (`RELAXED_PRE_BREAKOUT_*`) while keeping RS gate enforced.
 - This keeps daily option count up without fully dropping quality gates.
