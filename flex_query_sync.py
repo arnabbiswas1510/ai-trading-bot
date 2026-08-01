@@ -361,3 +361,146 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ── Trade Confirm API (execution history) ─────────────────────────────────────
+# Used by reconcile_with_ibkr() Case 1 as Layer 2 fallback when ibkr_fills
+# (Layer 1) has no persisted record — e.g. trailing stop fired while agent
+# was offline. Requires IBKR_FLEX_EXEC_QUERY_ID env var pointing to a
+# TradeConfirm Flex Query in IBKR Portal (Last 30 Days, XML format).
+
+FLEX_EXEC_QUERY_ID = os.environ.get("IBKR_FLEX_EXEC_QUERY_ID", "")
+
+
+def fetch_trade_confirms_for_ticker(ticker: str) -> dict | None:
+    """
+    Query IBKR TradeConfirm Flex report (on-demand, same token as cash flows)
+    and return weighted-average fill data for SLD fills of `ticker`.
+
+    This is IBKR Transaction History — authoritative, not session-scoped.
+    Data available within 5-10 minutes of fill confirmation.
+
+    Returns dict with sell_price, sell_date, total_shares, num_fills, source
+    or None if not configured, no fills found, or API fails.
+    """
+    if not FLEX_EXEC_QUERY_ID:
+        return None
+    if not FLEX_TOKEN:
+        print("[flex_query_sync] IBKR_FLEX_TOKEN not set — cannot fetch TradeConfirm.")
+        return None
+    try:
+        print(f"[flex_query_sync] Fetching TradeConfirm for {ticker} via Flex Query {FLEX_EXEC_QUERY_ID}...")
+        ref_code = _request_reference_code_for_query(FLEX_EXEC_QUERY_ID)
+        xml_text = _fetch_statement(ref_code)
+        fills    = _parse_trade_confirms(xml_text, ticker, side="S")
+        if not fills:
+            print(f"[flex_query_sync] No SLD fills for {ticker} in TradeConfirm report.")
+            return None
+        total_qty  = sum(f["shares"] for f in fills)
+        wavg_price = sum(f["shares"] * f["price"] for f in fills) / total_qty
+        sell_date  = sorted(fills, key=lambda f: f["fill_time"])[0]["fill_time"][:10]
+        exec_ids   = ", ".join(f.get("exec_id", "?") for f in fills)
+        source     = f"Flex TradeConfirm weighted avg ({len(fills)} fill(s), execIds: {exec_ids})"
+        print(f"[flex_query_sync] {ticker}: {len(fills)} fill(s) → weighted avg ${wavg_price:.4f} on {sell_date}")
+        return {"sell_price": round(wavg_price, 4), "sell_date": sell_date,
+                "total_shares": int(total_qty), "num_fills": len(fills), "source": source}
+    except Exception as e:
+        print(f"[flex_query_sync] ⚠️  TradeConfirm fetch failed for {ticker}: {e}")
+        return None
+
+
+def _request_reference_code_for_query(query_id: str) -> str:
+    """Like _request_reference_code() but accepts an explicit query ID."""
+    params = {"t": FLEX_TOKEN, "q": query_id, "v": "3"}
+    for attempt in range(1, MAX_RETRIES + 1):
+        if attempt > 1:
+            time.sleep(15)
+        resp = requests.get(SEND_URL, params=params, timeout=30)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        if root.findtext("Status", "") == "Success":
+            ref = root.findtext("ReferenceCode", "")
+            if not ref:
+                raise RuntimeError("IBKR returned Success but no ReferenceCode.")
+            return ref
+        error_code = root.findtext("ErrorCode", "")
+        error_msg  = root.findtext("ErrorMessage", "")
+        if error_code == "1001" and attempt < MAX_RETRIES:
+            continue
+        raise RuntimeError(f"IBKR SendRequest failed [{error_code}]: {error_msg}")
+    raise RuntimeError("IBKR SendRequest did not succeed.")
+
+
+def _parse_trade_confirms(xml_text: str, ticker: str, side: str = "S") -> list[dict]:
+    """
+    Parse trade fill elements from IBKR Flex XML.
+
+    Handles both formats:
+      1. Activity Flex Query (<Trade> elements) — produced by query 1578858
+         Attributes: symbol, buySell, quantity, tradePrice, ibCommission,
+                     dateTime, ibExecID, ibOrderID, accountId
+
+      2. Trade Confirmation Flex Query (<TradeConfirm> elements)
+         Attributes: symbol, buySell, quantity, price, commission,
+                     dateTime, execID, orderId, accountId
+
+    Both use dateTime format: "YYYYMMDD;HHMMSS" (separator = semi-colon).
+    """
+    root, result = ET.fromstring(xml_text), []
+
+    # Support both Activity Flex (<Trade>) and Trade Confirm (<TradeConfirm>)
+    elements = list(root.iter("Trade")) + list(root.iter("TradeConfirm"))
+
+    for tc in elements:
+        sym = tc.get("symbol", "")
+        if sym != ticker:
+            continue
+        buy_sell = tc.get("buySell", "").upper()
+        is_sell  = buy_sell in ("SELL", "S", "SLD")
+        is_buy   = buy_sell in ("BUY",  "B", "BOT")
+        if side == "S" and not is_sell:
+            continue
+        if side == "B" and not is_buy:
+            continue
+
+        # Skip non-execution rows (e.g. Symbol Summary rows have no tradePrice)
+        level_of_detail = tc.get("levelOfDetail", "").upper()
+        if level_of_detail and level_of_detail not in ("EXECUTION", ""):
+            continue
+
+        raw_dt = tc.get("dateTime", "")
+        date_str, time_str = (raw_dt.split(";") + ["000000"])[:2]
+        try:
+            fill_time = datetime.strptime(f"{date_str}{time_str}", "%Y%m%d%H%M%S").isoformat()
+        except ValueError:
+            fill_time = raw_dt
+
+        try:
+            shares = abs(float(tc.get("quantity", "0")))
+            # Activity Flex uses tradePrice; TradeConfirm uses price
+            price  = float(tc.get("tradePrice") or tc.get("price", "0"))
+            # Activity Flex uses ibCommission; TradeConfirm uses commission
+            comm   = float(tc.get("ibCommission") or tc.get("commission", "0"))
+        except (ValueError, TypeError):
+            continue
+
+        if shares == 0 or price == 0:
+            continue   # skip summary / zero-quantity rows
+
+        # Activity Flex uses ibExecID; TradeConfirm uses execID
+        exec_id  = tc.get("ibExecID") or tc.get("execID", "")
+        # Activity Flex uses ibOrderID; TradeConfirm uses orderId
+        order_id = tc.get("ibOrderID") or tc.get("orderId", "")
+
+        result.append({
+            "ticker":     sym,
+            "side":       "SLD" if is_sell else "BOT",
+            "shares":     shares,
+            "price":      price,
+            "commission": comm,
+            "fill_time":  fill_time,
+            "exec_id":    exec_id,
+            "order_id":   order_id,
+            "account_id": tc.get("accountId", ""),
+        })
+    return result

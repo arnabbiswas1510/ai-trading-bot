@@ -97,7 +97,7 @@ class TestSelfHealingTrailingStop:
         """Trailing stop already in IBKR -> no self-healing.
         Use price=buy_price (0% gain) so the dynamic tightening tier doesn't fire
         and the only possible call path is the self-heal block."""
-        pos = make_position("AAPL", buy_price=100.0)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
         mock_trade = MagicMock()
@@ -112,7 +112,7 @@ class TestSelfHealingTrailingStop:
     def test_ibkr_stop_not_python_code_enforced(self):
         """Even when price is below stop level, Python does NOT call execute_sell.
         IBKR fires the trailing stop order automatically."""
-        pos = make_position("AAPL", buy_price=100.0)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
         mock_trade = MagicMock()
@@ -255,7 +255,7 @@ class TestMovingAverageExits:
 
     def test_ma_exit_does_not_trigger_within_buffer(self):
         """Price below MA but within buffer -> no exit."""
-        pos = make_position("AAPL", buy_price=100.0)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
         mock_trade = MagicMock()
@@ -289,7 +289,7 @@ class TestMovingAverageExits:
 
     def test_ma_exit_skipped_outside_eod_window(self):
         """Outside 3:45-4:00 PM and EOD_ONLY enabled -> no exit."""
-        pos = make_position("AAPL", buy_price=100.0)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
         mock_trade = MagicMock()
@@ -323,7 +323,7 @@ class TestMovingAverageExits:
 
     def test_ma_exit_failsafe_on_fmp_error(self):
         """FMP historical fetch returns empty -> no exit and no crash."""
-        pos = make_position("AAPL", buy_price=100.0)
+        pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
         mock_trade = MagicMock()

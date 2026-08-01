@@ -1,11 +1,11 @@
-# Graph Report - ai-trading-bot  (2026-07-27)
+# Graph Report - ai-trading-bot  (2026-07-26)
 
 ## Corpus Check
-- 102 files · ~153,165 words
+- 101 files · ~152,166 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1226 nodes · 1948 edges · 102 communities (67 shown, 35 thin omitted)
+- 1219 nodes · 1936 edges · 100 communities (67 shown, 33 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 14 edges (avg confidence: 0.63)
 - Token cost: 0 input · 0 output
 
@@ -109,49 +109,47 @@
 - test_score_components.py
 - restart_6am.sh
 - test_reconcile_detects_short_positions
-- get_supabase_client
-- partial_sell_oii.py
 
 ## God Nodes (most connected - your core abstractions)
 1. `make_ib_mock()` - 57 edges
-2. `make_supabase_mock()` - 50 edges
-3. `make_position()` - 40 edges
+2. `make_supabase_mock()` - 49 edges
+3. `make_position()` - 39 edges
 4. `FMPClient` - 26 edges
 5. `TelegramNotifier` - 26 edges
 6. `monitor_portfolio_intraday()` - 23 edges
 7. `_compute_dynamic_trail_pct()` - 22 edges
-8. `make_trigger()` - 21 edges
-9. `compute_liquidity_score()` - 20 edges
-10. `_AV` - 20 edges
+8. `compute_liquidity_score()` - 20 edges
+9. `make_trigger()` - 20 edges
+10. `fetch_ibkr_delayed_price()` - 19 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `TeeLogger` --uses--> `TelegramNotifier`  [INFERRED]
   execution_agent.py → telegram_notifier.py
-- `main()` --calls--> `compute_final_score()`  [EXTRACTED]
-  ai_evaluator.py → scoring.py
-- `main()` --calls--> `compute_liquidity_score()`  [EXTRACTED]
-  ai_evaluator.py → scoring.py
 - `main()` --calls--> `TelegramNotifier`  [EXTRACTED]
   ai_evaluator.py → telegram_notifier.py
 - `DebugNotifier` --uses--> `TelegramNotifier`  [INFERRED]
   debug_telegram_msg.py → telegram_notifier.py
+- `main()` --calls--> `get_own_cash()`  [EXTRACTED]
+  force_buy.py → execution_agent.py
+- `main()` --calls--> `get_margin_loan()`  [EXTRACTED]
+  force_buy.py → execution_agent.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (102 total, 35 thin omitted)
+## Communities (100 total, 33 thin omitted)
 
 ### Community 0 - "AI Scoring Pipeline"
-Cohesion: 0.13
-Nodes (10): compute_liquidity_score(), Penalises low-price, low-volume, and small-cap stocks (0-100).      Price tier, NVDA-like: $750, 42M avg vol, Large -> max score, Mid-tier stock: $35, 800K vol, Mid, SGHC-like: $8, 180K vol, Small -> very low, $15 exact -> price tier = 20, $14.99 -> price tier = 10, $50 exactly -> price tier = 40 (+2 more)
+Cohesion: 0.05
+Nodes (33): ai_grade_and_bonus(), evaluate_held_position(), fetch_daily_triggers(), fetch_news_headlines(), fetch_trade_history(), fetch_watchlist_data(), main(), Write updated score fields back to daily_triggers for a ticker. (+25 more)
 
 ### Community 1 - "Watchlist Retention Logic"
 Cohesion: 0.07
 Nodes (27): _get_week_start(), datetime, Return UTC midnight of the Monday starting the ISO week containing dt., _make_supabase_mock(), _monday(), datetime, Tests for watchlist weekly-snapshot logic.  Guards the following invariants:, save_screener_results must replace only the current week's rows. (+19 more)
 
 ### Community 2 - "Margin Safety Tests"
-Cohesion: 0.07
-Nodes (30): _AV, _make_ib_with_account_values(), test_margin_safety.py — Tests for the margin-cash safety layer.  Covers two crit, When TotalCashValue > 0, there is no margin loan — get_margin_loan returns 0., Edge case: TotalCashValue cannot exceed NetLiquidation in a real account., When TotalCashValue < 0, a margin loan is active.         get_own_cash must retu, get_margin_loan() must return the absolute value of a negative         TotalCash, Stress case: large margin loan (like the TRV incident ~$35K borrowed).         g (+22 more)
+Cohesion: 0.08
+Nodes (27): _AV, _make_ib_with_account_values(), test_margin_safety.py — Tests for the margin-cash safety layer.  Covers two crit, When TotalCashValue > 0, there is no margin loan — get_margin_loan returns 0., Edge case: TotalCashValue cannot exceed NetLiquidation in a real account., When TotalCashValue < 0, a margin loan is active.         get_own_cash must retu, get_margin_loan() must return the absolute value of a negative         TotalCash, Stress case: large margin loan (like the TRV incident ~$35K borrowed).         g (+19 more)
 
 ### Community 3 - "Trading Agent Utilities"
 Cohesion: 0.09
@@ -179,7 +177,7 @@ Nodes (23): make_position(), Factory for a portfolio_positions Supabase row.    
 
 ### Community 9 - "Technical Analysis Indicators"
 Cohesion: 0.10
-Nodes (20): check_consolidation_floor_break(), _compute_3day_avg_close(), compute_momentum_health_score(), _compute_param_drift(), compute_rsi(), detect_candlestick_reversals(), _generate_analysis_reason(), has_bought_today() (+12 more)
+Nodes (19): check_consolidation_floor_break(), _compute_3day_avg_close(), compute_momentum_health_score(), _compute_param_drift(), compute_rsi(), detect_candlestick_reversals(), fetch_trade_confirms_for_ticker(), _generate_analysis_reason() (+11 more)
 
 ### Community 10 - "Breakout Verdict Validation"
 Cohesion: 0.18
@@ -214,20 +212,20 @@ Cohesion: 0.08
 Nodes (24): `ai_evaluator.py`, Component 1 — Technical Score (30%) — `technical_screener.py`, Component 2 — Liquidity Score (25%) — `technical_screener.py`, Component 3 — AI Score (25%) — `ai_evaluator.py`, Component 4 — Sentiment Score (10%) — `ai_evaluator.py`, Component 5 — Relative Strength vs S&P 500 (10%) — `technical_screener.py`, Current prompt weaknesses, `daily_triggers` table — add columns (+16 more)
 
 ### Community 18 - "Pre-Breakout Coiling Detection"
-Cohesion: 0.13
-Nodes (10): compute_final_score(), Weighted blend of 5 components (all 0-100) -> 0-100 final score.        Technica, TestPreBreakoutScoreBoost, NVDA-like scores -> should be around 80, SGHC-like scores -> should be around 40-50, Weighted formula: tech=100, rest=0 -> score = 30, liq=100, rest=0 -> score = 25, Score cannot exceed 100 (+2 more)
+Cohesion: 0.18
+Nodes (9): compute_pre_breakout_quality_score(), Quality score 0-100 for a pre-breakout (coiling) trigger.      Weights:       Pi, Within 1%, 0 vol ratio, 3/3 closes up -> score == 100., Within 1%, 0.5x vol, 3 closes up -> 40+20+20=80., Within 3%, 0.5x vol, 2 closes up -> 35+20+10=65., Within 5%, 0.8x vol, 2 closes up -> 28+int(0.2*40)+10=28+8+10=46 (rounding gives, Within 8%, 0.9x vol, 2 closes up -> 20+4+10=34 (rounding may give 33)., 0 rising closes -> uptrend=0 -> 35+20+0=55. (+1 more)
 
 ### Community 19 - "FMP Client & Backtester"
 Cohesion: 0.11
 Nodes (15): FMPClient, Fetch annual balance sheets using stable endpoint., Calculate institutional holdings percentage.         Gracefully falls back to a, Query stable stock-screener to find active US growth equities.         Graceful, Fetch current price, moving averages, volume, 52w range and shares outstanding u, Fetch historical daily prices and format as pandas DataFrame using stable EOD en, Fetch quarterly or annual income statements using stable endpoint., auto_generate_watchlist() (+7 more)
 
 ### Community 20 - "IBKR Flex Query Sync"
-Cohesion: 0.13
-Nodes (21): check_token_expiry(), fetch_cash_transactions(), _fetch_statement(), main(), _parse_cash_transactions(), _parse_trade_confirms(), Client, flex_query_sync.py — IBKR Flex Query Cash Flow Sync  Fetches cash deposits and w (+13 more)
+Cohesion: 0.12
+Nodes (23): check_token_expiry(), fetch_cash_transactions(), _fetch_statement(), fetch_trade_confirms_for_ticker(), main(), _parse_cash_transactions(), _parse_trade_confirms(), Client (+15 more)
 
 ### Community 21 - "Manual Force Sell Utility"
-Cohesion: 0.21
-Nodes (12): date, execute_sell(), get_fresh_triggers_today(), is_market_bullish(), _nyse_holidays(), Client, CANSLIM 'M' (Market Direction) filter.     Returns True  if MARKET_DIRECTION_TI, Returns ticker symbols from today's daily_triggers that are not already held. (+4 more)
+Cohesion: 0.20
+Nodes (10): cancel_ticker_sell_orders(), execute_sell(), get_fresh_triggers_today(), get_supabase_client(), handle_mock_sell(), Client, Returns ticker symbols from today's daily_triggers that are not already held., Executes a market sell order on IBKR and archives the transaction in Supabase. (+2 more)
 
 ### Community 22 - "Portfolio Reconciliation Logic"
 Cohesion: 0.11
@@ -242,8 +240,8 @@ Cohesion: 0.11
 Nodes (18): 50-Day Average Volume, 50-Day Simple Moving Average (SMA-50), 52-Week Rolling High, Breakout Signal Summary, Condition 1 — Above 50-Day SMA, Condition 2 — Volume Surge >= 40% Above Average, Condition 3 — Within 2% of 52-Week Rolling High, Edge Cases Handled (+10 more)
 
 ### Community 25 - "Market Direction Filters"
-Cohesion: 0.23
-Nodes (12): ai_grade_and_bonus(), evaluate_held_position(), fetch_daily_triggers(), fetch_news_headlines(), fetch_trade_history(), fetch_watchlist_data(), main(), Write updated score fields back to daily_triggers for a ticker. (+4 more)
+Cohesion: 0.60
+Nodes (3): increment_retention(), get_rating_text(), run_screener()
 
 ### Community 26 - "Relative Strength Calculation"
 Cohesion: 0.16
@@ -258,8 +256,8 @@ Cohesion: 0.12
 Nodes (16): Buy Trigger Gating, Configuration Reference, Credentials & APIs, `daily_triggers` table, Execution Agent (`execution_agent.py`), `force_buy.py` Properties, IBKR Connection, Market Direction Filter (CANSLIM "M") (+8 more)
 
 ### Community 29 - "Intraday Monitoring Daemon"
-Cohesion: 0.18
-Nodes (20): fetch_trade_confirms_for_ticker(), get_available_cash(), get_ibkr_account(), get_margin_loan(), get_own_cash(), main_loop(), _matches_account(), place_trailing_stop() (+12 more)
+Cohesion: 0.19
+Nodes (19): get_available_cash(), get_ibkr_account(), get_margin_loan(), get_own_cash(), main_loop(), _matches_account(), place_trailing_stop(), IB (+11 more)
 
 ### Community 30 - "Risk Management Plan"
 Cohesion: 0.12
@@ -282,12 +280,12 @@ Cohesion: 0.67
 Nodes (3): Order, Factory for IBKR TRAIL order type.     `ib_insync` 0.9.x does not export a Trai, TrailingStopOrder()
 
 ### Community 35 - "Manual Force Buy Utility"
-Cohesion: 0.25
-Nodes (8): calculate_ema(), calculate_sma(), fetch_historical_closes_with_dates(), get_ma_value(), Fetch historical daily close prices and dates from FMP (oldest first)., Compute Simple Moving Average., Compute Exponential Moving Average., Calculate moving average value, appending current_price if today's EOD bar isn't
+Cohesion: 0.15
+Nodes (15): date, calculate_ema(), calculate_sma(), fetch_historical_closes_with_dates(), get_ma_value(), is_market_bullish(), _nyse_holidays(), CANSLIM 'M' (Market Direction) filter.     Returns True  if MARKET_DIRECTION_TI (+7 more)
 
 ### Community 36 - "Entry Score Reconciliation"
-Cohesion: 0.15
-Nodes (14): cancel_ticker_sell_orders(), check_volume_distribution(), fetch_held_position_sentiment(), _fetch_ohlcv(), get_live_price(), _get_market_regime(), monitor_portfolio_intraday(), Fetch OHLCV rows from FMP for the last `days` calendar days.      Returns a li (+6 more)
+Cohesion: 0.18
+Nodes (12): check_volume_distribution(), fetch_held_position_sentiment(), _fetch_ohlcv(), get_live_price(), _get_market_regime(), monitor_portfolio_intraday(), Fetch OHLCV rows from FMP for the last `days` calendar days.      Returns a li, Fetch live sentiment score (1-100) for a held position using FMP news + GPT-4o-m (+4 more)
 
 ### Community 37 - "Sell Execution Logic"
 Cohesion: 0.25
@@ -338,8 +336,8 @@ Cohesion: 0.33
 Nodes (9): _cagr(), _ema(), _max_consecutive_losses(), _max_underwater_days(), backend/backtester.py  Runs a historical simulation of the CAN SLIM breakout tra, Exponential moving average (matches pandas ewm default, adjust=False)., Historical simulation of the CAN SLIM breakout strategy.      Position sizing ma, run_backtest() (+1 more)
 
 ### Community 51 - "Market Regime Analysis"
-Cohesion: 0.06
-Nodes (39): increment_retention(), check_pre_breakout_coil(), check_technical_breakout(), _compute_failure_penalty(), compute_pre_breakout_quality_score(), compute_quality_score(), fetch_spy_return_12w(), fetch_with_retry_sync() (+31 more)
+Cohesion: 0.14
+Nodes (15): check_pre_breakout_coil(), Detects stocks coiling toward an imminent breakout (VCP / handle setup).      AL, _coil(), _make_df(), 15% below 52w high -> beyond 8% proximity -> None., At or above 52w high -> confirmed breakout territory -> None., Close (77) below SMA-50 (~90) -> below trend -> None., Stock -5% vs SPY +15% -> low RS -> None. (+7 more)
 
 ### Community 52 - "Build Verification Scripts"
 Cohesion: 0.50
@@ -381,24 +379,24 @@ Nodes (7): API Compatibility, Correction Note (2026-07-24), Decision, Decision: 
 Cohesion: 0.36
 Nodes (7): main(), now_et_str(), restart_and_health_check.py — 6:00 AM IB Gateway Health Check & Telegram Notifie, Send HTML Telegram message to all configured chat IDs., Connects to IB Gateway, verifies account U12941651, and checks own cash.     Ret, send_telegram(), verify_health()
 
-### Community 100 - "get_supabase_client"
-Cohesion: 0.67
-Nodes (3): get_supabase_client(), handle_mock_sell(), Executes a mock sale event directly on Supabase, bypassing IBKR.
+### Community 97 - "test_score_components.py"
+Cohesion: 0.19
+Nodes (13): scoring.py — Pure scoring functions for the 5-component final_score system.  No, check_technical_breakout(), _compute_failure_penalty(), compute_quality_score(), fetch_spy_return_12w(), fetch_with_retry_sync(), get_supabase_client(), get_watchlist_from_supabase() (+5 more)
 
 ## Knowledge Gaps
 - **228 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+223 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **35 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **33 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `TelegramNotifier` connect `Telegram Notification System` to `Trading Agent Utilities`, `Log Rotation Utility`, `Technical Analysis Indicators`, `IBKR Price Fetching`, `Market Regime Analysis`, `Market Direction Filters`?**
-  _High betweenness centrality (0.121) - this node is a cross-community bridge._
-- **Why does `fetch_ibkr_delayed_price()` connect `IBKR Price Fetching` to `Technical Analysis Indicators`, `Intraday Monitoring Daemon`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+- **Why does `TelegramNotifier` connect `Telegram Notification System` to `AI Scoring Pipeline`, `test_score_components.py`, `Trading Agent Utilities`, `Log Rotation Utility`, `Technical Analysis Indicators`, `IBKR Price Fetching`?**
+  _High betweenness centrality (0.130) - this node is a cross-community bridge._
 - **Why does `make_ib_mock()` connect `IBKR Order Mocks` to `Margin Safety Tests`, `Mock Data Factories`, `Portfolio Rotation Tests`, `Self-Healing Order Tests`, `Moving Average Exit Tests`, `Plateau Rotation Tests`, `Position Archiving Logic`, `High Water Mark Tracking`, `Portfolio Reconciliation Logic`?**
-  _High betweenness centrality (0.028) - this node is a cross-community bridge._
+  _High betweenness centrality (0.030) - this node is a cross-community bridge._
+- **Why does `compute_liquidity_score()` connect `AI Scoring Pipeline` to `test_score_components.py`?**
+  _High betweenness centrality (0.023) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `FMPClient` (e.g. with `BacktestRequest` and `SettingsUpdate`) actually correct?**
   _`FMPClient` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 2 inferred relationships involving `TelegramNotifier` (e.g. with `DebugNotifier` and `TeeLogger`) actually correct?**
@@ -406,4 +404,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `name`, `private`, `version` to the rest of the system?**
   _228 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `AI Scoring Pipeline` be split into smaller, more focused modules?**
-  _Cohesion score 0.12666666666666668 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05081967213114754 - nodes in this community are weakly interconnected._

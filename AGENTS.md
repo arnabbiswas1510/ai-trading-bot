@@ -49,6 +49,13 @@ python -m graphify path "execute_sell" "TelegramNotifier"
 | Why was X designed this way? (→ `decisions/`) | Current portfolio / Supabase data |
 | What communities / subsystems exist? | SSH / server diagnostics |
 
+### Code vs. Documentation Ground-Truth Rule
+
+> **CRITICAL**: When verifying runtime behavior or trading rules:
+> 1. **Always inspect active `.py` code over `.md` docs**: The actual runtime behavior is defined strictly by the executable Python source files (`execution_agent.py`, `flex_query_sync.py`, etc.).
+> 2. **Docs are reference context, not execution ground truth**: Markdown files in `docs/` or `decisions/` provide historical context. Never declare a runtime rule based solely on `.md` documentation without reading the corresponding `.py` file.
+> 3. **Prune outdated docs immediately**: When refactoring code, update related `.md` files in `docs/` and run `python -m graphify update .` to prevent graph drift.
+
 ### Step 3 — Keep the graph fresh after code changes
 
 ```bash

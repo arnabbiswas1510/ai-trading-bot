@@ -98,7 +98,5 @@
   "96": "increment_retention",
   "97": "test_score_components.py",
   "98": "restart_6am.sh",
-  "99": "test_reconcile_detects_short_positions",
-  "100": "get_supabase_client",
-  "101": "partial_sell_oii.py"
+  "99": "test_reconcile_detects_short_positions"
 }

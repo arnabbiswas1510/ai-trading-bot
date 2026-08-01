@@ -53,6 +53,7 @@ services:
       - "8000:8000"
     volumes:
       - bot-data:/app/data
+      - /home/dietpi/docker/ai-trading-bot/frontend/dist:/app/frontend/dist  # hot-swap built UI
     restart: unless-stopped
     env_file:
       - .env

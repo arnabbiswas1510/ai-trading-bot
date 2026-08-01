@@ -24,6 +24,7 @@ BD_DAY3 = "2026-06-12T12:00:00+00:00"  # 3 trading days
 BD_DAY4 = "2026-06-11T12:00:00+00:00"  # 4 trading days
 BD_DAY5 = "2026-06-10T12:00:00+00:00"  # 5 trading days
 BD_DAY7 = "2026-06-08T12:00:00+00:00"  # 7 trading days
+BD_DAY0 = "2026-06-17T12:00:00+00:00"  # same trading day as mock now
 
 
 def _make_pos(ticker="AAPL", buy_price=100.0, buy_date=BD_DAY3,
@@ -183,21 +184,21 @@ class TestIntradayLossMinimiser:
         mock_sell = _run(ib, sb, [pos], 98.9, hour=11, minute=30)
         mock_sell.assert_not_called()
 
-    def test_no_fire_for_pass_verdict(self):
-        """PASS verdict pos at Day 5: minimiser must NOT fire."""
+    def test_fires_for_pass_verdict_from_day2(self):
+        """PASS verdict pos at Day 5: universal minimiser must fire on pullback."""
         pos = _make_pos(buy_date=BD_DAY5, buy_price=100.0, verdict="PASS",
                         intraday_high_today=101.0)
         ib, sb = _make_ib([pos]), _make_sb([pos])
         mock_sell = _run(ib, sb, [pos], 100.4, hour=11, minute=30)
-        mock_sell.assert_not_called()
+        mock_sell.assert_called_once()
 
-    def test_no_fire_before_day4(self):
-        """Day 3 FAIL: minimiser requires days_held>=4, must NOT fire on verdict day."""
+    def test_fires_from_day2_even_without_fail_gate(self):
+        """Day 3 FAIL: minimiser now active from Day 2+, so pullback must fire."""
         pos = _make_pos(buy_date=BD_DAY3, buy_price=100.0, verdict="FAIL",
                         intraday_high_today=101.0)
         ib, sb = _make_ib([pos]), _make_sb([pos])
         mock_sell = _run(ib, sb, [pos], 100.4, hour=11, minute=30)
-        mock_sell.assert_not_called()
+        mock_sell.assert_called_once()
 
     def test_day7_fallback_fires(self):
         """FAIL pos Day 7, intraday high well below entry (no rally) -> hard fallback sell."""
@@ -208,3 +209,22 @@ class TestIntradayLossMinimiser:
         mock_sell.assert_called_once()
         reason = mock_sell.call_args.args[8]
         assert "fallback" in reason.lower() and "Day 7" in reason
+
+
+class TestEarlyLossKillSwitch:
+
+    def test_fires_on_day0_at_two_percent_loss(self):
+        """Day 0 at -2.0% or worse must trigger immediate sell."""
+        pos = _make_pos(buy_date=BD_DAY0, buy_price=100.0, verdict=None, intraday_high_today=None)
+        ib, sb = _make_ib([pos]), _make_sb([pos])
+        mock_sell = _run(ib, sb, [pos], 98.0, hour=11, minute=30)
+        mock_sell.assert_called_once()
+        reason = mock_sell.call_args.args[8]
+        assert "Early Loss Kill-switch" in reason
+
+    def test_does_not_fire_on_day1_if_above_threshold(self):
+        """Day 1 at -1.9% should not trigger the Day 0-1 hard stop."""
+        pos = _make_pos(buy_date=BD_DAY1, buy_price=100.0, verdict=None, intraday_high_today=None)
+        ib, sb = _make_ib([pos]), _make_sb([pos])
+        mock_sell = _run(ib, sb, [pos], 98.1, hour=11, minute=30)
+        mock_sell.assert_not_called()

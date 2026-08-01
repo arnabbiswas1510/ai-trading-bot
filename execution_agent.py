@@ -174,6 +174,13 @@ COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 1))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
+# Minimum quality floor applied in buy loop to avoid low-conviction entries.
+MIN_TRIGGER_SCORE        = int(os.getenv("MIN_TRIGGER_SCORE", 60))
+# Pre-breakout setups are less confirmed; require a higher floor unless marked as
+# relaxed quota-fill candidates by the screener.
+MIN_PRE_BREAKOUT_SCORE   = int(os.getenv("MIN_PRE_BREAKOUT_SCORE", 65))
+# Controlled relaxation floor used only for PRE_BREAKOUT_RELAXED triggers.
+MIN_RELAXED_TRIGGER_SCORE = int(os.getenv("MIN_RELAXED_TRIGGER_SCORE", 58))
 # Flat cash reserve per buy order: absorbs the 15-20 min lag between IBKR delayed
 # price and actual fill price. $1,000 covers ~4% movement on a $25K position.
 PRICE_SAFETY_RESERVE     = float(os.getenv("PRICE_SAFETY_RESERVE", 1000.0))
@@ -203,6 +210,10 @@ BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0
 # Intraday Loss Minimiser: sell when price drops this % below today's rolling intraday
 # high, provided that high is near (within 0.5%) or above the entry price.
 INTRADAY_PULLBACK_PCT        = float(os.getenv("INTRADAY_PULLBACK_PCT",        0.005)) # 0.5%
+# Early damage-control kill-switch for fresh entries (Day 0-1).
+EARLY_LOSS_STOP_PCT          = float(os.getenv("EARLY_LOSS_STOP_PCT",          0.02))  # 2.0%
+# Day threshold when universal intraday pullback minimiser becomes active.
+INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2))
 
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
@@ -1183,8 +1194,8 @@ def is_market_bullish() -> bool:
         return bullish
     except Exception as e:
         notifier.notify_exception(f"is_market_bullish() — execution_agent.py", e)
-        print(f"⚠️ Market direction check failed: {e}. Defaulting to BULL.")
-        return True
+        print(f"⚠️ Market direction check failed: {e}. Defaulting to BEAR (fail-closed).")
+        return False
 
 def fetch_ibkr_delayed_price(ib: IB, contract) -> tuple:
     """Fetch the current price for a contract using IBKR delayed market data (type 3).
@@ -1242,6 +1253,11 @@ def run_market_open_buys(ib: IB):
             pass
         return
 
+    # ── Market direction hard gate (fail-closed on data errors) ─────────────────
+    if MARKET_DIRECTION_FILTER_ENABLED and not is_market_bullish():
+        print("📊 Market bearish (SPY < SMA-200 or data unavailable). Standing down from new buys.")
+        return
+
     
     # Fetch today's triggers (or triggers from the last 3 days to handle weekends/holidays)
     tz = ZoneInfo("America/New_York")
@@ -1283,9 +1299,20 @@ def run_market_open_buys(ib: IB):
         print(f"❌ Portfolio is fully invested with {len(stock_holdings)} stock positions. Standing down.")
         return
 
+    cycle_cash_spent = 0.0
+    initial_own_cash = get_own_cash(ib)
+
     for trigger in triggers:
         ticker = trigger["ticker"]
         
+        # Refresh active holdings from Supabase at top of loop
+        try:
+            portfolio_res = client.table("portfolio_positions").select("*").execute()
+            holdings = portfolio_res.data or []
+            active_tickers = [p["ticker"] for p in holdings]
+        except Exception:
+            pass
+
         # Don't buy a stock we already hold
         if ticker in active_tickers:
             continue
@@ -1311,21 +1338,44 @@ def run_market_open_buys(ib: IB):
             print(f"   🟢 {ticker} AI grade: {ai_grade} | "
                   f"quality={trigger.get('quality_score', 'N/A')} | "
                   f"final={trigger.get('final_score', 'N/A')}")
-            
-        # Size the position as an equal share of remaining capital across unfilled slots
+
+        # 🛡️ Final score floor (quality guardrail) ──────────────────────────────
+        trigger_type = str(trigger.get("trigger_type") or "BREAKOUT")
+        candidate_score = (
+            trigger.get("adjusted_score")
+            if trigger.get("adjusted_score") is not None
+            else trigger.get("final_score")
+        )
+        if candidate_score is None:
+            candidate_score = trigger.get("quality_score")
+        if candidate_score is None:
+            candidate_score = trigger.get("ai_rating")
+
+        if trigger_type == "PRE_BREAKOUT_RELAXED":
+            min_score = MIN_RELAXED_TRIGGER_SCORE
+        elif trigger_type == "PRE_BREAKOUT":
+            min_score = max(MIN_TRIGGER_SCORE, MIN_PRE_BREAKOUT_SCORE)
+        else:
+            min_score = MIN_TRIGGER_SCORE
+
+        if candidate_score is not None and float(candidate_score) < float(min_score):
+            print(f"   🚫 {ticker} {trigger_type} score {candidate_score} < floor {min_score}. Skipping.")
+            continue
+
+        # Size the position as an equal share of remaining capital across unfilled slots.
+        # Deduct cash spent on filled orders in the current cycle from initial_own_cash.
+        available_cash = max(0.0, initial_own_cash - cycle_cash_spent)
+        live_own_cash = get_own_cash(ib)
+        available_cash = min(available_cash, live_own_cash)
+
         stock_held_count = len(holdings)
         remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
-        available_cash = get_own_cash(ib)   # own deposited cash only — never margin
-        print(f"💰 Own Cash (margin-free) in IBKR: ${available_cash:,.2f}")
+        print(f"💰 Own Cash (margin-free) in IBKR: ${available_cash:,.2f} (initial: ${initial_own_cash:,.2f}, spent this cycle: ${cycle_cash_spent:,.2f})")
         position_size = available_cash / remaining_slots
         print(f"   Position sizing: ${available_cash:,.2f} / {remaining_slots} slot(s) = ${position_size:,.2f} per position (${PRICE_SAFETY_RESERVE:,.0f} safety reserve applied at share count)")
 
-
-        # Double check active holdings size again (in case we bought one earlier in this loop)
-        portfolio_res = client.table("portfolio_positions").select("*").execute()
-        holdings = portfolio_res.data or []
-        stock_held_count_loop = len(holdings)
-        if stock_held_count_loop >= MAX_POSITIONS:
+        # Double check active holdings size again
+        if stock_held_count >= MAX_POSITIONS:
             print(f"🚫 Portfolio capacity ({MAX_POSITIONS} stocks) reached during loop. Skipping further buys.")
             break
 
@@ -1439,6 +1489,10 @@ def run_market_open_buys(ib: IB):
             fill_price = round(trade.orderStatus.avgFillPrice, 2)
             if fill_price <= 0:
                 fill_price = current_price
+
+            actual_cost = actual_shares * fill_price
+            cycle_cash_spent += actual_cost
+            print(f"   💳 Cycle cash spent updated: +${actual_cost:,.2f} (total spent this cycle: ${cycle_cash_spent:,.2f})")
 
             # Calculate dynamic stop loss percentage (2.5x ATR, fallback to STOP_LOSS_PCT)
             # Floor: 7% (never tighter than static, protects against bad fills)
@@ -2237,6 +2291,19 @@ def monitor_portfolio_intraday(ib: IB):
         print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
               f"| Held: {days_held}d | IBKR Trail: {pos_stop_loss_pct*100:.2f}%")
 
+        # ── Day 0-1 hard loser kill-switch ──────────────────────────────────────
+        if days_held <= 1:
+            early_stop_level = buy_price * (1 - EARLY_LOSS_STOP_PCT)
+            if current_price <= early_stop_level:
+                reason = (
+                    f"Early Loss Kill-switch — Day {days_held}, "
+                    f"price {((current_price / buy_price) - 1.0) * 100:.2f}% "
+                    f"<= -{EARLY_LOSS_STOP_PCT * 100:.1f}% threshold"
+                )
+                print(f"🚨 {ticker}: Early Loss Kill-switch firing — {reason}")
+                execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                continue
+
         # ── Calculate current unrealized percentage ──
         unrealized_pct = round(((current_price / buy_price) - 1.0) * 100.0, 4)
 
@@ -2245,7 +2312,8 @@ def monitor_portfolio_intraday(ib: IB):
         highest_unrealized_pct = max(prev_highest, unrealized_pct)
 
         # ── Update hwm_date, hwm_price and highest_unrealized_pct when a new intraday high is seen ────
-        prev_peak = intraday_peak.get(ticker, buy_price)
+        stored_hwm = float(pos.get("hwm_price") or buy_price)
+        prev_peak = max(stored_hwm, intraday_peak.get(ticker, buy_price))
         hwm_updated = False
         if current_price > prev_peak:
             intraday_peak[ticker] = current_price
@@ -2318,11 +2386,11 @@ def monitor_portfolio_intraday(ib: IB):
                 )
                 print(f"   ⚠️ {ticker}: trail tightening failed: {_tighten_err}")
 
-        # ── Intraday Loss Minimiser (Day 4+, FAIL verdict positions) ─────────────
-        # For positions that failed the Day 3 breakout verdict, sell on the first
-        # 0.5% pullback from today's intraday high — provided that high is within
-        # 0.5% of entry price (near breakeven or above), preserving any intraday gain.
-        if days_held >= 4 and pos.get("breakout_verdict") == "FAIL":
+        # ── Intraday Loss Minimiser (Day 2+, universal) ──────────────────────────
+        # For all positions from Day 2 onward, sell on the first 0.5% pullback
+        # from today's intraday high — provided that high is within 0.5% of entry
+        # price (near breakeven or above), preserving any intraday gain.
+        if days_held >= INTRADAY_MINIMISER_START_DAY:
             prev_high  = float(pos.get("intraday_high_today") or 0)
             today_high = max(prev_high, current_price)
 
@@ -2341,7 +2409,7 @@ def monitor_portfolio_intraday(ib: IB):
 
             if near_entry and pulled_back:
                 reason = (
-                    f"Intraday Loss Minimiser — Day 3 verdict FAIL, "
+                    f"Intraday Loss Minimiser — Day {days_held} universal rule, "
                     f"selling on {INTRADAY_PULLBACK_PCT*100:.1f}% pullback from "
                     f"intraday high ${today_high:.2f} (current ${current_price:.2f})"
                 )
@@ -2349,8 +2417,8 @@ def monitor_portfolio_intraday(ib: IB):
                 execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
                 continue
 
-            # Hard fallback: no qualifying intraday rally materialised by Day 7 — sell at market
-            if days_held >= 7:
+            # Hard fallback remains scoped to FAIL verdict positions.
+            if days_held >= 7 and pos.get("breakout_verdict") == "FAIL":
                 reason = f"Intraday Loss Minimiser fallback — no qualifying intraday rally by Day 7 ({days_held}d)"
                 print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser fallback sell (Day 7)")
                 execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)

@@ -284,15 +284,15 @@ Return ONLY valid JSON in this exact format:
             technical_score, liq_score, ai_score, sentiment_score, rs_score
         )
 
-        # ── Pre-Breakout early-entry bonus ────────────────────────────────────
-        # Pre-breakout candidates get a +10pt boost to compensate for the fact
-        # that they haven't yet triggered the volume surge. This reflects the
-        # lower-risk entry at the base price vs buying after the gap-up.
+        # ── Optional Pre-Breakout score boost (disabled by default) ───────────
+        # Kept as an opt-in override only. Default is 0 to avoid systematically
+        # promoting unconfirmed setups above confirmed breakouts.
         trigger_type  = str(t.get("trigger_type") or "BREAKOUT")
         if trigger_type == "PRE_BREAKOUT":
-            boost = int(os.environ.get("PRE_BREAKOUT_SCORE_BOOST", 10))
+            boost = int(os.environ.get("PRE_BREAKOUT_SCORE_BOOST", 0))
             final_score = min(100, final_score + boost)
-            print(f"   ⏳ {ticker}: PRE_BREAKOUT +{boost}pt boost applied → final_score={final_score}")
+            if boost > 0:
+                print(f"   ⏳ {ticker}: PRE_BREAKOUT +{boost}pt boost applied → final_score={final_score}")
 
         atr_pct        = float(t.get("atr_pct") or 0.0)
         est_days       = int(t.get("est_days_to_target") or 999)

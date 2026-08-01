@@ -84,3 +84,36 @@ class TestAIRatingSorting:
         first_contract = ib.placeOrder.call_args_list[0][0][0]
         assert first_contract.symbol == 'META'
 
+
+class TestMarketDirectionGate:
+    def test_bearish_market_blocks_buys(self):
+        portfolio = [make_position(t) for t in ["AAPL", "MSFT", "NVDA"]]
+        trig = make_trigger("TSLA", close_price=100.0, final_score=80)
+        trig["trigger_type"] = "BREAKOUT"
+        trig["ai_grade"] = "A"
+        supabase = make_supabase_mock(daily_triggers=[trig], portfolio=portfolio)
+        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA"])
+        _run_buys(ib, supabase, is_bullish=False)
+        ib.placeOrder.assert_not_called()
+
+
+class TestScoreFloorGate:
+    def test_breakout_below_min_score_is_skipped(self):
+        portfolio = [make_position(t) for t in ["AAPL", "MSFT", "NVDA"]]
+        trig = make_trigger("TSLA", close_price=100.0, final_score=55)
+        trig["trigger_type"] = "BREAKOUT"
+        trig["ai_grade"] = "A"
+        supabase = make_supabase_mock(daily_triggers=[trig], portfolio=portfolio)
+        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_not_called()
+
+    def test_pre_breakout_relaxed_uses_relaxed_floor(self):
+        portfolio = [make_position(t) for t in ["AAPL", "MSFT", "NVDA"]]
+        trig = make_trigger("TSLA", close_price=100.0, final_score=59)
+        trig["trigger_type"] = "PRE_BREAKOUT_RELAXED"
+        trig["ai_grade"] = "B"
+        supabase = make_supabase_mock(daily_triggers=[trig], portfolio=portfolio)
+        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "TSLA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_called_once()

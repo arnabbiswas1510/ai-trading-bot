@@ -1,4 +1,4 @@
-﻿# Buy Logic
+# Buy Logic
 
 ## Overview
 
@@ -43,10 +43,10 @@ All positions count toward the cap — there is no separate ETF parking logic in
 ```python
 recent_date = today - timedelta(days=TRIGGER_LOOKBACK_DAYS)   # default: 3 days
 triggers = client.table("daily_triggers").select("*").gte("triggered_at", recent_date)
-triggers.sort(key=lambda x: x.get("ai_rating") or 0, reverse=True)
+triggers.sort(key=lambda x: x.get("final_score") or x.get("quality_score") or x.get("ai_rating") or 0, reverse=True)
 ```
 
-Looks back 3 days to capture triggers from weekends and market holidays. Triggers are sorted by AI rating descending (best opportunities first).
+Looks back 3 days to capture triggers from weekends and market holidays. Triggers are sorted by `final_score` (quality + AI bonus) descending.
 
 ---
 

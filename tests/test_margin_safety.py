@@ -399,3 +399,71 @@ class TestNoBuysWithBorrowedMoney:
             f"Expected 0 orders, got {ib.placeOrder.call_count}. "
             "Margin loan must block ALL triggers, not just some."
         )
+
+
+class TestMultiBuyCycleMarginSafety:
+    """
+    Verifies that when multiple triggers fill in the same buy cycle,
+    execution_agent tracks cycle_cash_spent and subtracts spent cash
+    from initial_own_cash. Subsequent buys must NEVER use stale
+    IBKR TotalCashValue to over-buy on margin.
+    """
+
+    def test_multi_buy_cycle_deducts_spent_cash(self):
+        """
+        Regression test for the OII over-buy incident:
+        Starting cash: $50,000. 2 free slots.
+        First buy (HWM): spends $24,000.
+        IBKR accountValues() stale cash stays at $50,000.
+        Second buy (OII) MUST size off remaining cash ($26,000), NOT $50,000.
+        """
+        portfolio = [make_position("FR"), make_position("TRV")]  # 2 held, 2 free slots
+        triggers = [
+            make_trigger("HWM", close_price=250.0, final_score=92),
+            make_trigger("OII", close_price=50.0, final_score=89),
+        ]
+        supabase = make_supabase_mock(daily_triggers=triggers, portfolio=portfolio)
+
+        ib = _make_ib_with_account_values(
+            _AV("TotalCashValue", "50000.00"),
+            _AV("AvailableFunds", "50000.00"),
+        )
+        ib.qualifyContracts.side_effect = lambda contract: contract
+
+        # Mock trade execution: return filled trade with avgFillPrice
+        def mock_place_order(contract, order):
+            trade = MagicMock()
+            trade.orderStatus.status = "Filled"
+            trade.orderStatus.filled = order.totalQuantity
+            trade.orderStatus.avgFillPrice = float(contract.symbol == "HWM" and 250.0 or 50.0)
+            return trade
+
+        ib.placeOrder.side_effect = mock_place_order
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.fetch_ibkr_delayed_price", side_effect=[(250.0, "last"), (50.0, "last")]), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
+             patch("execution_agent.notifier"), \
+             patch("execution_agent.execute_sell"), \
+             patch("execution_agent.place_trailing_stop"):
+            execution_agent.run_market_open_buys(ib)
+
+        assert ib.placeOrder.call_count == 2, f"Expected 2 buy orders, got {ib.placeOrder.call_count}"
+
+        order_hwm = ib.placeOrder.call_args_list[0][0][1]
+        order_oii = ib.placeOrder.call_args_list[1][0][1]
+
+        cost_hwm = order_hwm.totalQuantity * 250.0
+        cost_oii = order_oii.totalQuantity * 50.0
+        total_cost = cost_hwm + cost_oii
+
+        # Total cash spent across both buys MUST NOT exceed initial own cash ($50,000)
+        assert total_cost <= 50_000.0, (
+            f"Total cost across multi-buy cycle (${total_cost:,.2f}) exceeded initial own cash ($50,000.00)! "
+            f"HWM cost: ${cost_hwm:,.2f}, OII cost: ${cost_oii:,.2f}."
+        )
+        # OII must be sized from ~$26,000 remaining (not $50,000)
+        assert order_oii.totalQuantity < 600, (
+            f"OII share count ({order_oii.totalQuantity}) indicates full $50k sizing was used instead of remaining cash!"
+        )
+
