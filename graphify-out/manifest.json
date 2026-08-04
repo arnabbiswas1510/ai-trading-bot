@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1785820507.4210775,
-    "ast_hash": "dc0dc3b8332a795044664ed15eeb7fd7",
+    "mtime": 1785821163.9126933,
+    "ast_hash": "0dcd3ad5807277078ee1598a0c70ee4e",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -270,8 +270,8 @@
     "semantic_hash": ""
   },
   "tests/test_breakout_verdict.py": {
-    "mtime": 1785819729.55288,
-    "ast_hash": "e2aebda2918c71b63dade238cd610bfa",
+    "mtime": 1785821042.498375,
+    "ast_hash": "609cfe1703735030296c79bd107f1e4b",
     "semantic_hash": ""
   },
   "tests/test_buy_fill_verification.py": {
@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "tests/test_buy_gates.py": {
-    "mtime": 1785816821.2424674,
-    "ast_hash": "413d5f6d18011d879ca10099a50d6980",
+    "mtime": 1785821235.2511232,
+    "ast_hash": "92c87bd84c21909f1c1ca97b76aa56da",
     "semantic_hash": ""
   },
   "tests/test_dynamic_trail.py": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "docs/performance-analysis-2026-07-29.md": {
-    "mtime": 1785696688.6348295,
-    "ast_hash": "bc7d8e8d3484dd404ef31a052e26af50",
+    "mtime": 1785821253.8755238,
+    "ast_hash": "82b63a870f6eb95010ad4686d9e85c92",
     "semantic_hash": ""
   },
   "decisions/2026-08-03_dead-code-cleanup.md": {
@@ -587,6 +587,11 @@
   "decisions/2026-08-04_plateau-exit-capital-velocity.md": {
     "mtime": 1785820680.6411734,
     "ast_hash": "8af080fc8c9033f58fb322c89f5901da",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-04_reaudit-performance-analysis.md": {
+    "mtime": 1785821293.7890108,
+    "ast_hash": "c3db7ef3d935559147811994577cb2fc",
     "semantic_hash": ""
   }
 }

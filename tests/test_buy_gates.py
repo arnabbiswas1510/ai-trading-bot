@@ -30,7 +30,7 @@ import execution_agent
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _run_buys(ib, supabase_mock, live_price=105.0, available_cash=20_000.0,
-              is_bullish=True):
+              is_bullish=True, ibkr_price=0.0):
     """
     Runs run_market_open_buys() with standard patches applied.
     Returns the mock_ib so callers can inspect placeOrder calls.
@@ -39,15 +39,18 @@ def _run_buys(ib, supabase_mock, live_price=105.0, available_cash=20_000.0,
     functions) rather than the deprecated get_available_cash alias.
     get_margin_loan is patched to 0.0 so the margin hard-block gate does NOT
     fire in these tests — each test here is focused on a different gate.
-    fetch_ibkr_delayed_price is patched to (0.0, '') so the buy loop falls
+    fetch_ibkr_delayed_price defaults to (0.0, '') so the buy loop falls
     back to trigger["close_price"] for share sizing (avoids MagicMock arithmetic).
+    Pass ibkr_price to move the traded price away from the pivot — the buy loop
+    reads its price from here, NOT from get_live_price.
     notifier is patched to prevent real Telegram messages on the server.
     """
     with patch("execution_agent.supabase", supabase_mock), \
          patch("execution_agent.get_live_price", return_value=live_price), \
          patch("execution_agent.get_own_cash", return_value=available_cash), \
          patch("execution_agent.get_margin_loan", return_value=0.0), \
-         patch("execution_agent.fetch_ibkr_delayed_price", return_value=(0.0, "")), \
+         patch("execution_agent.fetch_ibkr_delayed_price",
+               return_value=(ibkr_price, "delayed" if ibkr_price else "")), \
          patch("execution_agent.is_market_bullish", return_value=is_bullish), \
          patch("execution_agent.notifier"), \
          patch("execution_agent.execute_sell"):
@@ -155,3 +158,42 @@ class TestScoreFloorGate:
         ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "TSLA"])
         _run_buys(ib, supabase)
         ib.placeOrder.assert_called_once()
+
+
+# ── Gate: pivot buy zone is bounded on BOTH sides ─────────────────────────────
+
+class TestPivotBuyZoneFloor:
+    """
+    The pivot check used to be a ceiling only: it rejected stocks extended too
+    far ABOVE the pivot but placed no floor beneath it. Combined with
+    TRIGGER_LOOKBACK_DAYS=3 that meant a 3-day-old trigger whose breakout had
+    since failed was still a valid buy — the bot could buy a breakdown.
+    """
+
+    def _run_at(self, price):
+        """The buy loop takes its price from fetch_ibkr_delayed_price, not
+        get_live_price, so that is what must be varied to move the position
+        relative to the pivot."""
+        trigger = make_trigger("AAPL", close_price=100.0)
+        mock_sb = make_supabase_mock(portfolio=[], daily_triggers=[trigger])
+        ib = make_ib_mock()
+        _run_buys(ib, mock_sb, live_price=price, ibkr_price=price)
+        return ib
+
+    def test_rejects_trigger_that_collapsed_below_pivot(self):
+        # Price has given back 8% of the pivot — the breakout failed.
+        assert not self._run_at(92.0).placeOrder.called, \
+            "Must not buy a stock trading below its pivot"
+
+    def test_still_buys_inside_the_zone(self):
+        assert self._run_at(102.0).placeOrder.called, \
+            "A trigger inside the buy zone must still be bought"
+
+    def test_small_dip_below_pivot_is_tolerated(self):
+        """A 1% dip is noise around the pivot, not a failed breakout."""
+        assert self._run_at(99.0).placeOrder.called, \
+            "Ordinary noise around the pivot must not veto a buy"
+
+    def test_ceiling_still_enforced(self):
+        assert not self._run_at(112.0).placeOrder.called, \
+            "Extended stocks must still be rejected"

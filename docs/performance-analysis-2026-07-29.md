@@ -1,4 +1,35 @@
 # AI Trading Bot — Performance Analysis
+**Date:** 2026-07-29
+**Status:** SUPERSEDED — re-audited against the code on 2026-08-04. Most items
+are fixed; two were wrong. See `decisions/2026-08-04_reaudit-performance-analysis.md`.
+
+> ⚠️ This document was written from code reading alone, without a backtest.
+> Where its recommendations were later measured, **two of them pointed the wrong
+> way**: it recommended tightening the trailing stop and tightening the profit
+> ladder, and measurement showed both cost money. Treat the diagnoses here as
+> reliable and the prescriptions as hypotheses.
+
+| # | Item | Status as of 2026-08-04 |
+|---|---|---|
+| Bug 1 | Market filter dead code | ✅ Fixed — wired at `execution_agent.py` L1488 |
+| Bug 2 | Day 3 volume reads stale bar | ✅ Fixed 2026-08-04 (was still live) |
+| Bug 3 | No `final_score` floor | ✅ Fixed — `MIN_TRIGGER_SCORE=60` |
+| W4 | Volume surge 1.20 | ✅ Fixed — `VOLUME_SURGE_MIN=1.50` |
+| W5 | RS gate 40 | ✅ Fixed — `RS_MIN_GATE=50` |
+| W6 | PRE_BREAKOUT boost | ✅ Fixed — boost defaults to 0 |
+| W7 | Rank & Replace skips FAIL | ✅ Fixed 2026-08-04 |
+| W8 | Cooling-off 1 day | ✅ Fixed 2026-08-04 — now 7, backtest-supported |
+| W9 | ATR stop cap 14% | ❌ **Recommendation rejected** — it says tighten to 10%; measurement shows widening 7%→10% roughly doubles CAGR. Cap unchanged pending a decision. |
+| W10 | Trigger lookback 3 days | ⚠️ Reframed — lookback length showed no measurable effect; the real defect was that the pivot check had no lower bound. Floor added 2026-08-04. |
+| W11 | No trail tightening below +3% | ❌ **Recommendation rejected** — tightening early measurably reduced returns. |
+| W12 | Equal dollar sizing | ⬜ Open — untested |
+| W13 | Param drift technical score | ⬜ Obsolete — `_compute_param_drift()` no longer exists |
+| Scoring | RS weight 10% | ⬜ Open — untested |
+
+---
+
+**Original document follows.**
+
 **Date:** 2026-07-29  
 **Context:** Bot losing money; 98.8% invested ($98,816), $882 unrealized gain (~0.9%), market showing "UPTREND UNDER PRESSURE"  
 **Recent losses:** OII −$770 (−1.6%), SGHC −$326 (−1.29%)

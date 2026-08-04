@@ -48,9 +48,16 @@ def _make_pos(ticker="AAPL", buy_price=100.0, buy_date=BD_DAY3,
 
 
 def _make_ohlcv(length=22, day3_vol_ratio=1.0, base_vol=1_000_000):
+    """Bars in ASCENDING date order, matching _fetch_ohlcv().
+
+    The Day 3 bar is therefore the LAST element, and the 20-day average is
+    taken from the 20 bars before it. This fixture previously placed the Day 3
+    volume at index 0, which mirrored a bug in the production code rather than
+    the real data layout, so a wrong implementation passed.
+    """
     bars = []
     for i in range(length):
-        v = int(base_vol * day3_vol_ratio) if i == 0 else base_vol
+        v = int(base_vol * day3_vol_ratio) if i == length - 1 else base_vol
         bars.append({"open": 100, "high": 101, "low": 99, "close": 100, "volume": v})
     return bars
 
@@ -149,6 +156,42 @@ class TestBreakoutVerdict:
         updates = _verdict_updates(sb)
         assert updates and "FAIL" in updates[0], f"Expected FAIL update, got: {updates}"
         mock_fail.assert_called_once()
+
+    def test_volume_check_reads_latest_bar_not_oldest(self):
+        """Regression: the verdict must compare TODAY's volume against the prior
+        20 sessions. Reading ohlcv[0] instead of ohlcv[-1] compared a ~100-day-old
+        bar against the 20 days following it — both stale, ratio always ~1.0 — so
+        vol_pass was spuriously True and FAIL almost never fired.
+
+        Here the newest bar is heavy and the OLD bars are light. A correct
+        implementation sees a volume surge (PASS); the buggy one sees the old
+        light bar against its light neighbours and also passes on volume, so the
+        discriminating case is the inverse test below."""
+        bars = [{"open": 100, "high": 101, "low": 99, "close": 100,
+                 "volume": 1_000_000} for _ in range(22)]
+        bars[-1]["volume"] = 3_000_000          # today: heavy
+        bars[0]["volume"]  = 100                # 100 days ago: near-zero
+        pos = _make_pos(buy_date=BD_DAY3, buy_price=100.0, verdict=None)
+        ib, sb = _make_ib([pos]), _make_sb([pos])
+        _run(ib, sb, [pos], 102.0, hour=15, minute=50, ohlcv=bars)
+        updates = _verdict_updates(sb)
+        assert updates and "PASS" in updates[0], (
+            f"Heavy volume today must PASS; reading the oldest bar gives FAIL. Got: {updates}")
+
+    def test_volume_check_fails_when_today_is_light_despite_heavy_history(self):
+        """Inverse of the above: today is light, the oldest bar is heavy. The
+        buggy implementation reads the heavy old bar and returns PASS."""
+        bars = [{"open": 100, "high": 101, "low": 99, "close": 100,
+                 "volume": 1_000_000} for _ in range(22)]
+        bars[-1]["volume"] = 100_000            # today: very light -> must FAIL
+        bars[0]["volume"]  = 50_000_000         # 100 days ago: heavy
+        pos = _make_pos(buy_date=BD_DAY3, buy_price=100.0, verdict=None)
+        ib, sb = _make_ib([pos]), _make_sb([pos])
+        with patch.object(execution_agent.notifier, "notify_breakout_verdict_fail"):
+            _run(ib, sb, [pos], 102.0, hour=15, minute=50, ohlcv=bars)
+        updates = _verdict_updates(sb)
+        assert updates and "FAIL" in updates[0], (
+            f"Light volume today must FAIL even with a heavy stale bar. Got: {updates}")
 
     def test_not_evaluated_before_day3(self):
         """Days 1-2: verdict must NOT be written."""

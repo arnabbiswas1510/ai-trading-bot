@@ -188,10 +188,21 @@ TRAIL_TIME_TIERS: list[tuple[int, float]] = [
     ( 8, 0.060),     # >  8 cal days → 6.0% trail
     ( 0, None),      # ≤  7 cal days → no change
 ] if TRAIL_TIME_TIERS_ENABLED else []
-COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 1))
+# Trading days a stock is ineligible for re-entry after being sold. At 1 day a
+# stock that just hit its trailing stop was buyable the next morning while still
+# technically broken. 4-slot portfolio sim, CAGR (full / worst period):
+#     1 day   BROAD +16.6/-1.2   GROWTH +18.0/+9.2
+#     7 days  BROAD +16.6/-1.2   GROWTH +22.5/+13.9
+# A modest, consistent gain and no downside in either universe.
+COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 7))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
+# Floor for the same check: skip if price has fallen this far BELOW the pivot.
+# Without it the buy zone was open-ended downward, so a stale trigger whose
+# breakout had already failed was still eligible. Small buffer so ordinary
+# noise around the pivot doesn't reject a valid entry.
+MAX_PIVOT_BREAKDOWN      = float(os.getenv("MAX_PIVOT_BREAKDOWN", 0.02))  # skip if price > 2% below pivot
 # Minimum quality floor applied in buy loop to avoid low-conviction entries.
 MIN_TRIGGER_SCORE        = int(os.getenv("MIN_TRIGGER_SCORE", 60))
 # Pre-breakout setups are less confirmed; require a higher floor unless marked as
@@ -219,6 +230,9 @@ MOMENTUM_HEALTH_VOL_WEIGHT  = float(os.getenv("MOMENTUM_HEALTH_VOL_WEIGHT",  0.3
 MOMENTUM_HEALTH_SENT_WEIGHT = float(os.getenv("MOMENTUM_HEALTH_SENT_WEIGHT", 0.25))
 # Minimum score gap (trigger Mₜ vs held Mₜ) to auto-swap in Rank & Replace (Day 7+).
 RANK_REPLACE_THRESHOLD      = int(os.getenv("RANK_REPLACE_THRESHOLD", 15))
+# Lower bar to rotate out of a position whose Day 3 breakout verdict was FAIL:
+# the breakout already failed to confirm, so less evidence is needed to replace it.
+RANK_REPLACE_FAIL_THRESHOLD = int(os.getenv("RANK_REPLACE_FAIL_THRESHOLD", 5))
 
 # ── Plateau (stale) exit ──────────────────────────────────────────────────────
 # Sell a position that has gone this many TRADING days without making a new high
@@ -1672,6 +1686,15 @@ def run_market_open_buys(ib: IB):
             print(f"   ⛔ {ticker} is {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
                   f"— extended beyond {MAX_PIVOT_EXTENSION*100:.0f}% buy zone. Skipping.")
             continue
+        # Floor check. The gate above is a CEILING only, so a trigger that has
+        # since collapsed below its pivot still passed — with
+        # TRIGGER_LOOKBACK_DAYS=3 the bot could buy a 3-day-old breakout that had
+        # already failed. A breakout that gives back its pivot is a failed
+        # breakout, and buying it is buying a breakdown.
+        if extension_pct < -MAX_PIVOT_BREAKDOWN:
+            print(f"   ⛔ {ticker} has fallen {abs(extension_pct)*100:.1f}% BELOW pivot "
+                  f"${pivot_price:.2f} — breakout failed, not a valid entry. Skipping.")
+            continue
         print(f"   ✅ {ticker} within buy zone: {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
               f"(max {MAX_PIVOT_EXTENSION*100:.0f}%)")
 
@@ -2696,8 +2719,15 @@ def monitor_portfolio_intraday(ib: IB):
                 buy_price_m     = float(pos["buy_price"])
                 price_pass      = current_price_m > buy_price_m * (1 + BREAKOUT_VERDICT_MIN_GAIN)
 
-                day3_vol  = ohlcv[0]["volume"] if ohlcv else None
-                avg_vol   = (sum(b["volume"] for b in ohlcv[1:21]) / 20) if len(ohlcv) >= 21 else None
+                # _fetch_ohlcv() returns bars sorted ASCENDING (oldest first), so
+                # ohlcv[-1] is today and ohlcv[-21:-1] is the prior 20 sessions.
+                # This previously read ohlcv[0] / ohlcv[1:21] — i.e. a bar from
+                # ~100 days ago compared against the 20 days after it. Both sides
+                # were stale, so the ratio was ~1.0 and vol_pass was almost always
+                # spuriously True, meaning the Day 3 verdict effectively tested
+                # price only and FAIL almost never fired.
+                day3_vol  = ohlcv[-1]["volume"] if ohlcv else None
+                avg_vol   = (sum(b["volume"] for b in ohlcv[-21:-1]) / 20) if len(ohlcv) >= 21 else None
                 vol_pass  = (day3_vol >= avg_vol * BREAKOUT_VERDICT_MIN_VOL_PCT) if (day3_vol and avg_vol) else True
 
                 verdict = "PASS" if (price_pass and vol_pass) else "FAIL"
@@ -2755,8 +2785,22 @@ def monitor_portfolio_intraday(ib: IB):
                 days_held_rr = pos.get("days_held") or 0
                 verdict_rr   = pos.get("breakout_verdict")
 
-                if days_held_rr < 7 or verdict_rr != "PASS":
+                # Rotate out of stalled Day 7+ positions. A FAIL verdict marks a
+                # breakout that never confirmed, which makes it a BETTER rotation
+                # candidate, not a worse one — yet it was previously excluded
+                # here (`verdict_rr != "PASS"`), so the weakest positions were the
+                # only ones that could never be swapped out. That exclusion made
+                # some sense when a FAIL verdict handed the position to the
+                # Intraday Loss Minimiser; with the minimiser disabled it left
+                # FAIL positions with no rotation path at all.
+                #
+                # FAIL positions now rotate on a LOWER score gap than PASS ones,
+                # since less evidence should be needed to abandon a breakout that
+                # already failed to confirm.
+                if days_held_rr < 7:
                     continue
+                swap_threshold = (RANK_REPLACE_THRESHOLD if verdict_rr == "PASS"
+                                  else RANK_REPLACE_FAIL_THRESHOLD)
 
                 # Never rotate out of a position protected by the 8-week hold rule:
                 # a recent 20%-in-3-weeks leader is exactly what we want to keep.
@@ -2772,7 +2816,7 @@ def monitor_portfolio_intraday(ib: IB):
                     pos.get("entry_final_score") or pos.get("entry_quality_score") or 0
                 )
 
-                if best_trigger_score > comparator_score + RANK_REPLACE_THRESHOLD:
+                if best_trigger_score > comparator_score + swap_threshold:
                     mt_label = f"M\u209c={comparator_score:.1f}" if mt is not None else f"entry={comparator_score}"
                     reason = (
                         f"Rank & Replace Swap (Day 7+) — replaced with superior breakout {best_ticker} "
