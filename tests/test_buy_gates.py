@@ -72,17 +72,55 @@ class TestGate1StockSlots:
         ib.placeOrder.assert_not_called()
 
 
-class TestAIRatingSorting:
-    def test_buys_highest_ai_rated_trigger_first(self):
+class TestTriggerRankingAndVetting:
+    def test_buys_highest_scored_trigger_first(self):
         portfolio = [make_position(t) for t in ['AAPL', 'MSFT', 'NVDA']]
-        t_tsla = make_trigger('TSLA', close_price=100.0); t_tsla['ai_rating'] = 50
-        t_meta = make_trigger('META', close_price=100.0); t_meta['ai_rating'] = 95
-        t_amzn = make_trigger('AMZN', close_price=100.0); t_amzn['ai_rating'] = None
+        t_tsla = make_trigger('TSLA', close_price=100.0, final_score=70)
+        t_meta = make_trigger('META', close_price=100.0, final_score=95)
+        t_amzn = make_trigger('AMZN', close_price=100.0, final_score=80)
         supabase = make_supabase_mock(daily_triggers=[t_tsla, t_meta, t_amzn], portfolio=portfolio)
         ib = make_ib_mock(symbols=['AAPL', 'MSFT', 'NVDA', 'META'])
         _run_buys(ib, supabase)
         first_contract = ib.placeOrder.call_args_list[0][0][0]
         assert first_contract.symbol == 'META'
+
+    def test_unvetted_trigger_is_skipped_not_bought_on_technicals(self):
+        """
+        Regression: ai_evaluator.py silently drops tickers from its batch
+        ("lost in the middle"), leaving final_score NULL. The buy gate used to
+        fall back to quality_score — a pure technical score — which bought those
+        names while bypassing every AI guardrail. It must now fail closed.
+        """
+        portfolio = [make_position(t) for t in ["AAPL", "MSFT", "NVDA"]]
+        trig = make_trigger("TSLA", close_price=100.0, final_score=None)
+        trig["trigger_type"]  = "BREAKOUT"
+        trig["quality_score"] = 95    # strong technicals ...
+        trig["ai_rating"]     = None  # ... but never AI-vetted
+        supabase = make_supabase_mock(daily_triggers=[trig], portfolio=portfolio)
+        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "TSLA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_not_called()
+
+    def test_unvetted_trigger_skipped_even_when_pre_breakout(self):
+        portfolio = [make_position(t) for t in ["AAPL", "MSFT", "NVDA"]]
+        trig = make_trigger("TSLA", close_price=100.0, final_score=None)
+        trig["trigger_type"]  = "PRE_BREAKOUT"
+        trig["quality_score"] = 99
+        supabase = make_supabase_mock(daily_triggers=[trig], portfolio=portfolio)
+        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "TSLA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_not_called()
+
+    def test_adjusted_score_still_takes_precedence(self):
+        """adjusted_score (post-penalty) remains the primary gate input."""
+        portfolio = [make_position(t) for t in ["AAPL", "MSFT", "NVDA"]]
+        trig = make_trigger("TSLA", close_price=100.0, final_score=95)
+        trig["trigger_type"]    = "BREAKOUT"
+        trig["adjusted_score"]  = 40   # penalised below the floor
+        supabase = make_supabase_mock(daily_triggers=[trig], portfolio=portfolio)
+        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "TSLA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_not_called()
 
 
 class TestMarketDirectionGate:

@@ -122,9 +122,16 @@ def make_trigger(ticker: str,
                  volume_surge: float = 1.5,
                  pivot_distance_pct: float = -0.5,
                  days_ago: int = 0,
-                 final_score: int | None = None,
+                 final_score: int | None = 75,
                  rs_score: int | None = None) -> dict:
-    """Factory for a daily_triggers Supabase row."""
+    """
+    Factory for a daily_triggers Supabase row.
+
+    final_score defaults to 75 (a normally AI-vetted trigger that clears both
+    MIN_TRIGGER_SCORE and MIN_PRE_BREAKOUT_SCORE). Pass final_score=None to
+    simulate a trigger that ai_evaluator.py failed to rate — the buy gate must
+    fail closed and skip those.
+    """
     triggered_at = (
         datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=days_ago)
     ).isoformat()

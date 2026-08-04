@@ -69,7 +69,7 @@ def test_smart_polling_fast_fill(mock_get_live_price, mock_get_supabase_client, 
     type(mock_trade.orderStatus).status = PropertyMock(side_effect=['Submitted', 'Submitted', 'Filled', 'Filled', 'Filled'])
     mock_ib.placeOrder.return_value = mock_trade
     
-    triggers = [{"ticker": "AAPL", "close_price": 99.0, "volume_surge": 2.0}]
+    triggers = [{"ticker": "AAPL", "close_price": 99.0, "volume_surge": 2.0, "final_score": 75}]
     mock_get_supabase_client.return_value = FakeSupabaseClient(triggers, [])
     
     with patch('execution_agent.get_own_cash', return_value=100000.0), \
@@ -94,7 +94,7 @@ def test_smart_polling_timeout(mock_get_live_price, mock_get_supabase_client, mo
     type(mock_trade.orderStatus).status = PropertyMock(return_value='Submitted')
     mock_ib.placeOrder.return_value = mock_trade
     
-    triggers = [{"ticker": "AAPL", "close_price": 99.0, "volume_surge": 2.0}]
+    triggers = [{"ticker": "AAPL", "close_price": 99.0, "volume_surge": 2.0, "final_score": 75}]
     mock_get_supabase_client.return_value = FakeSupabaseClient(triggers, [])
     
     with patch('execution_agent.get_own_cash', return_value=100000.0), \

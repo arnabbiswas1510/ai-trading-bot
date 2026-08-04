@@ -1403,15 +1403,26 @@ def run_market_open_buys(ib: IB):
 
         # 🛡️ Final score floor (quality guardrail) ──────────────────────────────
         trigger_type = str(trigger.get("trigger_type") or "BREAKOUT")
+
+        # FAIL CLOSED on un-vetted triggers.
+        # A trigger only carries a final_score once ai_evaluator.py has rated it.
+        # Previously this fell back to quality_score (a pure technical score),
+        # which silently let AI-skipped triggers through the gate while bypassing
+        # every AI guardrail (sub-$15 cap, low-volume/small-cap penalties, the
+        # slow-mover ATR cap, and sentiment/news screening). When the evaluator
+        # drops tickers, those buys must be skipped, not waved through.
         candidate_score = (
             trigger.get("adjusted_score")
             if trigger.get("adjusted_score") is not None
             else trigger.get("final_score")
         )
         if candidate_score is None:
-            candidate_score = trigger.get("quality_score")
-        if candidate_score is None:
-            candidate_score = trigger.get("ai_rating")
+            print(
+                f"   🚫 {ticker} {trigger_type} has no AI-evaluated score "
+                f"(final_score is NULL — ai_evaluator.py did not rate it). "
+                f"Skipping: refusing to buy on technicals alone."
+            )
+            continue
 
         if trigger_type == "PRE_BREAKOUT_RELAXED":
             min_score = MIN_RELAXED_TRIGGER_SCORE
@@ -1420,7 +1431,7 @@ def run_market_open_buys(ib: IB):
         else:
             min_score = MIN_TRIGGER_SCORE
 
-        if candidate_score is not None and float(candidate_score) < float(min_score):
+        if float(candidate_score) < float(min_score):
             print(f"   🚫 {ticker} {trigger_type} score {candidate_score} < floor {min_score}. Skipping.")
             continue
 

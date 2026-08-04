@@ -27,6 +27,16 @@ ai_client = OpenAI(api_key=OPENAI_API_KEY)
 _GRADE_BOUNDARIES = [(70, "A", 15), (50, "B", 5), (30, "C", 0)]
 
 
+# ── AI batching configuration ─────────────────────────────────────────────────
+# The evaluator used to send every trigger in a single prompt. With ~30 tickers
+# the model reliably returned only the first few and last few entries and
+# silently dropped the middle ("lost in the middle"), leaving those rows with a
+# NULL final_score. Small batches keep every ticker inside the model's reliable
+# attention window.
+AI_BATCH_SIZE   = int(os.environ.get("AI_BATCH_SIZE", 8))
+AI_BATCH_RETRIES = int(os.environ.get("AI_BATCH_RETRIES", 1))
+
+
 def ai_grade_and_bonus(rating: int) -> tuple[str, int]:
     """Return (letter_grade, score_bonus) for an AI rating 1-100."""
     for threshold, grade, bonus in _GRADE_BOUNDARIES:
@@ -114,69 +124,49 @@ def update_trigger_scores(ticker: str, fields: dict):
 # compute_final_score imported from scoring.py
 
 
-def main():
-    triggers = fetch_daily_triggers()
-    if not triggers:
-        print("😴 No breakouts found today. Skipping AI evaluation.")
-        return
+def _format_trigger_block(t: dict, fundamentals: dict, news_by_ticker: dict) -> str:
+    """Renders the per-ticker context block used in the AI prompt."""
+    ticker  = t["ticker"]
+    f_data  = fundamentals.get(ticker, {})
+    price   = t.get("close_price") or "N/A"
+    # Use 'or' fallback (not .get default) — NULL DB columns return None even with a default
+    avg_vol = t.get("avg_volume_50") or 0
+    rs      = t.get("rs_score") or 50
+    size    = f_data.get("company_size") or "Unknown"
+    headlines = news_by_ticker.get(ticker, [])
+    news_str  = " | ".join(headlines[:5]) if headlines else "No recent news"
 
-    history = fetch_trade_history()
+    atr_pct  = t.get("atr_pct") or 0.0
+    est_days = t.get("est_days_to_target") or 999
+    swing_label = (
+        "🚀 Fast mover" if 0 < est_days <= 15 else
+        "✅ Swing-compatible" if est_days <= 30 else
+        "⚠️ Slow mover" if est_days <= 60 else
+        "❌ Long-term only"
+    )
 
-    # Fetch fundamentals from watchlist
-    tickers = [t["ticker"] for t in triggers]
-    fundamentals = fetch_watchlist_data(tickers)
+    return (
+        f"\n- {ticker}:\n"
+        f"  Price=${price}, AvgDailyVol={avg_vol:,}, CompanySize={size}, RS_vs_SPY={rs}/100\n"
+        f"  VolSurge={t.get('volume_surge')}x, DistFromPivot={t.get('pivot_distance_pct')}%\n"
+        f"  ATR={atr_pct}%/day, EstDaysTo25%={est_days} [{swing_label}]\n"
+        f"  Q-EPS={f_data.get('q_eps_growth','N/A')}%, A-EPS={f_data.get('a_eps_growth','N/A')}%,"
+        f" RevGrowth={f_data.get('revenue_growth','N/A')}%, ROE={f_data.get('roe','N/A')}%\n"
+        f"  Analyst={f_data.get('analyst_rating','N/A')}\n"
+        f"  RecentNews: {news_str}\n"
+    )
 
-    # Format trade history for AI context
-    history_text = "Recent closed trades:\n"
-    if history:
-        for t in history:
-            history_text += (f"- {t['ticker']}: {t.get('percent_return', 0.0):.2f}% "
-                             f"(Reason: {t.get('sell_reason', 'N/A')})\n")
-    else:
-        history_text += "No recent trades available yet.\n"
 
-    # Fetch news headlines per ticker (up to 8 headlines each)
-    news_by_ticker = {}
-    for ticker in tickers:
-        headlines = fetch_news_headlines(ticker)
-        news_by_ticker[ticker] = headlines
-        if headlines:
-            print(f"  📰 {ticker}: {len(headlines)} headlines fetched")
-
-    # Format breakouts with all new context for the AI
+def build_prompt(batch: list[dict], fundamentals: dict, news_by_ticker: dict,
+                 history_text: str) -> str:
+    """Builds the AI prompt for one batch of triggers."""
+    tickers = [t["ticker"] for t in batch]
     breakouts_text = "Today's Breakouts (full context):\n"
-    for t in triggers:
-        ticker  = t["ticker"]
-        f_data  = fundamentals.get(ticker, {})
-        price   = t.get("close_price") or "N/A"
-        # Use 'or' fallback (not .get default) — NULL DB columns return None even with a default
-        avg_vol = t.get("avg_volume_50") or 0
-        rs      = t.get("rs_score") or 50
-        size    = f_data.get("company_size") or "Unknown"
-        headlines = news_by_ticker.get(ticker, [])
-        news_str  = " | ".join(headlines[:5]) if headlines else "No recent news"
+    for t in batch:
+        breakouts_text += _format_trigger_block(t, fundamentals, news_by_ticker)
 
-        atr_pct  = t.get("atr_pct") or 0.0
-        est_days = t.get("est_days_to_target") or 999
-        swing_label = (
-            "🚀 Fast mover" if 0 < est_days <= 15 else
-            "✅ Swing-compatible" if est_days <= 30 else
-            "⚠️ Slow mover" if est_days <= 60 else
-            "❌ Long-term only"
-        )
-
-        breakouts_text += (
-            f"\n- {ticker}:\n"
-            f"  Price=${price}, AvgDailyVol={avg_vol:,}, CompanySize={size}, RS_vs_SPY={rs}/100\n"
-            f"  VolSurge={t.get('volume_surge')}x, DistFromPivot={t.get('pivot_distance_pct')}%\n"
-            f"  ATR={atr_pct}%/day, EstDaysTo25%={est_days} [{swing_label}]\n"
-            f"  Q-EPS={f_data.get('q_eps_growth','N/A')}%, A-EPS={f_data.get('a_eps_growth','N/A')}%,"
-            f" RevGrowth={f_data.get('revenue_growth','N/A')}%, ROE={f_data.get('roe','N/A')}%\n"
-            f"  Analyst={f_data.get('analyst_rating','N/A')}\n"
-            f"  RecentNews: {news_str}\n"
-        )
-
-    prompt = f"""You are an expert AI trading system specializing in CANSLIM swing trading.
+    ticker_list = ", ".join(tickers)
+    return f"""You are an expert AI trading system specializing in CANSLIM swing trading.
 Your investor has a SWING TRADER horizon of 2-6 weeks (10-30 trading days).
 They need stocks that can move +25% within that window before hitting a -7% trailing stop.
 Long-term stories that take months to play out are NOT suitable — the capital must be
@@ -216,30 +206,133 @@ SCORING RULES (non-negotiable — swing trade horizon is the primary filter):
    (b) the key risk to the thesis, (c) what would make this a conviction trade.
    Be specific — avoid generic statements.
 
+COMPLETENESS REQUIREMENT (critical):
+You MUST return exactly {len(tickers)} entries — one for EVERY ticker listed below,
+using the ticker symbol as the JSON key, even if you consider a stock unattractive.
+A low rating is always preferable to omitting a ticker. Do NOT skip, merge, summarise
+or truncate. Never return only the best candidates.
+Required tickers: {ticker_list}
+
 Return ONLY valid JSON in this exact format:
 {{
   "TICKER1": {{"rating": 85, "sentiment": 70, "rationale": "ATR of 1.8%/day suggests..."}},
   "TICKER2": {{"rating": 31, "sentiment": 25, "rationale": "ATR of 0.3%/day means..."}}
 }}"""
 
-    print("[*] Sending enriched data to OpenAI for analysis...")
-    try:
-        response = ai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are a helpful trading assistant that strictly outputs JSON."},
-                {"role": "user", "content": prompt}
-            ]
-        )
 
-        result_text = response.choices[0].message.content
-        ratings_raw = json.loads(result_text)
-        print(f"✅ Received AI ratings: {list(ratings_raw.keys())}")
+def call_ai_batch(prompt: str) -> dict:
+    """Single OpenAI call returning the parsed ratings dict. Raises on failure."""
+    response = ai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": "You are a helpful trading assistant that strictly outputs JSON."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return json.loads(response.choices[0].message.content)
 
-    except Exception as e:
-        print(f"❌ OpenAI API call failed: {e}")
+
+def evaluate_triggers(triggers: list[dict], fundamentals: dict,
+                      news_by_ticker: dict, history_text: str) -> tuple[dict, list[str]]:
+    """
+    Evaluates all *triggers* in small batches, validating that the model returned
+    an entry for every ticker and retrying the stragglers.
+
+    Returns (ratings_by_ticker, still_missing_tickers).
+    """
+    ratings: dict = {}
+
+    for start in range(0, len(triggers), AI_BATCH_SIZE):
+        batch = triggers[start:start + AI_BATCH_SIZE]
+        batch_no = start // AI_BATCH_SIZE + 1
+        total_batches = (len(triggers) + AI_BATCH_SIZE - 1) // AI_BATCH_SIZE
+        pending = list(batch)
+
+        for attempt in range(AI_BATCH_RETRIES + 1):
+            wanted = [t["ticker"] for t in pending]
+            label = f"batch {batch_no}/{total_batches}"
+            if attempt:
+                label += f" (retry {attempt} for {len(wanted)} missing)"
+            print(f"[*] Sending {label}: {', '.join(wanted)}")
+
+            try:
+                got = call_ai_batch(build_prompt(pending, fundamentals, news_by_ticker, history_text))
+            except Exception as e:
+                print(f"  ❌ OpenAI call failed for {label}: {e}")
+                got = {}
+
+            # Normalise keys so casing/whitespace drift doesn't look like a miss.
+            normalised = {str(k).strip().upper(): v for k, v in got.items()}
+            for t in pending:
+                key = t["ticker"].strip().upper()
+                if key in normalised:
+                    ratings[t["ticker"]] = normalised[key]
+
+            pending = [t for t in pending if t["ticker"] not in ratings]
+            if not pending:
+                break
+
+        if pending:
+            print(f"  ⚠️ Still missing after retries: {[t['ticker'] for t in pending]}")
+
+    missing = [t["ticker"] for t in triggers if t["ticker"] not in ratings]
+    return ratings, missing
+
+
+def main():
+    triggers = fetch_daily_triggers()
+    if not triggers:
+        print("😴 No breakouts found today. Skipping AI evaluation.")
         return
+
+    history = fetch_trade_history()
+
+    # Fetch fundamentals from watchlist
+    tickers = [t["ticker"] for t in triggers]
+    fundamentals = fetch_watchlist_data(tickers)
+
+    # Format trade history for AI context
+    history_text = "Recent closed trades:\n"
+    if history:
+        for t in history:
+            history_text += (f"- {t['ticker']}: {t.get('percent_return', 0.0):.2f}% "
+                             f"(Reason: {t.get('sell_reason', 'N/A')})\n")
+    else:
+        history_text += "No recent trades available yet.\n"
+
+    # Fetch news headlines per ticker (up to 8 headlines each)
+    news_by_ticker = {}
+    for ticker in tickers:
+        headlines = fetch_news_headlines(ticker)
+        news_by_ticker[ticker] = headlines
+        if headlines:
+            print(f"  📰 {ticker}: {len(headlines)} headlines fetched")
+
+    # ── Batched AI evaluation (with completeness validation + retry) ──────────
+    ratings_raw, missing = evaluate_triggers(
+        triggers, fundamentals, news_by_ticker, history_text
+    )
+    print(f"✅ Received AI ratings for {len(ratings_raw)}/{len(triggers)} tickers.")
+
+    if missing:
+        # Fail loudly. These rows keep a NULL final_score and the execution agent
+        # now fails closed on them, so they are silently un-buyable otherwise.
+        print(f"❌ No AI rating for {len(missing)} ticker(s): {', '.join(missing)}")
+        try:
+            from telegram_notifier import TelegramNotifier
+            TelegramNotifier(
+                bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+                chat_ids=os.environ.get("TELEGRAM_CHAT_IDS", "").split(",")
+            ).notify_exception(
+                "ai_evaluator.py — incomplete AI ratings",
+                RuntimeError(
+                    f"{len(missing)} of {len(triggers)} triggers were not rated by the AI "
+                    f"and will be skipped by the buy loop: {', '.join(missing)}"
+                )
+            )
+        except Exception as _alert_err:
+            print(f"  ⚠️ Could not send missing-ratings alert: {_alert_err}")
 
     # ── Compute all components and write back ─────────────────────────────────
     scored_triggers = []
