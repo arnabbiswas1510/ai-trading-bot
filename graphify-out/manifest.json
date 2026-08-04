@@ -593,5 +593,10 @@
     "mtime": 1785821463.9864652,
     "ast_hash": "8ae30043dd201cce3f05818c239a3e42",
     "semantic_hash": ""
+  },
+  "decisions/2026-08-04_backtest-noise-floor-and-slot-count.md": {
+    "mtime": 1785821821.415784,
+    "ast_hash": "3fef5dd1d23aabcc954bb501bb8587fc",
+    "semantic_hash": ""
   }
 }
