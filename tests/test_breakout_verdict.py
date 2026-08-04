@@ -175,16 +175,16 @@ class TestBreakoutVerdict:
 class TestIntradayLossMinimiser:
 
     def test_fires_on_pullback_from_high_near_entry(self):
-        """High=$101 (>=99.5% of $100), current $97.9 (3.1% below high), Day 4 (<7)
+        """High=$101 (>=99.5% of $100), current $98.9 (2.1% below high), Day 4 (<7)
         -> exit ARMED (not immediate sell) with a tight trailing stop."""
         pos = _make_pos(buy_date=BD_DAY4, buy_price=100.0, verdict="FAIL",
                         intraday_high_today=101.0)
         ib, sb = _make_ib([pos]), _make_sb([pos])
-        mock_sell, mock_arm = _run(ib, sb, [pos], 97.9, hour=11, minute=30)
+        mock_sell, mock_arm = _run(ib, sb, [pos], 98.9, hour=11, minute=30)
         mock_arm.assert_called_once()
         mock_sell.assert_not_called()
         reason = mock_arm.call_args.args[5]
-        assert "Intraday Loss Minimiser" in reason and "3.0%" in reason
+        assert "Intraday Loss Minimiser" in reason and "2.0%" in reason
 
     def test_does_not_fire_on_noise_level_pullback(self):
         """
@@ -242,33 +242,35 @@ class TestIntradayLossMinimiser:
 
 class TestEarlyLossKillSwitch:
 
-    def test_fires_on_day0_at_seven_percent_loss(self):
-        """Day 0 at -7.0% or worse must arm the exit (not sell instantly)."""
+    def test_fires_on_day0_at_two_percent_loss(self):
+        """Day 0 at -2.0% or worse must arm the exit (not sell instantly)."""
         pos = _make_pos(buy_date=BD_DAY0, buy_price=100.0, verdict=None, intraday_high_today=None)
         ib, sb = _make_ib([pos]), _make_sb([pos])
-        mock_sell, mock_arm = _run(ib, sb, [pos], 93.0, hour=11, minute=30)
+        mock_sell, mock_arm = _run(ib, sb, [pos], 98.0, hour=11, minute=30)
         mock_arm.assert_called_once()
         mock_sell.assert_not_called()
         reason = mock_arm.call_args.args[5]
         assert "Early Loss Kill-switch" in reason
 
-    def test_does_not_fire_on_normal_breakout_undercut(self):
+    def test_tight_trigger_arms_rather_than_sells(self):
         """
-        Regression: the kill-switch used to fire at -2%, which is well inside the
-        band a legitimate breakout routinely undercuts before working. O'Neil's
-        maximum loss discipline is 7-8%.
+        Regression guard for a wrong assumption: this threshold was once raised
+        to 7% on the theory that 2% cuts legitimate breakouts. It does not sell —
+        it arms a 0.6% trailing exit that rides any bounce — so a tight trigger
+        is cheap. An FMP replay of the 13 real closed trades showed loosening it
+        cost ~$2,450.
         """
         pos = _make_pos(buy_date=BD_DAY0, buy_price=100.0, verdict=None, intraday_high_today=None)
         ib, sb = _make_ib([pos]), _make_sb([pos])
-        mock_sell, mock_arm = _run(ib, sb, [pos], 98.0, hour=11, minute=30)
-        mock_arm.assert_not_called()
+        mock_sell, mock_arm = _run(ib, sb, [pos], 97.5, hour=11, minute=30)
+        mock_arm.assert_called_once()
         mock_sell.assert_not_called()
 
     def test_does_not_fire_on_day1_if_above_threshold(self):
-        """Day 1 at -6.9% should not trigger the Day 0-1 hard stop."""
+        """Day 1 at -1.9% should not trigger the Day 0-1 hard stop."""
         pos = _make_pos(buy_date=BD_DAY1, buy_price=100.0, verdict=None, intraday_high_today=None)
         ib, sb = _make_ib([pos]), _make_sb([pos])
-        mock_sell, mock_arm = _run(ib, sb, [pos], 93.1, hour=11, minute=30)
+        mock_sell, mock_arm = _run(ib, sb, [pos], 98.1, hour=11, minute=30)
         mock_sell.assert_not_called()
         mock_arm.assert_not_called()
 

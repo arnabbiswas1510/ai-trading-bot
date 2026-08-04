@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1785817328.005284,
-    "ast_hash": "1dd7756bae2fbc134a118dc7b2a63af9",
+    "mtime": 1785818912.6399763,
+    "ast_hash": "f8717205eac335e0535493151e50d8a8",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -270,8 +270,8 @@
     "semantic_hash": ""
   },
   "tests/test_breakout_verdict.py": {
-    "mtime": 1785817393.608043,
-    "ast_hash": "daa664ccb1f844ea5cd48b7d1dc45df6",
+    "mtime": 1785818958.7826214,
+    "ast_hash": "e157b4657885ddd523bb07c170483ff5",
     "semantic_hash": ""
   },
   "tests/test_buy_fill_verification.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "tests/test_dynamic_trail.py": {
-    "mtime": 1785817354.0715928,
-    "ast_hash": "3daaf67d7ad7932babf7d2b099438e6f",
+    "mtime": 1785818931.4045274,
+    "ast_hash": "0e1a32f10319349a12c81e6b3e6373b6",
     "semantic_hash": ""
   },
   "tests/test_ibkr_delayed_price.py": {
@@ -572,6 +572,11 @@
   "decisions/2026-08-04_widen-exits-and-tighten-entries.md": {
     "mtime": 1785817571.358679,
     "ast_hash": "38d4729eafc3c92286d00646423d2d9b",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-04_backtest-corrected-exit-parameters.md": {
+    "mtime": 1785819017.048617,
+    "ast_hash": "1ec6484ada6b332e81bf73359cd66d2a",
     "semantic_hash": ""
   }
 }

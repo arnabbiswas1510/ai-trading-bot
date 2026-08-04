@@ -149,30 +149,36 @@ STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
 # ── Dynamic trailing stop tightening tiers ───────────────────────────────────
 # Lever 1 (profit): unrealized gain % → trail %.
 #
-# These were previously 2-5%, which stopped winners out during ordinary
-# consolidations. A growth stock that has run +20% routinely pulls back 5-8%
-# before continuing; a 2% trail guarantees an exit at +18% instead of letting
-# the position become the outsized winner that pays for the losers. CAN SLIM's
-# expectancy depends entirely on that right tail, so trails are now never
-# tighter than 5% and only begin tightening at a +20% gain — below that the base
-# STOP_LOSS_PCT (7%) is already appropriate and is left alone.
+# These tiers were widened once (to 5-6.5%, starting only at +20%) on the theory
+# that they were capping winners. An FMP-based replay of the 13 real closed
+# trades CONTRADICTED that: widening them cost roughly $790 over the sample,
+# because the tiers that actually get exercised are the low ones (+3%, +8%), and
+# on this population they were correctly banking 3-9% moves. The tiers above
+# +14% were never exercised at all — no trade in the sample ever exceeded +9.6%
+# — so there is no evidence either way about them.
+#
+# Reverted to the validated ladder. Note the ratchet in
+# _compute_dynamic_trail_pct() is one-way, so this ladder must stay monotonically
+# tightening; you cannot have tight-early profit taking AND a wide late trail.
+# Choosing tight-early is a deliberate bet that entries produce 3-9% moves. If
+# the tightened screener starts producing genuine 20%+ leaders, revisit this
+# together with POWER_HOLD (see the ADR).
 # Entries are (threshold, trail_pct), listed highest-threshold-first.
 TRAIL_PROFIT_TIERS: list[tuple[float, float]] = [
-    (50.0, 0.050),   # ≥ 50% gain → 5.0% trail
-    (30.0, 0.060),   # ≥ 30% gain → 6.0% trail
-    (20.0, 0.065),   # ≥ 20% gain → 6.5% trail
-    ( 0.0, None),    # < 20%      → no change (base STOP_LOSS_PCT of 7% applies)
+    (20.0, 0.020),   # ≥ 20% gain → 2% trail
+    (14.0, 0.030),   # ≥ 14% gain → 3% trail
+    ( 8.0, 0.040),   # ≥  8% gain → 4% trail
+    ( 3.0, 0.050),   # ≥  3% gain → 5% trail
+    ( 0.0, None),    # <  3%      → no change (base STOP_LOSS_PCT applies)
 ]
-# Lever 2 (time): DISABLED BY DEFAULT.
+# Lever 2 (time): tightens the stop as calendar days pass.
 #
-# This previously tightened the stop purely because time had passed — 6% at day
-# 8 down to 3.5% at day 30 — regardless of how the position was performing. Any
-# position still open at day 30 was therefore near-certain to be stopped out on
-# noise, which made a large winner structurally impossible. O'Neil's leaders
-# need 8-12 weeks to develop. Time held is not a sell signal: a position that is
-# working should not be penalised for still working. Set
-# TRAIL_TIME_TIERS_ENABLED=true to restore the legacy behaviour.
-TRAIL_TIME_TIERS_ENABLED = os.getenv("TRAIL_TIME_TIERS_ENABLED", "false").lower() == "true"
+# Theoretically objectionable (time held is not a sell signal), but the replay
+# showed it made NO measurable difference on the sample — every configuration
+# with and without it scored identically, because positions rarely survived long
+# enough for it to bind. Left enabled rather than shipping an unvalidated change;
+# set TRAIL_TIME_TIERS_ENABLED=false to disable.
+TRAIL_TIME_TIERS_ENABLED = os.getenv("TRAIL_TIME_TIERS_ENABLED", "true").lower() == "true"
 TRAIL_TIME_TIERS: list[tuple[int, float]] = [
     (30, 0.035),     # > 30 cal days → 3.5% trail
     (22, 0.040),     # > 22 cal days → 4.0% trail
@@ -220,17 +226,23 @@ BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0
 # Intraday Loss Minimiser: sell when price drops this % below today's rolling intraday
 # high, provided that high is near (within 0.5%) or above the entry price.
 #
-# Was 0.005 (0.5%) — that is noise, not a signal. A $250 stock wiggling $1.25
-# tripped it, and it closed GE, THC and TTWO for losses before those breakouts
-# had any chance to develop. Widened to a level that reflects a genuine intraday
-# reversal rather than normal spread/tick movement.
-INTRADAY_PULLBACK_PCT        = float(os.getenv("INTRADAY_PULLBACK_PCT",        0.03))  # 3.0%
+# THE single highest-impact parameter in the system. At the old 0.005 (0.5%) this
+# was selling on spread/tick noise — a $250 stock wiggling $1.25 tripped it — and
+# it closed GE, THC and TTWO for losses. An FMP replay of the 13 real closed
+# trades swings from -$1,923 at 0.5% to +$3,418 at 2%, and every value tested in
+# the 2-5% range beats 0.5% by more than $4,000. The surface is flat and
+# non-monotonic within 2-5%, so the precise value is inside the noise; 2% is the
+# sample optimum and is also the most conservative point on that plateau.
+INTRADAY_PULLBACK_PCT        = float(os.getenv("INTRADAY_PULLBACK_PCT",        0.02))  # 2.0%
 # Early damage-control kill-switch for fresh entries (Day 0-1).
 #
-# Was 0.02 (2%) — well inside the band a legitimate breakout routinely undercuts
-# before working, so it converted normal volatility into realised losses.
-# O'Neil's own maximum loss discipline is 7-8% from the entry price.
-EARLY_LOSS_STOP_PCT          = float(os.getenv("EARLY_LOSS_STOP_PCT",          0.07))  # 7.0%
+# Briefly raised to 0.07 on the theory that 2% sits inside the band a legitimate
+# breakout undercuts. The replay contradicted this decisively (-$2,454 over the
+# sample) and the original reasoning was wrong: this trigger does not sell, it
+# ARMS a 0.6% trailing exit (see arm_exit()), which rides any bounce back up. A
+# tight trigger is therefore cheap, and loosening it just converts small losses
+# into large ones. Reverted.
+EARLY_LOSS_STOP_PCT          = float(os.getenv("EARLY_LOSS_STOP_PCT",          0.02))  # 2.0%
 # Day threshold when universal intraday pullback minimiser becomes active.
 INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2))
 
@@ -250,11 +262,19 @@ ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25)) 
 # proper breakout is behaving like a genuine market leader and should be held for
 # at least 8 weeks rather than trimmed on the first wobble.
 #
-# This is the single mechanism that lets a position become the outsized winner
+# This is the mechanism that would let a position become the outsized winner
 # CAN SLIM expectancy depends on. While a position is in its power-hold window we
 # suppress the DISCRETIONARY exits (EMA-21 exit, Rank & Replace, Intraday Loss
 # Minimiser). The IBKR trailing stop is deliberately NOT suspended — it remains
 # the disaster backstop, so this bounds opportunity cost, never risk.
+#
+# NOTE (unvalidated): in the FMP replay of the 13 real closed trades this rule
+# NEVER fired — not one position ever reached +20% (best was +9.6%). It is
+# therefore untested, and it is currently in tension with TRAIL_PROFIT_TIERS,
+# which clamps to a 2% trail at +20% and would stop a leader out before the hold
+# window did much work. Kept because it is inert unless a genuine leader appears
+# and it cannot increase risk. Revisit both together if the tightened screener
+# starts producing 20%+ moves.
 POWER_HOLD_ENABLED        = os.getenv("POWER_HOLD_ENABLED", "true").lower() == "true"
 POWER_HOLD_GAIN_PCT       = float(os.getenv("POWER_HOLD_GAIN_PCT", 20.0))
 POWER_HOLD_TRIGGER_DAYS   = int(os.getenv("POWER_HOLD_TRIGGER_DAYS", 21))   # 3 weeks
