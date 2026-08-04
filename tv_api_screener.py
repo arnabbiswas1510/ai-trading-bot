@@ -15,6 +15,36 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 TV_SCANNER_URL = "https://scanner.tradingview.com/america/scan?label-product=screener-stock"
 
+# ── CAN SLIM fundamental thresholds ───────────────────────────────────────────
+# Env-tunable so they can be A/B tested and rolled back without a code change.
+#
+# Live trading review found the screener was admitting stocks that are not CAN
+# SLIM candidates at all. Revenue growth only had to be positive (> 0), so SWK
+# entered at score 81 on 0.6% revenue growth with 496% EPS growth — an easy-comp
+# accounting artifact, not a growth business. O'Neil requires ~25% sales growth.
+#
+# MIN_REVENUE_GROWTH defaults to 15 rather than 25 as a deliberate first phase:
+# 25% leaves 52 of 248 watchlist names, 15% leaves 116. Since the exit changes
+# lengthen holds (cutting entry demand roughly 7x), even the strict setting
+# supplies far more triggers than the 4 position slots can absorb. Raise toward
+# 25 once the wider exits have been observed in live trading.
+MIN_REVENUE_GROWTH   = float(os.environ.get("MIN_REVENUE_GROWTH", 15))
+# Raised 15 -> 25 to match O'Neil's annual earnings requirement.
+MIN_ANNUAL_EPS_GROWTH = float(os.environ.get("MIN_ANNUAL_EPS_GROWTH", 25))
+# Quarterly acceleration is the strongest CAN SLIM signal — unchanged.
+MIN_QUARTERLY_EPS_GROWTH = float(os.environ.get("MIN_QUARTERLY_EPS_GROWTH", 20))
+
+# Sectors structurally incapable of the earnings acceleration CAN SLIM looks for.
+# Live trading bought REITs (EGP, FR), an insurer (TRV) and a bank (WSFS) — all
+# rate-driven, book-value businesses whose "growth" is an interest-rate artifact.
+# Set EXCLUDED_SECTORS="" to disable the exclusion entirely.
+_DEFAULT_EXCLUDED_SECTORS = "Finance,Real Estate,Utilities"
+EXCLUDED_SECTORS = [
+    s.strip() for s in os.environ.get("EXCLUDED_SECTORS", _DEFAULT_EXCLUDED_SECTORS).split(",")
+    if s.strip()
+]
+
+
 # Map TradingView numeric ratings (-1 to 1) to text
 def get_rating_text(rating_val):
     if rating_val is None:
@@ -54,19 +84,25 @@ def run_screener():
         "filter": [
             # Raised $10→$15: aligns with AI rating cap boundary (sub-$15 stocks capped at 45)
             {"left": "close", "operation": "egreater", "right": 15},
-            # Relaxed 20%→15%: captures recovering momentum stocks and one-bad-quarter situations
-            # Annual is secondary to quarterly in CANSLIM predictiveness
-            {"left": "earnings_per_share_diluted_yoy_growth_ttm", "operation": "greater", "right": 15},
+            # O'Neil requires strong annual earnings growth alongside quarterly
+            # acceleration. Was 15 — too low to distinguish a growth business.
+            {"left": "earnings_per_share_diluted_yoy_growth_ttm", "operation": "greater",
+             "right": MIN_ANNUAL_EPS_GROWTH},
             # KEPT at 20%: quarterly acceleration is the strongest CANSLIM signal
-            {"left": "earnings_per_share_diluted_qoq_growth_fq", "operation": "greater", "right": 20},
+            {"left": "earnings_per_share_diluted_qoq_growth_fq", "operation": "greater",
+             "right": MIN_QUARTERLY_EPS_GROWTH},
             # Raised 100K→250K: eliminates dead-zone stocks that score 0 on liquidity anyway
             {"left": "average_volume_30d_calc", "operation": "greater", "right": 250000},
             # NEW: $300M market cap floor — excludes institutional-free micro-caps
             {"left": "market_cap_basic", "operation": "greater", "right": 300000000},
-            # NEW: revenue must grow — blocks cost-cutting EPS games (layoffs, buybacks)
-            {"left": "total_revenue_yoy_growth_ttm", "operation": "greater", "right": 0},
+            # Real sales growth. Was "> 0", which only blocked outright shrinkage
+            # and let cost-cutting EPS games through with the label "growth".
+            {"left": "total_revenue_yoy_growth_ttm", "operation": "greater",
+             "right": MIN_REVENUE_GROWTH},
             {"left": "is_primary", "operation": "equal", "right": True}
-        ],
+        ] + ([
+            {"left": "sector", "operation": "not_in_range", "right": EXCLUDED_SECTORS}
+        ] if EXCLUDED_SECTORS else []),
         "ignore_unknown_fields": False,
         "options": {"lang": "en"},
         "range": [0, 2000],  # Expanded to ensure we fetch all matches

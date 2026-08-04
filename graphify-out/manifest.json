@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1785816763.9493942,
-    "ast_hash": "66b96d13cde8c76525b5a66b986d2ce1",
+    "mtime": 1785817328.005284,
+    "ast_hash": "1dd7756bae2fbc134a118dc7b2a63af9",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -270,8 +270,8 @@
     "semantic_hash": ""
   },
   "tests/test_breakout_verdict.py": {
-    "mtime": 1785809222.0449846,
-    "ast_hash": "d24e5f93413961388e88754abc5955b7",
+    "mtime": 1785817393.608043,
+    "ast_hash": "daa664ccb1f844ea5cd48b7d1dc45df6",
     "semantic_hash": ""
   },
   "tests/test_buy_fill_verification.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "tests/test_dynamic_trail.py": {
-    "mtime": 1785202226.8083634,
-    "ast_hash": "0e1a32f10319349a12c81e6b3e6373b6",
+    "mtime": 1785817354.0715928,
+    "ast_hash": "3daaf67d7ad7932babf7d2b099438e6f",
     "semantic_hash": ""
   },
   "tests/test_ibkr_delayed_price.py": {
@@ -350,8 +350,8 @@
     "semantic_hash": ""
   },
   "tv_api_screener.py": {
-    "mtime": 1785202226.8106992,
-    "ast_hash": "5a55dd66495e95bb9900cf6e581e4167",
+    "mtime": 1785817469.3899145,
+    "ast_hash": "f520df3b62ed3de209cd2c5a3550d202",
     "semantic_hash": ""
   },
   ".github/workflows/daily_screener.yml": {
@@ -552,6 +552,26 @@
   "decisions/2026-08-04_ai-evaluation-gap-fail-closed.md": {
     "mtime": 1785817029.6687791,
     "ast_hash": "aee3a50bc748467bf4bd8daadbc84ed3",
+    "semantic_hash": ""
+  },
+  "migrations/add_power_hold.sql": {
+    "mtime": 1785817413.3577542,
+    "ast_hash": "5512a35e86e74b518f50bc37d58cf041",
+    "semantic_hash": ""
+  },
+  "tests/test_power_hold.py": {
+    "mtime": 1785817434.5394347,
+    "ast_hash": "b033cb2af6466e5314d240c26f25533d",
+    "semantic_hash": ""
+  },
+  "tests/test_screener_filters.py": {
+    "mtime": 1785817506.1155398,
+    "ast_hash": "2cad001289d3d6c452347d81874e47f9",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-04_widen-exits-and-tighten-entries.md": {
+    "mtime": 1785817571.358679,
+    "ast_hash": "38d4729eafc3c92286d00646423d2d9b",
     "semantic_hash": ""
   }
 }

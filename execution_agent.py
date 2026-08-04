@@ -147,24 +147,39 @@ MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
 # ── Dynamic trailing stop tightening tiers ───────────────────────────────────
-# Two independent levers — the TIGHTER of the two always wins.
-# Lever 1: profit-based  (unrealized gain % → trail %)
-# Lever 2: time-based    (calendar days held → trail %)
+# Lever 1 (profit): unrealized gain % → trail %.
+#
+# These were previously 2-5%, which stopped winners out during ordinary
+# consolidations. A growth stock that has run +20% routinely pulls back 5-8%
+# before continuing; a 2% trail guarantees an exit at +18% instead of letting
+# the position become the outsized winner that pays for the losers. CAN SLIM's
+# expectancy depends entirely on that right tail, so trails are now never
+# tighter than 5% and only begin tightening at a +20% gain — below that the base
+# STOP_LOSS_PCT (7%) is already appropriate and is left alone.
 # Entries are (threshold, trail_pct), listed highest-threshold-first.
 TRAIL_PROFIT_TIERS: list[tuple[float, float]] = [
-    (20.0, 0.020),   # ≥ 20% gain  → 2% trail  (+18% locked)
-    (14.0, 0.030),   # ≥ 14% gain  → 3% trail  (+11% locked)
-    ( 8.0, 0.040),   # ≥  8% gain  → 4% trail  ( +4% locked)
-    ( 3.0, 0.050),   # ≥  3% gain  → 5% trail  (breakeven+)
-    ( 0.0, None),    # <  3%       → no change
+    (50.0, 0.050),   # ≥ 50% gain → 5.0% trail
+    (30.0, 0.060),   # ≥ 30% gain → 6.0% trail
+    (20.0, 0.065),   # ≥ 20% gain → 6.5% trail
+    ( 0.0, None),    # < 20%      → no change (base STOP_LOSS_PCT of 7% applies)
 ]
+# Lever 2 (time): DISABLED BY DEFAULT.
+#
+# This previously tightened the stop purely because time had passed — 6% at day
+# 8 down to 3.5% at day 30 — regardless of how the position was performing. Any
+# position still open at day 30 was therefore near-certain to be stopped out on
+# noise, which made a large winner structurally impossible. O'Neil's leaders
+# need 8-12 weeks to develop. Time held is not a sell signal: a position that is
+# working should not be penalised for still working. Set
+# TRAIL_TIME_TIERS_ENABLED=true to restore the legacy behaviour.
+TRAIL_TIME_TIERS_ENABLED = os.getenv("TRAIL_TIME_TIERS_ENABLED", "false").lower() == "true"
 TRAIL_TIME_TIERS: list[tuple[int, float]] = [
     (30, 0.035),     # > 30 cal days → 3.5% trail
     (22, 0.040),     # > 22 cal days → 4.0% trail
     (15, 0.050),     # > 15 cal days → 5.0% trail
     ( 8, 0.060),     # >  8 cal days → 6.0% trail
     ( 0, None),      # ≤  7 cal days → no change
-]
+] if TRAIL_TIME_TIERS_ENABLED else []
 COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 1))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
@@ -204,9 +219,18 @@ BREAKOUT_VERDICT_MIN_GAIN    = float(os.getenv("BREAKOUT_VERDICT_MIN_GAIN",    0
 BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0.75)) # 75% of 20d avg
 # Intraday Loss Minimiser: sell when price drops this % below today's rolling intraday
 # high, provided that high is near (within 0.5%) or above the entry price.
-INTRADAY_PULLBACK_PCT        = float(os.getenv("INTRADAY_PULLBACK_PCT",        0.005)) # 0.5%
+#
+# Was 0.005 (0.5%) — that is noise, not a signal. A $250 stock wiggling $1.25
+# tripped it, and it closed GE, THC and TTWO for losses before those breakouts
+# had any chance to develop. Widened to a level that reflects a genuine intraday
+# reversal rather than normal spread/tick movement.
+INTRADAY_PULLBACK_PCT        = float(os.getenv("INTRADAY_PULLBACK_PCT",        0.03))  # 3.0%
 # Early damage-control kill-switch for fresh entries (Day 0-1).
-EARLY_LOSS_STOP_PCT          = float(os.getenv("EARLY_LOSS_STOP_PCT",          0.02))  # 2.0%
+#
+# Was 0.02 (2%) — well inside the band a legitimate breakout routinely undercuts
+# before working, so it converted normal volatility into realised losses.
+# O'Neil's own maximum loss discipline is 7-8% from the entry price.
+EARLY_LOSS_STOP_PCT          = float(os.getenv("EARLY_LOSS_STOP_PCT",          0.07))  # 7.0%
 # Day threshold when universal intraday pullback minimiser becomes active.
 INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2))
 
@@ -220,6 +244,21 @@ INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2
 # (and risk deeper losses) chasing a better exit.
 ARMED_EXIT_TRAIL_PCT      = float(os.getenv("ARMED_EXIT_TRAIL_PCT",      0.006))  # 0.6%
 ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25))   # ~half a trading day
+
+# ── O'Neil 8-Week Hold Rule ───────────────────────────────────────────────────
+# From "How to Make Money in Stocks": a stock that gains 20%+ within 3 weeks of a
+# proper breakout is behaving like a genuine market leader and should be held for
+# at least 8 weeks rather than trimmed on the first wobble.
+#
+# This is the single mechanism that lets a position become the outsized winner
+# CAN SLIM expectancy depends on. While a position is in its power-hold window we
+# suppress the DISCRETIONARY exits (EMA-21 exit, Rank & Replace, Intraday Loss
+# Minimiser). The IBKR trailing stop is deliberately NOT suspended — it remains
+# the disaster backstop, so this bounds opportunity cost, never risk.
+POWER_HOLD_ENABLED        = os.getenv("POWER_HOLD_ENABLED", "true").lower() == "true"
+POWER_HOLD_GAIN_PCT       = float(os.getenv("POWER_HOLD_GAIN_PCT", 20.0))
+POWER_HOLD_TRIGGER_DAYS   = int(os.getenv("POWER_HOLD_TRIGGER_DAYS", 21))   # 3 weeks
+POWER_HOLD_DURATION_DAYS  = int(os.getenv("POWER_HOLD_DURATION_DAYS", 56))  # 8 weeks
 
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
@@ -733,6 +772,73 @@ def _compute_dynamic_trail_pct(
 
     new_pct = min(candidates)   # tighter of the two levers
     return new_pct if new_pct < current_pct else None
+
+
+def is_power_hold_active(pos: dict, calendar_days: int) -> bool:
+    """
+    O'Neil 8-week hold rule.
+
+    True while a position is inside its protected window: it gained
+    POWER_HOLD_GAIN_PCT or more within POWER_HOLD_TRIGGER_DAYS of entry, and is
+    still within POWER_HOLD_DURATION_DAYS of entry.
+
+    Callers must use this to suppress DISCRETIONARY exits only. The IBKR
+    trailing stop is never suspended, so a protected position can still be
+    stopped out if it genuinely breaks down.
+    """
+    if not POWER_HOLD_ENABLED:
+        return False
+    if calendar_days > POWER_HOLD_DURATION_DAYS:
+        return False
+
+    # The qualifying run must have happened inside the trigger window. Once the
+    # flag is set we keep honouring it, so a later pullback cannot cancel it.
+    if pos.get("power_hold"):
+        return True
+
+    peak_gain = float(pos.get("highest_unrealized_pct") or 0.0)
+    return peak_gain >= POWER_HOLD_GAIN_PCT and calendar_days <= POWER_HOLD_TRIGGER_DAYS
+
+
+def maybe_arm_power_hold(client: Client, pos: dict, calendar_days: int) -> bool:
+    """
+    Persists the power-hold flag the first time a position qualifies.
+
+    Returns True if the position is (now) power-held. Degrades gracefully if the
+    column has not been migrated yet — the in-memory evaluation still applies.
+    """
+    if not POWER_HOLD_ENABLED or pos.get("power_hold"):
+        return bool(pos.get("power_hold")) and calendar_days <= POWER_HOLD_DURATION_DAYS
+
+    peak_gain = float(pos.get("highest_unrealized_pct") or 0.0)
+    qualifies = (
+        peak_gain >= POWER_HOLD_GAIN_PCT
+        and calendar_days <= POWER_HOLD_TRIGGER_DAYS
+    )
+    if not qualifies:
+        return False
+
+    ticker = pos.get("ticker")
+    pos["power_hold"] = True
+    try:
+        client.table("portfolio_positions").update({"power_hold": True}).eq("ticker", ticker).execute()
+    except Exception as e:
+        # PGRST204 = column missing (migration not yet run). Not a bug — the rule
+        # still applies in-memory for this cycle.
+        print(f"   ⚠️ {ticker}: could not persist power_hold flag ({e}). Rule still applied this cycle.")
+
+    print(f"   🏆 {ticker}: 8-WEEK HOLD ARMED — +{peak_gain:.1f}% within {calendar_days}d. "
+          f"Discretionary exits suppressed until day {POWER_HOLD_DURATION_DAYS}.")
+    try:
+        notifier._send(
+            f"🏆 <b>{ticker}</b> qualified for the O'Neil 8-week hold rule\n"
+            f"Peak gain +{peak_gain:.1f}% within {calendar_days} days of entry.\n"
+            f"Discretionary exits suppressed until day {POWER_HOLD_DURATION_DAYS}; "
+            f"trailing stop remains active."
+        )
+    except Exception:
+        pass
+    return True
 
 
 def cancel_ticker_sell_orders(ib: IB, ticker: str) -> int:
@@ -2260,6 +2366,18 @@ def monitor_portfolio_intraday(ib: IB):
         # ── Dynamic trailing stop tightening ─────────────────────────────────────
         # Compute calendar days (not trading days) — time lever uses calendar.
         calendar_days = (today_ny - buy_date_d).days
+
+        # ── O'Neil 8-Week Hold Rule ──────────────────────────────────────────────
+        # Evaluated before the discretionary exits below so a qualifying leader is
+        # protected from being trimmed on ordinary volatility. The trailing stop
+        # placed with the position is untouched and still protects the downside.
+        pos["highest_unrealized_pct"] = highest_unrealized_pct
+        power_held = maybe_arm_power_hold(client, pos, calendar_days) or \
+            is_power_hold_active(pos, calendar_days)
+        if power_held:
+            print(f"   🏆 {ticker}: power-hold active (day {calendar_days} of "
+                  f"{POWER_HOLD_DURATION_DAYS}) — discretionary exits suppressed.")
+
         new_trail_pct = _compute_dynamic_trail_pct(
             unrealized_pct, calendar_days, pos_stop_loss_pct
         )
@@ -2296,7 +2414,7 @@ def monitor_portfolio_intraday(ib: IB):
         # For all positions from Day 2 onward, sell on the first 0.5% pullback
         # from today's intraday high — provided that high is within 0.5% of entry
         # price (near breakeven or above), preserving any intraday gain.
-        if days_held >= INTRADAY_MINIMISER_START_DAY:
+        if days_held >= INTRADAY_MINIMISER_START_DAY and not power_held:
             prev_high  = float(pos.get("intraday_high_today") or 0)
             today_high = max(prev_high, current_price)
 
@@ -2365,7 +2483,7 @@ def monitor_portfolio_intraday(ib: IB):
         # detects when it fires and archives the position to trade_history.
 
         # ── Moving Average Exit Check (Only Day 7+) ──────────────────────────────
-        if EXIT_MA_TRIGGER_ENABLED and days_held >= 7:
+        if EXIT_MA_TRIGGER_ENABLED and days_held >= 7 and not power_held:
             is_ma_window = True
             if EXIT_MA_EOD_ONLY:
                 now_ny = datetime.datetime.now(tz)
@@ -2542,6 +2660,15 @@ def monitor_portfolio_intraday(ib: IB):
                 verdict_rr   = pos.get("breakout_verdict")
 
                 if days_held_rr < 7 or verdict_rr != "PASS":
+                    continue
+
+                # Never rotate out of a position protected by the 8-week hold rule:
+                # a recent 20%-in-3-weeks leader is exactly what we want to keep.
+                _rr_cal_days = (today_eod - datetime.datetime.fromisoformat(
+                    pos["buy_date"].replace('Z', '+00:00')
+                ).date()).days
+                if is_power_hold_active(pos, _rr_cal_days):
+                    print(f"   🏆 Rank & Replace skipped for {ticker_m} — 8-week hold active.")
                     continue
 
                 mt = pos.get("momentum_health_score")
