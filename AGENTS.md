@@ -202,3 +202,50 @@ Use the actual date of the change. Use the commit message as a starting point fo
 ### After writing an ADR
 
 Run `python -m graphify update .` to keep the graph current.
+
+---
+
+## 📦 MANDATORY: Clean Patch Files Whenever a Patch Is Requested
+
+> **Whenever asked to create a patch file (instead of pushing directly),
+> the patch must contain ONLY valid code artifacts — never noisy or
+> incidental churn.**
+
+### What belongs in the patch
+
+- Actual source/config/test changes (`.py`, `.sql`, `.jsx`, etc.)
+- The `decisions/` ADR, if one was written for this change
+- The minimal graphify graph artifacts needed to keep the graph usable:
+  `graphify-out/graph.json`, `graphify-out/graph.html`,
+  `graphify-out/GRAPH_REPORT.md`, `graphify-out/manifest.json`, and the
+  `.graphify_labels.json` / `.graphify_labels.json.sig` files.
+
+### What must NOT be in the patch
+
+- `graphify-out/cache/**` churn (e.g. AST cache files that changed only
+  because of a graphify version bump, not because of real code changes).
+  Reset this directory back to its pre-change state before generating the
+  patch (e.g. `git checkout HEAD~1 -- graphify-out/cache/` or equivalent)
+  so the patch shows zero diff for `graphify-out/cache/`.
+- Timestamped backup/snapshot directories graphify creates
+  (e.g. `graphify-out/YYYY-MM-DD/`) — these are point-in-time backups,
+  not part of the working graph, and must be excluded/untracked before
+  the patch is generated.
+- Any other incidental artifacts not directly produced by the requested
+  change (stray build output, local scratch files, etc.).
+
+### How to generate the patch
+
+1. Make the code change, write the ADR (if required), run
+   `python -m graphify update .`.
+2. Prune the commit: remove `graphify-out/cache/` churn and any backup
+   snapshot dirs from the staged/committed changes so only the graph
+   artifacts listed above remain diffed.
+3. Verify with `git show --stat` that only intentional files are listed
+   before exporting.
+4. Generate the patch with `git format-patch -1 HEAD --stdout > <file>.patch`
+   (or `git format-patch <range>` for multiple commits).
+5. The patch's commit message must clearly and specifically describe the
+   change (what changed, why, and the key files touched) — this becomes
+   the comment carried forward into the patch/commit history whenever it
+   is applied and pushed. Do not use a generic or placeholder message.

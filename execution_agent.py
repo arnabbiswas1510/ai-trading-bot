@@ -215,6 +215,17 @@ EARLY_LOSS_STOP_PCT          = float(os.getenv("EARLY_LOSS_STOP_PCT",          0
 # Day threshold when universal intraday pullback minimiser becomes active.
 INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2))
 
+# ── Armed Trailing Exit (Day 0-6 loss-cutting) ─────────────────────────────────
+# When a Day 0-6 sell signal fires (Early Loss Kill-switch or Intraday Loss
+# Minimiser), we do NOT sell instantly at the trigger price — that price is
+# often a local trough. Instead we "arm" the exit: place a tight IBKR native
+# trailing stop that rides any bounce toward the best price reached since the
+# trigger, while a hard deadline forces a market sell if it hasn't already
+# closed out. This bounds the extra hold time so we never wait indefinitely
+# (and risk deeper losses) chasing a better exit.
+ARMED_EXIT_TRAIL_PCT      = float(os.getenv("ARMED_EXIT_TRAIL_PCT",      0.006))  # 0.6%
+ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25))   # ~half a trading day
+
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
 MARKET_DIRECTION_TICKER         = os.getenv("MARKET_DIRECTION_TICKER", "SPY")
@@ -632,6 +643,58 @@ def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> 
 
     print(f"   \U0001f6e1\ufe0f  IBKR trailing stop placed: {confirmed_trail_pct*100:.2f}% trail (confirmed)")
     return group, confirmed_trail_pct
+
+
+def arm_exit(ib: IB, client: Client, ticker: str, shares: int, current_price: float,
+             reason: str, now_ny: datetime.datetime) -> None:
+    """
+    Arms a Day 0-6 loss-cutting exit instead of selling immediately at the
+    trigger price (often a local trough).
+
+    Replaces any existing sell order with a tight ARMED_EXIT_TRAIL_PCT IBKR
+    native trailing stop, which tracks the price tick-by-tick and rides any
+    bounce toward the best price reached since arming. A hard deadline
+    (ARMED_EXIT_DEADLINE_HOURS, checked every monitoring cycle in
+    monitor_portfolio_intraday) forces a market sell if the trail hasn't
+    already fired — this bounds the extra hold time so we never wait
+    indefinitely chasing a better exit.
+    """
+    try:
+        contract = Stock(ticker, 'SMART', 'USD')
+        ib.qualifyContracts(contract)
+        cancel_ticker_sell_orders(ib, ticker)
+        ib.sleep(1)
+        place_trailing_stop(ib, contract, shares, ARMED_EXIT_TRAIL_PCT)
+
+        try:
+            client.table("portfolio_positions").update({
+                "exit_armed":        True,
+                "exit_armed_at":     now_ny.isoformat(),
+                "exit_armed_reason": reason,
+                "exit_armed_price":  round(float(current_price), 4),
+            }).eq("ticker", ticker).execute()
+        except Exception as db_err:
+            # PGRST204 = column missing in schema cache (migration not yet run).
+            # The tight IBKR trailing stop is already placed and will still
+            # protect the position; only the deadline bookkeeping is degraded
+            # until migrations/add_armed_exit_columns.sql is applied.
+            if "PGRST204" in str(db_err) or "exit_armed" in str(db_err):
+                print(f"   ⚠️ {ticker}: exit_armed columns missing — run migrations/add_armed_exit_columns.sql. "
+                      f"Trailing stop placed but deadline won't be tracked.")
+            else:
+                raise
+
+        msg = (
+            f"\U0001f3af <b>{ticker}</b> exit armed (Day 0-6 loss-cutting): {reason}\n"
+            f"Tight trail: {ARMED_EXIT_TRAIL_PCT*100:.2f}% from price at arm-time (${current_price:.2f})\n"
+            f"Deadline: forced sell in {ARMED_EXIT_DEADLINE_HOURS:.2f}h if not already stopped out."
+        )
+        notifier._send(msg)
+        print(f"   \U0001f3af {ticker}: exit armed — {reason} "
+              f"(tight {ARMED_EXIT_TRAIL_PCT*100:.2f}% trail, deadline {ARMED_EXIT_DEADLINE_HOURS:.2f}h)")
+    except Exception as arm_err:
+        notifier.notify_exception("arm_exit() — execution_agent.py", arm_err)
+        print(f"   ⚠️ {ticker}: failed to arm exit: {arm_err}")
 
 
 def _compute_dynamic_trail_pct(
@@ -2258,7 +2321,8 @@ def monitor_portfolio_intraday(ib: IB):
         return
 
     tz = ZoneInfo("America/New_York")
-    today_ny = datetime.datetime.now(tz).date()
+    now_ny = datetime.datetime.now(tz)
+    today_ny = now_ny.date()
     # Track intraday prices per-ticker in memory so hwm_date comparisons are
     # relative to the last price we polled (not the stored HWM price, which
     # IBKR now owns).
@@ -2291,6 +2355,31 @@ def monitor_portfolio_intraday(ib: IB):
         print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
               f"| Held: {days_held}d | IBKR Trail: {pos_stop_loss_pct*100:.2f}%")
 
+        # ── Armed Trailing Exit deadline check ───────────────────────────────────
+        # A Day 0-6 sell signal already fired for this position and it was armed
+        # with a tight IBKR trailing stop (see arm_exit()) instead of an instant
+        # market sell, so it can capture a better exit price on any bounce.
+        # If that trail hasn't already fired by the deadline, force the sell now
+        # — we never hold longer than this bound chasing a better price.
+        if pos.get("exit_armed"):
+            try:
+                armed_at = datetime.datetime.fromisoformat(pos["exit_armed_at"].replace('Z', '+00:00'))
+            except Exception:
+                armed_at = now_ny
+            hours_armed = (now_ny - armed_at).total_seconds() / 3600.0
+            if hours_armed >= ARMED_EXIT_DEADLINE_HOURS:
+                reason = (
+                    f"Armed Exit Deadline — {pos.get('exit_armed_reason', 'armed exit')} "
+                    f"not stopped out after {hours_armed:.2f}h, forcing sell"
+                )
+                print(f"🚨 {ticker}: Armed Exit Deadline firing — {reason}")
+                execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+            else:
+                print(f"   \U0001f3af {ticker}: exit armed {hours_armed:.2f}h ago "
+                      f"({pos.get('exit_armed_reason')}) — awaiting trail or deadline.")
+                active_positions.append(pos)
+            continue
+
         # ── Day 0-1 hard loser kill-switch ──────────────────────────────────────
         if days_held <= 1:
             early_stop_level = buy_price * (1 - EARLY_LOSS_STOP_PCT)
@@ -2300,8 +2389,9 @@ def monitor_portfolio_intraday(ib: IB):
                     f"price {((current_price / buy_price) - 1.0) * 100:.2f}% "
                     f"<= -{EARLY_LOSS_STOP_PCT * 100:.1f}% threshold"
                 )
-                print(f"🚨 {ticker}: Early Loss Kill-switch firing — {reason}")
-                execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                print(f"🚨 {ticker}: Early Loss Kill-switch triggered — arming exit — {reason}")
+                arm_exit(ib, client, ticker, shares, current_price, reason, now_ny)
+                active_positions.append(pos)
                 continue
 
         # ── Calculate current unrealized percentage ──
@@ -2413,8 +2503,15 @@ def monitor_portfolio_intraday(ib: IB):
                     f"selling on {INTRADAY_PULLBACK_PCT*100:.1f}% pullback from "
                     f"intraday high ${today_high:.2f} (current ${current_price:.2f})"
                 )
-                print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser firing — {reason}")
-                execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                if days_held < 7:
+                    # Day 0-6: arm a tight trailing exit instead of an instant
+                    # sell at this (possibly local-trough) price — see arm_exit().
+                    print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser triggered — arming exit — {reason}")
+                    arm_exit(ib, client, ticker, shares, current_price, reason, now_ny)
+                    active_positions.append(pos)
+                else:
+                    print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser firing — {reason}")
+                    execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
                 continue
 
             # Hard fallback remains scoped to FAIL verdict positions.
