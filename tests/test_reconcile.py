@@ -145,8 +145,10 @@ class TestReconcileCase2:
 
         supabase.table("portfolio_positions").insert.assert_called()
         insert_args = supabase.table("portfolio_positions").insert.call_args[0][0]
-        # stop_loss should be ~7% below avg_cost
-        assert abs(insert_args["stop_loss"] - 93.0) < 0.01
+        # Derived from STOP_LOSS_PCT rather than hard-coded, so tuning the stop
+        # doesn't break a test that is really about Case 2 reconciliation.
+        expected = round(100.0 * (1 - execution_agent.STOP_LOSS_PCT), 2)
+        assert abs(insert_args["stop_loss"] - expected) < 0.01
         # profit_target must NOT be present — eliminated from schema
         assert "profit_target" not in insert_args, (
             "profit_target must not be stored in Case 2 (eliminated from exit strategy)"

@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1785821163.9126933,
-    "ast_hash": "0dcd3ad5807277078ee1598a0c70ee4e",
+    "mtime": 1785821423.8073583,
+    "ast_hash": "dac7e86d754d853c551f762b0b1779de",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -315,8 +315,8 @@
     "semantic_hash": ""
   },
   "tests/test_reconcile.py": {
-    "mtime": 1785202226.809469,
-    "ast_hash": "12abf4182e9c2cde6af507ce0dad41e4",
+    "mtime": 1785821437.4052453,
+    "ast_hash": "6a712ca753cac19743a446bd1f684f36",
     "semantic_hash": ""
   },
   "tests/test_score_components.py": {
@@ -590,8 +590,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-08-04_reaudit-performance-analysis.md": {
-    "mtime": 1785821293.7890108,
-    "ast_hash": "c3db7ef3d935559147811994577cb2fc",
+    "mtime": 1785821463.9864652,
+    "ast_hash": "8ae30043dd201cce3f05818c239a3e42",
     "semantic_hash": ""
   }
 }

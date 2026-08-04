@@ -145,7 +145,26 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 # Maximum concurrent open positions. Each slot gets an equal share of available cash.
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))
 # ── Exit & hold parameters ──────────────────────────────────────────────────
-STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.07))
+# Base trailing stop, measured from the position's PEAK (not from entry — this
+# is not O'Neil's 7-8% hard stop from cost, it is much tighter in practice).
+#
+# Widened 0.07 -> 0.10 on 2026-08-04. 4-slot portfolio CAGR (full / worst period),
+# measured with every other shipped exit setting active:
+#     7%   BROAD +16.6/-1.2   GROWTH +22.5/+13.9
+#     10%  BROAD +29.6/+11.9  GROWTH +36.7/+17.0
+#     12%  BROAD +27.5/+17.0  GROWTH +46.4/+19.2
+#     14%  BROAD +30.9/+14.5  GROWTH +34.5/ +8.3
+# 10-12% is a broad optimum on both universes; 10 is the conservative end of it.
+# 7% was stopping out of positions that went on to work — the cost showed up as
+# a lower payoff ratio, not a higher loss rate.
+#
+# Max per-trade loss rises from 7% to 10%. Hold time barely moves (avg 9d -> 12d,
+# max 60d either way) because the plateau exit, not the stop, bounds hold length.
+STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.10))
+# Upper bound for the ATR-derived per-position stop. Lowered 0.14 -> 0.12: 14%
+# measured worse than the 10-12% band on both universes, clearly so on the
+# growth names (+34.5 vs +46.4 full period).
+ATR_STOP_MAX_PCT         = float(os.getenv("ATR_STOP_MAX_PCT", 0.12))
 # ── Dynamic trailing stop tightening tiers ───────────────────────────────────
 # Lever 1 (profit): unrealized gain % → trail %.
 #
@@ -1765,7 +1784,9 @@ def run_market_open_buys(ib: IB):
             trigger_atr_pct = trigger.get("atr_pct")
             if trigger_atr_pct and float(trigger_atr_pct) > 0:
                 atr_derived = round((2.5 * float(trigger_atr_pct)) / 100.0, 4)
-                pos_stop_loss_pct = round(max(0.07, min(0.14, atr_derived)), 4)
+                # Band tracks STOP_LOSS_PCT rather than hard-coding 0.07, so
+                # widening the base stop cannot be silently undone here.
+                pos_stop_loss_pct = round(max(STOP_LOSS_PCT, min(ATR_STOP_MAX_PCT, atr_derived)), 4)
                 stop_method = f"ATR-based ({float(trigger_atr_pct):.2f}% ATR × 2.5)"
             else:
                 pos_stop_loss_pct = STOP_LOSS_PCT

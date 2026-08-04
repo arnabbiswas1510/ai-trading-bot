@@ -167,3 +167,56 @@ plateau exit, which bounds hold time independently of stop width:
 Max hold is 60 days either way — the plateau exit, not the stop, is what bounds
 it. The genuine cost of widening is +3 days average hold and a maximum per-trade
 loss of 10% instead of 7%. Presented for a decision rather than applied.
+
+---
+
+## Addendum — stop widened to 10% (user approved)
+
+The user approved widening after seeing that the plateau exit bounds hold time
+independently of stop width.
+
+Before applying, two interactions were tested rather than assumed:
+
+**1. Does the profit ladder need rescaling for a 10% base?** No. At a 10% base:
+
+| ladder | BROAD full / worst | GROWTH full / worst |
+|---|---|---|
+| **current wide (6.5/6/5%)** | **+29.6 / +11.9** | +36.7 / **+17.0** |
+| scaled to base (9.5/8.5/7%) | +22.7 / +8.5 | +43.7 / +14.6 |
+| mid (8/7/6%) | +19.6 / +3.6 | +39.1 / +14.1 |
+| none | +21.0 / +7.7 | +36.8 / +12.9 |
+
+The current ladder is best on BROAD (both measures) and best worst-period on
+GROWTH. Left unchanged.
+
+**2. Final stop sweep with every shipped setting active:**
+
+| stop | BROAD full / worst | GROWTH full / worst |
+|---|---|---|
+| 7% | +16.6 / -1.2 | +22.5 / +13.9 |
+| 9% | +31.6 / +16.2 | +30.1 / +1.4 |
+| **10%** | **+29.6 / +11.9** | **+36.7 / +17.0** |
+| 11% | +17.5 / +8.0 | +49.0 / +16.0 |
+| 12% | +27.5 / +17.0 | +46.4 / +19.2 |
+| 14% | +30.9 / +14.5 | +34.5 / +8.3 |
+
+10-12% is a broad optimum on both universes. 12% scores higher, but 10% was the
+value approved and is the conservative end of the same plateau — the gap between
+them is within the visible noise (note 9% and 11%, which straddle 10%, disagree
+sharply with each other).
+
+**Also fixed:** the ATR-derived per-position stop was clamped to
+`max(0.07, min(0.14, atr))` with both bounds hard-coded, so widening
+`STOP_LOSS_PCT` would have been silently undone for ATR-sized positions. The band
+now tracks `STOP_LOSS_PCT`, and the upper bound moves 0.14 -> 0.12
+(`ATR_STOP_MAX_PCT`) since 14% measured worse than the 10-12% band on both
+universes.
+
+A test asserting `stop_loss == 93.0` was hard-coded to the old 7%; it now derives
+the expectation from `STOP_LOSS_PCT`.
+
+**Net effect of the full session on the growth universe: +15.9% -> +36.7% CAGR**,
+with the worst sub-period improving from +5.2% to +17.0%.
+
+**Accepted risk:** maximum per-trade loss rises from 7% to 10%. Average hold
+moves 9d -> 12d; maximum hold is 60 days either way.
