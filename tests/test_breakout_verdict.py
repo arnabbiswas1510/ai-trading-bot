@@ -173,6 +173,17 @@ class TestBreakoutVerdict:
 # --- Intraday Loss Minimiser Tests -------------------------------------------
 
 class TestIntradayLossMinimiser:
+    """
+    The minimiser is DISABLED by default (it roughly halved expectancy on
+    2,314 real breakout entries). These tests exercise the mechanism with it
+    explicitly enabled; TestIntradayMinimiserDisabledByDefault covers the
+    shipped default.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _enable(self):
+        with patch.object(execution_agent, "INTRADAY_MINIMISER_ENABLED", True):
+            yield
 
     def test_fires_on_pullback_from_high_near_entry(self):
         """High=$101 (>=99.5% of $100), current $98.9 (2.1% below high), Day 4 (<7)
@@ -238,6 +249,32 @@ class TestIntradayLossMinimiser:
         mock_arm.assert_not_called()
         reason = mock_sell.call_args.args[8]
         assert "fallback" in reason.lower() and "Day 7" in reason
+
+
+class TestIntradayMinimiserDisabledByDefault:
+    """
+    Regression guard for the shipped default. On real breakout entries the
+    minimiser roughly halved expectancy in two independent universes
+    (broad 2,314 entries: +1.01% -> +0.59%; screener names 598 entries:
+    +0.60% -> +0.18%) and suppressed the right tail the strategy depends on.
+    The trailing stop still protects the downside.
+    """
+
+    def test_does_not_fire_by_default(self):
+        pos = _make_pos(buy_date=BD_DAY4, buy_price=100.0, verdict="FAIL",
+                        intraday_high_today=101.0)
+        ib, sb = _make_ib([pos]), _make_sb([pos])
+        mock_sell, mock_arm = _run(ib, sb, [pos], 95.0, hour=11, minute=30)
+        mock_arm.assert_not_called()
+        mock_sell.assert_not_called()
+
+    def test_day7_fallback_also_suppressed_by_default(self):
+        pos = _make_pos(buy_date=BD_DAY7, buy_price=100.0, verdict="FAIL",
+                        intraday_high_today=99.2)
+        ib, sb = _make_ib([pos]), _make_sb([pos])
+        mock_sell, mock_arm = _run(ib, sb, [pos], 98.8, hour=11, minute=30)
+        mock_sell.assert_not_called()
+        mock_arm.assert_not_called()
 
 
 class TestEarlyLossKillSwitch:
