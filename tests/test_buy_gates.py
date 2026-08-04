@@ -63,16 +63,32 @@ def _run_buys(ib, supabase_mock, live_price=105.0, available_cash=20_000.0,
 
 class TestGate1StockSlots:
 
-    def test_gate1_four_stock_positions_blocks_all_buys(self):
-        """Gate 1: 4 stock positions → portfolio full → no order placed."""
-        portfolio = [make_position(t) for t in ["AAPL", "MSFT", "NVDA", "AMZN"]]
+    def test_gate1_full_portfolio_blocks_all_buys(self):
+        """Gate 1: MAX_POSITIONS stock positions → portfolio full → no order placed."""
+        import execution_agent
+        names = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOG", "META", "NFLX", "AMD"]
+        held = names[:execution_agent.MAX_POSITIONS]
+        portfolio = [make_position(t) for t in held]
         supabase = make_supabase_mock(
             daily_triggers=[make_trigger("TSLA")],
             portfolio=portfolio,
         )
-        ib = make_ib_mock(symbols=["AAPL", "MSFT", "NVDA", "AMZN"])
+        ib = make_ib_mock(symbols=held)
         _run_buys(ib, supabase)
         ib.placeOrder.assert_not_called()
+
+    def test_gate1_one_free_slot_allows_a_buy(self):
+        """One slot short of MAX_POSITIONS → the trigger is bought."""
+        import execution_agent
+        names = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOG", "META", "NFLX", "AMD"]
+        held = names[:execution_agent.MAX_POSITIONS - 1]
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("TSLA")],
+            portfolio=[make_position(t) for t in held],
+        )
+        ib = make_ib_mock(symbols=held + ["TSLA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_called()
 
 
 class TestTriggerRankingAndVetting:

@@ -134,3 +134,41 @@ class TestArming:
         with patch.object(execution_agent.notifier, "_send",
                           MagicMock(side_effect=Exception("telegram down"))):
             assert maybe_arm_power_hold(client, _pos(peak_pct=25.0), 10) is True
+
+
+class TestPowerHoldTrailWidening:
+    """
+    The rule was previously self-defeating: TRAIL_PROFIT_TIERS tightens the trail
+    to 6.5% at exactly the +20% gain that arms the power hold, so every armed
+    position still exited on the trailing stop and the rule was inert. While
+    power-held the ladder must be bypassed and the trail widened instead.
+    """
+
+    def test_ladder_would_tighten_at_the_arming_threshold(self):
+        """Guards the premise: at +20% the ladder clamps to a tight trail."""
+        tightened = execution_agent._compute_dynamic_trail_pct(
+            20.0, 5, execution_agent.STOP_LOSS_PCT
+        )
+        assert tightened is not None
+        assert tightened < execution_agent.STOP_LOSS_PCT
+        assert tightened < execution_agent.POWER_HOLD_TRAIL_PCT
+
+    def test_power_hold_trail_is_wider_than_every_ladder_tier(self):
+        for _threshold, pct in execution_agent.TRAIL_PROFIT_TIERS:
+            if pct is not None:
+                assert execution_agent.POWER_HOLD_TRAIL_PCT > pct
+
+    def test_power_hold_trail_is_wider_than_base_stop(self):
+        assert execution_agent.POWER_HOLD_TRAIL_PCT > execution_agent.STOP_LOSS_PCT
+
+    def test_trail_still_exists_as_disaster_backstop(self):
+        """Never remove the stop entirely, however strong the backtest looked."""
+        assert 0 < execution_agent.POWER_HOLD_TRAIL_PCT < 1.0
+
+    def test_arming_requires_a_gain_so_downside_is_unchanged(self):
+        """
+        The widened trail can only ever apply to a position already well in
+        profit, which is why max drawdown is unaffected.
+        """
+        assert execution_agent.POWER_HOLD_GAIN_PCT > 0
+        assert is_power_hold_active(_pos(peak_pct=0.0), 1) is False

@@ -143,7 +143,12 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 
 # ── Strategy configuration (set in .env) ──────────────────────────────────────
 # Maximum concurrent open positions. Each slot gets an equal share of available cash.
-MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 4))
+# 5 rather than 4: across both backtest universes 5 matched or beat 4 on CAGR and
+# lowered max drawdown, and it roughly halves the strategy's dependence on a
+# handful of outlier trades (top-10 trades fall from 109% -> 92% of total P/L on
+# the growth universe, 98% -> 74% on the broad one). The CAGR/drawdown gaps
+# themselves are inside the noise floor; the concentration reduction is not.
+MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 5))
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 # Base trailing stop, measured from the position's PEAK (not from entry — this
 # is not O'Neil's 7-8% hard stop from cost, it is much tighter in practice).
@@ -343,18 +348,34 @@ ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25)) 
 # This is the mechanism that would let a position become the outsized winner
 # CAN SLIM expectancy depends on. While a position is in its power-hold window we
 # suppress the DISCRETIONARY exits (EMA-21 exit, Rank & Replace, Intraday Loss
-# Minimiser). The IBKR trailing stop is deliberately NOT suspended — it remains
-# the disaster backstop, so this bounds opportunity cost, never risk.
+# Minimiser) AND widen the trailing stop to POWER_HOLD_TRAIL_PCT (see below). The
+# trailing stop is never removed — it remains the disaster backstop, so this
+# bounds opportunity cost, never risk.
 #
 # NOTE: this rule never fired in the replay of the 13 real closed trades because
 # none of them reached +20% — but that population fails the current screener. On
 # real breakout entries in screener-passing names, 46% reach +20% MFE within 60
-# days, so the rule is expected to bind regularly going forward. It is now
-# coherent with TRAIL_PROFIT_TIERS, which no longer clamps to a 2% trail at +20%.
+# days, so the rule is expected to bind regularly going forward.
 POWER_HOLD_ENABLED        = os.getenv("POWER_HOLD_ENABLED", "true").lower() == "true"
 POWER_HOLD_GAIN_PCT       = float(os.getenv("POWER_HOLD_GAIN_PCT", 20.0))
 POWER_HOLD_TRIGGER_DAYS   = int(os.getenv("POWER_HOLD_TRIGGER_DAYS", 21))   # 3 weeks
 POWER_HOLD_DURATION_DAYS  = int(os.getenv("POWER_HOLD_DURATION_DAYS", 56))  # 8 weeks
+# Trail width applied WHILE a position is power-held, replacing the profit ladder.
+#
+# Without this the rule was self-defeating: TRAIL_PROFIT_TIERS tightens the trail
+# to 6.5% at exactly +20% gain — the same threshold that arms the power hold — so
+# the ladder strangled the leaders the rule exists to protect. Instrumenting the
+# backtest showed the rule armed on 9% (growth) / 6% (broad) of trades and then
+# *100% of those still exited on the trailing stop*, making it inert.
+#
+# Widening the trail while power-held recovers the intended behaviour. The effect
+# is large, monotonic in the trail width, and consistent across both universes
+# (growth +27.0% -> +66.3% CAGR, broad +27.4% -> +44.5% at 0.30). Crucially it
+# does NOT increase risk: the rule only arms after a position is already +20% up,
+# so the worst trade is unchanged at -10% and max drawdown is flat (17.6% / 14.5%).
+# 0.30 is chosen over removing the stop entirely (+76.6% / +48.8%) to retain a
+# disaster backstop, since the upside rests on very few trades.
+POWER_HOLD_TRAIL_PCT      = float(os.getenv("POWER_HOLD_TRAIL_PCT", 0.30))
 
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
@@ -878,9 +899,14 @@ def is_power_hold_active(pos: dict, calendar_days: int) -> bool:
     POWER_HOLD_GAIN_PCT or more within POWER_HOLD_TRIGGER_DAYS of entry, and is
     still within POWER_HOLD_DURATION_DAYS of entry.
 
-    Callers must use this to suppress DISCRETIONARY exits only. The IBKR
-    trailing stop is never suspended, so a protected position can still be
-    stopped out if it genuinely breaks down.
+    Callers must use this to suppress DISCRETIONARY exits, and to widen the
+    trailing stop to POWER_HOLD_TRAIL_PCT. The trailing stop is never suspended,
+    so a protected position can still be stopped out if it genuinely breaks down.
+
+    NOTE: the `power_hold` column must be migrated (migrations/add_power_hold.sql).
+    Without it the flag cannot persist, so the fallback below only holds while
+    calendar_days <= POWER_HOLD_TRIGGER_DAYS — the rule would silently expire at
+    day 21 instead of day 56, losing most of its intended effect.
     """
     if not POWER_HOLD_ENABLED:
         return False
@@ -930,7 +956,7 @@ def maybe_arm_power_hold(client: Client, pos: dict, calendar_days: int) -> bool:
             f"🏆 <b>{ticker}</b> qualified for the O'Neil 8-week hold rule\n"
             f"Peak gain +{peak_gain:.1f}% within {calendar_days} days of entry.\n"
             f"Discretionary exits suppressed until day {POWER_HOLD_DURATION_DAYS}; "
-            f"trailing stop remains active."
+            f"trailing stop widened to {POWER_HOLD_TRAIL_PCT*100:.0f}% as the disaster backstop."
         )
     except Exception:
         pass
@@ -2485,10 +2511,23 @@ def monitor_portfolio_intraday(ib: IB):
             print(f"   🏆 {ticker}: power-hold active (day {calendar_days} of "
                   f"{POWER_HOLD_DURATION_DAYS}) — discretionary exits suppressed.")
 
-        new_trail_pct = _compute_dynamic_trail_pct(
-            unrealized_pct, calendar_days, pos_stop_loss_pct
-        )
+        # While power-held the profit ladder is bypassed entirely: it would
+        # otherwise clamp the trail to 6.5% at the very +20% gain that arms this
+        # rule, which made the rule inert (every armed position still exited on
+        # the trail). Widen to POWER_HOLD_TRAIL_PCT so the leader can actually run.
+        if power_held:
+            new_trail_pct = (
+                POWER_HOLD_TRAIL_PCT
+                if pos_stop_loss_pct < POWER_HOLD_TRAIL_PCT
+                else None
+            )
+        else:
+            new_trail_pct = _compute_dynamic_trail_pct(
+                unrealized_pct, calendar_days, pos_stop_loss_pct
+            )
         if new_trail_pct is not None:
+            prev_trail_pct = pos_stop_loss_pct
+            widened = new_trail_pct > prev_trail_pct
             try:
                 _contract_tighten = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_contract_tighten)
@@ -2501,21 +2540,23 @@ def monitor_portfolio_intraday(ib: IB):
                     {"stop_loss_pct": confirmed_trail}
                 ).eq("ticker", ticker).execute()
                 pos_stop_loss_pct = confirmed_trail   # update in-memory for self-heal below
+                verb = "widened (power hold)" if widened else "tightened"
+                icon = "\U0001f3c6" if widened else "\U0001f512"
                 msg = (
-                    f"\U0001f512 <b>{ticker}</b> trail tightened: "
-                    f"{pos_stop_loss_pct * 100:.1f}% → {confirmed_trail * 100:.1f}%\n"
+                    f"{icon} <b>{ticker}</b> trail {verb}: "
+                    f"{prev_trail_pct * 100:.1f}% → {confirmed_trail * 100:.1f}%\n"
                     f"Gain: +{unrealized_pct:.1f}% | Days held: {calendar_days}d\n"
                     f"New stop floor: ${current_price * (1 - confirmed_trail):.2f}"
                 )
                 notifier._send(msg)
-                print(f"   \U0001f512 {ticker}: trail tightened "
-                      f"{pos_stop_loss_pct * 100:.1f}% → {confirmed_trail * 100:.1f}% "
+                print(f"   {icon} {ticker}: trail {verb} "
+                      f"{prev_trail_pct * 100:.1f}% → {confirmed_trail * 100:.1f}% "
                       f"(+{unrealized_pct:.1f}% gain, {calendar_days}d held)")
             except Exception as _tighten_err:
                 notifier.notify_exception(
-                    "monitor_portfolio_intraday() trail tighten", _tighten_err
+                    "monitor_portfolio_intraday() trail update", _tighten_err
                 )
-                print(f"   ⚠️ {ticker}: trail tightening failed: {_tighten_err}")
+                print(f"   ⚠️ {ticker}: trail update failed: {_tighten_err}")
 
         # ── Intraday Loss Minimiser (Day 2+, universal) ──────────────────────────
         # For all positions from Day 2 onward, sell on the first 0.5% pullback
