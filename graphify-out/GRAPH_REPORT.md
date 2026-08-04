@@ -1,16 +1,16 @@
 # Graph Report - ai-trading-bot  (2026-08-04)
 
 ## Corpus Check
-- 112 files · ~163,944 words
+- 114 files · ~166,378 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1402 nodes · 2314 edges · 91 communities (80 shown, 11 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 16 edges (avg confidence: 0.69)
+- 1424 nodes · 2354 edges · 92 communities (82 shown, 10 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 17 edges (avg confidence: 0.69)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a7c553db`
+- Built from commit: `f610221e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -24,7 +24,7 @@
 - make_supabase_mock
 - _compute_dynamic_trail_pct
 - test_plateau_rotation.py
-- compute_final_score
+- ai_evaluator.py
 - _run
 - main.py
 - fetch_ibkr_delayed_price
@@ -36,15 +36,15 @@
 - Decision: Repository-Wide Dead Code Cleanup
 - FMPClient
 - flex_query_sync.py
-- date
+- execution_agent.py
 - _reconcile
 - IBKR TOTP Setup Guide
 - Technical Triggers Logic
 - 🟠 High Severity — Structural Weaknesses
-- technical_screener.py
+- compute_rs_score
 - FakeQuery
 - System Configuration Guide
-- ai_evaluator.py
+- managed_exit.py
 - Risk Management Plan
 - Buy Logic
 - Fundamental Filter Audit
@@ -53,7 +53,7 @@
 - _place_sell
 - Decision: Early Loss Kill-switch + Day-2 Universal Intraday Minimiser
 - Sell Logic
-- monitor_portfolio_intraday
+- run_market_open_buys
 - Fundamental Screener Overview
 - Slot count, and establishing the backtest's noise floor
 - Self-Healing Order Tests
@@ -71,20 +71,21 @@
 - 2026-08-04 — Fix silent AI-evaluation gap and fail closed on un-vetted triggers
 - _pos
 - Plateau exit: optimise capital velocity, not per-trade expectancy
-- test_score_components.py
+- Managed exit tool: exit at the session high rather than on impulse
 - _reload
-- execution_agent.py
+- test_reconcile_detects_short_positions
 - Timezone Compliance Tests
 - Decision
 - TestCancelTickerSellOrders
 - Tune exits on the breakout population, not on the trades being eliminated
 - ._run_at
 - _make_df
-- increment_retention
+- technical_screener.py
 - TeeLogger
 - Fix the self-defeating power-hold rule; move to 5 slots
 - TestPreBreakoutCoilPass
 - compute_momentum_health_score
+- arm_exit
 - FMP API Integration
 - IBKR API Integration
 - OpenAI API Integration
@@ -112,24 +113,24 @@
 7. `TelegramNotifier` - 22 edges
 8. `_run()` - 22 edges
 9. `_compute_dynamic_trail_pct()` - 21 edges
-10. `_make_pos()` - 21 edges
+10. `fetch_ibkr_delayed_price()` - 21 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `TeeLogger` --uses--> `TelegramNotifier`  [INFERRED]
   execution_agent.py → telegram_notifier.py
-- `main()` --calls--> `compute_final_score()`  [EXTRACTED]
-  ai_evaluator.py → scoring.py
 - `main()` --calls--> `compute_liquidity_score()`  [EXTRACTED]
   ai_evaluator.py → scoring.py
 - `main()` --calls--> `TelegramNotifier`  [EXTRACTED]
   ai_evaluator.py → telegram_notifier.py
 - `main()` --calls--> `get_own_cash()`  [EXTRACTED]
   force_buy.py → execution_agent.py
+- `main()` --calls--> `get_margin_loan()`  [EXTRACTED]
+  force_buy.py → execution_agent.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (91 total, 11 thin omitted)
+## Communities (92 total, 10 thin omitted)
 
 ### Community 0 - "compute_liquidity_score"
 Cohesion: 0.13
@@ -153,7 +154,7 @@ Nodes (18): App(), BacktesterView(), BreakoutsView(), BreakoutTable(), sortByCon
 
 ### Community 5 - "TelegramNotifier"
 Cohesion: 0.10
-Nodes (19): Fires from ai_evaluator.py after all 5-component scores are computed.         Sh, Fires after a successful IBKR market buy order is filled and recorded., Fires when a buy order placement on IBKR fails., Fires when the buy loop is stopped after a failed order attempt.          Distin, Sent at EOD of Day 3 when a position fails the breakout verdict.         Activat, Fires after a successful IBKR market sell order is filled and logged., Fires when reconcile_with_ibkr() detects a position closed manually in TWS., Rate-limited exception alert. Suppresses duplicate (same context + error type) (+11 more)
+Nodes (20): telegram_notifier.py — CANSLIM Trading Bot Telegram Notification Module  Fires r, Fires from ai_evaluator.py after all 5-component scores are computed.         Sh, Fires after a successful IBKR market buy order is filled and recorded., Fires when a buy order placement on IBKR fails., Fires when the buy loop is stopped after a failed order attempt.          Distin, Sent at EOD of Day 3 when a position fails the breakout verdict.         Activat, Fires after a successful IBKR market sell order is filled and logged., Fires when reconcile_with_ibkr() detects a position closed manually in TWS. (+12 more)
 
 ### Community 6 - "make_supabase_mock"
 Cohesion: 0.08
@@ -167,9 +168,9 @@ Nodes (19): _compute_dynamic_trail_pct(), Returns a tighter trailing stop % if t
 Cohesion: 0.10
 Nodes (26): _full_portfolio(), _hwm(), test_plateau_rotation.py — Tests for the simplified 2-rule plateau rotation stra, hwm_rs_score write was removed from EOD metrics loop — column stays dormant., Tests that hwm_rs_score is NOT written to the DB in any circumstance.     The co, days_since_hwm=0 (new HWM today) → hwm_rs_score must NOT be written (column dorm, days_since_hwm=3 (stalling) → hwm_rs_score must NOT be in any update payload., Within 3-6 days, even with param drift, no swap occurs if there are no fresh tri (+18 more)
 
-### Community 9 - "compute_final_score"
-Cohesion: 0.13
-Nodes (10): compute_final_score(), Weighted blend of 5 components (all 0-100) -> 0-100 final score.        Technica, TestPreBreakoutScoreBoost, NVDA-like scores -> should be around 80, SGHC-like scores -> should be around 40-50, Weighted formula: tech=100, rest=0 -> score = 30, liq=100, rest=0 -> score = 25, Score cannot exceed 100 (+2 more)
+### Community 9 - "ai_evaluator.py"
+Cohesion: 0.07
+Nodes (28): ai_grade_and_bonus(), build_prompt(), call_ai_batch(), evaluate_triggers(), fetch_daily_triggers(), fetch_news_headlines(), fetch_trade_history(), fetch_watchlist_data() (+20 more)
 
 ### Community 10 - "_run"
 Cohesion: 0.10
@@ -212,12 +213,12 @@ Cohesion: 0.11
 Nodes (17): _bg_update_fmp_cache(), FMPClient, Fetch annual balance sheets using stable endpoint., Calculate institutional holdings percentage.         Gracefully falls back to a, Query stable stock-screener to find active US growth equities.         Gracefull, Fetch current price, moving averages, volume, 52w range and shares outstanding u, Fetch historical daily prices and format as pandas DataFrame using stable EOD en, Fetch quarterly or annual income statements using stable endpoint. (+9 more)
 
 ### Community 20 - "flex_query_sync.py"
-Cohesion: 0.13
-Nodes (21): check_token_expiry(), fetch_cash_transactions(), _fetch_statement(), main(), _parse_cash_transactions(), _parse_trade_confirms(), Client, flex_query_sync.py — IBKR Flex Query Cash Flow Sync  Fetches cash deposits and w (+13 more)
-
-### Community 21 - "date"
 Cohesion: 0.12
-Nodes (19): date, calculate_ema(), calculate_sma(), fetch_historical_closes_with_dates(), _fetch_ohlcv(), get_ma_value(), _get_market_regime(), is_market_bullish() (+11 more)
+Nodes (23): check_token_expiry(), fetch_cash_transactions(), _fetch_statement(), fetch_trade_confirms_for_ticker(), main(), _parse_cash_transactions(), _parse_trade_confirms(), Client (+15 more)
+
+### Community 21 - "execution_agent.py"
+Cohesion: 0.10
+Nodes (33): date, calculate_ema(), calculate_sma(), cancel_ticker_sell_orders(), check_volume_distribution(), execute_sell(), _fetch_current_rs(), fetch_held_position_sentiment() (+25 more)
 
 ### Community 22 - "_reconcile"
 Cohesion: 0.11
@@ -235,9 +236,9 @@ Nodes (20): 50-Day Average Volume, 50-Day Simple Moving Average (SMA-50), 52-Wee
 Cohesion: 0.10
 Nodes (19): AI Trading Bot — Performance Analysis, Bug 1 — Market Direction Filter Is Dead Code, Bug 2 — Day 3 Breakout Verdict Volume Check Reads 97-Day-Old Data, Bug 3 — No Minimum `final_score` Gate in the Buy Loop, 🔴 Critical Bugs (Confirmed Code Defects), 🟠 High Severity — Structural Weaknesses, 📋 Priority-Ordered Action List, 🔍 Root Cause Map (+11 more)
 
-### Community 26 - "technical_screener.py"
-Cohesion: 0.12
-Nodes (16): compute_rs_score(), Relative Strength score (0-100) vs S&P 500 over the last 12 weeks.      Excess r, check_technical_breakout(), compute_quality_score(), fetch_spy_return_12w(), fetch_with_retry_sync(), Fetch SPY's 12-week (approx. 60 trading days) price return as a percentage., Composite quality score 0-100 for a confirmed breakout trigger.      Weights: (+8 more)
+### Community 26 - "compute_rs_score"
+Cohesion: 0.13
+Nodes (12): compute_rs_score(), scoring.py — Pure scoring functions for the 5-component final_score system.  No, Relative Strength score (0-100) vs S&P 500 over the last 12 weeks.      Excess r, tests/test_score_components.py  Unit tests for the new 5-component scoring funct, Stock +20%, SPY +5% -> excess +15% -> 100, Excess exactly 10% -> 100, Excess 5% -> 50 + 5*5 = 75, Same return as SPY -> 50 (+4 more)
 
 ### Community 27 - "FakeQuery"
 Cohesion: 0.15
@@ -247,9 +248,9 @@ Nodes (7): FakeQuery, FakeSupabaseClient, FakeTable, MockPosition, patch, test_s
 Cohesion: 0.12
 Nodes (16): Buy Trigger Gating, Configuration Reference, Credentials & APIs, `daily_triggers` table, Execution Agent (`execution_agent.py`), `force_buy.py` Properties, IBKR Connection, Market Direction Filter (CANSLIM "M") (+8 more)
 
-### Community 29 - "ai_evaluator.py"
-Cohesion: 0.16
-Nodes (18): ai_grade_and_bonus(), build_prompt(), call_ai_batch(), evaluate_triggers(), fetch_daily_triggers(), fetch_news_headlines(), fetch_trade_history(), fetch_watchlist_data() (+10 more)
+### Community 29 - "managed_exit.py"
+Cohesion: 0.26
+Nodes (15): get_live_price(), Fetch current price of a ticker from FMP., archive(), cancel_sells(), current_price(), main(), market_exit(), _notify() (+7 more)
 
 ### Community 30 - "Risk Management Plan"
 Cohesion: 0.12
@@ -283,9 +284,9 @@ Nodes (6): Consequences, Decision, Decision: Early Loss Kill-switch + Day-2 Univ
 Cohesion: 0.22
 Nodes (8): 1. Dynamic Trailing Stop Loss (IBKR-Managed), 2. Day 3 Breakout Verdict & Intraday Loss Minimiser, 3. Moving Average Support Breach (Day 7+ EOD), Active Exit Mechanisms, Key Parameters, Legacy / Manual Scripts, Overview, Sell Logic
 
-### Community 38 - "monitor_portfolio_intraday"
-Cohesion: 0.16
-Nodes (22): arm_exit(), execute_sell(), get_available_cash(), get_ibkr_account(), get_own_cash(), get_supabase_client(), main_loop(), monitor_portfolio_intraday() (+14 more)
+### Community 38 - "run_market_open_buys"
+Cohesion: 0.17
+Nodes (21): get_available_cash(), _get_entry_rs(), get_ibkr_account(), get_margin_loan(), get_own_cash(), main_loop(), _matches_account(), place_trailing_stop() (+13 more)
 
 ### Community 39 - "Fundamental Screener Overview"
 Cohesion: 0.20
@@ -308,8 +309,8 @@ Cohesion: 0.13
 Nodes (11): patch, hwm_date (date of last intraday high) is the only HWM data Python tracks.     IB, New intraday high (price > buy_price) -> hwm_date written to Supabase., Price does not exceed buy_price (or last seen peak) -> no hwm_date update., EOD plateau rotation: at 3:45-4pm, if portfolio is full AND fresh breakout     t, Helper: run monitor in EOD window., Days 3-6 position with decay is NOT swapped if no triggers exist., Days 3-6 position with decay is NOT swapped if portfolio has open slots (not ful (+3 more)
 
 ### Community 44 - "force_buy.py"
-Cohesion: 0.16
-Nodes (15): cancel_ticker_sell_orders(), get_margin_loan(), Return the current margin loan amount in USD (0.0 if no loan).      A positive r, Factory for IBKR TRAIL order type.     `ib_insync` 0.9.x does not export a Trail, Cancels all active GTC SELL orders for *ticker* (OCA cleanup before explicit sel, TrailingStopOrder(), get_ibkr_price(), main() (+7 more)
+Cohesion: 0.25
+Nodes (10): Factory for IBKR TRAIL order type.     `ib_insync` 0.9.x does not export a Trail, TrailingStopOrder(), get_ibkr_price(), main(), _place_buy(), IB, force_buy.py — One-off manual buy trigger (bypasses 9:30 AM time gate).  Run thi, Fetch price via IBKR delayed market data (same as execution_agent buy path). (+2 more)
 
 ### Community 45 - "_triggers"
 Cohesion: 0.22
@@ -351,13 +352,17 @@ Nodes (21): Exception, is_power_hold_active(), maybe_arm_power_hold(), O'Neil 8-
 Cohesion: 0.18
 Nodes (10): 5 days was an overfit trap, Consequences, Context, Decision, Findings, Follow-up, Method, Per-trade analysis says plateau exits are harmful (+2 more)
 
+### Community 56 - "Managed exit tool: exit at the session high rather than on impulse"
+Cohesion: 0.25
+Nodes (7): Consequences, Context, Decision, Managed exit tool: exit at the session high rather than on impulse, Note on the positions that prompted this, The hard floor is what makes patience safe, Trail sizing is volatility-scaled, not fixed
+
 ### Community 57 - "_reload"
 Cohesion: 0.13
 Nodes (10): fixture, test_screener_filters.py - Tests for the CAN SLIM fundamental gate in tv_api_scr, Re-import the screener module with the given env overrides applied., Regression: was 0, which admitted SWK on 0.6% revenue growth., Regression: was 15. O'Neil requires ~25%., Thresholds must be adjustable without a code change, for A/B and rollback., _reload(), screener() (+2 more)
 
-### Community 58 - "execution_agent.py"
-Cohesion: 0.10
-Nodes (23): check_volume_distribution(), _fetch_current_rs(), fetch_held_position_sentiment(), fetch_trade_confirms_for_ticker(), _get_entry_rs(), get_live_price(), handle_mock_sell(), _matches_account() (+15 more)
+### Community 58 - "test_reconcile_detects_short_positions"
+Cohesion: 0.50
+Nodes (3): patch, Test that reconcile_with_ibkr detects short positions and sends alert., test_reconcile_detects_short_positions()
 
 ### Community 60 - "Decision"
 Cohesion: 0.17
@@ -375,9 +380,9 @@ Nodes (4): The pivot check used to be a ceiling only: it rejected stocks extende
 Cohesion: 0.20
 Nodes (8): _make_df(), 15% below 52w high -> beyond 8% proximity -> None., At or above 52w high -> confirmed breakout territory -> None., Close (77) below SMA-50 (~90) -> below trend -> None., Stock -5% vs SPY +15% -> low RS -> None., Recent 3d avg vol 1.1x 50d avg -> sellers still active -> None., Strictly descending then tiny uptick: must compare vs prior row.         Use all, TestPreBreakoutCoilFail
 
-### Community 65 - "increment_retention"
-Cohesion: 0.22
-Nodes (9): increment_retention(), _compute_failure_penalty(), get_supabase_client(), get_watchlist_from_supabase(), Client, Compute a time-decayed failure penalty for a trigger based on historical learnin, write_triggers_to_supabase(), get_rating_text() (+1 more)
+### Community 65 - "technical_screener.py"
+Cohesion: 0.17
+Nodes (15): increment_retention(), check_technical_breakout(), _compute_failure_penalty(), compute_quality_score(), fetch_spy_return_12w(), fetch_with_retry_sync(), get_supabase_client(), get_watchlist_from_supabase() (+7 more)
 
 ### Community 66 - "TeeLogger"
 Cohesion: 0.33
@@ -394,6 +399,10 @@ Nodes (4): 5% below high, vol contracting, 3/3 closes up -> PRE_BREAKOUT., 2 of 
 ### Community 69 - "compute_momentum_health_score"
 Cohesion: 0.33
 Nodes (6): compute_momentum_health_score(), compute_rsi(), detect_candlestick_reversals(), Wilder's smoothed RSI from a list of closing prices.      Returns a list of RSI, Detect bearish reversal candles on the last 3 bars near the plateau zone.      R, Live Momentum Health Score Mₜ (0–100) for a held position.      Returns (score,
+
+### Community 70 - "arm_exit"
+Cohesion: 0.29
+Nodes (7): arm_exit(), get_supabase_client(), handle_mock_sell(), Client, datetime, Arms a Day 0-6 loss-cutting exit instead of selling immediately at the     trigg, Executes a mock sale event directly on Supabase, bypassing IBKR.
 
 ### Community 87 - "Decision: Breakout Verdict + Intraday Loss Minimiser"
 Cohesion: 0.29
@@ -432,23 +441,23 @@ Cohesion: 0.36
 Nodes (7): main(), now_et_str(), restart_and_health_check.py — 6:00 AM IB Gateway Health Check & Telegram Notifie, Send HTML Telegram message to all configured chat IDs., Connects to IB Gateway, verifies account U12941651, and checks own cash.     Ret, send_telegram(), verify_health()
 
 ## Knowledge Gaps
-- **310 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+305 more)
+- **315 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+310 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **11 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `TelegramNotifier` connect `TelegramNotifier` to `TeeLogger`, `execution_agent.py`, `force_buy.py`, `technical_screener.py`, `ai_evaluator.py`?**
-  _High betweenness centrality (0.102) - this node is a cross-community bridge._
-- **Why does `_compute_dynamic_trail_pct()` connect `_compute_dynamic_trail_pct` to `execution_agent.py`, `monitor_portfolio_intraday`?**
-  _High betweenness centrality (0.039) - this node is a cross-community bridge._
-- **Why does `compute_final_score()` connect `compute_final_score` to `test_score_components.py`, `_coil`, `ai_evaluator.py`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+- **Why does `TelegramNotifier` connect `TelegramNotifier` to `technical_screener.py`, `TeeLogger`, `ai_evaluator.py`, `force_buy.py`, `execution_agent.py`?**
+  _High betweenness centrality (0.098) - this node is a cross-community bridge._
+- **Why does `fetch_ibkr_delayed_price()` connect `fetch_ibkr_delayed_price` to `_place_sell`, `run_market_open_buys`, `force_buy.py`, `execution_agent.py`, `managed_exit.py`?**
+  _High betweenness centrality (0.040) - this node is a cross-community bridge._
+- **Why does `monitor_portfolio_intraday()` connect `execution_agent.py` to `compute_momentum_health_score`, `arm_exit`, `run_market_open_buys`, `_compute_dynamic_trail_pct`, `test_plateau_rotation.py`, `_run`, `Self-Healing Order Tests`, `_pos`, `managed_exit.py`?**
+  _High betweenness centrality (0.032) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `FMPClient` (e.g. with `BacktestRequest` and `SettingsUpdate`) actually correct?**
   _`FMPClient` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `private`, `version` to the rest of the system?**
-  _310 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _315 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `compute_liquidity_score` be split into smaller, more focused modules?**
   _Cohesion score 0.12666666666666668 - nodes in this community are weakly interconnected._
 - **Should `datetime` be split into smaller, more focused modules?**

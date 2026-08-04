@@ -555,8 +555,8 @@
     "semantic_hash": ""
   },
   "migrations/add_power_hold.sql": {
-    "mtime": 1785822054.3395364,
-    "ast_hash": "5512a35e86e74b518f50bc37d58cf041",
+    "mtime": 1785851667.3628292,
+    "ast_hash": "7adb9b65a96eb706c5143b438f30a8d7",
     "semantic_hash": ""
   },
   "tests/test_power_hold.py": {
@@ -602,6 +602,16 @@
   "decisions/2026-08-04_power-hold-trail-and-five-slots.md": {
     "mtime": 1785851255.3592954,
     "ast_hash": "bd6ae9b9a470bacbd78ca51f7bef149e",
+    "semantic_hash": ""
+  },
+  "managed_exit.py": {
+    "mtime": 1785852706.2395365,
+    "ast_hash": "c864c28ddc0a132abffd2589af228afc",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-04_managed-exit-tool.md": {
+    "mtime": 1785852752.5289876,
+    "ast_hash": "2747f3c180683fd4c7a655b31554e611",
     "semantic_hash": ""
   }
 }
