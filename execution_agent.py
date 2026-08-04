@@ -1,6 +1,5 @@
 import os
 import sys
-import math
 import argparse
 import datetime
 import time
@@ -166,10 +165,6 @@ TRAIL_TIME_TIERS: list[tuple[int, float]] = [
     ( 8, 0.060),     # >  8 cal days → 6.0% trail
     ( 0, None),      # ≤  7 cal days → no change
 ]
-# Days without a new high-water mark before a position is considered plateaued.
-# If portfolio is full and a fresh breakout exists at 3:45pm, the most-stalled
-# position (largest days since HWM) is rotated out.
-PLATEAU_DAYS             = int(os.getenv("PLATEAU_DAYS", 7))
 COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 1))
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
@@ -533,9 +528,13 @@ def get_available_cash(ib: IB) -> float:
 
     DEPRECATED: Previously read AvailableFunds (which includes margin lending).
     Now delegates to get_own_cash() which reads TotalCashValue and hard-blocks
-    when a margin loan is active. All new code should call get_own_cash() directly.
+    when a margin loan is active. Kept (with a regression test in
+    tests/test_margin_safety.py) so any old call site automatically gets the
+    margin-safe value without code changes. All new code should call
+    get_own_cash() directly.
     """
     return get_own_cash(ib)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # IBKR Order Management Helpers
@@ -1649,24 +1648,6 @@ def run_market_open_buys(ib: IB):
             break
 
 
-def get_fresh_triggers_today(client: Client, active_tickers: list) -> list:
-    """
-    Returns ticker symbols from today's daily_triggers that are not already held.
-    Used by the stale rotation gate to confirm a real replacement opportunity exists
-    before rotating out a sideways position.
-    """
-    tz = ZoneInfo("America/New_York")
-    today_str = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
-    try:
-        res = client.table("daily_triggers") \
-                    .select("ticker") \
-                    .gte("triggered_at", today_str) \
-                    .execute()
-        return [r["ticker"] for r in res.data if r["ticker"] not in active_tickers]
-    except Exception:
-        return []
-
-
 def _get_entry_rs(ticker: str, trigger_rs_score) -> int | None:
     """Return entry_rs_score for a newly opened position.
 
@@ -1693,8 +1674,8 @@ def _fetch_ohlcv(ticker: str, days: int = 100) -> list:
     Returns a list of dicts sorted ascending by date, each containing at minimum:
     {'date': str, 'open': float, 'high': float, 'low': float,
      'close': float, 'volume': int}
-    Returns [] on any failure. Shared by _fetch_current_rs, _compute_3day_avg_close,
-    _compute_param_drift, and _get_market_regime so we don't duplicate FMP calls.
+    Returns [] on any failure. Shared by _get_market_regime and the EOD metrics
+    loop so we don't duplicate FMP calls.
     """
     try:
         tz_o    = ZoneInfo("America/New_York")
@@ -1714,105 +1695,6 @@ def _fetch_ohlcv(ticker: str, days: int = 100) -> list:
     except Exception as _e:
         print(f"   ⚠️ _fetch_ohlcv({ticker}) failed: {_e}")
         return []
-
-
-def _compute_3day_avg_close(ohlcv: list) -> float | None:
-    """Return the average of the last 3 EOD closing prices from an OHLCV list."""
-    if len(ohlcv) < 3:
-        return None
-    return sum(float(r["close"]) for r in ohlcv[-3:]) / 3
-
-
-def _compute_param_drift(pos: dict, ohlcv: list) -> dict:
-    """Compute drift for all 6 breakout parameters versus their entry values.
-
-    Returns a dict keyed by parameter name. Each value:
-        {"entry": N, "current": N, "drift": N, "failed": bool}
-
-    Failure thresholds (conservative — only flag material deterioration):
-        volume_surge:       drop > 0.6x from entry
-        rs_score:           drop > 10 pts
-        technical_score:    drop > 10 pts
-        pivot_distance_pct: retreated > 3% below pivot (more negative)
-        ai_rating:          placeholder — filled by AI re-eval call
-        sentiment_score:    drop > 10 pts
-    """
-    drift: dict = {}
-
-    # ── Volume surge (current vs 20-day avg from OHLCV) ──────────────────────
-    entry_vol = pos.get("entry_volume_surge")
-    curr_vol_ratio = None
-    if len(ohlcv) >= 21:
-        vols = [float(r.get("volume", 0)) for r in ohlcv]
-        avg20 = sum(vols[-21:-1]) / 20  # 20-day avg excludes today
-        today_vol = vols[-1]
-        curr_vol_ratio = round(today_vol / avg20, 2) if avg20 > 0 else None
-    drift["volume_surge"] = {
-        "entry":   entry_vol,
-        "current": curr_vol_ratio,
-        "drift":   round((curr_vol_ratio or 0) - (entry_vol or 0), 2) if entry_vol and curr_vol_ratio else None,
-        "failed":  bool(entry_vol and curr_vol_ratio and (entry_vol - curr_vol_ratio) > 0.6),
-    }
-
-    # ── RS score (live from pos, already computed in EOD metrics loop) ───────
-    entry_rs = pos.get("entry_rs_score")
-    live_rs  = pos.get("live_rs_score")
-    drift["rs_score"] = {
-        "entry":   entry_rs,
-        "current": live_rs,
-        "drift":   (live_rs - entry_rs) if entry_rs is not None and live_rs is not None else None,
-        "failed":  bool(entry_rs is not None and live_rs is not None and (entry_rs - live_rs) > 10),
-    }
-
-    # ── Technical score (re-compute from OHLCV vs SMA) ───────────────────────
-    entry_tech = pos.get("entry_technical_score")
-    curr_tech  = None
-    if len(ohlcv) >= 51:
-        closes  = [float(r["close"]) for r in ohlcv]
-        sma50   = sum(closes[-50:]) / 50
-        curr_close = closes[-1]
-        sma_margin = ((curr_close / sma50) - 1) * 100 if sma50 > 0 else 0
-        # Simplified technical score: only SMA component (volume handled separately)
-        curr_tech = max(0, min(100, int(50 + sma_margin * 5)))
-    drift["technical_score"] = {
-        "entry":   entry_tech,
-        "current": curr_tech,
-        "drift":   (curr_tech - entry_tech) if entry_tech is not None and curr_tech is not None else None,
-        "failed":  bool(entry_tech is not None and curr_tech is not None and (entry_tech - curr_tech) > 10),
-    }
-
-    # ── Pivot distance (current price vs entry pivot, estimated from entry data) ─
-    entry_pvt  = pos.get("entry_pivot_distance_pct")
-    buy_price  = float(pos.get("buy_price") or 0)
-    curr_close_p = float(ohlcv[-1]["close"]) if ohlcv else None
-    # entry_pivot_distance_pct was (close/pivot - 1)*100 at entry
-    # We approximate pivot = buy_price / (1 + entry_pvt/100)
-    pivot_price  = (buy_price / (1 + (entry_pvt or 0) / 100)) if buy_price > 0 and entry_pvt is not None else None
-    curr_pvt_pct = round(((curr_close_p / pivot_price) - 1) * 100, 2) if pivot_price and curr_close_p else None
-    drift["pivot_distance_pct"] = {
-        "entry":   entry_pvt,
-        "current": curr_pvt_pct,
-        "drift":   round((curr_pvt_pct or 0) - (entry_pvt or 0), 2) if entry_pvt is not None and curr_pvt_pct is not None else None,
-        "failed":  bool(entry_pvt is not None and curr_pvt_pct is not None and (curr_pvt_pct - entry_pvt) < -3),
-    }
-
-    # ── AI rating — placeholder, filled by evaluate_held_position() call ─────
-    drift["ai_rating"] = {
-        "entry":   pos.get("entry_ai_rating"),
-        "current": None,   # filled after AI re-eval
-        "drift":   None,
-        "failed":  False,
-    }
-
-    # ── Sentiment — re-eval through AI (placeholder, also filled post-call) ──
-    drift["sentiment_score"] = {
-        "entry":   pos.get("entry_sentiment_score"),
-        "current": None,
-        "drift":   None,
-        "failed":  False,
-    }
-
-    return drift
 
 
 def fetch_held_position_sentiment(ticker: str) -> int:
@@ -1994,37 +1876,6 @@ def detect_candlestick_reversals(ohlcv: list, hwm_price: float) -> int:
     return 0
 
 
-def check_consolidation_floor_break(ohlcv: list, current_price: float) -> bool:
-    """Returns True if current price broke below the 7-day consolidation floor on volume.
-
-    Consolidation floor = min close over the 7 trading days BEFORE today.
-    Triggered if:
-      1. current_price < floor * 0.99  (closed below floor with 1% buffer)
-      2. today's volume > 20-day avg volume * 1.10  (volume surge confirms)
-
-    Called at EOD (Day 7+). Returns False on insufficient history.
-    """
-    if len(ohlcv) < 28:    # 20 vol baseline + 7 floor days + 1 today
-        return False
-
-    closes = [float(r.get("close", 0)) for r in ohlcv]
-    vols   = [float(r.get("volume", 0)) for r in ohlcv]
-
-    # Floor = min close over the 7 days before today (ohlcv[-8] to ohlcv[-2])
-    floor_closes = closes[-8:-1]
-    if not floor_closes or min(floor_closes) <= 0:
-        return False
-    floor_price = min(floor_closes)
-
-    avg20     = sum(vols[-21:-1]) / 20 if len(vols) >= 21 else 0
-    today_vol = vols[-1]
-
-    broke_floor  = current_price < floor_price * 0.99
-    vol_confirms = avg20 > 0 and today_vol > avg20 * 1.10
-
-    return broke_floor and vol_confirms
-
-
 def compute_momentum_health_score(
     pos: dict,
     ohlcv: list,
@@ -2175,36 +2026,6 @@ def _get_market_regime() -> str:
         return "neutral"
 
 
-def _generate_analysis_reason(ticker: str, drift: dict, ai_grade: str,
-                              avg_close: float, buy_price: float) -> str:
-    """Build a deterministic human-readable string explaining parameter failures."""
-    failed = [k for k, v in drift.items() if v.get("failed")]
-    lines  = []
-    pnl_pct = round((avg_close / buy_price - 1) * 100, 1) if buy_price > 0 else 0
-    lines.append(
-        f"{ticker}: 3-day avg close ${avg_close:.2f} vs buy ${buy_price:.2f} ({pnl_pct:+.1f}%). "
-        f"AI re-eval: {ai_grade}. {len(failed)}/6 parameters failed."
-    )
-    detail_map = {
-        "volume_surge":       lambda v: f"Volume dried up ({v['entry']}x→{v['current']}x, −{abs(v['drift'] or 0):.1f}x)",
-        "rs_score":           lambda v: f"RS decayed ({v['entry']}→{v['current']}, {v['drift']:+d}pts)",
-        "technical_score":    lambda v: f"Technicals weakened ({v['entry']}→{v['current']}, {v['drift']:+d}pts)",
-        "pivot_distance_pct": lambda v: f"Price retreated to/below pivot ({v['entry']:+.1f}%→{v['current']:+.1f}%)",
-        "ai_rating":          lambda v: f"AI rating dropped ({v['entry']}→{v['current']})",
-        "sentiment_score":    lambda v: f"Sentiment turned negative ({v['entry']}→{v['current']})",
-    }
-    for param in failed:
-        v = drift.get(param, {})
-        try:
-            lines.append("  • " + detail_map[param](v))
-        except Exception:
-            lines.append(f"  • {param}: entry={v.get('entry')} current={v.get('current')}")
-    if not failed:
-        lines.append("  No individual parameter crossed failure threshold — aggregate underperformance.")
-    return "\n".join(lines)
-
-
-
 def _fetch_current_rs(ticker: str) -> int | None:
     """Fetch the stock's current 12-week return vs SPY and return its live RS score.
 
@@ -2256,22 +2077,6 @@ def _fetch_current_rs(ticker: str) -> int | None:
     except Exception as _e:
         print(f"   ⚠️ _fetch_current_rs({ticker}) failed: {_e}")
         return None
-
-
-def _set_rotation_recommendation(client, ticker: str, tier: str | None):
-    """Write or clear rotation_recommendation in portfolio_positions.
-
-    tier: 'TIER_1', 'TIER_2', or None (to clear).
-    Safe to call even if the column does not yet exist — exception is caught.
-    """
-    try:
-        client.table("portfolio_positions").update(
-            {"rotation_recommendation": tier}
-        ).eq("ticker", ticker).execute()
-        label = tier or "cleared"
-        print(f"   💡 {ticker}: rotation_recommendation → {label}")
-    except Exception as _e:
-        print(f"   ⚠️ Could not set rotation_recommendation for {ticker}: {_e}")
 
 
 def check_volume_distribution(ticker: str, ohlcv: list) -> bool:
@@ -2886,24 +2691,6 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         notifier.notify_exception(f"execute_sell({ticker}) — execution_agent.py", e)
         return False
 
-
-def has_bought_today(client, today_str: str) -> bool:
-    """Checks Supabase to see if any confirmed trades were placed today."""
-    try:
-        # Check active portfolio positions for any buys today
-        res = client.table("portfolio_positions").select("buy_date").gte("buy_date", today_str).execute()
-        if res.data:
-            return True
-        # Check trade history in case a position was bought and stopped out same day
-        res = client.table("trade_history").select("buy_date").gte("buy_date", today_str).execute()
-        if res.data:
-            return True
-        return False
-    except Exception as e:
-        notifier.notify_exception("has_bought_today() — execution_agent.py", e)
-        # Default to True on DB error to prevent accidental spam / duplicate runs
-        print(f"❌ Error checking DB for today's buys: {e}. Assuming True.")
-        return True
 
 def main_loop():
     """Main daemon loop running inside the Docker container."""

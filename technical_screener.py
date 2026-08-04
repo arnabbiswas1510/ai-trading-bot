@@ -47,7 +47,6 @@ RS_MIN_GATE         = int(os.environ.get("RS_MIN_GATE", 50))
 PRE_BREAKOUT_PROXIMITY    = float(os.environ.get("PRE_BREAKOUT_PROXIMITY",   0.08))  # within 8%
 PRE_BREAKOUT_VOL_MAX      = float(os.environ.get("PRE_BREAKOUT_VOL_MAX",     1.00))  # < 100% of 50d avg
 PRE_BREAKOUT_UPTREND_MIN  = int(os.environ.get("PRE_BREAKOUT_UPTREND_MIN",   2))     # 2 of last 3 closes up
-PRE_BREAKOUT_SCORE_BOOST  = int(os.environ.get("PRE_BREAKOUT_SCORE_BOOST",   0))     # disabled by default
 
 # ── Daily candidate quota waterfall ───────────────────────────────────────────
 # Strong filters first; controlled relaxation only if strict pass yields < target.
@@ -363,7 +362,6 @@ def check_pre_breakout_coil(ticker: str, df: "pd.DataFrame",
 
         today_row     = df.iloc[-1]
         current_close = float(today_row["close"])
-        volume_today  = float(today_row["volume"])
 
         # ── Gate A: close within PRE_BREAKOUT_PROXIMITY of 52w high ──────────
         if rolling_high_52w <= 0:

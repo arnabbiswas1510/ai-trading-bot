@@ -361,28 +361,6 @@ class TelegramNotifier:
         )
         self._send(msg)
 
-    def notify_power_hold(
-        self,
-        ticker: str,
-        gain_pct: float,
-        days_held: int,
-        expiry_date: str,
-        stop_loss: float,
-    ) -> None:
-        """Fires when the Power Hold Rule is activated (20%+ gain in ≤21 days)."""
-        msg = (
-            f"🔥 <b>POWER HOLD ACTIVATED</b> — ${ticker}\n"
-            f"\n"
-            f"Stock surged <b>+{gain_pct:.1f}%</b> in just <b>{days_held} day{'s' if days_held != 1 else ''}!</b>\n"
-            f"\n"
-            f"⏳ Profit target suspended for 8 weeks.\n"
-            f"   Normal exits resume: <b>{expiry_date}</b>\n"
-            f"   Stop-Loss still active at: <code>${stop_loss:,.2f}</code>\n"
-            f"\n"
-            f"🕒 {self._now_et()}"
-        )
-        self._send(msg)
-
     # ──────────────────────────────────────────────────────────────────────────
     # Exception Notifications (rate-limited)
     # ──────────────────────────────────────────────────────────────────────────

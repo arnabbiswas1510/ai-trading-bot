@@ -61,7 +61,7 @@ from supabase import create_client
 
 # ── Reuse sell/buy logic from the dedicated scripts ───────────────────────────
 from force_sell import _place_sell, _cancel_existing_sells, _notify
-from force_buy  import _place_buy, get_available_cash
+from force_buy  import _place_buy
 
 # ── Config ────────────────────────────────────────────────────────────────────
 IB_HOST      = os.getenv("IB_GATEWAY_HOST", "ib-gateway")

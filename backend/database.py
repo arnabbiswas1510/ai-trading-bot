@@ -476,98 +476,6 @@ def get_positions():
         print(f"Error getting positions from Supabase: {e}")
         return []
 
-def get_position(ticker):
-    try:
-        client = get_supabase_client()
-        res = client.table("portfolio_positions").select("*").eq("ticker", ticker.upper()).execute()
-        if res.data:
-            row = res.data[0]
-            return {
-                "id": row.get("ticker"),
-                "ticker": row["ticker"],
-                "shares": row["shares"],
-                "buy_price": float(row["buy_price"]),
-                "buy_date": row["buy_date"],
-                "current_price": float(row.get("current_price") or row["buy_price"]),
-                "stop_loss": float(row["stop_loss"]),
-                "profit_target": float(row["profit_target"]),
-                "active": 1,
-                "buy_reason": row.get("buy_reason", "CANSLIM Breakout")
-            }
-        return None
-    except Exception as e:
-        print(f"Error getting position for {ticker} from Supabase: {e}")
-        return None
-
-def buy_position(ticker, shares, price, date):
-    # Calculate cash balance dynamically based on initial balance, trade history, and active positions
-    initial = float(get_setting("initial_balance", 100000.0))
-    positions = get_positions()
-    history = get_trade_history()
-    
-    realized_pnl = sum(t["profit_loss"] for t in history)
-    open_cost = sum(p["shares"] * p["buy_price"] for p in positions)
-    cash = initial + realized_pnl - open_cost
-    
-    cost = shares * price
-    if cost > cash:
-        raise ValueError("Insufficient cash balance")
-        
-    client = get_supabase_client()
-    
-    stop_loss_pct = float(get_setting("stop_loss_pct", 7.0))
-    profit_target_pct = float(get_setting("profit_target_pct", 25.0))
-    
-    stop_loss = round(price * (1.0 - (stop_loss_pct / 100.0)), 2)
-    profit_target = round(price * (1.0 + (profit_target_pct / 100.0)), 2)
-    
-    position_data = {
-        "ticker": ticker.upper(),
-        "shares": shares,
-        "buy_price": price,
-        "buy_date": date,
-        "buy_reason": "Manual Purchase from Web UI",
-        "stop_loss": stop_loss,
-        "profit_target": profit_target,
-        "is_power_hold": False
-    }
-    client.table("portfolio_positions").insert(position_data).execute()
-
-def sell_position(ticker, price, date, reason):
-    client = get_supabase_client()
-    res = client.table("portfolio_positions").select("*").eq("ticker", ticker.upper()).execute()
-    if not res.data:
-        raise ValueError(f"No active position for {ticker}")
-        
-    pos = res.data[0]
-    shares = int(pos['shares'])
-    buy_price = float(pos['buy_price'])
-    buy_date = pos['buy_date']
-    buy_reason = pos.get('buy_reason', 'CANSLIM Breakout')
-    
-    proceeds = shares * price
-    cost = shares * buy_price
-    pnl = round(proceeds - cost, 2)
-    pnl_pct = round((price / buy_price - 1.0) * 100.0, 2)
-    
-    # Delete position from Supabase
-    client.table("portfolio_positions").delete().eq("ticker", ticker.upper()).execute()
-    
-    # Log to trade history
-    trade_log = {
-        "ticker": ticker.upper(),
-        "shares": shares,
-        "buy_price": buy_price,
-        "buy_date": buy_date,
-        "buy_reason": buy_reason,
-        "sell_price": price,
-        "sell_date": date,
-        "sell_reason": reason,
-        "profit_loss": pnl,
-        "percent_return": pnl_pct
-    }
-    client.table("trade_history").insert(trade_log).execute()
-
 def update_position_price(ticker, current_price):
     # Since current_price is fetched dynamically from FMP quote in main.py, we don't need to write it to Supabase
     pass
@@ -675,21 +583,6 @@ def get_daily_triggers():
         print(f"Error getting daily triggers from Supabase: {e}")
         return {"breakouts": [], "removed": []}
 
-
-def get_historical_triggers(days: int = 30) -> list:
-    """Fetch all daily_triggers from the last N days."""
-    try:
-        client = get_supabase_client()
-        cutoff_date = (datetime.datetime.now(ZoneInfo('America/New_York')).date() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
-        
-        # Query daily_triggers
-        daily_res = client.table("daily_triggers").select("*").gte("triggered_at", cutoff_date).execute()
-        daily = [{**row, "type": "Primary CANSLIM"} for row in (daily_res.data or [])]
-        
-        return daily
-    except Exception as e:
-        print(f"Error fetching historical triggers: {e}")
-        return []
 
 def reset_portfolio():
     """
