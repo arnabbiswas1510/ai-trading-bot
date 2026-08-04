@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1785819683.5025177,
-    "ast_hash": "a0cd1f0bc1d1cd7641a74a5e0594a3b3",
+    "mtime": 1785820507.4210775,
+    "ast_hash": "dc0dc3b8332a795044664ed15eeb7fd7",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -305,9 +305,9 @@
     "semantic_hash": ""
   },
   "tests/test_plateau_rotation.py": {
-    "mtime": 1785202226.8092003,
-    "ast_hash": "de02e3747c2500811f69c493ad57a40a",
-    "semantic_hash": "de02e3747c2500811f69c493ad57a40a"
+    "mtime": 1785820637.095612,
+    "ast_hash": "255bbe78e900afc374c280d3700606dc",
+    "semantic_hash": ""
   },
   "tests/test_pre_breakout.py": {
     "mtime": 1785202226.8093355,
@@ -582,6 +582,11 @@
   "decisions/2026-08-04_tune-exits-on-breakout-population.md": {
     "mtime": 1785819776.6835,
     "ast_hash": "d42238f240e662aad6b1d9fd0c0e482b",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-04_plateau-exit-capital-velocity.md": {
+    "mtime": 1785820680.6411734,
+    "ast_hash": "8af080fc8c9033f58fb322c89f5901da",
     "semantic_hash": ""
   }
 }

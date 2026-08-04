@@ -220,6 +220,38 @@ MOMENTUM_HEALTH_SENT_WEIGHT = float(os.getenv("MOMENTUM_HEALTH_SENT_WEIGHT", 0.2
 # Minimum score gap (trigger Mₜ vs held Mₜ) to auto-swap in Rank & Replace (Day 7+).
 RANK_REPLACE_THRESHOLD      = int(os.getenv("RANK_REPLACE_THRESHOLD", 15))
 
+# ── Plateau (stale) exit ──────────────────────────────────────────────────────
+# Sell a position that has gone this many TRADING days without making a new high
+# water mark. Capital is finite (MAX_POSITIONS slots) so a position that has
+# stopped advancing costs the return the slot could earn elsewhere, even while
+# it sits comfortably above its trailing stop and above EMA-21 and therefore
+# trips no other exit.
+#
+# Judged on portfolio CAGR with the 4-slot constraint, NOT per-trade expectancy.
+# Per trade a plateau exit looks harmful (+1.01% -> +0.87% expectancy) because it
+# truncates some winners; with slots modelled it is clearly positive, because the
+# freed slot is redeployed. Per-trade expectancy is the wrong metric whenever
+# capital, not ideas, is the binding constraint.
+#
+# 3-year 4-slot simulation, screener-passing universe (the population actually
+# traded), CAGR by period:
+#     off      full +15.9%   P1 +17.7   P2 +13.1   P3  +5.2
+#     10 days  full +20.9%   P1 +24.0   P2 +17.7   P3 +13.7   <- better in ALL
+# 8-15 days forms a smooth plateau (+19.0 / +20.9 / +23.1 / +17.2), so the exact
+# value is not a knife edge. 10 was chosen over the 12 that maximised the full
+# period because it had the best worst-period result.
+#
+# 5 days scored highest on the broad universe (+20.8% vs +10.1%) but was WORSE
+# than no plateau exit on the screener universe (+15.5% vs +15.9%) and turned a
+# period negative. It was a single-universe artifact; the disagreement between
+# universes is exactly what ruled it out.
+#
+# Gated to Day 7+ so it can never fire during the breakout consolidation phase,
+# and suppressed by the 8-week power-hold rule.
+STALE_EXIT_ENABLED          = os.getenv("STALE_EXIT_ENABLED", "true").lower() == "true"
+STALE_EXIT_DAYS             = int(os.getenv("STALE_EXIT_DAYS", 10))
+STALE_EXIT_MIN_DAYS_HELD    = int(os.getenv("STALE_EXIT_MIN_DAYS_HELD", 7))
+
 # ── Breakout Verdict + Intraday Loss Minimiser ─────────────────────────────────
 # Day 3 EOD verdict: position must close >= +1% above entry AND have Day 3 volume
 # >= 75% of 20-day average. Failure activates the Intraday Loss Minimiser (Day 4+).
@@ -2533,6 +2565,39 @@ def monitor_portfolio_intraday(ib: IB):
                         print(f"🚨 {ticker} breached Moving Average exit! {reason}")
                         execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
                         continue
+
+        # ── Plateau (Stale) Exit — Day 7+, EOD only ──────────────────────────────
+        # Free the slot when a position has stopped making progress. Unlike the
+        # trailing stop (which reacts to a DROP) and the MA exit (which reacts to
+        # a BREAKDOWN), this reacts to going NOWHERE — a position can sit above
+        # both for weeks while earning nothing and blocking a fresh breakout.
+        #
+        # Uses hwm_date, which already ratchets in the block above, and counts
+        # TRADING days so a long weekend doesn't advance the stall counter.
+        if (STALE_EXIT_ENABLED
+                and days_held >= STALE_EXIT_MIN_DAYS_HELD
+                and not power_held
+                and (datetime.datetime.now(tz).hour == 15
+                     and datetime.datetime.now(tz).minute >= 45)):
+            try:
+                _hwm_raw = pos.get("hwm_date")
+                if _hwm_raw:
+                    _hwm_date = datetime.date.fromisoformat(str(_hwm_raw)[:10])
+                    _stale_days = trading_days_between(_hwm_date, datetime.datetime.now(tz).date())
+                    if _stale_days >= STALE_EXIT_DAYS:
+                        _hwm_px = float(pos.get("hwm_price") or buy_price)
+                        reason = (
+                            f"Plateau Exit — no new high in {_stale_days} trading days "
+                            f"(HWM ${_hwm_px:.2f} on {_hwm_date.isoformat()}, "
+                            f"current ${current_price:.2f}). Rotating capital to a fresh breakout."
+                        )
+                        print(f"🔄 {ticker} has plateaued — {reason}")
+                        execute_sell(ib, client, ticker, shares, buy_price, buy_date,
+                                     buy_reason, current_price, reason)
+                        continue
+            except Exception as _stale_err:
+                notifier.notify_exception("monitor_portfolio_intraday() plateau exit", _stale_err)
+                print(f"   ⚠️ Plateau exit check failed for {ticker}: {_stale_err}")
 
         # Position remained active
         active_positions.append(pos)

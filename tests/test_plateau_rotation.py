@@ -208,3 +208,131 @@ class TestEdgeCases:
         _run_eod(ib, mock_sb, live_rs_return=None)
 
         assert not any("TIER_2" in c for c in _update_call_strings(mock_sb))
+
+
+# ============================================================================
+# Plateau (Stale) Exit — Day 7+, EOD only
+# ============================================================================
+# Frees a slot when a position stops making new highs. Distinct from the
+# trailing stop (reacts to a DROP) and the MA exit (reacts to a BREAKDOWN):
+# this reacts to going NOWHERE, which trips no other exit.
+#
+# Mock date 2026-06-20 (Fri). _hwm(N) is N CALENDAR days back; the rule counts
+# TRADING days, so the two differ across weekends:
+#   _hwm(12) = 2026-06-08 -> 10 trading days  (threshold, fires)
+#   _hwm(11) = 2026-06-09 ->  9 trading days  (below threshold, holds)
+#
+# NOTE: the shared _run_eod harness mocks execution_agent.datetime, which leaves
+# the NYSE holiday set empty, so counts under the mock ignore holidays (real
+# code counting from 2026-06-08 returns 9, not 10, because Jun 19 is
+# Juneteenth). The holiday/weekend behaviour is therefore asserted directly
+# against trading_days_between() in test_trading_day_counting, not through the
+# mocked EOD loop.
+# ============================================================================
+
+_STALE_BUY_DATE = "2026-06-01T12:00:00+00:00"   # ~14 trading days held -> Day 7+ gate open
+
+
+class TestPlateauStaleExit:
+
+    def _pos(self, hwm_price=108.0, **kw):
+        base = dict(buy_price=100.0, buy_date=_STALE_BUY_DATE)
+        base.update(kw)
+        p = make_position("AAPL", **base)
+        p["hwm_price"] = hwm_price
+        return p
+
+    def test_fires_when_no_new_high_for_threshold_trading_days(self):
+        pos = self._pos(hwm_date=_hwm(12))          # 10 trading days stalled
+        portfolio = _full_portfolio(pos)
+        mock_sb = make_supabase_mock(portfolio=portfolio)
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_price=106.0)
+
+        sold = [c for c in mock_sell.call_args_list if c[0][2] == "AAPL"]
+        assert sold, "Plateau exit should fire after the stall threshold"
+        assert "Plateau Exit" in sold[0][0][8]
+
+    def test_holds_when_stall_is_below_threshold(self):
+        pos = self._pos(hwm_date=_hwm(11))          # 9 trading days stalled
+        portfolio = _full_portfolio(pos)
+        mock_sb = make_supabase_mock(portfolio=portfolio)
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_price=106.0)
+
+        assert not [c for c in mock_sell.call_args_list
+                    if c[0][2] == "AAPL" and "Plateau Exit" in c[0][8]]
+
+    def test_trading_day_counting(self):
+        """The stall counter must skip weekends AND NYSE holidays, so a long
+        weekend cannot advance it. Asserted directly because the shared EOD
+        harness mocks datetime and loses the holiday set."""
+        d = datetime.date
+        # Sat + Sun are skipped: Fri 2026-06-12 -> Fri 2026-06-19 is 5 days.
+        assert execution_agent.trading_days_between(d(2026, 6, 12), d(2026, 6, 19)) == 5
+        # Juneteenth (Fri 2026-06-19) is a NYSE holiday, so the following week
+        # contributes one fewer day than a plain weekday count.
+        assert execution_agent.trading_days_between(d(2026, 6, 15), d(2026, 6, 22)) == 4
+        assert execution_agent.trading_days_between(d(2026, 6, 20), d(2026, 6, 20)) == 0
+
+    def test_suppressed_before_day7(self):
+        """A stalled but very fresh position is in the consolidation phase."""
+        pos = self._pos(buy_date="2026-06-17T12:00:00+00:00", hwm_date=_hwm(12))
+        portfolio = _full_portfolio(pos)
+        mock_sb = make_supabase_mock(portfolio=portfolio)
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_price=106.0)
+
+        assert not [c for c in mock_sell.call_args_list
+                    if c[0][2] == "AAPL" and "Plateau Exit" in c[0][8]]
+
+    def test_suppressed_by_power_hold(self):
+        """An 8-week power-hold leader is never rotated out for stalling."""
+        pos = self._pos(hwm_date=_hwm(12))
+        portfolio = _full_portfolio(pos)
+        mock_sb = make_supabase_mock(portfolio=portfolio)
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        with patch("execution_agent.is_power_hold_active", return_value=True), \
+             patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_price=106.0)
+
+        assert not [c for c in mock_sell.call_args_list
+                    if c[0][2] == "AAPL" and "Plateau Exit" in c[0][8]]
+
+    def test_disabled_by_flag(self):
+        pos = self._pos(hwm_date=_hwm(12))
+        portfolio = _full_portfolio(pos)
+        mock_sb = make_supabase_mock(portfolio=portfolio)
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        with patch.object(execution_agent, "STALE_EXIT_ENABLED", False), \
+             patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_price=106.0)
+
+        assert not [c for c in mock_sell.call_args_list
+                    if c[0][2] == "AAPL" and "Plateau Exit" in c[0][8]]
+
+    def test_fires_even_when_position_is_profitable(self):
+        """The point of the rule: a comfortably profitable but stalled position
+        still trips no other exit, yet is still dead capital.
+
+        Kept below the +20% power-hold threshold on purpose — a position that
+        HAS run 20%+ is a leader and is deliberately exempt (see
+        test_suppressed_by_power_hold)."""
+        pos = self._pos(hwm_date=_hwm(12), hwm_price=112.0)
+        portfolio = _full_portfolio(pos)
+        mock_sb = make_supabase_mock(portfolio=portfolio)
+        ib = make_ib_mock(symbols=[p["ticker"] for p in portfolio])
+
+        with patch("execution_agent._fetch_ohlcv", return_value=[]):
+            mock_sell = _run_eod(ib, mock_sb, live_price=110.0)
+
+        assert [c for c in mock_sell.call_args_list
+                if c[0][2] == "AAPL" and "Plateau Exit" in c[0][8]]
