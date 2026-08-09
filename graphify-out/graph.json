@@ -2353,8 +2353,8 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_amzn",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 142,
+      "community_name": "AMZN",
       "norm_label": "amzn"
     },
     {
@@ -2364,8 +2364,8 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "benchmark_data_manifest_amzn_end",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 142,
+      "community_name": "AMZN",
       "norm_label": "end"
     },
     {
@@ -2375,8 +2375,8 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "benchmark_data_manifest_amzn_rows",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 142,
+      "community_name": "AMZN",
       "norm_label": "rows"
     },
     {
@@ -2386,8 +2386,8 @@
       "source_location": "L124",
       "_origin": "ast",
       "id": "benchmark_data_manifest_amzn_start",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 142,
+      "community_name": "AMZN",
       "norm_label": "start"
     },
     {
@@ -3145,8 +3145,8 @@
       "source_location": "L211",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_birk",
-      "community": 136,
-      "community_name": "BIRK",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "birk"
     },
     {
@@ -3156,8 +3156,8 @@
       "source_location": "L212",
       "_origin": "ast",
       "id": "benchmark_data_manifest_birk_end",
-      "community": 136,
-      "community_name": "BIRK",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "end"
     },
     {
@@ -3167,8 +3167,8 @@
       "source_location": "L213",
       "_origin": "ast",
       "id": "benchmark_data_manifest_birk_rows",
-      "community": 136,
-      "community_name": "BIRK",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "rows"
     },
     {
@@ -3178,8 +3178,8 @@
       "source_location": "L214",
       "_origin": "ast",
       "id": "benchmark_data_manifest_birk_start",
-      "community": 136,
-      "community_name": "BIRK",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "start"
     },
     {
@@ -3409,8 +3409,8 @@
       "source_location": "L241",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_bsx",
-      "community": 142,
-      "community_name": "BSX",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "bsx"
     },
     {
@@ -3420,8 +3420,8 @@
       "source_location": "L242",
       "_origin": "ast",
       "id": "benchmark_data_manifest_bsx_end",
-      "community": 142,
-      "community_name": "BSX",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "end"
     },
     {
@@ -3431,8 +3431,8 @@
       "source_location": "L243",
       "_origin": "ast",
       "id": "benchmark_data_manifest_bsx_rows",
-      "community": 142,
-      "community_name": "BSX",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "rows"
     },
     {
@@ -3442,8 +3442,8 @@
       "source_location": "L244",
       "_origin": "ast",
       "id": "benchmark_data_manifest_bsx_start",
-      "community": 142,
-      "community_name": "BSX",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "start"
     },
     {
@@ -4641,8 +4641,8 @@
       "source_location": "L381",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_cost",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 218,
+      "community_name": "COST",
       "norm_label": "cost"
     },
     {
@@ -4652,8 +4652,8 @@
       "source_location": "L382",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cost_end",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 218,
+      "community_name": "COST",
       "norm_label": "end"
     },
     {
@@ -4663,8 +4663,8 @@
       "source_location": "L383",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cost_rows",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 218,
+      "community_name": "COST",
       "norm_label": "rows"
     },
     {
@@ -4674,8 +4674,8 @@
       "source_location": "L384",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cost_start",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 218,
+      "community_name": "COST",
       "norm_label": "start"
     },
     {
@@ -7105,8 +7105,8 @@
       "source_location": "L796",
       "_origin": "ast",
       "id": "execution_agent_place_trailing_stop",
-      "community": 44,
-      "community_name": "force_buy.py",
+      "community": 38,
+      "community_name": "run_market_open_buys",
       "norm_label": "place_trailing_stop()"
     },
     {
@@ -7116,8 +7116,8 @@
       "source_location": "L834",
       "_origin": "ast",
       "id": "execution_agent_arm_exit",
-      "community": 44,
-      "community_name": "force_buy.py",
+      "community": 70,
+      "community_name": "execution_agent.py",
       "norm_label": "arm_exit()"
     },
     {
@@ -7127,8 +7127,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "execution_agent_py_datetime",
-      "community": 44,
-      "community_name": "force_buy.py",
+      "community": 70,
+      "community_name": "execution_agent.py",
       "norm_label": "datetime"
     },
     {
@@ -7160,8 +7160,8 @@
       "source_location": "L956",
       "_origin": "ast",
       "id": "execution_agent_maybe_arm_power_hold",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 54,
+      "community_name": "_pos",
       "norm_label": "maybe_arm_power_hold()"
     },
     {
@@ -7534,8 +7534,8 @@
       "source_location": "L797",
       "_origin": "ast",
       "id": "execution_agent_rationale_797",
-      "community": 44,
-      "community_name": "force_buy.py",
+      "community": 38,
+      "community_name": "run_market_open_buys",
       "norm_label": "places a gtc trailing stop for an open stock position.     trails stop_loss_pct%"
     },
     {
@@ -7545,8 +7545,8 @@
       "source_location": "L836",
       "_origin": "ast",
       "id": "execution_agent_rationale_836",
-      "community": 44,
-      "community_name": "force_buy.py",
+      "community": 70,
+      "community_name": "execution_agent.py",
       "norm_label": "arms a day 0-6 loss-cutting exit instead of selling immediately at the     trigg"
     },
     {
@@ -7578,8 +7578,8 @@
       "source_location": "L957",
       "_origin": "ast",
       "id": "execution_agent_rationale_957",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 54,
+      "community_name": "_pos",
       "norm_label": "persists the power-hold flag the first time a position qualifies.      returns t"
     },
     {
@@ -10424,8 +10424,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "telegram_notifier",
-      "community": 5,
-      "community_name": "TelegramNotifier",
+      "community": 44,
+      "community_name": "force_buy.py",
       "norm_label": "telegram_notifier.py"
     },
     {
@@ -10611,8 +10611,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "telegram_notifier_rationale_1",
-      "community": 5,
-      "community_name": "TelegramNotifier",
+      "community": 44,
+      "community_name": "force_buy.py",
       "norm_label": "telegram_notifier.py \u2014 canslim trading bot telegram notification module  fires r"
     },
     {
@@ -10755,7 +10755,7 @@
       "_origin": "ast",
       "id": "tests_conftest",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "conftest.py"
     },
     {
@@ -10766,7 +10766,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_portfolio_item",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "make_portfolio_item()"
     },
     {
@@ -10776,7 +10776,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "tests_conftest_make_ib_mock",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": "make_ib_mock()"
     },
@@ -10788,7 +10788,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_position",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "make_position()"
     },
     {
@@ -10799,7 +10799,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_trigger",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "make_trigger()"
     },
     {
@@ -10810,7 +10810,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_ibkr_fill",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "make_ibkr_fill()"
     },
     {
@@ -10820,7 +10820,7 @@
       "source_location": "L166",
       "_origin": "ast",
       "id": "tests_conftest_make_supabase_mock",
-      "community": 34,
+      "community": 6,
       "community_name": "make_supabase_mock",
       "norm_label": "make_supabase_mock()"
     },
@@ -10832,7 +10832,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_ohlcv_data",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "make_ohlcv_data()"
     },
     {
@@ -10843,7 +10843,7 @@
       "_origin": "ast",
       "id": "tests_conftest_py_fixture",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "fixture"
     },
     {
@@ -10854,7 +10854,7 @@
       "_origin": "ast",
       "id": "tests_conftest_mock_ib",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "mock_ib()"
     },
     {
@@ -10865,7 +10865,7 @@
       "_origin": "ast",
       "id": "tests_conftest_mock_supabase_empty",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "mock_supabase_empty()"
     },
     {
@@ -10876,7 +10876,7 @@
       "_origin": "ast",
       "id": "tests_conftest_silence_notifier",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "_silence_notifier()"
     },
     {
@@ -10887,7 +10887,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_28",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "mimics an ib_insync portfolioitem.     important: uses .averagecost (portfolioit"
     },
     {
@@ -10897,7 +10897,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "tests_conftest_rationale_42",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": "creates a mock ib instance whose portfolio() always returns the given symbols."
     },
@@ -10909,7 +10909,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_84",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "factory for a portfolio_positions supabase row.      hwm_rs_score: rs score on t"
     },
     {
@@ -10920,7 +10920,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_125",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "factory for a daily_triggers supabase row.      final_score defaults to 75 (a no"
     },
     {
@@ -10931,7 +10931,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_150",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "factory for an ibkr_fills supabase row."
     },
     {
@@ -10941,7 +10941,7 @@
       "source_location": "L173",
       "_origin": "ast",
       "id": "tests_conftest_rationale_173",
-      "community": 34,
+      "community": 6,
       "community_name": "make_supabase_mock",
       "norm_label": "returns a magicmock supabase client where each table's queries return     realis"
     },
@@ -10953,7 +10953,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_305",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "generates synthetic ohlcv data (as a list of dicts, like fmp returns).     price"
     },
     {
@@ -10964,7 +10964,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_339",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "default ib mock with no open positions."
     },
     {
@@ -10975,7 +10975,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_345",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "supabase mock with no data in any table."
     },
     {
@@ -10986,7 +10986,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_359",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "auto-mock execution_agent.notifier for every test in the suite."
     },
     {
@@ -11976,7 +11976,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "test_buy_gates.py"
     },
     {
@@ -11987,7 +11987,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_run_buys",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "_run_buys()"
     },
     {
@@ -11998,7 +11998,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testgate1stockslots"
     },
     {
@@ -12009,7 +12009,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots_test_gate1_full_portfolio_blocks_all_buys",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_gate1_full_portfolio_blocks_all_buys()"
     },
     {
@@ -12020,7 +12020,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots_test_gate1_one_free_slot_allows_a_buy",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_gate1_one_free_slot_allows_a_buy()"
     },
     {
@@ -12031,7 +12031,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testtriggerrankingandvetting"
     },
     {
@@ -12042,7 +12042,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_buys_highest_scored_trigger_first",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_buys_highest_scored_trigger_first()"
     },
     {
@@ -12053,7 +12053,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_unvetted_trigger_is_skipped_not_bought_on_technicals",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_unvetted_trigger_is_skipped_not_bought_on_technicals()"
     },
     {
@@ -12064,7 +12064,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_unvetted_trigger_skipped_even_when_pre_breakout",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_unvetted_trigger_skipped_even_when_pre_breakout()"
     },
     {
@@ -12075,7 +12075,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_adjusted_score_still_takes_precedence",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_adjusted_score_still_takes_precedence()"
     },
     {
@@ -12086,7 +12086,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testmarketdirectiongate",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testmarketdirectiongate"
     },
     {
@@ -12097,7 +12097,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testmarketdirectiongate_test_bearish_market_blocks_buys",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_bearish_market_blocks_buys()"
     },
     {
@@ -12108,7 +12108,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testscorefloorgate"
     },
     {
@@ -12119,7 +12119,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate_test_breakout_below_min_score_is_skipped",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_breakout_below_min_score_is_skipped()"
     },
     {
@@ -12130,7 +12130,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate_test_pre_breakout_relaxed_uses_relaxed_floor",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_pre_breakout_relaxed_uses_relaxed_floor()"
     },
     {
@@ -12207,7 +12207,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_34",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "runs run_market_open_buys() with standard patches applied.     returns the mock_"
     },
     {
@@ -12218,7 +12218,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_67",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "gate 1: max_positions stock positions \u2192 portfolio full \u2192 no order placed."
     },
     {
@@ -12229,7 +12229,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_81",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "one slot short of max_positions \u2192 the trigger is bought."
     },
     {
@@ -12240,7 +12240,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_107",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "regression: ai_evaluator.py silently drops tickers from its batch         (\"lost"
     },
     {
@@ -12251,7 +12251,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_134",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "adjusted_score (post-penalty) remains the primary gate input."
     },
     {
@@ -12976,8 +12976,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_margin_safety",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "test_margin_safety.py"
     },
     {
@@ -13009,8 +13009,8 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "tests_test_margin_safety_make_ib_with_account_values",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "_make_ib_with_account_values()"
     },
     {
@@ -13141,8 +13141,8 @@
       "source_location": "L224",
       "_origin": "ast",
       "id": "tests_test_margin_safety_run_buys_with_margin_scenario",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "_run_buys_with_margin_scenario()"
     },
     {
@@ -13152,8 +13152,8 @@
       "source_location": "L240",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "testnobuyswithborrowedmoney"
     },
     {
@@ -13163,8 +13163,8 @@
       "source_location": "L246",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_margin_loan_blocks_all_buys_completely",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_margin_loan_blocks_all_buys_completely()"
     },
     {
@@ -13174,8 +13174,8 @@
       "source_location": "L278",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_large_margin_loan_blocks_buys",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_large_margin_loan_blocks_buys()"
     },
     {
@@ -13185,8 +13185,8 @@
       "source_location": "L296",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_zero_own_cash_blocks_buys",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_zero_own_cash_blocks_buys()"
     },
     {
@@ -13196,8 +13196,8 @@
       "source_location": "L315",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_positive_own_cash_allows_buy_when_all_other_gates_pass",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_positive_own_cash_allows_buy_when_all_other_gates_pass()"
     },
     {
@@ -13207,8 +13207,8 @@
       "source_location": "L345",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_margin_loan_sends_telegram_alert",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_margin_loan_sends_telegram_alert()"
     },
     {
@@ -13218,8 +13218,8 @@
       "source_location": "L377",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_margin_loan_blocks_multiple_triggers",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_margin_loan_blocks_multiple_triggers()"
     },
     {
@@ -13229,8 +13229,8 @@
       "source_location": "L404",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testmultibuycyclemarginsafety",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "testmultibuycyclemarginsafety"
     },
     {
@@ -13240,8 +13240,8 @@
       "source_location": "L412",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testmultibuycyclemarginsafety_test_multi_buy_cycle_deducts_spent_cash",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_multi_buy_cycle_deducts_spent_cash()"
     },
     {
@@ -13251,8 +13251,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_1",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "test_margin_safety.py \u2014 tests for the margin-cash safety layer.  covers two crit"
     },
     {
@@ -13273,8 +13273,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_50",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "return a make_ib_mock() whose ib.accountvalues() returns the given list.     all"
     },
     {
@@ -13405,8 +13405,8 @@
       "source_location": "L225",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_225",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "runs run_market_open_buys() with standard patches.     does not patch get_own_ca"
     },
     {
@@ -13416,8 +13416,8 @@
       "source_location": "L241",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_241",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "run_market_open_buys() must never place an order when totalcashvalue < 0,     re"
     },
     {
@@ -13427,8 +13427,8 @@
       "source_location": "L247",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_247",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "core regression test for the trv incident.          scenario:           - totalc"
     },
     {
@@ -13438,8 +13438,8 @@
       "source_location": "L279",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_279",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "stress case mimicking the original trv incident: ~$35k margin loan         from"
     },
     {
@@ -13449,8 +13449,8 @@
       "source_location": "L297",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_297",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "edge case: totalcashvalue is exactly $0.00 \u2014 nothing deposited is         liquid"
     },
     {
@@ -13460,8 +13460,8 @@
       "source_location": "L316",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_316",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "positive control: when totalcashvalue is healthy (own money, no loan),         a"
     },
     {
@@ -13471,8 +13471,8 @@
       "source_location": "L346",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_346",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "when a margin loan is detected, the user must receive a telegram alert."
     },
     {
@@ -13482,8 +13482,8 @@
       "source_location": "L378",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_378",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "even when multiple high-scoring triggers are queued, none should         result"
     },
     {
@@ -13493,8 +13493,8 @@
       "source_location": "L405",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_405",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "verifies that when multiple triggers fill in the same buy cycle,     execution_a"
     },
     {
@@ -13504,8 +13504,8 @@
       "source_location": "L413",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_413",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "regression test for the oii over-buy incident:         starting cash: $50,000. 2"
     },
     {
@@ -13516,7 +13516,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_oca_helpers.py"
     },
     {
@@ -13526,7 +13526,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": "testplacetrailingstop"
     },
@@ -13537,7 +13537,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_places_exactly_one_trail_order",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_places_exactly_one_trail_order()"
     },
@@ -13548,7 +13548,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_order_is_trail_type",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_order_is_trail_type()"
     },
@@ -13559,7 +13559,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_trailing_percent_correct",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_trailing_percent_correct()"
     },
@@ -13570,7 +13570,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_order_is_gtc",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_order_is_gtc()"
     },
@@ -13581,7 +13581,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_order_is_sell",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_order_is_sell()"
     },
@@ -13592,7 +13592,7 @@
       "source_location": "L80",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_no_limit_order_placed",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_no_limit_order_placed()"
     },
@@ -13603,7 +13603,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_returns_group_string",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_returns_group_string()"
     },
@@ -13614,7 +13614,7 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": "testcanceltickersellorders"
     },
@@ -13625,7 +13625,7 @@
       "source_location": "L105",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_make_trade",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": "._make_trade()"
     },
@@ -13636,7 +13636,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_cancels_active_sell_for_ticker",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_cancels_active_sell_for_ticker()"
     },
@@ -13647,7 +13647,7 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_does_not_cancel_buy_orders",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_does_not_cancel_buy_orders()"
     },
@@ -13658,7 +13658,7 @@
       "source_location": "L128",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_does_not_cancel_different_ticker",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_does_not_cancel_different_ticker()"
     },
@@ -13669,7 +13669,7 @@
       "source_location": "L136",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_does_not_cancel_already_filled_order",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_does_not_cancel_already_filled_order()"
     },
@@ -13680,7 +13680,7 @@
       "source_location": "L144",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_returns_zero_when_no_open_orders",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": ".test_returns_zero_when_no_open_orders()"
     },
@@ -13692,7 +13692,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "testexecutesellcancelstrailingstopfirst"
     },
     {
@@ -13703,7 +13703,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst_test_cancel_called_before_market_order",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_cancel_called_before_market_order()"
     },
     {
@@ -13714,7 +13714,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst_test_supabase_not_updated_if_sell_not_confirmed",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_supabase_not_updated_if_sell_not_confirmed()"
     },
     {
@@ -13725,7 +13725,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers_rationale_1",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_trailing_stop.py \u2014 unit tests for place_trailing_stop() and the self-healin"
     },
     {
@@ -13735,7 +13735,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_rationale_36",
-      "community": 6,
+      "community": 14,
       "community_name": "make_ib_mock",
       "norm_label": "place_trailing_stop() places exactly one gtc trail order.     no limitorder (pro"
     },
@@ -13890,7 +13890,7 @@
       "_origin": "ast",
       "id": "tests_test_plateau_rotation_testedgecases_test_eod_block_skipped_when_portfolio_not_full",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_eod_block_skipped_when_portfolio_not_full()"
     },
     {
@@ -14132,7 +14132,7 @@
       "_origin": "ast",
       "id": "tests_test_plateau_rotation_rationale_188",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "only 2 positions (< max_positions=4) -> eod rank & replace swap block skipped (c"
     },
     {
@@ -15089,7 +15089,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_reconcile.py"
     },
     {
@@ -15111,7 +15111,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase1",
       "community": 14,
-      "community_name": ".test_case1_removes_from_portfolio_and_logs_trade",
+      "community_name": "make_ib_mock",
       "norm_label": "testreconcilecase1"
     },
     {
@@ -15122,7 +15122,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase1_test_case1_removes_from_portfolio_and_logs_trade",
       "community": 14,
-      "community_name": ".test_case1_removes_from_portfolio_and_logs_trade",
+      "community_name": "make_ib_mock",
       "norm_label": ".test_case1_removes_from_portfolio_and_logs_trade()"
     },
     {
@@ -15133,7 +15133,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase1_test_case1_uses_fmp_price_when_no_execution",
       "community": 14,
-      "community_name": ".test_case1_removes_from_portfolio_and_logs_trade",
+      "community_name": "make_ib_mock",
       "norm_label": ".test_case1_uses_fmp_price_when_no_execution()"
     },
     {
@@ -15231,8 +15231,8 @@
       "source_location": "L191",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase4",
-      "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community": 6,
+      "community_name": "make_supabase_mock",
       "norm_label": "testreconcilecase4"
     },
     {
@@ -15242,8 +15242,8 @@
       "source_location": "L194",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase4_test_case4_cash_synced_when_balance_changes",
-      "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community": 6,
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_case4_cash_synced_when_balance_changes()"
     },
     {
@@ -15253,8 +15253,8 @@
       "source_location": "L213",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase4_test_case4_cash_sync_writes_daily_snapshots",
-      "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community": 6,
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_case4_cash_sync_writes_daily_snapshots()"
     },
     {
@@ -15264,8 +15264,8 @@
       "source_location": "L226",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase4_test_case4_detects_deposits",
-      "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community": 6,
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_case4_detects_deposits()"
     },
     {
@@ -15298,7 +15298,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_1",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_reconcile.py \u2014 tests for reconcile_with_ibkr() four reconcile cases.  criti"
     },
     {
@@ -15320,7 +15320,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_36",
       "community": 14,
-      "community_name": ".test_case1_removes_from_portfolio_and_logs_trade",
+      "community_name": "make_ib_mock",
       "norm_label": "case 1: in supabase, not in ibkr \u2192 closed by ibkr (trailing stop / limit / tws)."
     },
     {
@@ -15331,7 +15331,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_39",
       "community": 14,
-      "community_name": ".test_case1_removes_from_portfolio_and_logs_trade",
+      "community_name": "make_ib_mock",
       "norm_label": "position in supabase but not ibkr \u2192 archived to trade_history.         ibkr port"
     },
     {
@@ -15342,7 +15342,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_62",
       "community": 14,
-      "community_name": ".test_case1_removes_from_portfolio_and_logs_trade",
+      "community_name": "make_ib_mock",
       "norm_label": "case 1 fallback: uses fmp live price when reqexecutions() has no sld fill."
     },
     {
@@ -15440,8 +15440,8 @@
       "source_location": "L192",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_192",
-      "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community": 6,
+      "community_name": "make_supabase_mock",
       "norm_label": "case 4: cash balance sync from ibkr to supabase account_balances."
     },
     {
@@ -15451,8 +15451,8 @@
       "source_location": "L195",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_195",
-      "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community": 6,
+      "community_name": "make_supabase_mock",
       "norm_label": "large change in cash \u2192 upsert to account_balances called."
     },
     {
@@ -15462,8 +15462,8 @@
       "source_location": "L214",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_214",
-      "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community": 6,
+      "community_name": "make_supabase_mock",
       "norm_label": "new logic: write daily snapshots for cash, positions_value, total_value."
     },
     {
@@ -15473,8 +15473,8 @@
       "source_location": "L227",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_227",
-      "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community": 6,
+      "community_name": "make_supabase_mock",
       "norm_label": "a cash jump > $500 inserts into cash_flows."
     },
     {
@@ -16343,7 +16343,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_sell_logic.py"
     },
     {
@@ -16596,7 +16596,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_testbuybracketnolimitatbuytime",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "testbuybracketnolimitatbuytime"
     },
     {
@@ -16607,7 +16607,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_testbuybracketnolimitatbuytime_test_buy_places_only_trailing_stop",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_buy_places_only_trailing_stop()"
     },
     {
@@ -16618,7 +16618,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_1",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_sell_logic.py -- tests for monitor_portfolio_intraday() and run_market_open"
     },
     {
@@ -16805,7 +16805,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_443",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "run_market_open_buys() must not submit any limitorder (profit target).     only"
     },
     {
@@ -16816,7 +16816,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_449",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "run_market_open_buys() must place exactly 1 trail sell -- no lmt."
     },
     {
@@ -17381,6 +17381,479 @@
       "norm_label": "ensures that datetime.date.today() or date.today() is not used in the codebase,"
     },
     {
+      "label": "test_watchlist_history.py",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "test_watchlist_history.py"
+    },
+    {
+      "label": "_row()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L39",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_row",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "_row()"
+    },
+    {
+      "label": "_extras()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L61",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_extras",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "_extras()"
+    },
+    {
+      "label": "_sb()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L66",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_sb",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "_sb()"
+    },
+    {
+      "label": "_upsert_payloads()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L72",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_upsert_payloads",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "_upsert_payloads()"
+    },
+    {
+      "label": "TestPayloadShape",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L80",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "testpayloadshape"
+    },
+    {
+      "label": ".test_writes_to_watchlist_history_table()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L82",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape_test_writes_to_watchlist_history_table",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_writes_to_watchlist_history_table()"
+    },
+    {
+      "label": ".test_excludes_watchlist_only_routing_fields()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L87",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape_test_excludes_watchlist_only_routing_fields",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_excludes_watchlist_only_routing_fields()"
+    },
+    {
+      "label": ".test_carries_fundamental_metrics()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L96",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape_test_carries_fundamental_metrics",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_carries_fundamental_metrics()"
+    },
+    {
+      "label": ".test_carries_retention_period()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L108",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape_test_carries_retention_period",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_carries_retention_period()"
+    },
+    {
+      "label": ".test_merges_research_extras()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L115",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape_test_merges_research_extras",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_merges_research_extras()"
+    },
+    {
+      "label": ".test_missing_extras_degrade_to_none()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L123",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape_test_missing_extras_degrade_to_none",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_missing_extras_degrade_to_none()"
+    },
+    {
+      "label": ".test_tags_source()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L129",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape_test_tags_source",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_tags_source()"
+    },
+    {
+      "label": ".test_skips_rows_without_ticker()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L134",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testpayloadshape_test_skips_rows_without_ticker",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_skips_rows_without_ticker()"
+    },
+    {
+      "label": "TestSnapshotDate",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L142",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testsnapshotdate",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "testsnapshotdate"
+    },
+    {
+      "label": ".test_defaults_to_today_utc()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L144",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testsnapshotdate_test_defaults_to_today_utc",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_defaults_to_today_utc()"
+    },
+    {
+      "label": ".test_explicit_date_is_used()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L150",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testsnapshotdate_test_explicit_date_is_used",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_explicit_date_is_used()"
+    },
+    {
+      "label": ".test_all_rows_share_one_snapshot_date()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L156",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testsnapshotdate_test_all_rows_share_one_snapshot_date",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_all_rows_share_one_snapshot_date()"
+    },
+    {
+      "label": "TestIdempotence",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L164",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testidempotence",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "testidempotence"
+    },
+    {
+      "label": ".test_upserts_on_composite_primary_key()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L166",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testidempotence_test_upserts_on_composite_primary_key",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_upserts_on_composite_primary_key()"
+    },
+    {
+      "label": ".test_never_deletes()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L173",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testidempotence_test_never_deletes",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_never_deletes()"
+    },
+    {
+      "label": "TestChunking",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L181",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testchunking",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "testchunking"
+    },
+    {
+      "label": ".test_chunks_at_100()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L183",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testchunking_test_chunks_at_100",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_chunks_at_100()"
+    },
+    {
+      "label": "TestNonFatal",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L192",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testnonfatal",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "testnonfatal"
+    },
+    {
+      "label": ".test_write_failure_does_not_raise()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L195",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testnonfatal_test_write_failure_does_not_raise",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_write_failure_does_not_raise()"
+    },
+    {
+      "label": ".test_missing_table_reports_migration()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L201",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testnonfatal_test_missing_table_reports_migration",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_missing_table_reports_migration()"
+    },
+    {
+      "label": ".test_empty_rows_writes_nothing()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L208",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testnonfatal_test_empty_rows_writes_nothing",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_empty_rows_writes_nothing()"
+    },
+    {
+      "label": "TestArchiveHappensBeforeTruncate",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L214",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testarchivehappensbeforetruncate",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "testarchivehappensbeforetruncate"
+    },
+    {
+      "label": "._run()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L218",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testarchivehappensbeforetruncate_run",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "._run()"
+    },
+    {
+      "label": ".test_history_upsert_precedes_watchlist_delete()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L235",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_history_upsert_precedes_watchlist_delete",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_history_upsert_precedes_watchlist_delete()"
+    },
+    {
+      "label": ".test_sector_reaches_history_end_to_end()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L259",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_sector_reaches_history_end_to_end",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_sector_reaches_history_end_to_end()"
+    },
+    {
+      "label": ".test_watchlist_insert_payload_unchanged_by_research_fields()",
+      "file_type": "code",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L269",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_watchlist_insert_payload_unchanged_by_research_fields",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": ".test_watchlist_insert_payload_unchanged_by_research_fields()"
+    },
+    {
+      "label": "tests/test_watchlist_history.py  Tests for the append-only point-in-time watchli",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_1",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "tests/test_watchlist_history.py  tests for the append-only point-in-time watchli"
+    },
+    {
+      "label": "A row as it exists in `inserts` \u2014 i.e. after retention/created_at are added.",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L40",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_40",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "a row as it exists in `inserts` \u2014 i.e. after retention/created_at are added."
+    },
+    {
+      "label": "All payloads passed to .upsert(), flattened.",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L73",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_73",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "all payloads passed to .upsert(), flattened."
+    },
+    {
+      "label": "`inserts` carries fields with no column here; an unknown key would         fail",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L88",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_88",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "`inserts` carries fields with no column here; an unknown key would         fail"
+    },
+    {
+      "label": "Storing raw metrics is the point: it lets alternative screen         thresholds",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L97",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_97",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "storing raw metrics is the point: it lets alternative screen         thresholds"
+    },
+    {
+      "label": "Directly testable as a buy gate: do names qualifying many runs         running o",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L109",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_109",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "directly testable as a buy gate: do names qualifying many runs         running o"
+    },
+    {
+      "label": "A same-day re-run must overwrite, not duplicate.",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L167",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_167",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "a same-day re-run must overwrite, not duplicate."
+    },
+    {
+      "label": "Append-only. A delete here would reintroduce the very data loss this         tab",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L174",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_174",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "append-only. a delete here would reintroduce the very data loss this         tab"
+    },
+    {
+      "label": "A research feature must never be able to break live screening.",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L193",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_193",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "a research feature must never be able to break live screening."
+    },
+    {
+      "label": "THE critical invariant. `watchlist` is wiped every run; if the archive     ran a",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L215",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_215",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "the critical invariant. `watchlist` is wiped every run; if the archive     ran a"
+    },
+    {
+      "label": "Research extras must not leak into the `watchlist` insert \u2014 those         column",
+      "file_type": "rationale",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L270",
+      "_origin": "ast",
+      "id": "tests_test_watchlist_history_rationale_270",
+      "community": 73,
+      "community_name": "_sb",
+      "norm_label": "research extras must not leak into the `watchlist` insert \u2014 those         column"
+    },
+    {
       "label": "test_watchlist_weekly_snapshot.py",
       "file_type": "code",
       "source_file": "tests/test_watchlist_weekly_snapshot.py",
@@ -17876,15 +18349,37 @@
       "norm_label": "get_rating_text()"
     },
     {
-      "label": "run_screener()",
+      "label": "save_watchlist_history()",
       "file_type": "code",
       "source_file": "tv_api_screener.py",
       "source_location": "L62",
+      "_origin": "ast",
+      "id": "tv_api_screener_save_watchlist_history",
+      "community": 58,
+      "community_name": "increment_retention",
+      "norm_label": "save_watchlist_history()"
+    },
+    {
+      "label": "run_screener()",
+      "file_type": "code",
+      "source_file": "tv_api_screener.py",
+      "source_location": "L136",
       "_origin": "ast",
       "id": "tv_api_screener_run_screener",
       "community": 58,
       "community_name": "increment_retention",
       "norm_label": "run_screener()"
+    },
+    {
+      "label": "Append this run's screener output to the append-only `watchlist_history`.      `",
+      "file_type": "rationale",
+      "source_file": "tv_api_screener.py",
+      "source_location": "L63",
+      "_origin": "ast",
+      "id": "tv_api_screener_rationale_63",
+      "community": 58,
+      "community_name": "increment_retention",
+      "norm_label": "append this run's screener output to the append-only `watchlist_history`.      `"
     },
     {
       "label": "benchmark_data/README.md",
@@ -20395,6 +20890,105 @@
       "norm_label": "files"
     },
     {
+      "label": "2026-08-09_watchlist-history.md",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "2026-08-09_watchlist-history.md"
+    },
+    {
+      "label": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history_adr_point_in_time_watchlist_history_make_the_fundamental_screen_backtestable",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "adr: point-in-time watchlist history \u2014 make the fundamental screen backtestable"
+    },
+    {
+      "label": "Context",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history_context",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "context"
+    },
+    {
+      "label": "Decision",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L37",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history_decision",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "decision"
+    },
+    {
+      "label": "Store the raw metrics, not just the tickers",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L50",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history_store_the_raw_metrics_not_just_the_tickers",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "store the raw metrics, not just the tickers"
+    },
+    {
+      "label": "What this makes answerable",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L68",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history_what_this_makes_answerable",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "what this makes answerable"
+    },
+    {
+      "label": "Consequences",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L79",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history_consequences",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "consequences"
+    },
+    {
+      "label": "Pre-existing issue observed, NOT addressed here",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L98",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history_pre_existing_issue_observed_not_addressed_here",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "pre-existing issue observed, not addressed here"
+    },
+    {
+      "label": "Files",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L111",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_watchlist_history_files",
+      "community": 136,
+      "community_name": "ADR: Point-in-time watchlist history \u2014 make the fundamental screen backtestable",
+      "norm_label": "files"
+    },
+    {
       "label": "decisions/README.md",
       "file_type": "document",
       "source_file": "decisions/README.md",
@@ -21381,7 +21975,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "fundamental_screener.md"
     },
     {
@@ -21392,7 +21986,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_fundamental_screener",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "fundamental screener"
     },
     {
@@ -21403,7 +21997,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_what_it_does_simply",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "what it does \ufffd simply"
     },
     {
@@ -21414,7 +22008,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_universe",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "universe"
     },
     {
@@ -21425,7 +22019,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_how_it_works",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "how it works"
     },
     {
@@ -21436,7 +22030,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_filters_applied_all_must_be_true",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "filters applied (all must be true)"
     },
     {
@@ -21447,7 +22041,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_what_gets_extracted",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "what gets extracted"
     },
     {
@@ -21458,7 +22052,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_retention_logic",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "retention logic"
     },
     {
@@ -21469,7 +22063,7 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_canslim_scoring_engine_dashboard_only",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "canslim scoring engine (dashboard only)"
     },
     {
@@ -21480,8 +22074,19 @@
       "_origin": "ast",
       "id": "docs_fundamental_screener_data_flow",
       "community": 39,
-      "community_name": "Fundamental Screener Overview",
+      "community_name": "Fundamental Screener",
       "norm_label": "data flow"
+    },
+    {
+      "label": "Point-in-Time History (`watchlist_history`)",
+      "file_type": "document",
+      "source_file": "docs/fundamental_screener.md",
+      "source_location": "L124",
+      "_origin": "ast",
+      "id": "docs_fundamental_screener_point_in_time_history_watchlist_history",
+      "community": 39,
+      "community_name": "Fundamental Screener",
+      "norm_label": "point-in-time history (`watchlist_history`)"
     },
     {
       "label": "ibkr_totp_setup.md",
@@ -36543,6 +37148,18 @@
       "target": "research_bardata_table"
     },
     {
+      "relation": "indirect_call",
+      "context": "assignment",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L251",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_history_upsert_precedes_watchlist_delete",
+      "target": "research_bardata_table"
+    },
+    {
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "research/bardata.py",
@@ -37863,7 +38480,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "tv_api_screener.py",
-      "source_location": "L196",
+      "source_location": "L287",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tv_api_screener",
@@ -37875,7 +38492,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "tv_api_screener.py",
-      "source_location": "L214",
+      "source_location": "L305",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tv_api_screener_run_screener",
@@ -39647,6 +40264,30 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_telegram_notifier_test_telegram_network_error_printed",
+      "target": "exception"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L204",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_missing_table_reports_migration",
+      "target": "exception"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L198",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_write_failure_does_not_raise",
       "target": "exception"
     },
     {
@@ -52974,6 +53615,1224 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L61",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L66",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L214",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L181",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_testchunking",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L164",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_testidempotence",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L192",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_testnonfatal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L80",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_testpayloadshape",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L142",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_testsnapshotdate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history",
+      "target": "tv_api_screener",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_1",
+      "target": "tests_test_watchlist_history",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_40",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L185",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testchunking_test_chunks_at_100",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L177",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testidempotence_test_never_deletes",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L169",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testidempotence_test_upserts_on_composite_primary_key",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L205",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_missing_table_reports_migration",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L199",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_write_failure_does_not_raise",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L100",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_carries_fundamental_metrics",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L112",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_carries_retention_period",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L91",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_excludes_watchlist_only_routing_fields",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L117",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_merges_research_extras",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L125",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_missing_extras_degrade_to_none",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L136",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_skips_rows_without_ticker",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L131",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_tags_source",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_writes_to_watchlist_history_table",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L158",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_all_rows_share_one_snapshot_date",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L146",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_defaults_to_today_utc",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L152",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_explicit_date_is_used",
+      "target": "tests_test_watchlist_history_row",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L177",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testidempotence_test_never_deletes",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L169",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testidempotence_test_upserts_on_composite_primary_key",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L205",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_missing_table_reports_migration",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L199",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_write_failure_does_not_raise",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L100",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_carries_fundamental_metrics",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L112",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_carries_retention_period",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L91",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_excludes_watchlist_only_routing_fields",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L117",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_merges_research_extras",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L137",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_skips_rows_without_ticker",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L131",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_tags_source",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_writes_to_watchlist_history_table",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L146",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_defaults_to_today_utc",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L152",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_explicit_date_is_used",
+      "target": "tests_test_watchlist_history_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L260",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_sector_reaches_history_end_to_end",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L272",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_watchlist_insert_payload_unchanged_by_research_fields",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L184",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testchunking_test_chunks_at_100",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L176",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testidempotence_test_never_deletes",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L168",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testidempotence_test_upserts_on_composite_primary_key",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L209",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_empty_rows_writes_nothing",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L202",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_missing_table_reports_migration",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L196",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal_test_write_failure_does_not_raise",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L99",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_carries_fundamental_metrics",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L111",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_carries_retention_period",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L90",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_excludes_watchlist_only_routing_fields",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_merges_research_extras",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L124",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_missing_extras_degrade_to_none",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L135",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_skips_rows_without_ticker",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L130",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_tags_source",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L83",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_writes_to_watchlist_history_table",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L157",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_all_rows_share_one_snapshot_date",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L145",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_defaults_to_today_utc",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L151",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_explicit_date_is_used",
+      "target": "tests_test_watchlist_history_sb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L73",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_73",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L264",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_sector_reaches_history_end_to_end",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L101",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_carries_fundamental_metrics",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L113",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_carries_retention_period",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L92",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_excludes_watchlist_only_routing_fields",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L118",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_merges_research_extras",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_missing_extras_degrade_to_none",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L139",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_skips_rows_without_ticker",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L132",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape_test_tags_source",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L160",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_all_rows_share_one_snapshot_date",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L148",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_defaults_to_today_utc",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L154",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate_test_explicit_date_is_used",
+      "target": "tests_test_watchlist_history_upsert_payloads",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L96",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_carries_fundamental_metrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L108",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_carries_retention_period",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L87",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_excludes_watchlist_only_routing_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L115",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_merges_research_extras",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L123",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_missing_extras_degrade_to_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L134",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_skips_rows_without_ticker",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L129",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_tags_source",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L82",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testpayloadshape",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_writes_to_watchlist_history_table",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L88",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_88",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_excludes_watchlist_only_routing_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L97",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_97",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_carries_fundamental_metrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_109",
+      "target": "tests_test_watchlist_history_testpayloadshape_test_carries_retention_period",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L156",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate",
+      "target": "tests_test_watchlist_history_testsnapshotdate_test_all_rows_share_one_snapshot_date",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L144",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate",
+      "target": "tests_test_watchlist_history_testsnapshotdate_test_defaults_to_today_utc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L150",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testsnapshotdate",
+      "target": "tests_test_watchlist_history_testsnapshotdate_test_explicit_date_is_used",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L173",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testidempotence",
+      "target": "tests_test_watchlist_history_testidempotence_test_never_deletes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L166",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testidempotence",
+      "target": "tests_test_watchlist_history_testidempotence_test_upserts_on_composite_primary_key",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L167",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_167",
+      "target": "tests_test_watchlist_history_testidempotence_test_upserts_on_composite_primary_key",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L174",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_174",
+      "target": "tests_test_watchlist_history_testidempotence_test_never_deletes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L183",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testchunking",
+      "target": "tests_test_watchlist_history_testchunking_test_chunks_at_100",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L193",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_193",
+      "target": "tests_test_watchlist_history_testnonfatal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L208",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal",
+      "target": "tests_test_watchlist_history_testnonfatal_test_empty_rows_writes_nothing",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L201",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal",
+      "target": "tests_test_watchlist_history_testnonfatal_test_missing_table_reports_migration",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L195",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testnonfatal",
+      "target": "tests_test_watchlist_history_testnonfatal_test_write_failure_does_not_raise",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L215",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_215",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L218",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L235",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_history_upsert_precedes_watchlist_delete",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L259",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_sector_reaches_history_end_to_end",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L269",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_watchlist_insert_payload_unchanged_by_research_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L252",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_history_upsert_precedes_watchlist_delete",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L263",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_sector_reaches_history_end_to_end",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L275",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_watchlist_insert_payload_unchanged_by_research_fields",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_watchlist_history.py",
+      "source_location": "L270",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_watchlist_history_rationale_270",
+      "target": "tests_test_watchlist_history_testarchivehappensbeforetruncate_test_watchlist_insert_payload_unchanged_by_research_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "tests/test_watchlist_weekly_snapshot.py",
       "source_location": "L57",
       "weight": 1.0,
@@ -53870,7 +55729,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tv_api_screener.py",
-      "source_location": "L62",
+      "source_location": "L136",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tv_api_screener",
@@ -53878,15 +55737,49 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tv_api_screener.py",
+      "source_location": "L62",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tv_api_screener",
+      "target": "tv_api_screener_save_watchlist_history",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "tv_api_screener.py",
-      "source_location": "L181",
+      "source_location": "L272",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tv_api_screener_run_screener",
       "target": "tv_api_screener_get_rating_text",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tv_api_screener.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tv_api_screener_rationale_63",
+      "target": "tv_api_screener_save_watchlist_history",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tv_api_screener.py",
+      "source_location": "L315",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tv_api_screener_run_screener",
+      "target": "tv_api_screener_save_watchlist_history",
       "confidence_score": 1.0
     },
     {
@@ -56125,6 +58018,94 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_watchlist_history",
+      "target": "decisions_2026_08_09_watchlist_history_adr_point_in_time_watchlist_history_make_the_fundamental_screen_backtestable",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L79",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_watchlist_history_adr_point_in_time_watchlist_history_make_the_fundamental_screen_backtestable",
+      "target": "decisions_2026_08_09_watchlist_history_consequences",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_watchlist_history_adr_point_in_time_watchlist_history_make_the_fundamental_screen_backtestable",
+      "target": "decisions_2026_08_09_watchlist_history_context",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L37",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_watchlist_history_adr_point_in_time_watchlist_history_make_the_fundamental_screen_backtestable",
+      "target": "decisions_2026_08_09_watchlist_history_decision",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L111",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_watchlist_history_adr_point_in_time_watchlist_history_make_the_fundamental_screen_backtestable",
+      "target": "decisions_2026_08_09_watchlist_history_files",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L98",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_watchlist_history_adr_point_in_time_watchlist_history_make_the_fundamental_screen_backtestable",
+      "target": "decisions_2026_08_09_watchlist_history_pre_existing_issue_observed_not_addressed_here",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L68",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_watchlist_history_adr_point_in_time_watchlist_history_make_the_fundamental_screen_backtestable",
+      "target": "decisions_2026_08_09_watchlist_history_what_this_makes_answerable",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_watchlist-history.md",
+      "source_location": "L50",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_watchlist_history_decision",
+      "target": "decisions_2026_08_09_watchlist_history_store_the_raw_metrics_not_just_the_tickers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "decisions/README.md",
       "source_location": "L1",
       "weight": 1.0,
@@ -57088,6 +59069,17 @@
       "_origin": "ast",
       "source": "docs_fundamental_screener_fundamental_screener",
       "target": "docs_fundamental_screener_how_it_works",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/fundamental_screener.md",
+      "source_location": "L124",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "docs_fundamental_screener_fundamental_screener",
+      "target": "docs_fundamental_screener_point_in_time_history_watchlist_history",
       "confidence_score": 1.0
     },
     {
@@ -58288,5 +60280,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "addbc2ebafcf0245186f9845fb0f0c545af41fd7"
+  "built_at_commit": "86c8b686d1ad50f209c0e5e36fa1f551737f4b2a"
 }

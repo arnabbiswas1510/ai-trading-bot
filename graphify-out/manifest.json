@@ -350,8 +350,8 @@
     "semantic_hash": ""
   },
   "tv_api_screener.py": {
-    "mtime": 1785822054.3421183,
-    "ast_hash": "f520df3b62ed3de209cd2c5a3550d202",
+    "mtime": 1786304813.4429722,
+    "ast_hash": "f2ca907434568e7bd0473b91af7612ba",
     "semantic_hash": ""
   },
   ".github/workflows/daily_screener.yml": {
@@ -420,8 +420,8 @@
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
-    "mtime": 1785620868.2753427,
-    "ast_hash": "375b06493111bf7e61cd887982717800",
+    "mtime": 1786304884.2582655,
+    "ast_hash": "3b10e3f490bd8a8be9af9f75d6e04849",
     "semantic_hash": ""
   },
   "docs/ibkr_totp_setup.md": {
@@ -712,6 +712,21 @@
   "decisions/2026-08-09_thesis-stop.md": {
     "mtime": 1786304039.764446,
     "ast_hash": "50a913a31134455e828a9a7d27a4501f",
+    "semantic_hash": ""
+  },
+  "migrations/add_watchlist_history.sql": {
+    "mtime": 1786304747.5043354,
+    "ast_hash": "cbc7b47d2458b64f58c0b5b1b7abd555",
+    "semantic_hash": ""
+  },
+  "tests/test_watchlist_history.py": {
+    "mtime": 1786304797.4010158,
+    "ast_hash": "d0bbc6cd687de1f6c8d93220c4227fac",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-09_watchlist-history.md": {
+    "mtime": 1786304870.991643,
+    "ast_hash": "0e7cf2fa431cc00fd4fd3a3fddde7a60",
     "semantic_hash": ""
   }
 }

@@ -59,6 +59,80 @@ def get_rating_text(rating_val):
     except (ValueError, TypeError):
         return "— No rating"
 
+def save_watchlist_history(supabase, rows, research_extras=None, snapshot_date=None):
+    """Append this run's screener output to the append-only `watchlist_history`.
+
+    `watchlist` is a CURRENT-STATE table: run_screener() truncates it every run,
+    so a name that qualified months ago and later deteriorated leaves no trace.
+    That is precisely what makes the fundamental screen unbacktestable — the only
+    universe file available (research/pass_names.txt) is a single present-day
+    snapshot replayed backwards, which carries survivorship and look-ahead bias.
+
+    This writes an immutable point-in-time row per (snapshot_date, ticker) so a
+    future backtest can ask "what did the screen actually return on date D?",
+    including the names that later failed.
+
+    Deliberately NON-FATAL: this is a research feature and must never be able to
+    break the live screening pipeline. Any failure is logged and swallowed.
+
+    Idempotent via upsert on the (snapshot_date, ticker) primary key, so re-running
+    the screener on the same day overwrites rather than duplicating.
+    """
+    if not rows:
+        print("[*] No records to archive in watchlist_history.")
+        return 0
+
+    research_extras = research_extras or {}
+    snapshot = snapshot_date or datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+
+    # Explicit allow-list: `rows` also carries watchlist-only routing fields
+    # (tv_exchange, ib_exchange, currency, fmp_ticker, created_at) that have no
+    # column here, and an unknown key would fail the write.
+    payload = []
+    for r in rows:
+        ticker = r.get("ticker")
+        if not ticker:
+            continue
+        extra = research_extras.get(ticker, {})
+        payload.append({
+            "snapshot_date":    snapshot,
+            "ticker":           ticker,
+            "company_name":     r.get("company_name"),
+            "q_eps_growth":     r.get("q_eps_growth"),
+            "a_eps_growth":     r.get("a_eps_growth"),
+            "revenue_growth":   r.get("revenue_growth"),
+            "analyst_rating":   r.get("analyst_rating"),
+            "float_shares":     r.get("float_shares"),
+            "roe":              r.get("roe"),
+            "company_size":     r.get("company_size"),
+            "price":            r.get("price"),
+            "market_cap":       extra.get("market_cap"),
+            "volume":           extra.get("volume"),
+            "sector":           extra.get("sector"),
+            "retention_period": r.get("retention_period"),
+            "source":           "tv_api_screener",
+        })
+
+    written = 0
+    try:
+        for i in range(0, len(payload), 100):
+            chunk = payload[i:i + 100]
+            supabase.table("watchlist_history").upsert(
+                chunk, on_conflict="snapshot_date,ticker"
+            ).execute()
+            written += len(chunk)
+        print(f"[+] Archived {written} rows to watchlist_history for {snapshot}.")
+    except Exception as e:
+        if "watchlist_history" in str(e) or "PGRST" in str(e) or "42P01" in str(e):
+            print("[!] watchlist_history table missing — run "
+                  "migrations/add_watchlist_history.sql. Screener run continues.")
+        else:
+            print(f"[!] Could not archive watchlist_history (non-fatal): {e}")
+        return written
+
+    return written
+
+
 def run_screener():
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("[-] Missing SUPABASE_URL or SUPABASE_KEY environment variables!")
@@ -79,7 +153,11 @@ def run_screener():
             "return_on_equity",                          # 7: roe
             "market_cap_basic",                          # 8: mcap
             "close",                                     # 9: price
-            "volume"                                     # 10: volume
+            "volume",                                    # 10: volume
+            # 11: sector — already used as a filter, so free to request. Stored
+            # in watchlist_history for research (sector concentration of the
+            # screen output). Appended last so indices 0-10 are unchanged.
+            "sector"
         ],
         "filter": [
             # Raised $10→$15: aligns with AI rating cap boundary (sub-$15 stocks capped at 45)
@@ -154,7 +232,12 @@ def run_screener():
 
     print("[*] Parsing data and formatting for Supabase...")
     records = []
-    
+    # Research-only fields that are fetched anyway but have no column in the
+    # `watchlist` table. Kept in a parallel map rather than inside `records`,
+    # because `records` is inserted into `watchlist` verbatim and an unknown
+    # column there would fail the whole run with PGRST204.
+    research_extras = {}
+
     for stock in stocks:
         # e.g., 'NASDAQ:AAPL' -> 'AAPL'
         symbol_full = stock.get('s', '')
@@ -171,7 +254,15 @@ def run_screener():
             company_size = "Mid"
         else:
             company_size = "Small"
-            
+
+        research_extras[ticker] = {
+            "market_cap": mcap,
+            "volume": float(row[10] or 0),
+            # Index 11 is optional so a TradingView response without it degrades
+            # to a null sector rather than dropping the run.
+            "sector": (row[11] if len(row) > 11 else None) or None,
+        }
+
         records.append({
                 "ticker": ticker,
                 "company_name": row[1] or ticker,
@@ -219,11 +310,15 @@ def run_screener():
         r["created_at"] = now
         inserts.append(r)
 
-    # 2. Truncate table
+    # 2. Append this run to the append-only point-in-time history BEFORE the
+    #    truncate below destroys it. See migrations/add_watchlist_history.sql.
+    save_watchlist_history(supabase, inserts, research_extras)
+
+    # 3. Truncate table
     print("[*] Truncating watchlist table...")
     supabase.table("watchlist").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()
 
-    # 3. Insert the fresh data
+    # 4. Insert the fresh data
     print(f"[*] Inserting {len(inserts)} records into Supabase...")
     for i in range(0, len(inserts), 100):
         chunk = inserts[i:i+100]
