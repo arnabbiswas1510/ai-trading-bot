@@ -1419,14 +1419,14 @@ def reconcile_with_ibkr(ib: IB):
             "buy_date": buy_date,
             "buy_reason": "Manual IBKR order (reconciled)",
             "buy_source": "daily_triggers",   # Bug fix: always set buy_source to prevent NULL
-            "stop_loss": stop_loss,
             "hwm_date":  datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
             "hwm_price": avg_cost,   # initialised to buy price; ratchets up in monitor loop
             "entry_rs_score": _get_entry_rs(ticker, None),   # live-fetched so Rule 1 has a baseline
         }
         try:
             client.table("portfolio_positions").insert(position_data).execute()
-            print(f"        ✅ Added to Supabase: {shares} shares @ ${avg_cost} | SL: ${stop_loss}")
+            print(f"        ✅ Added to Supabase: {shares} shares @ ${avg_cost} "
+                  f"| Trail: {STOP_LOSS_PCT*100:.2f}% (IBKR-managed)")
             changes += 1
         except Exception as e:
             notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
@@ -1833,7 +1833,6 @@ def run_market_open_buys(ib: IB):
                 "buy_price":  fill_price,
                 "buy_reason": f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x",
                 "buy_source": buy_source,
-                "stop_loss":  stop_loss_val,
                 "stop_loss_pct": pos_stop_loss_pct,
                 "hwm_date":   datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
                 "highest_unrealized_pct": 0.0,

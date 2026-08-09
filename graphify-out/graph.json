@@ -417,8 +417,8 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "backend_database_get_watchlist",
-      "community": 16,
-      "community_name": "database.py",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "get_watchlist()"
     },
     {
@@ -461,8 +461,8 @@
       "source_location": "L157",
       "_origin": "ast",
       "id": "backend_database_bg_update_fmp_cache",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "_bg_update_fmp_cache()"
     },
     {
@@ -491,7 +491,7 @@
       "label": "update_position_price()",
       "file_type": "code",
       "source_file": "backend/database.py",
-      "source_location": "L479",
+      "source_location": "L482",
       "_origin": "ast",
       "id": "backend_database_update_position_price",
       "community": 16,
@@ -502,7 +502,7 @@
       "label": "get_trade_history()",
       "file_type": "code",
       "source_file": "backend/database.py",
-      "source_location": "L483",
+      "source_location": "L486",
       "_origin": "ast",
       "id": "backend_database_get_trade_history",
       "community": 16,
@@ -513,7 +513,7 @@
       "label": "get_daily_triggers()",
       "file_type": "code",
       "source_file": "backend/database.py",
-      "source_location": "L507",
+      "source_location": "L510",
       "_origin": "ast",
       "id": "backend_database_get_daily_triggers",
       "community": 16,
@@ -524,7 +524,7 @@
       "label": "reset_portfolio()",
       "file_type": "code",
       "source_file": "backend/database.py",
-      "source_location": "L587",
+      "source_location": "L590",
       "_origin": "ast",
       "id": "backend_database_reset_portfolio",
       "community": 16,
@@ -535,7 +535,7 @@
       "label": "get_cash_flows()",
       "file_type": "code",
       "source_file": "backend/database.py",
-      "source_location": "L603",
+      "source_location": "L606",
       "_origin": "ast",
       "id": "backend_database_get_cash_flows",
       "community": 16,
@@ -546,7 +546,7 @@
       "label": "get_account_balances()",
       "file_type": "code",
       "source_file": "backend/database.py",
-      "source_location": "L612",
+      "source_location": "L615",
       "_origin": "ast",
       "id": "backend_database_get_account_balances",
       "community": 16,
@@ -568,12 +568,23 @@
       "label": "Resets the LOCAL paper-trading state only (SQLite settings).      CRITICAL SAFET",
       "file_type": "rationale",
       "source_file": "backend/database.py",
-      "source_location": "L588",
+      "source_location": "L591",
       "_origin": "ast",
-      "id": "backend_database_rationale_588",
+      "id": "backend_database_rationale_591",
       "community": 16,
       "community_name": "database.py",
       "norm_label": "resets the local paper-trading state only (sqlite settings).      critical safet"
+    },
+    {
+      "label": "# NOTE: the legacy `stop_loss` price column was dropped \u2014 it was a",
+      "file_type": "rationale",
+      "source_file": "backend/database.py",
+      "source_location": "L437",
+      "_origin": "ast",
+      "id": "backend_database_rationale_437",
+      "community": 16,
+      "community_name": "database.py",
+      "norm_label": "# note: the legacy `stop_loss` price column was dropped \u2014 it was a"
     },
     {
       "label": "fmp_client.py",
@@ -582,8 +593,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "backend_fmp_client",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "fmp_client.py"
     },
     {
@@ -604,8 +615,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "backend_fmp_client_fmpclient_init",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": ".__init__()"
     },
     {
@@ -1165,8 +1176,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "backend_screener",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "screener.py"
     },
     {
@@ -1176,8 +1187,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "backend_screener_get_market_direction",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "get_market_direction()"
     },
     {
@@ -1187,8 +1198,8 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "backend_screener_calculate_rs_scores",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "calculate_rs_scores()"
     },
     {
@@ -1198,8 +1209,8 @@
       "source_location": "L142",
       "_origin": "ast",
       "id": "backend_screener_scan_ticker",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "scan_ticker()"
     },
     {
@@ -1209,8 +1220,8 @@
       "source_location": "L431",
       "_origin": "ast",
       "id": "backend_screener_run_canslim_screener",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "run_canslim_screener()"
     },
     {
@@ -1220,8 +1231,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "backend_screener_rationale_8",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "analyzes ^gspc (s&p 500) and ^ixic (nasdaq composite) to determine general marke"
     },
     {
@@ -1231,8 +1242,8 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "backend_screener_rationale_92",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "calculates relative strength performance weighted:     40% recent q (last 3m), 2"
     },
     {
@@ -1242,8 +1253,8 @@
       "source_location": "L143",
       "_origin": "ast",
       "id": "backend_screener_rationale_143",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "evaluates a single ticker against c, a, n, s, l, i, m using fmp.     returns a d"
     },
     {
@@ -1253,8 +1264,8 @@
       "source_location": "L432",
       "_origin": "ast",
       "id": "backend_screener_rationale_432",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 119,
+      "community_name": "screener.py",
       "norm_label": "scans the entire watchlist, updates scores in the sqlite database, and returns r"
     },
     {
@@ -2342,8 +2353,8 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_amzn",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 218,
+      "community_name": "AMZN",
       "norm_label": "amzn"
     },
     {
@@ -2353,8 +2364,8 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "benchmark_data_manifest_amzn_end",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 218,
+      "community_name": "AMZN",
       "norm_label": "end"
     },
     {
@@ -2364,8 +2375,8 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "benchmark_data_manifest_amzn_rows",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 218,
+      "community_name": "AMZN",
       "norm_label": "rows"
     },
     {
@@ -2375,8 +2386,8 @@
       "source_location": "L124",
       "_origin": "ast",
       "id": "benchmark_data_manifest_amzn_start",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 218,
+      "community_name": "AMZN",
       "norm_label": "start"
     },
     {
@@ -2386,8 +2397,8 @@
       "source_location": "L126",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_anet",
-      "community": 119,
-      "community_name": "ANET",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "anet"
     },
     {
@@ -2397,8 +2408,8 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "benchmark_data_manifest_anet_end",
-      "community": 119,
-      "community_name": "ANET",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "end"
     },
     {
@@ -2408,8 +2419,8 @@
       "source_location": "L128",
       "_origin": "ast",
       "id": "benchmark_data_manifest_anet_rows",
-      "community": 119,
-      "community_name": "ANET",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "rows"
     },
     {
@@ -2419,8 +2430,8 @@
       "source_location": "L129",
       "_origin": "ast",
       "id": "benchmark_data_manifest_anet_start",
-      "community": 119,
-      "community_name": "ANET",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "start"
     },
     {
@@ -4542,8 +4553,8 @@
       "source_location": "L371",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_cop",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 219,
+      "community_name": "COP",
       "norm_label": "cop"
     },
     {
@@ -4553,8 +4564,8 @@
       "source_location": "L372",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cop_end",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 219,
+      "community_name": "COP",
       "norm_label": "end"
     },
     {
@@ -4564,8 +4575,8 @@
       "source_location": "L373",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cop_rows",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 219,
+      "community_name": "COP",
       "norm_label": "rows"
     },
     {
@@ -4575,8 +4586,8 @@
       "source_location": "L374",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cop_start",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 219,
+      "community_name": "COP",
       "norm_label": "start"
     },
     {
@@ -4586,8 +4597,8 @@
       "source_location": "L376",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_cor",
-      "community": 168,
-      "community_name": "COR",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "cor"
     },
     {
@@ -4597,8 +4608,8 @@
       "source_location": "L377",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cor_end",
-      "community": 168,
-      "community_name": "COR",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "end"
     },
     {
@@ -4608,8 +4619,8 @@
       "source_location": "L378",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cor_rows",
-      "community": 168,
-      "community_name": "COR",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "rows"
     },
     {
@@ -4619,8 +4630,8 @@
       "source_location": "L379",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cor_start",
-      "community": 168,
-      "community_name": "COR",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "start"
     },
     {
@@ -6775,7 +6786,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "execution_agent",
-      "community": 70,
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "execution_agent.py"
     },
@@ -6786,8 +6797,8 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "execution_agent_fetch_trade_confirms_for_ticker",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "fetch_trade_confirms_for_ticker()"
     },
     {
@@ -6886,7 +6897,7 @@
       "_origin": "ast",
       "id": "execution_agent_nyse_holidays",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "_nyse_holidays()"
     },
     {
@@ -6897,7 +6908,7 @@
       "_origin": "ast",
       "id": "execution_agent_trading_days_between",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "trading_days_between()"
     },
     {
@@ -6908,7 +6919,7 @@
       "_origin": "ast",
       "id": "date",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "date"
     },
     {
@@ -6918,7 +6929,7 @@
       "source_location": "L493",
       "_origin": "ast",
       "id": "execution_agent_global_exception_handler",
-      "community": 70,
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "global_exception_handler()"
     },
@@ -6929,8 +6940,8 @@
       "source_location": "L508",
       "_origin": "ast",
       "id": "execution_agent_get_supabase_client",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "get_supabase_client()"
     },
     {
@@ -6940,8 +6951,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "execution_agent_py_client",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "client"
     },
     {
@@ -6951,8 +6962,8 @@
       "source_location": "L516",
       "_origin": "ast",
       "id": "execution_agent_get_live_price",
-      "community": 29,
-      "community_name": "managed_exit.py",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "get_live_price()"
     },
     {
@@ -6963,7 +6974,7 @@
       "_origin": "ast",
       "id": "execution_agent_fetch_historical_closes_with_dates",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "fetch_historical_closes_with_dates()"
     },
     {
@@ -6974,7 +6985,7 @@
       "_origin": "ast",
       "id": "execution_agent_calculate_sma",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "calculate_sma()"
     },
     {
@@ -6985,7 +6996,7 @@
       "_origin": "ast",
       "id": "execution_agent_calculate_ema",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "calculate_ema()"
     },
     {
@@ -6996,7 +7007,7 @@
       "_origin": "ast",
       "id": "execution_agent_get_ma_value",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "get_ma_value()"
     },
     {
@@ -7006,8 +7017,8 @@
       "source_location": "L596",
       "_origin": "ast",
       "id": "execution_agent_matches_account",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "_matches_account()"
     },
     {
@@ -7018,7 +7029,7 @@
       "_origin": "ast",
       "id": "execution_agent_get_own_cash",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "get_own_cash()"
     },
     {
@@ -7029,7 +7040,7 @@
       "_origin": "ast",
       "id": "execution_agent_py_ib",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "ib"
     },
     {
@@ -7039,8 +7050,8 @@
       "source_location": "L663",
       "_origin": "ast",
       "id": "execution_agent_get_margin_loan",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 44,
+      "community_name": "force_buy.py",
       "norm_label": "get_margin_loan()"
     },
     {
@@ -7051,7 +7062,7 @@
       "_origin": "ast",
       "id": "execution_agent_get_available_cash",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "get_available_cash()"
     },
     {
@@ -7062,7 +7073,7 @@
       "_origin": "ast",
       "id": "execution_agent_get_ibkr_account",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "get_ibkr_account()"
     },
     {
@@ -7095,7 +7106,7 @@
       "_origin": "ast",
       "id": "execution_agent_place_trailing_stop",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "place_trailing_stop()"
     },
     {
@@ -7105,8 +7116,8 @@
       "source_location": "L803",
       "_origin": "ast",
       "id": "execution_agent_arm_exit",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "arm_exit()"
     },
     {
@@ -7116,8 +7127,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "execution_agent_py_datetime",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "datetime"
     },
     {
@@ -7149,8 +7160,8 @@
       "source_location": "L925",
       "_origin": "ast",
       "id": "execution_agent_maybe_arm_power_hold",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 54,
+      "community_name": "_pos",
       "norm_label": "maybe_arm_power_hold()"
     },
     {
@@ -7171,7 +7182,7 @@
       "source_location": "L983",
       "_origin": "ast",
       "id": "execution_agent_handle_mock_sell",
-      "community": 70,
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "handle_mock_sell()"
     },
@@ -7182,8 +7193,8 @@
       "source_location": "L1030",
       "_origin": "ast",
       "id": "execution_agent_reconcile_with_ibkr",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "reconcile_with_ibkr()"
     },
     {
@@ -7194,7 +7205,7 @@
       "_origin": "ast",
       "id": "execution_agent_is_market_bullish",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "is_market_bullish()"
     },
     {
@@ -7216,39 +7227,39 @@
       "_origin": "ast",
       "id": "execution_agent_run_market_open_buys",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "run_market_open_buys()"
     },
     {
       "label": "_get_entry_rs()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L1901",
+      "source_location": "L1900",
       "_origin": "ast",
       "id": "execution_agent_get_entry_rs",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "_get_entry_rs()"
     },
     {
       "label": "_fetch_ohlcv()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L1921",
+      "source_location": "L1920",
       "_origin": "ast",
       "id": "execution_agent_fetch_ohlcv",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "_fetch_ohlcv()"
     },
     {
       "label": "fetch_held_position_sentiment()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L1950",
+      "source_location": "L1949",
       "_origin": "ast",
       "id": "execution_agent_fetch_held_position_sentiment",
-      "community": 70,
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "fetch_held_position_sentiment()"
     },
@@ -7256,7 +7267,7 @@
       "label": "compute_rsi()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L2007",
+      "source_location": "L2006",
       "_origin": "ast",
       "id": "execution_agent_compute_rsi",
       "community": 75,
@@ -7267,7 +7278,7 @@
       "label": "detect_candlestick_reversals()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L2052",
+      "source_location": "L2051",
       "_origin": "ast",
       "id": "execution_agent_detect_candlestick_reversals",
       "community": 75,
@@ -7278,7 +7289,7 @@
       "label": "compute_momentum_health_score()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L2129",
+      "source_location": "L2128",
       "_origin": "ast",
       "id": "execution_agent_compute_momentum_health_score",
       "community": 75,
@@ -7289,21 +7300,21 @@
       "label": "_get_market_regime()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L2250",
+      "source_location": "L2249",
       "_origin": "ast",
       "id": "execution_agent_get_market_regime",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "_get_market_regime()"
     },
     {
       "label": "_fetch_current_rs()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L2279",
+      "source_location": "L2278",
       "_origin": "ast",
       "id": "execution_agent_fetch_current_rs",
-      "community": 70,
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "_fetch_current_rs()"
     },
@@ -7311,10 +7322,10 @@
       "label": "check_volume_distribution()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L2332",
+      "source_location": "L2331",
       "_origin": "ast",
       "id": "execution_agent_check_volume_distribution",
-      "community": 70,
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "check_volume_distribution()"
     },
@@ -7322,33 +7333,33 @@
       "label": "monitor_portfolio_intraday()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L2363",
+      "source_location": "L2362",
       "_origin": "ast",
       "id": "execution_agent_monitor_portfolio_intraday",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "monitor_portfolio_intraday()"
     },
     {
       "label": "execute_sell()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L2904",
+      "source_location": "L2903",
       "_origin": "ast",
       "id": "execution_agent_execute_sell",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "execute_sell()"
     },
     {
       "label": "main_loop()",
       "file_type": "code",
       "source_file": "execution_agent.py",
-      "source_location": "L3035",
+      "source_location": "L3034",
       "_origin": "ast",
       "id": "execution_agent_main_loop",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "main_loop()"
     },
     {
@@ -7381,7 +7392,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_393",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "return the set of nyse market holidays for a given year.      computed algorithm"
     },
     {
@@ -7392,7 +7403,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_461",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "count nyse trading days in the half-open interval [start, end).      weekends an"
     },
     {
@@ -7402,8 +7413,8 @@
       "source_location": "L517",
       "_origin": "ast",
       "id": "execution_agent_rationale_517",
-      "community": 29,
-      "community_name": "managed_exit.py",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "fetch current price of a ticker from fmp."
     },
     {
@@ -7414,7 +7425,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_531",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "fetch historical daily close prices and dates from fmp (oldest first)."
     },
     {
@@ -7425,7 +7436,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_556",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "compute simple moving average."
     },
     {
@@ -7436,7 +7447,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_562",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "compute exponential moving average."
     },
     {
@@ -7447,7 +7458,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_574",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "calculate moving average value, appending current_price if today's eod bar isn't"
     },
     {
@@ -7457,8 +7468,8 @@
       "source_location": "L597",
       "_origin": "ast",
       "id": "execution_agent_rationale_597",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "return true if obj belongs to target_account, or if obj has no account string se"
     },
     {
@@ -7469,7 +7480,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_607",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "return only the agent's own (non-borrowed) cash balance in usd.      reads ``tot"
     },
     {
@@ -7479,8 +7490,8 @@
       "source_location": "L664",
       "_origin": "ast",
       "id": "execution_agent_rationale_664",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 44,
+      "community_name": "force_buy.py",
       "norm_label": "return the current margin loan amount in usd (0.0 if no loan).      a positive r"
     },
     {
@@ -7491,7 +7502,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_683",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "deprecated alias for get_own_cash().      deprecated: previously read availablef"
     },
     {
@@ -7502,7 +7513,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_700",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "returns the configured ibkr live account.     priority: ibkr_account env var \u2192 u"
     },
     {
@@ -7524,7 +7535,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_766",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "places a gtc trailing stop for an open stock position.     trails stop_loss_pct%"
     },
     {
@@ -7534,8 +7545,8 @@
       "source_location": "L805",
       "_origin": "ast",
       "id": "execution_agent_rationale_805",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "arms a day 0-6 loss-cutting exit instead of selling immediately at the     trigg"
     },
     {
@@ -7567,8 +7578,8 @@
       "source_location": "L926",
       "_origin": "ast",
       "id": "execution_agent_rationale_926",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 54,
+      "community_name": "_pos",
       "norm_label": "persists the power-hold flag the first time a position qualifies.      returns t"
     },
     {
@@ -7589,7 +7600,7 @@
       "source_location": "L984",
       "_origin": "ast",
       "id": "execution_agent_rationale_984",
-      "community": 70,
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "executes a mock sale event directly on supabase, bypassing ibkr."
     },
@@ -7600,8 +7611,8 @@
       "source_location": "L1031",
       "_origin": "ast",
       "id": "execution_agent_rationale_1031",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "full bidirectional reconciliation between ibkr actual positions and supabase led"
     },
     {
@@ -7612,7 +7623,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_1456",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "canslim 'm' (market direction) filter.     returns true  if market_direction_tic"
     },
     {
@@ -7634,39 +7645,39 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_1521",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "checks for daily breakout triggers and executes buy orders at market open."
     },
     {
       "label": "Return entry_rs_score for a newly opened position.      Prefers the rs_score alr",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L1902",
+      "source_location": "L1901",
       "_origin": "ast",
-      "id": "execution_agent_rationale_1902",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "id": "execution_agent_rationale_1901",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "return entry_rs_score for a newly opened position.      prefers the rs_score alr"
     },
     {
       "label": "Fetch OHLCV rows from FMP for the last `days` calendar days.      Returns a list",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L1922",
+      "source_location": "L1921",
       "_origin": "ast",
-      "id": "execution_agent_rationale_1922",
+      "id": "execution_agent_rationale_1921",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "fetch ohlcv rows from fmp for the last `days` calendar days.      returns a list"
     },
     {
       "label": "Fetch live sentiment score (1-100) for a held position using FMP news + GPT-4o-m",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L1951",
+      "source_location": "L1950",
       "_origin": "ast",
-      "id": "execution_agent_rationale_1951",
-      "community": 70,
+      "id": "execution_agent_rationale_1950",
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "fetch live sentiment score (1-100) for a held position using fmp news + gpt-4o-m"
     },
@@ -7674,9 +7685,9 @@
       "label": "Wilder's smoothed RSI from a list of closing prices.      Returns a list of RSI",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L2008",
+      "source_location": "L2007",
       "_origin": "ast",
-      "id": "execution_agent_rationale_2008",
+      "id": "execution_agent_rationale_2007",
       "community": 75,
       "community_name": "compute_momentum_health_score",
       "norm_label": "wilder's smoothed rsi from a list of closing prices.      returns a list of rsi"
@@ -7685,9 +7696,9 @@
       "label": "Detect bearish reversal candles on the last 3 bars near the plateau zone.      R",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L2053",
+      "source_location": "L2052",
       "_origin": "ast",
-      "id": "execution_agent_rationale_2053",
+      "id": "execution_agent_rationale_2052",
       "community": 75,
       "community_name": "compute_momentum_health_score",
       "norm_label": "detect bearish reversal candles on the last 3 bars near the plateau zone.      r"
@@ -7696,9 +7707,9 @@
       "label": "Live Momentum Health Score M\u209c (0\u2013100) for a held position.      Returns (score,",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L2135",
+      "source_location": "L2134",
       "_origin": "ast",
-      "id": "execution_agent_rationale_2135",
+      "id": "execution_agent_rationale_2134",
       "community": 75,
       "community_name": "compute_momentum_health_score",
       "norm_label": "live momentum health score mt (0\u2013100) for a held position.      returns (score,"
@@ -7707,21 +7718,21 @@
       "label": "Return current market regime based on SPY vs its 21-day EMA.      'uptrend'    \u2014",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L2251",
+      "source_location": "L2250",
       "_origin": "ast",
-      "id": "execution_agent_rationale_2251",
+      "id": "execution_agent_rationale_2250",
       "community": 70,
-      "community_name": "execution_agent.py",
+      "community_name": "date",
       "norm_label": "return current market regime based on spy vs its 21-day ema.      'uptrend'    \u2014"
     },
     {
       "label": "Fetch the stock's current 12-week return vs SPY and return its live RS score.",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L2280",
+      "source_location": "L2279",
       "_origin": "ast",
-      "id": "execution_agent_rationale_2280",
-      "community": 70,
+      "id": "execution_agent_rationale_2279",
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "fetch the stock's current 12-week return vs spy and return its live rs score."
     },
@@ -7729,10 +7740,10 @@
       "label": "Check if the stock closed sideways/down on above-average volume     on at least",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L2333",
+      "source_location": "L2332",
       "_origin": "ast",
-      "id": "execution_agent_rationale_2333",
-      "community": 70,
+      "id": "execution_agent_rationale_2332",
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "check if the stock closed sideways/down on above-average volume     on at least"
     },
@@ -7740,33 +7751,33 @@
       "label": "Monitors open positions: updates hwm_date, self-heals trailing stops,     applie",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L2364",
+      "source_location": "L2363",
       "_origin": "ast",
-      "id": "execution_agent_rationale_2364",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "id": "execution_agent_rationale_2363",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "monitors open positions: updates hwm_date, self-heals trailing stops,     applie"
     },
     {
       "label": "Executes a market sell order on IBKR and archives the transaction in Supabase.",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L2908",
+      "source_location": "L2907",
       "_origin": "ast",
-      "id": "execution_agent_rationale_2908",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "id": "execution_agent_rationale_2907",
+      "community": 38,
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "executes a market sell order on ibkr and archives the transaction in supabase."
     },
     {
       "label": "Main daemon loop running inside the Docker container.",
       "file_type": "rationale",
       "source_file": "execution_agent.py",
-      "source_location": "L3036",
+      "source_location": "L3035",
       "_origin": "ast",
-      "id": "execution_agent_rationale_3036",
+      "id": "execution_agent_rationale_3035",
       "community": 38,
-      "community_name": "run_market_open_buys",
+      "community_name": "monitor_portfolio_intraday",
       "norm_label": "main daemon loop running inside the docker container."
     },
     {
@@ -7776,7 +7787,7 @@
       "source_location": "L355",
       "_origin": "ast",
       "id": "execution_agent_rationale_355",
-      "community": 70,
+      "community": 58,
       "community_name": "execution_agent.py",
       "norm_label": "# note: this rule never fired in the replay of the 13 real closed trades because"
     },
@@ -7897,8 +7908,8 @@
       "source_location": "L375",
       "_origin": "ast",
       "id": "flex_query_sync_fetch_trade_confirms_for_ticker",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "fetch_trade_confirms_for_ticker()"
     },
     {
@@ -8018,8 +8029,8 @@
       "source_location": "L376",
       "_origin": "ast",
       "id": "flex_query_sync_rationale_376",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 58,
+      "community_name": "execution_agent.py",
       "norm_label": "query ibkr tradeconfirm flex report (on-demand, same token as cash flows)     an"
     },
     {
@@ -8092,7 +8103,7 @@
       "label": "main()",
       "file_type": "code",
       "source_file": "force_buy.py",
-      "source_location": "L260",
+      "source_location": "L256",
       "_origin": "ast",
       "id": "force_buy_main",
       "community": 44,
@@ -10579,7 +10590,7 @@
       "_origin": "ast",
       "id": "tests_conftest",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "conftest.py"
     },
     {
@@ -10590,7 +10601,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_portfolio_item",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "make_portfolio_item()"
     },
     {
@@ -10600,7 +10611,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "tests_conftest_make_ib_mock",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": "make_ib_mock()"
     },
@@ -10612,39 +10623,39 @@
       "_origin": "ast",
       "id": "tests_conftest_make_position",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "make_position()"
     },
     {
       "label": "make_trigger()",
       "file_type": "code",
       "source_file": "tests/conftest.py",
-      "source_location": "L120",
+      "source_location": "L118",
       "_origin": "ast",
       "id": "tests_conftest_make_trigger",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "make_trigger()"
     },
     {
       "label": "make_ibkr_fill()",
       "file_type": "code",
       "source_file": "tests/conftest.py",
-      "source_location": "L149",
+      "source_location": "L147",
       "_origin": "ast",
       "id": "tests_conftest_make_ibkr_fill",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "make_ibkr_fill()"
     },
     {
       "label": "make_supabase_mock()",
       "file_type": "code",
       "source_file": "tests/conftest.py",
-      "source_location": "L168",
+      "source_location": "L166",
       "_origin": "ast",
       "id": "tests_conftest_make_supabase_mock",
-      "community": 34,
+      "community": 6,
       "community_name": "make_supabase_mock",
       "norm_label": "make_supabase_mock()"
     },
@@ -10652,11 +10663,11 @@
       "label": "make_ohlcv_data()",
       "file_type": "code",
       "source_file": "tests/conftest.py",
-      "source_location": "L301",
+      "source_location": "L299",
       "_origin": "ast",
       "id": "tests_conftest_make_ohlcv_data",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "make_ohlcv_data()"
     },
     {
@@ -10667,40 +10678,40 @@
       "_origin": "ast",
       "id": "tests_conftest_py_fixture",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "fixture"
     },
     {
       "label": "mock_ib()",
       "file_type": "code",
       "source_file": "tests/conftest.py",
-      "source_location": "L340",
+      "source_location": "L338",
       "_origin": "ast",
       "id": "tests_conftest_mock_ib",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "mock_ib()"
     },
     {
       "label": "mock_supabase_empty()",
       "file_type": "code",
       "source_file": "tests/conftest.py",
-      "source_location": "L346",
+      "source_location": "L344",
       "_origin": "ast",
       "id": "tests_conftest_mock_supabase_empty",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "mock_supabase_empty()"
     },
     {
       "label": "_silence_notifier()",
       "file_type": "code",
       "source_file": "tests/conftest.py",
-      "source_location": "L360",
+      "source_location": "L358",
       "_origin": "ast",
       "id": "tests_conftest_silence_notifier",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "_silence_notifier()"
     },
     {
@@ -10711,7 +10722,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_28",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "mimics an ib_insync portfolioitem.     important: uses .averagecost (portfolioit"
     },
     {
@@ -10721,7 +10732,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "tests_conftest_rationale_42",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": "creates a mock ib instance whose portfolio() always returns the given symbols."
     },
@@ -10733,39 +10744,39 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_84",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "factory for a portfolio_positions supabase row.      hwm_rs_score: rs score on t"
     },
     {
       "label": "Factory for a daily_triggers Supabase row.      final_score defaults to 75 (a no",
       "file_type": "rationale",
       "source_file": "tests/conftest.py",
-      "source_location": "L127",
+      "source_location": "L125",
       "_origin": "ast",
-      "id": "tests_conftest_rationale_127",
+      "id": "tests_conftest_rationale_125",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "factory for a daily_triggers supabase row.      final_score defaults to 75 (a no"
     },
     {
       "label": "Factory for an ibkr_fills Supabase row.",
       "file_type": "rationale",
       "source_file": "tests/conftest.py",
-      "source_location": "L152",
+      "source_location": "L150",
       "_origin": "ast",
-      "id": "tests_conftest_rationale_152",
+      "id": "tests_conftest_rationale_150",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "factory for an ibkr_fills supabase row."
     },
     {
       "label": "Returns a MagicMock Supabase client where each table's queries return     realis",
       "file_type": "rationale",
       "source_file": "tests/conftest.py",
-      "source_location": "L175",
+      "source_location": "L173",
       "_origin": "ast",
-      "id": "tests_conftest_rationale_175",
-      "community": 34,
+      "id": "tests_conftest_rationale_173",
+      "community": 6,
       "community_name": "make_supabase_mock",
       "norm_label": "returns a magicmock supabase client where each table's queries return     realis"
     },
@@ -10773,44 +10784,44 @@
       "label": "Generates synthetic OHLCV data (as a list of dicts, like FMP returns).     Price",
       "file_type": "rationale",
       "source_file": "tests/conftest.py",
-      "source_location": "L307",
+      "source_location": "L305",
       "_origin": "ast",
-      "id": "tests_conftest_rationale_307",
+      "id": "tests_conftest_rationale_305",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "generates synthetic ohlcv data (as a list of dicts, like fmp returns).     price"
     },
     {
       "label": "Default IB mock with no open positions.",
       "file_type": "rationale",
       "source_file": "tests/conftest.py",
-      "source_location": "L341",
+      "source_location": "L339",
       "_origin": "ast",
-      "id": "tests_conftest_rationale_341",
+      "id": "tests_conftest_rationale_339",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "default ib mock with no open positions."
     },
     {
       "label": "Supabase mock with no data in any table.",
       "file_type": "rationale",
       "source_file": "tests/conftest.py",
-      "source_location": "L347",
+      "source_location": "L345",
       "_origin": "ast",
-      "id": "tests_conftest_rationale_347",
+      "id": "tests_conftest_rationale_345",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "supabase mock with no data in any table."
     },
     {
       "label": "Auto-mock execution_agent.notifier for every test in the suite.",
       "file_type": "rationale",
       "source_file": "tests/conftest.py",
-      "source_location": "L361",
+      "source_location": "L359",
       "_origin": "ast",
-      "id": "tests_conftest_rationale_361",
+      "id": "tests_conftest_rationale_359",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "auto-mock execution_agent.notifier for every test in the suite."
     },
     {
@@ -11800,7 +11811,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "test_buy_gates.py"
     },
     {
@@ -11811,7 +11822,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_run_buys",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "_run_buys()"
     },
     {
@@ -11822,7 +11833,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testgate1stockslots"
     },
     {
@@ -11833,7 +11844,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots_test_gate1_full_portfolio_blocks_all_buys",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_gate1_full_portfolio_blocks_all_buys()"
     },
     {
@@ -11844,7 +11855,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots_test_gate1_one_free_slot_allows_a_buy",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_gate1_one_free_slot_allows_a_buy()"
     },
     {
@@ -11855,7 +11866,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testtriggerrankingandvetting"
     },
     {
@@ -11866,7 +11877,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_buys_highest_scored_trigger_first",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_buys_highest_scored_trigger_first()"
     },
     {
@@ -11877,7 +11888,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_unvetted_trigger_is_skipped_not_bought_on_technicals",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_unvetted_trigger_is_skipped_not_bought_on_technicals()"
     },
     {
@@ -11888,7 +11899,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_unvetted_trigger_skipped_even_when_pre_breakout",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_unvetted_trigger_skipped_even_when_pre_breakout()"
     },
     {
@@ -11899,7 +11910,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_adjusted_score_still_takes_precedence",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_adjusted_score_still_takes_precedence()"
     },
     {
@@ -11910,7 +11921,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testmarketdirectiongate",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testmarketdirectiongate"
     },
     {
@@ -11921,7 +11932,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testmarketdirectiongate_test_bearish_market_blocks_buys",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_bearish_market_blocks_buys()"
     },
     {
@@ -11932,7 +11943,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testscorefloorgate"
     },
     {
@@ -11943,7 +11954,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate_test_breakout_below_min_score_is_skipped",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_breakout_below_min_score_is_skipped()"
     },
     {
@@ -11954,7 +11965,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate_test_pre_breakout_relaxed_uses_relaxed_floor",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_pre_breakout_relaxed_uses_relaxed_floor()"
     },
     {
@@ -12031,7 +12042,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_34",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "runs run_market_open_buys() with standard patches applied.     returns the mock_"
     },
     {
@@ -12042,7 +12053,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_67",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "gate 1: max_positions stock positions \u2192 portfolio full \u2192 no order placed."
     },
     {
@@ -12053,7 +12064,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_81",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "one slot short of max_positions \u2192 the trigger is bought."
     },
     {
@@ -12064,7 +12075,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_107",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "regression: ai_evaluator.py silently drops tickers from its batch         (\"lost"
     },
     {
@@ -12075,7 +12086,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_134",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "adjusted_score (post-penalty) remains the primary gate input."
     },
     {
@@ -12800,8 +12811,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_margin_safety",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "test_margin_safety.py"
     },
     {
@@ -12833,8 +12844,8 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "tests_test_margin_safety_make_ib_with_account_values",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "_make_ib_with_account_values()"
     },
     {
@@ -12965,8 +12976,8 @@
       "source_location": "L224",
       "_origin": "ast",
       "id": "tests_test_margin_safety_run_buys_with_margin_scenario",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "_run_buys_with_margin_scenario()"
     },
     {
@@ -12976,8 +12987,8 @@
       "source_location": "L240",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "testnobuyswithborrowedmoney"
     },
     {
@@ -12987,8 +12998,8 @@
       "source_location": "L246",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_margin_loan_blocks_all_buys_completely",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_margin_loan_blocks_all_buys_completely()"
     },
     {
@@ -12998,8 +13009,8 @@
       "source_location": "L278",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_large_margin_loan_blocks_buys",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_large_margin_loan_blocks_buys()"
     },
     {
@@ -13009,8 +13020,8 @@
       "source_location": "L296",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_zero_own_cash_blocks_buys",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_zero_own_cash_blocks_buys()"
     },
     {
@@ -13021,7 +13032,7 @@
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_positive_own_cash_allows_buy_when_all_other_gates_pass",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_positive_own_cash_allows_buy_when_all_other_gates_pass()"
     },
     {
@@ -13032,7 +13043,7 @@
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_margin_loan_sends_telegram_alert",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_margin_loan_sends_telegram_alert()"
     },
     {
@@ -13042,8 +13053,8 @@
       "source_location": "L377",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testnobuyswithborrowedmoney_test_margin_loan_blocks_multiple_triggers",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_margin_loan_blocks_multiple_triggers()"
     },
     {
@@ -13053,8 +13064,8 @@
       "source_location": "L404",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testmultibuycyclemarginsafety",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "testmultibuycyclemarginsafety"
     },
     {
@@ -13064,8 +13075,8 @@
       "source_location": "L412",
       "_origin": "ast",
       "id": "tests_test_margin_safety_testmultibuycyclemarginsafety_test_multi_buy_cycle_deducts_spent_cash",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_multi_buy_cycle_deducts_spent_cash()"
     },
     {
@@ -13075,8 +13086,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_1",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "test_margin_safety.py \u2014 tests for the margin-cash safety layer.  covers two crit"
     },
     {
@@ -13097,8 +13108,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_50",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "return a make_ib_mock() whose ib.accountvalues() returns the given list.     all"
     },
     {
@@ -13229,8 +13240,8 @@
       "source_location": "L225",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_225",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "runs run_market_open_buys() with standard patches.     does not patch get_own_ca"
     },
     {
@@ -13240,8 +13251,8 @@
       "source_location": "L241",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_241",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "run_market_open_buys() must never place an order when totalcashvalue < 0,     re"
     },
     {
@@ -13251,8 +13262,8 @@
       "source_location": "L247",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_247",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "core regression test for the trv incident.          scenario:           - totalc"
     },
     {
@@ -13262,8 +13273,8 @@
       "source_location": "L279",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_279",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "stress case mimicking the original trv incident: ~$35k margin loan         from"
     },
     {
@@ -13273,8 +13284,8 @@
       "source_location": "L297",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_297",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "edge case: totalcashvalue is exactly $0.00 \u2014 nothing deposited is         liquid"
     },
     {
@@ -13285,7 +13296,7 @@
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_316",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "positive control: when totalcashvalue is healthy (own money, no loan),         a"
     },
     {
@@ -13296,7 +13307,7 @@
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_346",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "when a margin loan is detected, the user must receive a telegram alert."
     },
     {
@@ -13306,8 +13317,8 @@
       "source_location": "L378",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_378",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "even when multiple high-scoring triggers are queued, none should         result"
     },
     {
@@ -13317,8 +13328,8 @@
       "source_location": "L405",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_405",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "verifies that when multiple triggers fill in the same buy cycle,     execution_a"
     },
     {
@@ -13328,8 +13339,8 @@
       "source_location": "L413",
       "_origin": "ast",
       "id": "tests_test_margin_safety_rationale_413",
-      "community": 34,
-      "community_name": "make_supabase_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "regression test for the oii over-buy incident:         starting cash: $50,000. 2"
     },
     {
@@ -13340,7 +13351,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_oca_helpers.py"
     },
     {
@@ -13350,8 +13361,8 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "testplacetrailingstop"
     },
     {
@@ -13361,8 +13372,8 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_places_exactly_one_trail_order",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_places_exactly_one_trail_order()"
     },
     {
@@ -13372,8 +13383,8 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_order_is_trail_type",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_order_is_trail_type()"
     },
     {
@@ -13383,8 +13394,8 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_trailing_percent_correct",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_trailing_percent_correct()"
     },
     {
@@ -13394,8 +13405,8 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_order_is_gtc",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_order_is_gtc()"
     },
     {
@@ -13405,8 +13416,8 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_order_is_sell",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_order_is_sell()"
     },
     {
@@ -13416,8 +13427,8 @@
       "source_location": "L80",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_no_limit_order_placed",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_no_limit_order_placed()"
     },
     {
@@ -13427,8 +13438,8 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testplacetrailingstop_test_returns_group_string",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": ".test_returns_group_string()"
     },
     {
@@ -13438,7 +13449,7 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": "testcanceltickersellorders"
     },
@@ -13449,7 +13460,7 @@
       "source_location": "L105",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_make_trade",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": "._make_trade()"
     },
@@ -13460,7 +13471,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_cancels_active_sell_for_ticker",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": ".test_cancels_active_sell_for_ticker()"
     },
@@ -13471,7 +13482,7 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_does_not_cancel_buy_orders",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": ".test_does_not_cancel_buy_orders()"
     },
@@ -13482,7 +13493,7 @@
       "source_location": "L128",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_does_not_cancel_different_ticker",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": ".test_does_not_cancel_different_ticker()"
     },
@@ -13493,7 +13504,7 @@
       "source_location": "L136",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_does_not_cancel_already_filled_order",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": ".test_does_not_cancel_already_filled_order()"
     },
@@ -13504,7 +13515,7 @@
       "source_location": "L144",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testcanceltickersellorders_test_returns_zero_when_no_open_orders",
-      "community": 6,
+      "community": 73,
       "community_name": "make_ib_mock",
       "norm_label": ".test_returns_zero_when_no_open_orders()"
     },
@@ -13516,7 +13527,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "testexecutesellcancelstrailingstopfirst"
     },
     {
@@ -13527,7 +13538,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst_test_cancel_called_before_market_order",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_cancel_called_before_market_order()"
     },
     {
@@ -13538,7 +13549,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst_test_supabase_not_updated_if_sell_not_confirmed",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_supabase_not_updated_if_sell_not_confirmed()"
     },
     {
@@ -13549,7 +13560,7 @@
       "_origin": "ast",
       "id": "tests_test_oca_helpers_rationale_1",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_trailing_stop.py \u2014 unit tests for place_trailing_stop() and the self-healin"
     },
     {
@@ -13559,8 +13570,8 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_rationale_36",
-      "community": 6,
-      "community_name": "make_ib_mock",
+      "community": 2,
+      "community_name": "_AV",
       "norm_label": "place_trailing_stop() places exactly one gtc trail order.     no limitorder (pro"
     },
     {
@@ -13714,7 +13725,7 @@
       "_origin": "ast",
       "id": "tests_test_plateau_rotation_testedgecases_test_eod_block_skipped_when_portfolio_not_full",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_eod_block_skipped_when_portfolio_not_full()"
     },
     {
@@ -13956,7 +13967,7 @@
       "_origin": "ast",
       "id": "tests_test_plateau_rotation_rationale_188",
       "community": 34,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "only 2 positions (< max_positions=4) -> eod rank & replace swap block skipped (c"
     },
     {
@@ -14913,7 +14924,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_reconcile.py"
     },
     {
@@ -15005,21 +15016,21 @@
       "norm_label": ".test_case2_skips_position_with_zero_avg_cost()"
     },
     {
-      "label": ".test_case2_stop_loss_computed_correctly()",
+      "label": ".test_case2_trail_pct_recorded_not_stale_price()",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
       "source_location": "L138",
       "_origin": "ast",
-      "id": "tests_test_reconcile_testreconcilecase2_test_case2_stop_loss_computed_correctly",
+      "id": "tests_test_reconcile_testreconcilecase2_test_case2_trail_pct_recorded_not_stale_price",
       "community": 22,
       "community_name": "_reconcile",
-      "norm_label": ".test_case2_stop_loss_computed_correctly()"
+      "norm_label": ".test_case2_trail_pct_recorded_not_stale_price()"
     },
     {
       "label": "TestReconcileCase3",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L158",
+      "source_location": "L161",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase3",
       "community": 22,
@@ -15030,7 +15041,7 @@
       "label": ".test_case3_updates_share_count_on_mismatch()",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L161",
+      "source_location": "L164",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
       "community": 22,
@@ -15041,7 +15052,7 @@
       "label": ".test_case3_no_update_when_shares_match()",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L176",
+      "source_location": "L179",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
       "community": 22,
@@ -15052,51 +15063,51 @@
       "label": "TestReconcileCase4",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L188",
+      "source_location": "L191",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase4",
       "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community_name": "make_ib_mock",
       "norm_label": "testreconcilecase4"
     },
     {
       "label": ".test_case4_cash_synced_when_balance_changes()",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L191",
+      "source_location": "L194",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase4_test_case4_cash_synced_when_balance_changes",
       "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community_name": "make_ib_mock",
       "norm_label": ".test_case4_cash_synced_when_balance_changes()"
     },
     {
       "label": ".test_case4_cash_sync_writes_daily_snapshots()",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L210",
+      "source_location": "L213",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase4_test_case4_cash_sync_writes_daily_snapshots",
       "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community_name": "make_ib_mock",
       "norm_label": ".test_case4_cash_sync_writes_daily_snapshots()"
     },
     {
       "label": ".test_case4_detects_deposits()",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L223",
+      "source_location": "L226",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase4_test_case4_detects_deposits",
       "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community_name": "make_ib_mock",
       "norm_label": ".test_case4_detects_deposits()"
     },
     {
       "label": "TestReconcileUsesPortfolioNotPositions",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L238",
+      "source_location": "L241",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcileusesportfolionotpositions",
       "community": 22,
@@ -15107,7 +15118,7 @@
       "label": ".test_reconcile_calls_ib_portfolio_not_ib_positions()",
       "file_type": "code",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L245",
+      "source_location": "L248",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcileusesportfolionotpositions_test_reconcile_calls_ib_portfolio_not_ib_positions",
       "community": 22,
@@ -15122,7 +15133,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_1",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_reconcile.py \u2014 tests for reconcile_with_ibkr() four reconcile cases.  criti"
     },
     {
@@ -15214,7 +15225,7 @@
       "norm_label": "case 2: averagecost = 0 \u2192 skip insert (prevents ghost $0 positions)."
     },
     {
-      "label": "Case 2: stop_loss = avg_cost * (1 - STOP_LOSS_PCT).         profit_target is no",
+      "label": "Case 2: no absolute stop_loss price is stored.          The `stop_loss` column w",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
       "source_location": "L139",
@@ -15222,15 +15233,15 @@
       "id": "tests_test_reconcile_rationale_139",
       "community": 22,
       "community_name": "_reconcile",
-      "norm_label": "case 2: stop_loss = avg_cost * (1 - stop_loss_pct).         profit_target is no"
+      "norm_label": "case 2: no absolute stop_loss price is stored.          the `stop_loss` column w"
     },
     {
       "label": "Case 3: In both, share count differs \u2192 update Supabase.",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L159",
+      "source_location": "L162",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_159",
+      "id": "tests_test_reconcile_rationale_162",
       "community": 22,
       "community_name": "_reconcile",
       "norm_label": "case 3: in both, share count differs \u2192 update supabase."
@@ -15239,9 +15250,9 @@
       "label": "IBKR has 150 shares, Supabase says 100 \u2192 update Supabase to 150.",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L162",
+      "source_location": "L165",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_162",
+      "id": "tests_test_reconcile_rationale_165",
       "community": 22,
       "community_name": "_reconcile",
       "norm_label": "ibkr has 150 shares, supabase says 100 \u2192 update supabase to 150."
@@ -15250,9 +15261,9 @@
       "label": "Case 3: IBKR and Supabase both have 100 shares \u2192 no update.",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L177",
+      "source_location": "L180",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_177",
+      "id": "tests_test_reconcile_rationale_180",
       "community": 22,
       "community_name": "_reconcile",
       "norm_label": "case 3: ibkr and supabase both have 100 shares \u2192 no update."
@@ -15261,53 +15272,53 @@
       "label": "Case 4: Cash balance sync from IBKR to Supabase account_balances.",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L189",
+      "source_location": "L192",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_189",
+      "id": "tests_test_reconcile_rationale_192",
       "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community_name": "make_ib_mock",
       "norm_label": "case 4: cash balance sync from ibkr to supabase account_balances."
     },
     {
       "label": "Large change in cash \u2192 upsert to account_balances called.",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L192",
+      "source_location": "L195",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_192",
+      "id": "tests_test_reconcile_rationale_195",
       "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community_name": "make_ib_mock",
       "norm_label": "large change in cash \u2192 upsert to account_balances called."
     },
     {
       "label": "New logic: write daily snapshots for cash, positions_value, total_value.",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L211",
+      "source_location": "L214",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_211",
+      "id": "tests_test_reconcile_rationale_214",
       "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community_name": "make_ib_mock",
       "norm_label": "new logic: write daily snapshots for cash, positions_value, total_value."
     },
     {
       "label": "A cash jump > $500 inserts into cash_flows.",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L224",
+      "source_location": "L227",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_224",
+      "id": "tests_test_reconcile_rationale_227",
       "community": 73,
-      "community_name": "TestReconcileCase4",
+      "community_name": "make_ib_mock",
       "norm_label": "a cash jump > $500 inserts into cash_flows."
     },
     {
       "label": "Critical: reconcile_with_ibkr() must use ib.portfolio() everywhere.     ib.posit",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L239",
+      "source_location": "L242",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_239",
+      "id": "tests_test_reconcile_rationale_242",
       "community": 22,
       "community_name": "_reconcile",
       "norm_label": "critical: reconcile_with_ibkr() must use ib.portfolio() everywhere.     ib.posit"
@@ -15316,9 +15327,9 @@
       "label": "The reconcile function must ONLY call ib.portfolio(), never ib.positions().",
       "file_type": "rationale",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L246",
+      "source_location": "L249",
       "_origin": "ast",
-      "id": "tests_test_reconcile_rationale_246",
+      "id": "tests_test_reconcile_rationale_249",
       "community": 22,
       "community_name": "_reconcile",
       "norm_label": "the reconcile function must only call ib.portfolio(), never ib.positions()."
@@ -16167,7 +16178,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_sell_logic.py"
     },
     {
@@ -16420,7 +16431,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_testbuybracketnolimitatbuytime",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "testbuybracketnolimitatbuytime"
     },
     {
@@ -16431,7 +16442,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_testbuybracketnolimitatbuytime_test_buy_places_only_trailing_stop",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_buy_places_only_trailing_stop()"
     },
     {
@@ -16442,7 +16453,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_1",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_sell_logic.py -- tests for monitor_portfolio_intraday() and run_market_open"
     },
     {
@@ -16629,7 +16640,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_443",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "run_market_open_buys() must not submit any limitorder (profit target).     only"
     },
     {
@@ -16640,7 +16651,7 @@
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_449",
       "community": 6,
-      "community_name": "make_ib_mock",
+      "community_name": "make_supabase_mock",
       "norm_label": "run_market_open_buys() must place exactly 1 trail sell -- no lmt."
     },
     {
@@ -16651,7 +16662,7 @@
       "_origin": "ast",
       "id": "tests_test_short_fix_and_new_logic",
       "community": 58,
-      "community_name": "test_reconcile_detects_short_positions",
+      "community_name": "execution_agent.py",
       "norm_label": "test_short_fix_and_new_logic.py"
     },
     {
@@ -16662,7 +16673,7 @@
       "_origin": "ast",
       "id": "tests_test_short_fix_and_new_logic_py_patch",
       "community": 58,
-      "community_name": "test_reconcile_detects_short_positions",
+      "community_name": "execution_agent.py",
       "norm_label": "patch"
     },
     {
@@ -16673,7 +16684,7 @@
       "_origin": "ast",
       "id": "tests_test_short_fix_and_new_logic_test_reconcile_detects_short_positions",
       "community": 58,
-      "community_name": "test_reconcile_detects_short_positions",
+      "community_name": "execution_agent.py",
       "norm_label": "test_reconcile_detects_short_positions()"
     },
     {
@@ -16684,7 +16695,7 @@
       "_origin": "ast",
       "id": "tests_test_short_fix_and_new_logic_rationale_14",
       "community": 58,
-      "community_name": "test_reconcile_detects_short_positions",
+      "community_name": "execution_agent.py",
       "norm_label": "test that reconcile_with_ibkr detects short positions and sends alert."
     },
     {
@@ -16749,8 +16760,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "tests_test_telegram_notifier_test_telegram_network_error_printed",
-      "community": 54,
-      "community_name": "_pos",
+      "community": 5,
+      "community_name": "TelegramNotifier",
       "norm_label": "test_telegram_network_error_printed()"
     },
     {
@@ -16782,8 +16793,8 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "tests_test_telegram_notifier_rationale_29",
-      "community": 54,
-      "community_name": "_pos",
+      "community": 5,
+      "community_name": "TelegramNotifier",
       "norm_label": "test that a network exception (e.g. timeout) is explicitly printed and not swall"
     },
     {
@@ -19614,6 +19625,94 @@
       "norm_label": "follow-up"
     },
     {
+      "label": "2026-08-09_drop-stale-position-columns.md",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_drop_stale_position_columns",
+      "community": 168,
+      "community_name": "Drop stale and dead columns from `portfolio_positions`",
+      "norm_label": "2026-08-09_drop-stale-position-columns.md"
+    },
+    {
+      "label": "Drop stale and dead columns from `portfolio_positions`",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_drop_stale_position_columns_drop_stale_and_dead_columns_from_portfolio_positions",
+      "community": 168,
+      "community_name": "Drop stale and dead columns from `portfolio_positions`",
+      "norm_label": "drop stale and dead columns from `portfolio_positions`"
+    },
+    {
+      "label": "Problem",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L6",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_drop_stale_position_columns_problem",
+      "community": 168,
+      "community_name": "Drop stale and dead columns from `portfolio_positions`",
+      "norm_label": "problem"
+    },
+    {
+      "label": "Decision",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L32",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_drop_stale_position_columns_decision",
+      "community": 168,
+      "community_name": "Drop stale and dead columns from `portfolio_positions`",
+      "norm_label": "decision"
+    },
+    {
+      "label": "Deliberately kept",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L45",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_drop_stale_position_columns_deliberately_kept",
+      "community": 168,
+      "community_name": "Drop stale and dead columns from `portfolio_positions`",
+      "norm_label": "deliberately kept"
+    },
+    {
+      "label": "Implementation",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L60",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_drop_stale_position_columns_implementation",
+      "community": 168,
+      "community_name": "Drop stale and dead columns from `portfolio_positions`",
+      "norm_label": "implementation"
+    },
+    {
+      "label": "Consequences",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L77",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_drop_stale_position_columns_consequences",
+      "community": 168,
+      "community_name": "Drop stale and dead columns from `portfolio_positions`",
+      "norm_label": "consequences"
+    },
+    {
+      "label": "Verification",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L93",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_drop_stale_position_columns_verification",
+      "community": 168,
+      "community_name": "Drop stale and dead columns from `portfolio_positions`",
+      "norm_label": "verification"
+    },
+    {
       "label": "decisions/README.md",
       "file_type": "document",
       "source_file": "decisions/README.md",
@@ -20123,7 +20222,7 @@
       "label": "Configuration Reference",
       "file_type": "document",
       "source_file": "docs/buy_logic.md",
-      "source_location": "L184",
+      "source_location": "L189",
       "_origin": "ast",
       "id": "docs_buy_logic_configuration_reference",
       "community": 31,
@@ -20134,7 +20233,7 @@
       "label": "Buy Decision Flowchart",
       "file_type": "document",
       "source_file": "docs/buy_logic.md",
-      "source_location": "L201",
+      "source_location": "L206",
       "_origin": "ast",
       "id": "docs_buy_logic_buy_decision_flowchart",
       "community": 31,
@@ -22665,7 +22764,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L612",
+      "source_location": "L615",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database",
@@ -22676,7 +22775,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L603",
+      "source_location": "L606",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database",
@@ -22687,7 +22786,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L507",
+      "source_location": "L510",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database",
@@ -22753,7 +22852,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L483",
+      "source_location": "L486",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database",
@@ -22820,7 +22919,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L587",
+      "source_location": "L590",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database",
@@ -22853,7 +22952,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L479",
+      "source_location": "L482",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database",
@@ -22882,6 +22981,17 @@
       "_origin": "ast",
       "source": "backend_database",
       "target": "backend_screener_calculate_rs_scores",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "backend/database.py",
+      "source_location": "L437",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backend_database_rationale_437",
+      "target": "backend_database",
       "confidence_score": 1.0
     },
     {
@@ -22925,7 +23035,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L614",
+      "source_location": "L617",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database_get_account_balances",
@@ -22937,7 +23047,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L605",
+      "source_location": "L608",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database_get_cash_flows",
@@ -22949,7 +23059,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L509",
+      "source_location": "L512",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database_get_daily_triggers",
@@ -22997,7 +23107,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L485",
+      "source_location": "L488",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database_get_trade_history",
@@ -23093,7 +23203,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L599",
+      "source_location": "L602",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database_reset_portfolio",
@@ -23129,7 +23239,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L600",
+      "source_location": "L603",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_database_reset_portfolio",
@@ -23307,10 +23417,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "backend/database.py",
-      "source_location": "L588",
+      "source_location": "L591",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "backend_database_rationale_588",
+      "source": "backend_database_rationale_591",
       "target": "backend_database_reset_portfolio",
       "confidence_score": 1.0
     },
@@ -30136,7 +30246,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2332",
+      "source_location": "L2331",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30158,7 +30268,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2129",
+      "source_location": "L2128",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30169,7 +30279,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2007",
+      "source_location": "L2006",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30180,7 +30290,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2052",
+      "source_location": "L2051",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30191,7 +30301,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2904",
+      "source_location": "L2903",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30202,7 +30312,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2279",
+      "source_location": "L2278",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30213,7 +30323,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1950",
+      "source_location": "L1949",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30246,7 +30356,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1921",
+      "source_location": "L1920",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30279,7 +30389,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1901",
+      "source_location": "L1900",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30334,7 +30444,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2250",
+      "source_location": "L2249",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30412,7 +30522,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L3035",
+      "source_location": "L3034",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30445,7 +30555,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2363",
+      "source_location": "L2362",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent",
@@ -30990,7 +31100,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2985",
+      "source_location": "L2984",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_execute_sell",
@@ -31002,7 +31112,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2398",
+      "source_location": "L2397",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -31037,7 +31147,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2984",
+      "source_location": "L2983",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_execute_sell",
@@ -31049,7 +31159,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2306",
+      "source_location": "L2305",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_fetch_current_rs",
@@ -31073,7 +31183,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1932",
+      "source_location": "L1931",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_fetch_ohlcv",
@@ -31109,7 +31219,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2380",
+      "source_location": "L2379",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -31169,7 +31279,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2367",
+      "source_location": "L2366",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -31217,7 +31327,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2904",
+      "source_location": "L2903",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_execute_sell",
@@ -31241,7 +31351,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2402",
+      "source_location": "L2401",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -31369,7 +31479,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2642",
+      "source_location": "L2641",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -31522,7 +31632,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "force_buy.py",
-      "source_location": "L325",
+      "source_location": "L321",
       "weight": 1.0,
       "_origin": "ast",
       "source": "force_buy_main",
@@ -31558,7 +31668,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2904",
+      "source_location": "L2903",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_execute_sell",
@@ -31618,7 +31728,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L3042",
+      "source_location": "L3041",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_main_loop",
@@ -31630,7 +31740,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2363",
+      "source_location": "L2362",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -31737,7 +31847,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "force_buy.py",
-      "source_location": "L318",
+      "source_location": "L314",
       "weight": 1.0,
       "_origin": "ast",
       "source": "force_buy_main",
@@ -31760,7 +31870,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2927",
+      "source_location": "L2926",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_execute_sell",
@@ -31902,7 +32012,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2536",
+      "source_location": "L2535",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -31925,7 +32035,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1876",
+      "source_location": "L1875",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_run_market_open_buys",
@@ -31949,7 +32059,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "force_buy.py",
-      "source_location": "L239",
+      "source_location": "L236",
       "weight": 1.0,
       "_origin": "ast",
       "source": "force_buy_place_buy",
@@ -31985,7 +32095,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2448",
+      "source_location": "L2447",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -32008,7 +32118,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2525",
+      "source_location": "L2524",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -32247,7 +32357,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2509",
+      "source_location": "L2508",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -32414,7 +32524,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2508",
+      "source_location": "L2507",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -32533,7 +32643,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2920",
+      "source_location": "L2919",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_execute_sell",
@@ -32545,7 +32655,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2534",
+      "source_location": "L2533",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -32592,7 +32702,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "force_buy.py",
-      "source_location": "L238",
+      "source_location": "L235",
       "weight": 1.0,
       "_origin": "ast",
       "source": "force_buy_place_buy",
@@ -32615,7 +32725,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L3135",
+      "source_location": "L3134",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_main_loop",
@@ -32638,7 +32748,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1425",
+      "source_location": "L1424",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_reconcile_with_ibkr",
@@ -32936,7 +33046,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L3136",
+      "source_location": "L3135",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_main_loop",
@@ -32948,7 +33058,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2900",
+      "source_location": "L2899",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -32971,7 +33081,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1849",
+      "source_location": "L1848",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_run_market_open_buys",
@@ -33031,7 +33141,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1915",
+      "source_location": "L1914",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_get_entry_rs",
@@ -33042,10 +33152,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L1902",
+      "source_location": "L1901",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "execution_agent_rationale_1902",
+      "source": "execution_agent_rationale_1901",
       "target": "execution_agent_get_entry_rs",
       "confidence_score": 1.0
     },
@@ -33054,7 +33164,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2259",
+      "source_location": "L2258",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_get_market_regime",
@@ -33066,171 +33176,171 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
+      "source_location": "L2747",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_monitor_portfolio_intraday",
+      "target": "execution_agent_fetch_ohlcv",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L1921",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_rationale_1921",
+      "target": "execution_agent_fetch_ohlcv",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2752",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_monitor_portfolio_intraday",
+      "target": "execution_agent_fetch_held_position_sentiment",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L1950",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_rationale_1950",
+      "target": "execution_agent_fetch_held_position_sentiment",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2207",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_compute_momentum_health_score",
+      "target": "execution_agent_compute_rsi",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2007",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_rationale_2007",
+      "target": "execution_agent_compute_rsi",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2231",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_compute_momentum_health_score",
+      "target": "execution_agent_detect_candlestick_reversals",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2052",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_rationale_2052",
+      "target": "execution_agent_detect_candlestick_reversals",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2758",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_monitor_portfolio_intraday",
+      "target": "execution_agent_compute_momentum_health_score",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2134",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_rationale_2134",
+      "target": "execution_agent_compute_momentum_health_score",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2729",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_monitor_portfolio_intraday",
+      "target": "execution_agent_get_market_regime",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2250",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_rationale_2250",
+      "target": "execution_agent_get_market_regime",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2745",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_monitor_portfolio_intraday",
+      "target": "execution_agent_fetch_current_rs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
+      "source_location": "L2279",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "execution_agent_rationale_2279",
+      "target": "execution_agent_fetch_current_rs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "execution_agent.py",
       "source_location": "L2748",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
-      "target": "execution_agent_fetch_ohlcv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L1922",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_rationale_1922",
-      "target": "execution_agent_fetch_ohlcv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2753",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_monitor_portfolio_intraday",
-      "target": "execution_agent_fetch_held_position_sentiment",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L1951",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_rationale_1951",
-      "target": "execution_agent_fetch_held_position_sentiment",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2208",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_compute_momentum_health_score",
-      "target": "execution_agent_compute_rsi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2008",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_rationale_2008",
-      "target": "execution_agent_compute_rsi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2232",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_compute_momentum_health_score",
-      "target": "execution_agent_detect_candlestick_reversals",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2053",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_rationale_2053",
-      "target": "execution_agent_detect_candlestick_reversals",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2759",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_monitor_portfolio_intraday",
-      "target": "execution_agent_compute_momentum_health_score",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2135",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_rationale_2135",
-      "target": "execution_agent_compute_momentum_health_score",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2730",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_monitor_portfolio_intraday",
-      "target": "execution_agent_get_market_regime",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2251",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_rationale_2251",
-      "target": "execution_agent_get_market_regime",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2746",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_monitor_portfolio_intraday",
-      "target": "execution_agent_fetch_current_rs",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2280",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_rationale_2280",
-      "target": "execution_agent_fetch_current_rs",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "execution_agent.py",
-      "source_location": "L2749",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "execution_agent_monitor_portfolio_intraday",
       "target": "execution_agent_check_volume_distribution",
       "confidence_score": 1.0
     },
@@ -33238,10 +33348,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2333",
+      "source_location": "L2332",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "execution_agent_rationale_2333",
+      "source": "execution_agent_rationale_2332",
       "target": "execution_agent_check_volume_distribution",
       "confidence_score": 1.0
     },
@@ -33250,7 +33360,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L3153",
+      "source_location": "L3152",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_main_loop",
@@ -33262,7 +33372,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2431",
+      "source_location": "L2430",
       "weight": 1.0,
       "_origin": "ast",
       "source": "execution_agent_monitor_portfolio_intraday",
@@ -33273,10 +33383,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2364",
+      "source_location": "L2363",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "execution_agent_rationale_2364",
+      "source": "execution_agent_rationale_2363",
       "target": "execution_agent_monitor_portfolio_intraday",
       "confidence_score": 1.0
     },
@@ -33320,10 +33430,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L2908",
+      "source_location": "L2907",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "execution_agent_rationale_2908",
+      "source": "execution_agent_rationale_2907",
       "target": "execution_agent_execute_sell",
       "confidence_score": 1.0
     },
@@ -33331,10 +33441,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "execution_agent.py",
-      "source_location": "L3036",
+      "source_location": "L3035",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "execution_agent_rationale_3036",
+      "source": "execution_agent_rationale_3035",
       "target": "execution_agent_main_loop",
       "confidence_score": 1.0
     },
@@ -33739,7 +33849,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "force_buy.py",
-      "source_location": "L260",
+      "source_location": "L256",
       "weight": 1.0,
       "_origin": "ast",
       "source": "force_buy",
@@ -33844,7 +33954,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "force_buy.py",
-      "source_location": "L306",
+      "source_location": "L302",
       "weight": 1.0,
       "_origin": "ast",
       "source": "force_buy_main",
@@ -33868,7 +33978,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "force_buy.py",
-      "source_location": "L334",
+      "source_location": "L330",
       "weight": 1.0,
       "_origin": "ast",
       "source": "force_buy_main",
@@ -35708,7 +35818,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "tests/conftest.py",
-      "source_location": "L295",
+      "source_location": "L293",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest_make_supabase_mock",
@@ -38405,7 +38515,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L149",
+      "source_location": "L147",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest",
@@ -38416,7 +38526,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L301",
+      "source_location": "L299",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest",
@@ -38449,7 +38559,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L168",
+      "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest",
@@ -38460,7 +38570,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L120",
+      "source_location": "L118",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest",
@@ -38471,7 +38581,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L340",
+      "source_location": "L338",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest",
@@ -38482,7 +38592,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L346",
+      "source_location": "L344",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest",
@@ -38493,7 +38603,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L360",
+      "source_location": "L358",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest",
@@ -38672,7 +38782,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L342",
+      "source_location": "L340",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest_mock_ib",
@@ -39260,10 +39370,10 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L142",
+      "source_location": "L146",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_testreconcilecase2_test_case2_stop_loss_computed_correctly",
+      "source": "tests_test_reconcile_testreconcilecase2_test_case2_trail_pct_recorded_not_stale_price",
       "target": "tests_conftest_make_ib_mock"
     },
     {
@@ -39284,7 +39394,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L180",
+      "source_location": "L183",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
@@ -39296,7 +39406,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L166",
+      "source_location": "L169",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
@@ -39308,7 +39418,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L213",
+      "source_location": "L216",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase4_test_case4_cash_sync_writes_daily_snapshots",
@@ -39320,7 +39430,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L195",
+      "source_location": "L198",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase4_test_case4_cash_synced_when_balance_changes",
@@ -39332,7 +39442,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L226",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase4_test_case4_detects_deposits",
@@ -39344,7 +39454,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L250",
+      "source_location": "L253",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcileusesportfolionotpositions_test_reconcile_calls_ib_portfolio_not_ib_positions",
@@ -39895,7 +40005,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L178",
+      "source_location": "L181",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
@@ -39907,7 +40017,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L163",
+      "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
@@ -40061,10 +40171,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L127",
+      "source_location": "L125",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_conftest_rationale_127",
+      "source": "tests_conftest_rationale_125",
       "target": "tests_conftest_make_trigger",
       "confidence_score": 1.0
     },
@@ -40396,10 +40506,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L152",
+      "source_location": "L150",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_conftest_rationale_152",
+      "source": "tests_conftest_rationale_150",
       "target": "tests_conftest_make_ibkr_fill",
       "confidence_score": 1.0
     },
@@ -40408,7 +40518,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L348",
+      "source_location": "L346",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_conftest_mock_supabase_empty",
@@ -40419,10 +40529,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L175",
+      "source_location": "L173",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_conftest_rationale_175",
+      "source": "tests_conftest_rationale_173",
       "target": "tests_conftest_make_supabase_mock",
       "confidence_score": 1.0
     },
@@ -40924,10 +41034,10 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L141",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_testreconcilecase2_test_case2_stop_loss_computed_correctly",
+      "source": "tests_test_reconcile_testreconcilecase2_test_case2_trail_pct_recorded_not_stale_price",
       "target": "tests_conftest_make_supabase_mock"
     },
     {
@@ -40948,7 +41058,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L179",
+      "source_location": "L182",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
@@ -40960,7 +41070,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L164",
+      "source_location": "L167",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
@@ -40972,7 +41082,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L212",
+      "source_location": "L215",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase4_test_case4_cash_sync_writes_daily_snapshots",
@@ -40984,7 +41094,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L194",
+      "source_location": "L197",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase4_test_case4_cash_synced_when_balance_changes",
@@ -40996,7 +41106,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L225",
+      "source_location": "L228",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase4_test_case4_detects_deposits",
@@ -41008,7 +41118,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L249",
+      "source_location": "L252",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcileusesportfolionotpositions_test_reconcile_calls_ib_portfolio_not_ib_positions",
@@ -41162,10 +41272,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L307",
+      "source_location": "L305",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_conftest_rationale_307",
+      "source": "tests_conftest_rationale_305",
       "target": "tests_conftest_make_ohlcv_data",
       "confidence_score": 1.0
     },
@@ -41173,7 +41283,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L339",
+      "source_location": "L337",
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
@@ -41185,7 +41295,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L345",
+      "source_location": "L343",
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
@@ -41197,7 +41307,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L359",
+      "source_location": "L357",
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
@@ -41209,10 +41319,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L341",
+      "source_location": "L339",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_conftest_rationale_341",
+      "source": "tests_conftest_rationale_339",
       "target": "tests_conftest_mock_ib",
       "confidence_score": 1.0
     },
@@ -41220,10 +41330,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L347",
+      "source_location": "L345",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_conftest_rationale_347",
+      "source": "tests_conftest_rationale_345",
       "target": "tests_conftest_mock_supabase_empty",
       "confidence_score": 1.0
     },
@@ -41231,10 +41341,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/conftest.py",
-      "source_location": "L361",
+      "source_location": "L359",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_conftest_rationale_361",
+      "source": "tests_conftest_rationale_359",
       "target": "tests_conftest_silence_notifier",
       "confidence_score": 1.0
     },
@@ -48453,7 +48563,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L158",
+      "source_location": "L161",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile",
@@ -48464,7 +48574,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L188",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile",
@@ -48475,7 +48585,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L238",
+      "source_location": "L241",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile",
@@ -48533,10 +48643,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L144",
+      "source_location": "L148",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_testreconcilecase2_test_case2_stop_loss_computed_correctly",
+      "source": "tests_test_reconcile_testreconcilecase2_test_case2_trail_pct_recorded_not_stale_price",
       "target": "tests_test_reconcile_reconcile",
       "confidence_score": 1.0
     },
@@ -48557,7 +48667,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L183",
+      "source_location": "L186",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
@@ -48569,7 +48679,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L170",
+      "source_location": "L173",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
@@ -48581,7 +48691,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L252",
+      "source_location": "L255",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcileusesportfolionotpositions_test_reconcile_calls_ib_portfolio_not_ib_positions",
@@ -48684,7 +48794,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcilecase2",
-      "target": "tests_test_reconcile_testreconcilecase2_test_case2_stop_loss_computed_correctly",
+      "target": "tests_test_reconcile_testreconcilecase2_test_case2_trail_pct_recorded_not_stale_price",
       "confidence_score": 1.0
     },
     {
@@ -48739,40 +48849,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_rationale_139",
-      "target": "tests_test_reconcile_testreconcilecase2_test_case2_stop_loss_computed_correctly",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "tests/test_reconcile.py",
-      "source_location": "L159",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "tests_test_reconcile_rationale_159",
-      "target": "tests_test_reconcile_testreconcilecase3",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "tests/test_reconcile.py",
-      "source_location": "L176",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "tests_test_reconcile_testreconcilecase3",
-      "target": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "tests/test_reconcile.py",
-      "source_location": "L161",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "tests_test_reconcile_testreconcilecase3",
-      "target": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
+      "target": "tests_test_reconcile_testreconcilecase2_test_case2_trail_pct_recorded_not_stale_price",
       "confidence_score": 1.0
     },
     {
@@ -48783,6 +48860,28 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_rationale_162",
+      "target": "tests_test_reconcile_testreconcilecase3",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_reconcile.py",
+      "source_location": "L179",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_reconcile_testreconcilecase3",
+      "target": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_reconcile.py",
+      "source_location": "L164",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_reconcile_testreconcilecase3",
       "target": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
       "confidence_score": 1.0
     },
@@ -48790,55 +48889,22 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L177",
+      "source_location": "L165",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_rationale_177",
-      "target": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
+      "source": "tests_test_reconcile_rationale_165",
+      "target": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
       "confidence_score": 1.0
     },
     {
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L189",
+      "source_location": "L180",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_rationale_189",
-      "target": "tests_test_reconcile_testreconcilecase4",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "tests/test_reconcile.py",
-      "source_location": "L210",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "tests_test_reconcile_testreconcilecase4",
-      "target": "tests_test_reconcile_testreconcilecase4_test_case4_cash_sync_writes_daily_snapshots",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "tests/test_reconcile.py",
-      "source_location": "L191",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "tests_test_reconcile_testreconcilecase4",
-      "target": "tests_test_reconcile_testreconcilecase4_test_case4_cash_synced_when_balance_changes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "tests/test_reconcile.py",
-      "source_location": "L223",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "tests_test_reconcile_testreconcilecase4",
-      "target": "tests_test_reconcile_testreconcilecase4_test_case4_detects_deposits",
+      "source": "tests_test_reconcile_rationale_180",
+      "target": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
       "confidence_score": 1.0
     },
     {
@@ -48849,28 +48915,39 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_rationale_192",
-      "target": "tests_test_reconcile_testreconcilecase4_test_case4_cash_synced_when_balance_changes",
+      "target": "tests_test_reconcile_testreconcilecase4",
       "confidence_score": 1.0
     },
     {
-      "relation": "rationale_for",
+      "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L211",
+      "source_location": "L213",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_rationale_211",
+      "source": "tests_test_reconcile_testreconcilecase4",
       "target": "tests_test_reconcile_testreconcilecase4_test_case4_cash_sync_writes_daily_snapshots",
       "confidence_score": 1.0
     },
     {
-      "relation": "rationale_for",
+      "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L224",
+      "source_location": "L194",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_rationale_224",
+      "source": "tests_test_reconcile_testreconcilecase4",
+      "target": "tests_test_reconcile_testreconcilecase4_test_case4_cash_synced_when_balance_changes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_reconcile.py",
+      "source_location": "L226",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_reconcile_testreconcilecase4",
       "target": "tests_test_reconcile_testreconcilecase4_test_case4_detects_deposits",
       "confidence_score": 1.0
     },
@@ -48878,10 +48955,43 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L239",
+      "source_location": "L195",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_rationale_239",
+      "source": "tests_test_reconcile_rationale_195",
+      "target": "tests_test_reconcile_testreconcilecase4_test_case4_cash_synced_when_balance_changes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_reconcile.py",
+      "source_location": "L214",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_reconcile_rationale_214",
+      "target": "tests_test_reconcile_testreconcilecase4_test_case4_cash_sync_writes_daily_snapshots",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_reconcile.py",
+      "source_location": "L227",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_reconcile_rationale_227",
+      "target": "tests_test_reconcile_testreconcilecase4_test_case4_detects_deposits",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_reconcile.py",
+      "source_location": "L242",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_reconcile_rationale_242",
       "target": "tests_test_reconcile_testreconcileusesportfolionotpositions",
       "confidence_score": 1.0
     },
@@ -48889,7 +48999,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L245",
+      "source_location": "L248",
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_reconcile_testreconcileusesportfolionotpositions",
@@ -48900,10 +49010,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_reconcile.py",
-      "source_location": "L246",
+      "source_location": "L249",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "tests_test_reconcile_rationale_246",
+      "source": "tests_test_reconcile_rationale_249",
       "target": "tests_test_reconcile_testreconcileusesportfolionotpositions_test_reconcile_calls_ib_portfolio_not_ib_positions",
       "confidence_score": 1.0
     },
@@ -53574,6 +53684,83 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_drop_stale_position_columns",
+      "target": "decisions_2026_08_09_drop_stale_position_columns_drop_stale_and_dead_columns_from_portfolio_positions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_drop_stale_position_columns_drop_stale_and_dead_columns_from_portfolio_positions",
+      "target": "decisions_2026_08_09_drop_stale_position_columns_consequences",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L32",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_drop_stale_position_columns_drop_stale_and_dead_columns_from_portfolio_positions",
+      "target": "decisions_2026_08_09_drop_stale_position_columns_decision",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L60",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_drop_stale_position_columns_drop_stale_and_dead_columns_from_portfolio_positions",
+      "target": "decisions_2026_08_09_drop_stale_position_columns_implementation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L6",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_drop_stale_position_columns_drop_stale_and_dead_columns_from_portfolio_positions",
+      "target": "decisions_2026_08_09_drop_stale_position_columns_problem",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L93",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_drop_stale_position_columns_drop_stale_and_dead_columns_from_portfolio_positions",
+      "target": "decisions_2026_08_09_drop_stale_position_columns_verification",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_drop-stale-position-columns.md",
+      "source_location": "L45",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_drop_stale_position_columns_decision",
+      "target": "decisions_2026_08_09_drop_stale_position_columns_deliberately_kept",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "decisions/README.md",
       "source_location": "L1",
       "weight": 1.0,
@@ -53916,7 +54103,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/buy_logic.md",
-      "source_location": "L201",
+      "source_location": "L206",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_buy_logic_buy_logic",
@@ -54004,7 +54191,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/buy_logic.md",
-      "source_location": "L184",
+      "source_location": "L189",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_buy_logic_buy_logic",
@@ -55737,5 +55924,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "889281dd439753b4894a072ae24e2719e5860b03"
+  "built_at_commit": "09232c9a10e50139e68a8cec779f10c81194a4aa"
 }

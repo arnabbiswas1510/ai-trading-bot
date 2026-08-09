@@ -153,7 +153,7 @@ If `actual_shares == 0`: logs failure via Telegram, skips Supabase insert, conti
 
 ```python
 # 1. Place GTC trailing stop (IBKR manages HWM price tick-by-tick)
-oca_str = place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
+place_trailing_stop(ib, contract, actual_shares, STOP_LOSS_PCT)
 
 # 2. Insert position record
 portfolio_positions.insert({
@@ -162,21 +162,26 @@ portfolio_positions.insert({
     "buy_price":  fill_price,
     "buy_reason": f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x",
     "buy_source": "daily_triggers",
-    "stop_loss":  round(fill_price * (1 - STOP_LOSS_PCT), 2),
+    "stop_loss_pct": pos_stop_loss_pct,
     "hwm_date":   today.isoformat(),   # plateau clock starts at buy date
-    "oca_group":  oca_str,
 })
 ```
 
 | Field | Value | Notes |
 |-------|-------|-------|
-| `stop_loss` | `fill x (1 - STOP_LOSS_PCT)` | Reference only; live stop is IBKR-managed |
+| `stop_loss_pct` | `2.5 x ATR%`, else `STOP_LOSS_PCT` | The live trail %; IBKR manages the level. Ratchets tighter via `_compute_dynamic_trail_pct()` |
 | `hwm_date` | `today` | Date of last new intraday high; plateau clock starts here |
-| `oca_group` | trailing stop group ID | Used by self-healing to avoid double-placing |
 | `buy_source` | `"daily_triggers"` | Tags position source |
 
+> [!IMPORTANT]
+> **No absolute `stop_loss` price is stored.** That column was a write-once
+> mirror of a broker-managed value and went stale the moment the position rose,
+> because the real stop ratchets up with the HWM inside IBKR. Derive the live
+> level as `hwm_price x (1 - stop_loss_pct)` — that is what IBKR itself uses,
+> and what the dashboard displays.
+
 > [!NOTE]
-> **No `profit_target`, `high_water_mark`, `is_power_hold` fields are written.**
+> **No `profit_target`, `high_water_mark`, `is_power_hold` or `oca_group` fields are written.**
 > These have been eliminated. The trailing stop is the only exit order placed at buy time.
 
 ---

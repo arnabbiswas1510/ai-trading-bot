@@ -20,8 +20,8 @@
     "semantic_hash": ""
   },
   "backend/database.py": {
-    "mtime": 1785822051.8232303,
-    "ast_hash": "ce0eed584c61e3edbdd5dde2761c2b60",
+    "mtime": 1786289631.8757727,
+    "ast_hash": "c5fe93293d823e078afa2bf95c2de56e",
     "semantic_hash": ""
   },
   "backend/fmp_client.py": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1785851096.1487777,
-    "ast_hash": "e833e06e59c70ac81f3bed3f33748878",
+    "mtime": 1786289608.7105818,
+    "ast_hash": "e3bcbd7f1e96ca103e6bcd27de015572",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -50,8 +50,8 @@
     "semantic_hash": "654b618b53b39b931eb3948d1840673e"
   },
   "force_buy.py": {
-    "mtime": 1785696688.6483738,
-    "ast_hash": "7a5ed3e8d1930b3c26763c863b67307f",
+    "mtime": 1786289636.4704502,
+    "ast_hash": "84328c7b0478ab58198f4d8361529585",
     "semantic_hash": ""
   },
   "force_sell.py": {
@@ -265,8 +265,8 @@
     "semantic_hash": ""
   },
   "tests/conftest.py": {
-    "mtime": 1785822053.3361583,
-    "ast_hash": "126f8b0ef487eb2d35830a59d09fe22b",
+    "mtime": 1786289729.1360283,
+    "ast_hash": "f71386ffeefe71894d22ebe3e085954c",
     "semantic_hash": ""
   },
   "tests/test_breakout_verdict.py": {
@@ -315,8 +315,8 @@
     "semantic_hash": ""
   },
   "tests/test_reconcile.py": {
-    "mtime": 1785822058.0565577,
-    "ast_hash": "6a712ca753cac19743a446bd1f684f36",
+    "mtime": 1786289729.1338818,
+    "ast_hash": "29c575dc8a424df07c017dd7c0731aaa",
     "semantic_hash": ""
   },
   "tests/test_score_components.py": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1785696688.6321704,
-    "ast_hash": "e1181704b6730950b6fdb264cbd9e38f",
+    "mtime": 1786289754.0465617,
+    "ast_hash": "1b25968b99d3b01a1657828a08282dd9",
     "semantic_hash": ""
   },
   "docs/conditional_cooloff_plan.md": {
@@ -677,6 +677,16 @@
   "research/pass_names.txt": {
     "mtime": 1785968920.279678,
     "ast_hash": "13cde4dc9d6b92be2cdf3cc83bc7a665",
+    "semantic_hash": ""
+  },
+  "migrations/drop_stale_position_columns.sql": {
+    "mtime": 1786289586.4381135,
+    "ast_hash": "62dda05bdfbc3e12c4407516abb35468",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-09_drop-stale-position-columns.md": {
+    "mtime": 1786289794.175096,
+    "ast_hash": "d67e7c6bc56b6b8e9a9159f8fba08401",
     "semantic_hash": ""
   }
 }

@@ -434,7 +434,10 @@ def get_positions():
                 "buy_source": row.get("buy_source", "daily_triggers"),
                 "buy_reason": row.get("buy_reason", "CANSLIM Breakout"),
                 "current_price": float(row.get("current_price") or row["buy_price"]),
-                "stop_loss": float(row["stop_loss"]),
+                # NOTE: the legacy `stop_loss` price column was dropped — it was a
+                # write-once mirror of a broker-managed value and went stale
+                # immediately. Derive the live level as
+                # hwm_price * (1 - stop_loss_pct), which is what IBKR itself uses.
                 "profit_target": float(row["profit_target"]) if row.get("profit_target") is not None else 0.0,
                 "high_water_mark": float(row.get("high_water_mark") or row["buy_price"]),
                 "hwm_date": row.get("hwm_date"),

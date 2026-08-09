@@ -135,9 +135,13 @@ class TestReconcileCase2:
 
         supabase.table("portfolio_positions").insert.assert_not_called()
 
-    def test_case2_stop_loss_computed_correctly(self):
-        """Case 2: stop_loss = avg_cost * (1 - STOP_LOSS_PCT).
-        profit_target is no longer stored — the trailing stop is the only exit."""
+    def test_case2_trail_pct_recorded_not_stale_price(self):
+        """Case 2: no absolute stop_loss price is stored.
+
+        The `stop_loss` column was a write-once mirror of a broker-managed
+        value: it went stale the moment the position rose, because the real
+        stop ratchets up with the HWM inside IBKR. It is now dropped, and the
+        live level is derived as hwm_price * (1 - stop_loss_pct)."""
         supabase = make_supabase_mock(portfolio=[])
         ib = make_ib_mock(symbols=["AMZN"], avg_cost=100.0)
 
@@ -145,10 +149,9 @@ class TestReconcileCase2:
 
         supabase.table("portfolio_positions").insert.assert_called()
         insert_args = supabase.table("portfolio_positions").insert.call_args[0][0]
-        # Derived from STOP_LOSS_PCT rather than hard-coded, so tuning the stop
-        # doesn't break a test that is really about Case 2 reconciliation.
-        expected = round(100.0 * (1 - execution_agent.STOP_LOSS_PCT), 2)
-        assert abs(insert_args["stop_loss"] - expected) < 0.01
+        assert "stop_loss" not in insert_args, (
+            "stop_loss is a stale mirror of an IBKR-managed value and must not be stored"
+        )
         # profit_target must NOT be present — eliminated from schema
         assert "profit_target" not in insert_args, (
             "profit_target must not be stored in Case 2 (eliminated from exit strategy)"

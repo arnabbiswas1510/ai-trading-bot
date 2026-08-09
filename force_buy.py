@@ -205,14 +205,11 @@ def _place_buy(
             "ticker":     ticker,
             "shares":     actual_shares,
             "buy_price":  fill_price,
-            "stop_loss":  stop_loss,
             "stop_loss_pct": pos_stop_loss_pct,
             "buy_reason": buy_reason,
             "buy_source": "daily_triggers",
             "hwm_date":   datetime.datetime.now(tz).date().isoformat(),
             "highest_unrealized_pct": 0.0,
-            "highest_rs_score": trigger.get("rs_score"),
-            "oca_group":  None,
             # ── Entry conviction snapshot (all 5-component scores) ──────────────
             # Mirrors execution_agent.py exactly so manual/rotation buys show
             # the same data in the Open Positions UI as automated buys.
@@ -236,8 +233,7 @@ def _place_buy(
     # ── Trailing stop ─────────────────────────────────────────────────────────
     try:
         cancel_ticker_sell_orders(ib, ticker)
-        oca = place_trailing_stop(ib, contract, actual_shares, pos_stop_loss_pct)
-        client.table("portfolio_positions").update({"oca_group": oca}).eq("ticker", ticker).execute()
+        place_trailing_stop(ib, contract, actual_shares, pos_stop_loss_pct)
     except Exception as e:
         print(f"   ⚠️ Trailing stop failed for {ticker}: {e} — self-healing will re-place.")
 
