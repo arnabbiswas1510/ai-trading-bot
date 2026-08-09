@@ -1,16 +1,16 @@
 # Graph Report - ai-trading-bot  (2026-08-09)
 
 ## Corpus Check
-- 132 files · ~181,749 words
+- 132 files · ~181,983 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2072 nodes · 3119 edges · 223 communities (211 shown, 12 thin omitted)
+- 2072 nodes · 3119 edges · 222 communities (210 shown, 12 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 18 edges (avg confidence: 0.7)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `673f0c85`
+- Built from commit: `addbc2eb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -41,7 +41,7 @@
 - IBKR TOTP Setup Guide
 - Technical Triggers Logic
 - 🟠 High Severity — Structural Weaknesses
-- technical_screener.py
+- TestRsScore
 - FakeQuery
 - System Configuration Guide
 - managed_exit.py
@@ -66,21 +66,21 @@
 - check_and_run_weekly_watchlist
 - backtester.py
 - docker-compose.yml
-- _make_df
+- _coil
 - Build Verification Scripts
 - 2026-08-04 — Fix silent AI-evaluation gap and fail closed on un-vetted triggers
 - _pos
 - Plateau exit: optimise capital velocity, not per-trade expectancy
 - Managed exit tool: exit at the session high rather than on impulse
 - _reload
-- test_reconcile_detects_short_positions
+- increment_retention
 - Timezone Compliance Tests
 - Decision
-- _coil
+- compute_pre_breakout_quality_score
 - Tune exits on the breakout population, not on the trades being eliminated
 - ._run_at
 - ai_evaluator.py
-- increment_retention
+- technical_screener.py
 - The backtest "noise floor" was mostly a bootstrap bug
 - Fix the self-defeating power-hold rule; move to 5 slots
 - per_symbol
@@ -228,7 +228,6 @@
 - FLYW
 - fetch_daily.py
 - to_parquet.py
-- TestPreBreakoutCoilPass
 - COP
 - ANET
 - COR
@@ -261,7 +260,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (223 total, 12 thin omitted)
+## Communities (222 total, 12 thin omitted)
 
 ### Community 0 - "compute_liquidity_score"
 Cohesion: 0.13
@@ -367,9 +366,9 @@ Nodes (20): 50-Day Average Volume, 50-Day Simple Moving Average (SMA-50), 52-Wee
 Cohesion: 0.10
 Nodes (19): AI Trading Bot — Performance Analysis, Bug 1 — Market Direction Filter Is Dead Code, Bug 2 — Day 3 Breakout Verdict Volume Check Reads 97-Day-Old Data, Bug 3 — No Minimum `final_score` Gate in the Buy Loop, 🔴 Critical Bugs (Confirmed Code Defects), 🟠 High Severity — Structural Weaknesses, 📋 Priority-Ordered Action List, 🔍 Root Cause Map (+11 more)
 
-### Community 26 - "technical_screener.py"
+### Community 26 - "TestRsScore"
 Cohesion: 0.12
-Nodes (16): compute_rs_score(), Relative Strength score (0-100) vs S&P 500 over the last 12 weeks.      Excess r, check_technical_breakout(), compute_quality_score(), fetch_spy_return_12w(), fetch_with_retry_sync(), Fetch SPY's 12-week (approx. 60 trading days) price return as a percentage., Composite quality score 0-100 for a confirmed breakout trigger.      Weights: (+8 more)
+Nodes (8): Stock +20%, SPY +5% -> excess +15% -> 100, Excess exactly 10% -> 100, Excess 5% -> 50 + 5*5 = 75, Same return as SPY -> 50, Excess -5% -> 50 + (-5)*5 = 25, Excess exactly -10% -> max(0, 50-50) = 0, Both flat (e.g. on a holiday or data issue) -> neutral 50, TestRsScore
 
 ### Community 27 - "FakeQuery"
 Cohesion: 0.15
@@ -416,8 +415,8 @@ Cohesion: 0.22
 Nodes (8): 1. Dynamic Trailing Stop Loss (IBKR-Managed), 2. Day 3 Breakout Verdict & Intraday Loss Minimiser, 3. Moving Average Support Breach (Day 7+ EOD), Active Exit Mechanisms, Key Parameters, Legacy / Manual Scripts, Overview, Sell Logic
 
 ### Community 38 - "run_market_open_buys"
-Cohesion: 0.17
-Nodes (20): fetch_trade_confirms_for_ticker(), get_available_cash(), _get_entry_rs(), get_ibkr_account(), get_margin_loan(), get_own_cash(), main_loop(), _matches_account() (+12 more)
+Cohesion: 0.14
+Nodes (22): get_available_cash(), _get_entry_rs(), get_ibkr_account(), get_margin_loan(), get_own_cash(), main_loop(), _matches_account(), IB (+14 more)
 
 ### Community 39 - "Fundamental Screener Overview"
 Cohesion: 0.20
@@ -440,8 +439,8 @@ Cohesion: 0.09
 Nodes (16): patch, hwm_date (date of last intraday high) is the only HWM data Python tracks.     IB, New intraday high (price > buy_price) -> hwm_date written to Supabase., Price does not exceed buy_price (or last seen peak) -> no hwm_date update., Price below threshold near market close -> execute_sell called., Price below MA but within buffer -> no exit., Outside 3:45-4:00 PM and EOD_ONLY enabled -> no exit., FMP historical fetch returns empty -> no exit and no crash. (+8 more)
 
 ### Community 44 - "force_buy.py"
-Cohesion: 0.23
-Nodes (12): place_trailing_stop(), Factory for IBKR TRAIL order type.     `ib_insync` 0.9.x does not export a Trail, Places a GTC Trailing Stop for an open stock position.     Trails stop_loss_pct%, TrailingStopOrder(), get_ibkr_price(), main(), _place_buy(), IB (+4 more)
+Cohesion: 0.16
+Nodes (17): arm_exit(), cancel_ticker_sell_orders(), place_trailing_stop(), datetime, Factory for IBKR TRAIL order type.     `ib_insync` 0.9.x does not export a Trail, Places a GTC Trailing Stop for an open stock position.     Trails stop_loss_pct%, Arms a Day 0-6 loss-cutting exit instead of selling immediately at the     trigg, Cancels all active GTC SELL orders for *ticker* (OCA cleanup before explicit sel (+9 more)
 
 ### Community 45 - "_triggers"
 Cohesion: 0.22
@@ -463,9 +462,9 @@ Nodes (5): check_and_run_weekly_watchlist(), periodic_watchlist_scheduler(), Che
 Cohesion: 0.33
 Nodes (9): _cagr(), _ema(), _max_consecutive_losses(), _max_underwater_days(), backend/backtester.py  Runs a historical simulation of the CAN SLIM breakout tra, Exponential moving average (matches pandas ewm default, adjust=False)., Historical simulation of the CAN SLIM breakout strategy.      Position sizing ma, run_backtest() (+1 more)
 
-### Community 51 - "_make_df"
-Cohesion: 0.20
-Nodes (8): _make_df(), 15% below 52w high -> beyond 8% proximity -> None., At or above 52w high -> confirmed breakout territory -> None., Close (77) below SMA-50 (~90) -> below trend -> None., Stock -5% vs SPY +15% -> low RS -> None., Recent 3d avg vol 1.1x 50d avg -> sellers still active -> None., Strictly descending then tiny uptick: must compare vs prior row.         Use all, TestPreBreakoutCoilFail
+### Community 51 - "_coil"
+Cohesion: 0.16
+Nodes (13): _coil(), _make_df(), 15% below 52w high -> beyond 8% proximity -> None., At or above 52w high -> confirmed breakout territory -> None., Close (77) below SMA-50 (~90) -> below trend -> None., Stock -5% vs SPY +15% -> low RS -> None., Recent 3d avg vol 1.1x 50d avg -> sellers still active -> None., Strictly descending then tiny uptick: must compare vs prior row.         Use all (+5 more)
 
 ### Community 52 - "Build Verification Scripts"
 Cohesion: 0.50
@@ -491,17 +490,17 @@ Nodes (7): Consequences, Context, Decision, Managed exit tool: exit at the sessi
 Cohesion: 0.13
 Nodes (10): fixture, test_screener_filters.py - Tests for the CAN SLIM fundamental gate in tv_api_scr, Re-import the screener module with the given env overrides applied., Regression: was 0, which admitted SWK on 0.6% revenue growth., Regression: was 15. O'Neil requires ~25%., Thresholds must be adjustable without a code change, for A/B and rollback., _reload(), screener() (+2 more)
 
-### Community 58 - "test_reconcile_detects_short_positions"
-Cohesion: 0.50
-Nodes (3): patch, Test that reconcile_with_ibkr detects short positions and sends alert., test_reconcile_detects_short_positions()
+### Community 58 - "increment_retention"
+Cohesion: 0.60
+Nodes (3): increment_retention(), get_rating_text(), run_screener()
 
 ### Community 60 - "Decision"
 Cohesion: 0.17
 Nodes (11): Cause 1 — the exits amputated winners, Cause 2 — the screener was not selecting CAN SLIM stocks, Consequences, Context, Decision, Entries — actually buy CAN SLIM stocks, Exits — stop selling on noise, Follow-up (+3 more)
 
-### Community 61 - "_coil"
-Cohesion: 0.15
-Nodes (12): check_pre_breakout_coil(), compute_pre_breakout_quality_score(), Detects stocks coiling toward an imminent breakout (VCP / handle setup).      AL, Quality score 0-100 for a pre-breakout (coiling) trigger.      Weights:       Pi, _coil(), Within 1%, 0 vol ratio, 3/3 closes up -> score == 100., Within 1%, 0.5x vol, 3 closes up -> 40+20+20=80., Within 3%, 0.5x vol, 2 closes up -> 35+20+10=65. (+4 more)
+### Community 61 - "compute_pre_breakout_quality_score"
+Cohesion: 0.18
+Nodes (9): compute_pre_breakout_quality_score(), Quality score 0-100 for a pre-breakout (coiling) trigger.      Weights:       Pi, Within 1%, 0 vol ratio, 3/3 closes up -> score == 100., Within 1%, 0.5x vol, 3 closes up -> 40+20+20=80., Within 3%, 0.5x vol, 2 closes up -> 35+20+10=65., Within 5%, 0.8x vol, 2 closes up -> 28+int(0.2*40)+10=28+8+10=46 (rounding gives, Within 8%, 0.9x vol, 2 closes up -> 20+4+10=34 (rounding may give 33)., 0 rising closes -> uptrend=0 -> 35+20+0=55. (+1 more)
 
 ### Community 62 - "Tune exits on the breakout population, not on the trades being eliminated"
 Cohesion: 0.17
@@ -515,9 +514,9 @@ Nodes (4): The pivot check used to be a ceiling only: it rejected stocks extende
 Cohesion: 0.16
 Nodes (18): ai_grade_and_bonus(), build_prompt(), call_ai_batch(), evaluate_triggers(), fetch_daily_triggers(), fetch_news_headlines(), fetch_trade_history(), fetch_watchlist_data() (+10 more)
 
-### Community 65 - "increment_retention"
-Cohesion: 0.22
-Nodes (9): increment_retention(), _compute_failure_penalty(), get_supabase_client(), get_watchlist_from_supabase(), Client, Compute a time-decayed failure penalty for a trigger based on historical learnin, write_triggers_to_supabase(), get_rating_text() (+1 more)
+### Community 65 - "technical_screener.py"
+Cohesion: 0.18
+Nodes (16): compute_rs_score(), Relative Strength score (0-100) vs S&P 500 over the last 12 weeks.      Excess r, check_pre_breakout_coil(), check_technical_breakout(), _compute_failure_penalty(), compute_quality_score(), fetch_spy_return_12w(), fetch_with_retry_sync() (+8 more)
 
 ### Community 66 - "The backtest "noise floor" was mostly a bootstrap bug"
 Cohesion: 0.17
@@ -536,8 +535,8 @@ Cohesion: 0.22
 Nodes (8): bar_interval, bytes, dataset, date_max, date_min, endpoint, file, generated_utc
 
 ### Community 70 - "execution_agent.py"
-Cohesion: 0.08
-Nodes (41): date, arm_exit(), calculate_ema(), calculate_sma(), cancel_ticker_sell_orders(), check_volume_distribution(), execute_sell(), _fetch_current_rs() (+33 more)
+Cohesion: 0.09
+Nodes (37): date, calculate_ema(), calculate_sma(), check_volume_distribution(), execute_sell(), _fetch_current_rs(), fetch_held_position_sentiment(), fetch_historical_closes_with_dates() (+29 more)
 
 ### Community 71 - "Commit a benchmark price dataset instead of re-fetching from FMP"
 Cohesion: 0.22
@@ -1070,10 +1069,6 @@ Nodes (4): end, rows, start, FITB
 ### Community 215 - "FLYW"
 Cohesion: 0.50
 Nodes (4): end, rows, start, FLYW
-
-### Community 218 - "TestPreBreakoutCoilPass"
-Cohesion: 0.29
-Nodes (4): 5% below high, vol contracting, 3/3 closes up -> PRE_BREAKOUT., 2 of 3 closes rising meets PRE_BREAKOUT_UPTREND_MIN=2., Within 1% of pivot -> quality_score >= 70 (vol 0.6x avg -> contraction pts ~16)., TestPreBreakoutCoilPass
 
 ### Community 219 - "COP"
 Cohesion: 0.50

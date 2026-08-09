@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "migrations/drop_stale_position_columns.sql": {
-    "mtime": 1786292289.557136,
-    "ast_hash": "83b0505f57b8892518b8799f21a78066",
+    "mtime": 1786298533.665307,
+    "ast_hash": "62dda05bdfbc3e12c4407516abb35468",
     "semantic_hash": ""
   },
   "decisions/2026-08-09_drop-stale-position-columns.md": {
@@ -710,8 +710,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-08-09_thesis-stop.md": {
-    "mtime": 1786298505.272245,
-    "ast_hash": "4b884496b85432ea16199c39f05a96df",
+    "mtime": 1786304039.764446,
+    "ast_hash": "50a913a31134455e828a9a7d27a4501f",
     "semantic_hash": ""
   }
 }

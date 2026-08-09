@@ -108,11 +108,31 @@ helped one hurt the other:
 | RS > bench + 10% | +17.4 | +41.7 |
 | Tight base | worse | worse |
 
-The helps-one/hurts-other pattern is the classic signature of curve-fitting, and
-it **confirms ADR 2026-08-04 finding #4**: entry *timing* carries no exploitable
-edge. The edge lives in **which stocks are in the universe** — the fundamental
-screen. Min-score slot gating also had no effect (live scores cluster above
+The helps-one/hurts-other pattern is the classic signature of curve-fitting, and it
+**confirms ADR 2026-08-04 finding #4**: entry *timing* carries no exploitable
+edge, at least none reachable by tightening the technical trigger.
+Min-score slot gating also had no effect (live scores cluster above
 every tested gate). Shipping any of these would have been overfitting.
+
+**What this does NOT establish.** It is tempting to conclude "the edge must
+therefore live in the fundamental screen", and the raw baselines appear to say
+so (PASS 45.2 vs BROAD 22.2 CAGR). That inference is **not supported by this
+work**, for two reasons:
+
+1. The fundamental screen was never varied. There was no counterfactual arm —
+   only the technical layer was manipulated. An untested component cannot be
+   credited.
+2. `pass_names.txt` is the set of names passing the screen **today**, replayed
+   backwards over three years (`benchmark_data/README.md`, "Known limitations").
+   It carries documented **survivorship and look-ahead bias**: names that
+   qualified in 2023 and later failed are absent. The 45.2-vs-22.2 gap is
+   therefore inflated by an unknown amount and cannot be read as screen skill.
+
+The honest state of knowledge is: **technical entry refinement — tested, no edge
+found; fundamental screen — untested, verdict unknown.** Testing it properly
+requires point-in-time fundamentals (Norgate/Sharadar/Compustat PIT) or
+forward-accumulated weekly snapshots of live screener output. The current
+dataset is OHLCV-only and cannot support it.
 
 ### Shortened cooling-off period — REJECTED
 
@@ -153,6 +173,13 @@ the live latch is evaluated in the EOD window (3:45–4:00 PM ET) via
 `get_live_price()`. This is a close approximation, not an identity. Separately,
 the sim's proxy score is not the live `final_score`, so the null result on
 min-score gating has limited external validity.
+
+The PASS universe carries survivorship and look-ahead bias (see above). This
+weakens the *absolute* CAGR figures, but the headline result is a **paired**
+comparison — baseline and thesis-stop arms trade the same biased universe over
+the same calendar — so the bias largely cancels in the difference. It does mean
+the +18.8 dCAGR is measured on an optimistic backdrop and may not transfer at
+full magnitude to a point-in-time universe.
 
 ## Files
 
