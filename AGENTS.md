@@ -249,3 +249,25 @@ Run `python -m graphify update .` to keep the graph current.
    change (what changed, why, and the key files touched) — this becomes
    the comment carried forward into the patch/commit history whenever it
    is applied and pushed. Do not use a generic or placeholder message.
+
+---
+
+## 🔑 Local Credentials (never committed)
+
+Supabase and FMP credentials for this project live **outside the repository** at:
+
+```
+~/.config/ai-trading-bot/secrets.env      # chmod 600, outside git — cannot be pushed
+```
+
+It defines `SUPABASE_URL`, `SUPABASE_KEY`, and `FMP_API_KEY`.
+
+Load it before any task that queries Supabase or FMP:
+
+```bash
+set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
+```
+
+> Never copy these values into the repo, into `.env`, into docs, ADRs, or patch
+> files. Reference the path only. If a credential is ever needed, read it from
+> this file at runtime.
