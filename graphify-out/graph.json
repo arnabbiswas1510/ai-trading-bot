@@ -1269,6 +1269,138 @@
       "norm_label": "scans the entire watchlist, updates scores in the sqlite database, and returns r"
     },
     {
+      "label": "backfill_trigger_outcomes.py",
+      "file_type": "code",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "backfill_trigger_outcomes.py"
+    },
+    {
+      "label": "_today_ny()",
+      "file_type": "code",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L74",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_today_ny",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "_today_ny()"
+    },
+    {
+      "label": "_pct()",
+      "file_type": "code",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L89",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_pct",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "_pct()"
+    },
+    {
+      "label": "fetch_prices()",
+      "file_type": "code",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L93",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_fetch_prices",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "fetch_prices()"
+    },
+    {
+      "label": "compute_outcomes()",
+      "file_type": "code",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L121",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_compute_outcomes",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "compute_outcomes()"
+    },
+    {
+      "label": "fetch_pending()",
+      "file_type": "code",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L183",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_fetch_pending",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "fetch_pending()"
+    },
+    {
+      "label": "run()",
+      "file_type": "code",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L197",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_run",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "run()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L274",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_main",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "main()"
+    },
+    {
+      "label": "backfill_trigger_outcomes.py  Weekly job that links archived breakout triggers t",
+      "file_type": "rationale",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_rationale_1",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "backfill_trigger_outcomes.py  weekly job that links archived breakout triggers t"
+    },
+    {
+      "label": "Daily OHLCV ascending, or [] on failure. Never raises.",
+      "file_type": "rationale",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L94",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_rationale_94",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "daily ohlcv ascending, or [] on failure. never raises."
+    },
+    {
+      "label": "Forward returns measured from the first session AFTER triggered_at.      CONVENT",
+      "file_type": "rationale",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L122",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_rationale_122",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "forward returns measured from the first session after triggered_at.      convent"
+    },
+    {
+      "label": "Triggers whose measurement window has fully elapsed and are unmeasured.",
+      "file_type": "rationale",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L184",
+      "_origin": "ast",
+      "id": "backfill_trigger_outcomes_rationale_184",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "triggers whose measurement window has fully elapsed and are unmeasured."
+    },
+    {
       "label": "MANIFEST.json",
       "file_type": "code",
       "source_file": "benchmark_data/MANIFEST.json",
@@ -3673,8 +3805,8 @@
       "source_location": "L271",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_cb",
-      "community": 148,
-      "community_name": "CB",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "cb"
     },
     {
@@ -3684,8 +3816,8 @@
       "source_location": "L272",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cb_end",
-      "community": 148,
-      "community_name": "CB",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "end"
     },
     {
@@ -3695,8 +3827,8 @@
       "source_location": "L273",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cb_rows",
-      "community": 148,
-      "community_name": "CB",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "rows"
     },
     {
@@ -3706,8 +3838,8 @@
       "source_location": "L274",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cb_start",
-      "community": 148,
-      "community_name": "CB",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "start"
     },
     {
@@ -4465,8 +4597,8 @@
       "source_location": "L361",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_cohr",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 226,
+      "community_name": "COHR",
       "norm_label": "cohr"
     },
     {
@@ -4476,8 +4608,8 @@
       "source_location": "L362",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cohr_end",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 226,
+      "community_name": "COHR",
       "norm_label": "end"
     },
     {
@@ -4487,8 +4619,8 @@
       "source_location": "L363",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cohr_rows",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 226,
+      "community_name": "COHR",
       "norm_label": "rows"
     },
     {
@@ -4498,8 +4630,8 @@
       "source_location": "L364",
       "_origin": "ast",
       "id": "benchmark_data_manifest_cohr_start",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 226,
+      "community_name": "COHR",
       "norm_label": "start"
     },
     {
@@ -5961,8 +6093,8 @@
       "source_location": "L531",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_elv",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 227,
+      "community_name": "ELV",
       "norm_label": "elv"
     },
     {
@@ -5972,8 +6104,8 @@
       "source_location": "L532",
       "_origin": "ast",
       "id": "benchmark_data_manifest_elv_end",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 227,
+      "community_name": "ELV",
       "norm_label": "end"
     },
     {
@@ -5983,8 +6115,8 @@
       "source_location": "L533",
       "_origin": "ast",
       "id": "benchmark_data_manifest_elv_rows",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 227,
+      "community_name": "ELV",
       "norm_label": "rows"
     },
     {
@@ -5994,8 +6126,8 @@
       "source_location": "L534",
       "_origin": "ast",
       "id": "benchmark_data_manifest_elv_start",
-      "community": 68,
-      "community_name": "per_symbol",
+      "community": 227,
+      "community_name": "ELV",
       "norm_label": "start"
     },
     {
@@ -6313,8 +6445,8 @@
       "source_location": "L571",
       "_origin": "ast",
       "id": "benchmark_data_manifest_per_symbol_ew",
-      "community": 206,
-      "community_name": "EW",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "ew"
     },
     {
@@ -6324,8 +6456,8 @@
       "source_location": "L572",
       "_origin": "ast",
       "id": "benchmark_data_manifest_ew_end",
-      "community": 206,
-      "community_name": "EW",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "end"
     },
     {
@@ -6335,8 +6467,8 @@
       "source_location": "L573",
       "_origin": "ast",
       "id": "benchmark_data_manifest_ew_rows",
-      "community": 206,
-      "community_name": "EW",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "rows"
     },
     {
@@ -6346,8 +6478,8 @@
       "source_location": "L574",
       "_origin": "ast",
       "id": "benchmark_data_manifest_ew_start",
-      "community": 206,
-      "community_name": "EW",
+      "community": 68,
+      "community_name": "per_symbol",
       "norm_label": "start"
     },
     {
@@ -6797,8 +6929,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "execution_agent_fetch_trade_confirms_for_ticker",
-      "community": 70,
-      "community_name": "execution_agent.py",
+      "community": 38,
+      "community_name": "run_market_open_buys",
       "norm_label": "fetch_trade_confirms_for_ticker()"
     },
     {
@@ -7160,8 +7292,8 @@
       "source_location": "L957",
       "_origin": "ast",
       "id": "execution_agent_maybe_arm_power_hold",
-      "community": 54,
-      "community_name": "_pos",
+      "community": 70,
+      "community_name": "execution_agent.py",
       "norm_label": "maybe_arm_power_hold()"
     },
     {
@@ -7578,8 +7710,8 @@
       "source_location": "L958",
       "_origin": "ast",
       "id": "execution_agent_rationale_958",
-      "community": 54,
-      "community_name": "_pos",
+      "community": 70,
+      "community_name": "execution_agent.py",
       "norm_label": "persists the power-hold flag the first time a position qualifies.      returns t"
     },
     {
@@ -9998,8 +10130,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "retention_helper",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 224,
+      "community_name": "increment_retention",
       "norm_label": "retention_helper.py"
     },
     {
@@ -10009,8 +10141,8 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "retention_helper_increment_retention",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 224,
+      "community_name": "increment_retention",
       "norm_label": "increment_retention()"
     },
     {
@@ -10119,8 +10251,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scoring",
-      "community": 26,
-      "community_name": "compute_rs_score",
+      "community": 228,
+      "community_name": "test_score_components.py",
       "norm_label": "scoring.py"
     },
     {
@@ -10163,8 +10295,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scoring_rationale_1",
-      "community": 26,
-      "community_name": "compute_rs_score",
+      "community": 228,
+      "community_name": "test_score_components.py",
       "norm_label": "scoring.py \u2014 pure scoring functions for the 5-component final_score system.  no"
     },
     {
@@ -10259,8 +10391,8 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "technical_screener_compute_pre_breakout_quality_score",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "compute_pre_breakout_quality_score()"
     },
     {
@@ -10336,8 +10468,8 @@
       "source_location": "L330",
       "_origin": "ast",
       "id": "technical_screener_check_pre_breakout_coil",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "check_pre_breakout_coil()"
     },
     {
@@ -10380,8 +10512,8 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "technical_screener_rationale_88",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "quality score 0-100 for a pre-breakout (coiling) trigger.      weights:       pi"
     },
     {
@@ -10402,8 +10534,8 @@
       "source_location": "L343",
       "_origin": "ast",
       "id": "technical_screener_rationale_343",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "detects stocks coiling toward an imminent breakout (vcp / handle setup).      al"
     },
     {
@@ -14648,8 +14780,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_pre_breakout",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "test_pre_breakout.py"
     },
     {
@@ -14659,8 +14791,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_make_df",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": "_make_df()"
     },
     {
@@ -14670,8 +14802,8 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_coil",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "_coil()"
     },
     {
@@ -14681,8 +14813,8 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "testprebreakoutqualityscore"
     },
     {
@@ -14692,8 +14824,8 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_highest_score_tight_coil",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": ".test_highest_score_tight_coil()"
     },
     {
@@ -14703,8 +14835,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_score_within_1pct",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": ".test_score_within_1pct()"
     },
     {
@@ -14714,8 +14846,8 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_score_within_3pct",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": ".test_score_within_3pct()"
     },
     {
@@ -14725,8 +14857,8 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_score_within_5pct",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": ".test_score_within_5pct()"
     },
     {
@@ -14736,8 +14868,8 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_score_within_8pct",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": ".test_score_within_8pct()"
     },
     {
@@ -14747,8 +14879,8 @@
       "source_location": "L75",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_zero_uptrend_component",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": ".test_zero_uptrend_component()"
     },
     {
@@ -14758,8 +14890,8 @@
       "source_location": "L80",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": "testprebreakoutcoilpass"
     },
     {
@@ -14769,8 +14901,8 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass_test_all_gates_pass",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": ".test_all_gates_pass()"
     },
     {
@@ -14780,8 +14912,8 @@
       "source_location": "L90",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass_test_2_of_3_closes_up_accepted",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": ".test_2_of_3_closes_up_accepted()"
     },
     {
@@ -14791,8 +14923,8 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass_test_very_tight_coil_within_1pct",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": ".test_very_tight_coil_within_1pct()"
     },
     {
@@ -14802,8 +14934,8 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": "testprebreakoutcoilfail"
     },
     {
@@ -14813,8 +14945,8 @@
       "source_location": "L105",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_a_too_far_from_high",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": ".test_gate_a_too_far_from_high()"
     },
     {
@@ -14824,8 +14956,8 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_a_at_or_above_high",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": ".test_gate_a_at_or_above_high()"
     },
     {
@@ -14835,8 +14967,8 @@
       "source_location": "L115",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_b_below_sma",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": ".test_gate_b_below_sma()"
     },
     {
@@ -14846,8 +14978,8 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_c_low_rs",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": ".test_gate_c_low_rs()"
     },
     {
@@ -14857,8 +14989,8 @@
       "source_location": "L125",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_d_volume_not_contracting",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": ".test_gate_d_volume_not_contracting()"
     },
     {
@@ -14868,8 +15000,8 @@
       "source_location": "L130",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_e_only_1_close_up",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": ".test_gate_e_only_1_close_up()"
     },
     {
@@ -14923,8 +15055,8 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_54",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "within 1%, 0 vol ratio, 3/3 closes up -> score == 100."
     },
     {
@@ -14934,8 +15066,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_58",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "within 1%, 0.5x vol, 3 closes up -> 40+20+20=80."
     },
     {
@@ -14945,8 +15077,8 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_62",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "within 3%, 0.5x vol, 2 closes up -> 35+20+10=65."
     },
     {
@@ -14956,8 +15088,8 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_66",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "within 5%, 0.8x vol, 2 closes up -> 28+int(0.2*40)+10=28+8+10=46 (rounding gives"
     },
     {
@@ -14967,8 +15099,8 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_71",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "within 8%, 0.9x vol, 2 closes up -> 20+4+10=34 (rounding may give 33)."
     },
     {
@@ -14978,8 +15110,8 @@
       "source_location": "L76",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_76",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 199,
+      "community_name": "_coil",
       "norm_label": "0 rising closes -> uptrend=0 -> 35+20+0=55."
     },
     {
@@ -14989,8 +15121,8 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_83",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": "5% below high, vol contracting, 3/3 closes up -> pre_breakout."
     },
     {
@@ -15000,8 +15132,8 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_91",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": "2 of 3 closes rising meets pre_breakout_uptrend_min=2."
     },
     {
@@ -15011,8 +15143,8 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_96",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": "within 1% of pivot -> quality_score >= 70 (vol 0.6x avg -> contraction pts ~16)."
     },
     {
@@ -15022,8 +15154,8 @@
       "source_location": "L106",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_106",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": "15% below 52w high -> beyond 8% proximity -> none."
     },
     {
@@ -15033,8 +15165,8 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_111",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": "at or above 52w high -> confirmed breakout territory -> none."
     },
     {
@@ -15044,8 +15176,8 @@
       "source_location": "L116",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_116",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": "close (77) below sma-50 (~90) -> below trend -> none."
     },
     {
@@ -15055,8 +15187,8 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_121",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": "stock -5% vs spy +15% -> low rs -> none."
     },
     {
@@ -15066,8 +15198,8 @@
       "source_location": "L126",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_126",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": "recent 3d avg vol 1.1x 50d avg -> sellers still active -> none."
     },
     {
@@ -15077,8 +15209,8 @@
       "source_location": "L131",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_131",
-      "community": 51,
-      "community_name": "compute_final_score",
+      "community": 206,
+      "community_name": "_make_df",
       "norm_label": "strictly descending then tiny uptick: must compare vs prior row.         use all"
     },
     {
@@ -15506,8 +15638,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_score_components",
-      "community": 26,
-      "community_name": "compute_rs_score",
+      "community": 228,
+      "community_name": "test_score_components.py",
       "norm_label": "test_score_components.py"
     },
     {
@@ -15891,8 +16023,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_1",
-      "community": 26,
-      "community_name": "compute_rs_score",
+      "community": 228,
+      "community_name": "test_score_components.py",
       "norm_label": "tests/test_score_components.py  unit tests for the new 5-component scoring funct"
     },
     {
@@ -16826,8 +16958,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_short_fix_and_new_logic",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 229,
+      "community_name": "test_reconcile_detects_short_positions",
       "norm_label": "test_short_fix_and_new_logic.py"
     },
     {
@@ -16837,8 +16969,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tests_test_short_fix_and_new_logic_py_patch",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 229,
+      "community_name": "test_reconcile_detects_short_positions",
       "norm_label": "patch"
     },
     {
@@ -16848,8 +16980,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "tests_test_short_fix_and_new_logic_test_reconcile_detects_short_positions",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 229,
+      "community_name": "test_reconcile_detects_short_positions",
       "norm_label": "test_reconcile_detects_short_positions()"
     },
     {
@@ -16859,8 +16991,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "tests_test_short_fix_and_new_logic_rationale_14",
-      "community": 38,
-      "community_name": "run_market_open_buys",
+      "community": 229,
+      "community_name": "test_reconcile_detects_short_positions",
       "norm_label": "test that reconcile_with_ibkr detects short positions and sends alert."
     },
     {
@@ -17931,6 +18063,468 @@
       "norm_label": "the near-miss candidates needed to test whether the floor is set         anywher"
     },
     {
+      "label": "test_trigger_outcomes.py",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "test_trigger_outcomes.py"
+    },
+    {
+      "label": "_bars()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L33",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_bars",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "_bars()"
+    },
+    {
+      "label": "TestEntryReference",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L48",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testentryreference",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "testentryreference"
+    },
+    {
+      "label": ".test_entry_is_next_session_open_not_trigger_close()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L51",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testentryreference_test_entry_is_next_session_open_not_trigger_close",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_entry_is_next_session_open_not_trigger_close()"
+    },
+    {
+      "label": ".test_returns_none_when_no_session_follows()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L62",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testentryreference_test_returns_none_when_no_session_follows",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_returns_none_when_no_session_follows()"
+    },
+    {
+      "label": ".test_returns_none_when_trigger_date_not_covered()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L66",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testentryreference_test_returns_none_when_trigger_date_not_covered",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_returns_none_when_trigger_date_not_covered()"
+    },
+    {
+      "label": ".test_falls_back_to_close_when_open_missing()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L70",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testentryreference_test_falls_back_to_close_when_open_missing",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_falls_back_to_close_when_open_missing()"
+    },
+    {
+      "label": "TestForwardReturns",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L78",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testforwardreturns",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "testforwardreturns"
+    },
+    {
+      "label": ".test_horizons_measured_from_entry_bar()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L80",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testforwardreturns_test_horizons_measured_from_entry_bar",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_horizons_measured_from_entry_bar()"
+    },
+    {
+      "label": ".test_incomplete_horizons_are_none_not_zero()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L92",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testforwardreturns_test_incomplete_horizons_are_none_not_zero",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_incomplete_horizons_are_none_not_zero()"
+    },
+    {
+      "label": ".test_outcome_bars_counts_sessions_held()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L100",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testforwardreturns_test_outcome_bars_counts_sessions_held",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_outcome_bars_counts_sessions_held()"
+    },
+    {
+      "label": "TestPathMetrics",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L106",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testpathmetrics",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "testpathmetrics"
+    },
+    {
+      "label": ".test_max_gain_and_drawdown_include_entry_bar_exclude_trigger_bar()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L108",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testpathmetrics_test_max_gain_and_drawdown_include_entry_bar_exclude_trigger_bar",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_max_gain_and_drawdown_include_entry_bar_exclude_trigger_bar()"
+    },
+    {
+      "label": ".test_ever_above_entry_true_when_high_exceeds()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L120",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testpathmetrics_test_ever_above_entry_true_when_high_exceeds",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_ever_above_entry_true_when_high_exceeds()"
+    },
+    {
+      "label": ".test_ever_above_entry_false_for_never_worked()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L125",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testpathmetrics_test_ever_above_entry_false_for_never_worked",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_ever_above_entry_false_for_never_worked()"
+    },
+    {
+      "label": "TestBenchmarkAlpha",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L132",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testbenchmarkalpha",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "testbenchmarkalpha"
+    },
+    {
+      "label": ".test_alpha_is_return_minus_benchmark()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L135",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testbenchmarkalpha_test_alpha_is_return_minus_benchmark",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_alpha_is_return_minus_benchmark()"
+    },
+    {
+      "label": ".test_alpha_none_without_benchmark()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L149",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testbenchmarkalpha_test_alpha_none_without_benchmark",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_alpha_none_without_benchmark()"
+    },
+    {
+      "label": ".test_market_beating_move_can_be_negative_alpha()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L155",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testbenchmarkalpha_test_market_beating_move_can_be_negative_alpha",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_market_beating_move_can_be_negative_alpha()"
+    },
+    {
+      "label": "TestIncompleteWindowsNotWritten",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L167",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testincompletewindowsnotwritten",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "testincompletewindowsnotwritten"
+    },
+    {
+      "label": "._client()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L169",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_client",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "._client()"
+    },
+    {
+      "label": ".test_short_window_is_skipped_not_written()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L177",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_short_window_is_skipped_not_written",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_short_window_is_skipped_not_written()"
+    },
+    {
+      "label": ".test_complete_window_is_written()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L195",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_complete_window_is_written",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_complete_window_is_written()"
+    },
+    {
+      "label": ".test_dry_run_writes_nothing()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L213",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_dry_run_writes_nothing",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_dry_run_writes_nothing()"
+    },
+    {
+      "label": "TestResumability",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L229",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testresumability",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "testresumability"
+    },
+    {
+      "label": ".test_selects_only_unmeasured_rows_by_default()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L231",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testresumability_test_selects_only_unmeasured_rows_by_default",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_selects_only_unmeasured_rows_by_default()"
+    },
+    {
+      "label": ".test_force_recomputes_measured_rows()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L239",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testresumability_test_force_recomputes_measured_rows",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_force_recomputes_measured_rows()"
+    },
+    {
+      "label": ".test_only_considers_settled_triggers()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L246",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testresumability_test_only_considers_settled_triggers",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_only_considers_settled_triggers()"
+    },
+    {
+      "label": "TestFetchRobustness",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L258",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testfetchrobustness",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "testfetchrobustness"
+    },
+    {
+      "label": ".test_sorts_newest_first_response_ascending()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L260",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testfetchrobustness_test_sorts_newest_first_response_ascending",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_sorts_newest_first_response_ascending()"
+    },
+    {
+      "label": ".test_failure_returns_empty_not_raise()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L276",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testfetchrobustness_test_failure_returns_empty_not_raise",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_failure_returns_empty_not_raise()"
+    },
+    {
+      "label": ".test_missing_env_exits_nonzero()",
+      "file_type": "code",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L282",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_testfetchrobustness_test_missing_env_exits_nonzero",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": ".test_missing_env_exits_nonzero()"
+    },
+    {
+      "label": "tests/test_trigger_outcomes.py  Tests for the weekly forward-return backfill.  W",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_1",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "tests/test_trigger_outcomes.py  tests for the weekly forward-return backfill.  w"
+    },
+    {
+      "label": "Ascending daily bars on consecutive calendar days.",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L34",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_34",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "ascending daily bars on consecutive calendar days."
+    },
+    {
+      "label": "The single most consequential choice in this file.",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L49",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_49",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "the single most consequential choice in this file."
+    },
+    {
+      "label": "A missing horizon must be NULL. Zero would be read as 'flat'.",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L93",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_93",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "a missing horizon must be null. zero would be read as 'flat'."
+    },
+    {
+      "label": "The entry session IS held, so its range counts. The trigger session         is n",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L109",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_109",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "the entry session is held, so its range counts. the trigger session         is n"
+    },
+    {
+      "label": "The failed-breakout signature the Thesis Stop targets.",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L126",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_126",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "the failed-breakout signature the thesis stop targets."
+    },
+    {
+      "label": "A raw +5% in a +5% market is not edge.",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L133",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_133",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "a raw +5% in a +5% market is not edge."
+    },
+    {
+      "label": "Up 5% while SPY is up 10% is underperformance, and must read so.",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L156",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_156",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "up 5% while spy is up 10% is underperformance, and must read so."
+    },
+    {
+      "label": "Recording a 3-day window as a 20-day result would silently corrupt         every",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L178",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_178",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "recording a 3-day window as a 20-day result would silently corrupt         every"
+    },
+    {
+      "label": "FMP returns newest-first; every downstream calculation assumes         ascending",
+      "file_type": "rationale",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L261",
+      "_origin": "ast",
+      "id": "tests_test_trigger_outcomes_rationale_261",
+      "community": 148,
+      "community_name": "_bars",
+      "norm_label": "fmp returns newest-first; every downstream calculation assumes         ascending"
+    },
+    {
       "label": "test_watchlist_history.py",
       "file_type": "code",
       "source_file": "tests/test_watchlist_history.py",
@@ -18883,8 +19477,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "trigger_audit",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "trigger_audit.py"
     },
     {
@@ -18894,8 +19488,8 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "trigger_audit_today",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "_today()"
     },
     {
@@ -18905,8 +19499,8 @@
       "source_location": "L90",
       "_origin": "ast",
       "id": "trigger_audit_save_trigger_history",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "save_trigger_history()"
     },
     {
@@ -18916,8 +19510,8 @@
       "source_location": "L124",
       "_origin": "ast",
       "id": "trigger_audit_record_trigger_decision",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "record_trigger_decision()"
     },
     {
@@ -18927,8 +19521,8 @@
       "source_location": "L136",
       "_origin": "ast",
       "id": "trigger_audit_record_decisions_bulk",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "record_decisions_bulk()"
     },
     {
@@ -18938,8 +19532,8 @@
       "source_location": "L184",
       "_origin": "ast",
       "id": "trigger_audit_upsert",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "_upsert()"
     },
     {
@@ -18949,8 +19543,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "trigger_audit_rationale_1",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "trigger_audit.py  point-in-time archive of breakout triggers and the buy/skip de"
     },
     {
@@ -18960,8 +19554,8 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "trigger_audit_rationale_91",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "archive `daily_triggers` rows to the append-only `trigger_history`.      must be"
     },
     {
@@ -18971,8 +19565,8 @@
       "source_location": "L126",
       "_origin": "ast",
       "id": "trigger_audit_rationale_126",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "record one buy/skip verdict against one trigger.      `decision` is bought or sk"
     },
     {
@@ -18982,8 +19576,8 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "trigger_audit_rationale_138",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "record the same verdict against many triggers.      used when the portfolio is a"
     },
     {
@@ -18993,8 +19587,8 @@
       "source_location": "L185",
       "_origin": "ast",
       "id": "trigger_audit_rationale_185",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 222,
+      "community_name": "trigger_audit.py",
       "norm_label": "chunked, idempotent, non-fatal upsert."
     },
     {
@@ -19004,8 +19598,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tv_api_screener",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 224,
+      "community_name": "increment_retention",
       "norm_label": "tv_api_screener.py"
     },
     {
@@ -19015,8 +19609,8 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "tv_api_screener_get_rating_text",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 224,
+      "community_name": "increment_retention",
       "norm_label": "get_rating_text()"
     },
     {
@@ -19026,8 +19620,8 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "tv_api_screener_save_watchlist_history",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 224,
+      "community_name": "increment_retention",
       "norm_label": "save_watchlist_history()"
     },
     {
@@ -19037,8 +19631,8 @@
       "source_location": "L136",
       "_origin": "ast",
       "id": "tv_api_screener_run_screener",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 224,
+      "community_name": "increment_retention",
       "norm_label": "run_screener()"
     },
     {
@@ -19048,8 +19642,8 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "tv_api_screener_rationale_63",
-      "community": 65,
-      "community_name": "technical_screener.py",
+      "community": 224,
+      "community_name": "increment_retention",
       "norm_label": "append this run's screener output to the append-only `watchlist_history`.      `"
     },
     {
@@ -21671,6 +22265,105 @@
       "norm_label": "files"
     },
     {
+      "label": "2026-08-09_trigger-outcome-backfill.md",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "2026-08-09_trigger-outcome-backfill.md"
+    },
+    {
+      "label": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill_forward_return_backfill_for_trigger_history_and_the_prune_we_did_not_build",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "forward-return backfill for trigger_history (and the prune we did not build)"
+    },
+    {
+      "label": "Context",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L6",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill_context",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "context"
+    },
+    {
+      "label": "Decision",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L18",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill_decision",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "decision"
+    },
+    {
+      "label": "Conventions (the part that is easy to get silently wrong)",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L24",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill_conventions_the_part_that_is_easy_to_get_silently_wrong",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "conventions (the part that is easy to get silently wrong)"
+    },
+    {
+      "label": "Guards",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L54",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill_guards",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "guards"
+    },
+    {
+      "label": "Rejected: the 6-month rolling prune",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L68",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill_rejected_the_6_month_rolling_prune",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "rejected: the 6-month rolling prune"
+    },
+    {
+      "label": "Consequences",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L94",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill_consequences",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "consequences"
+    },
+    {
+      "label": "Verification",
+      "file_type": "document",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L103",
+      "_origin": "ast",
+      "id": "decisions_2026_08_09_trigger_outcome_backfill_verification",
+      "community": 223,
+      "community_name": "Forward-return backfill for trigger_history (and the prune we did NOT build)",
+      "norm_label": "verification"
+    },
+    {
       "label": "2026-08-09_watchlist-history.md",
       "file_type": "document",
       "source_file": "decisions/2026-08-09_watchlist-history.md",
@@ -24111,6 +24804,17 @@
       "community": 24,
       "community_name": "Technical Triggers Logic",
       "norm_label": "`trigger_decisions` \u2014 what the bot did, and why"
+    },
+    {
+      "label": "Step 6 \u2014 Forward-return labels (`backfill_trigger_outcomes.py`)",
+      "file_type": "document",
+      "source_file": "docs/technical_triggers.md",
+      "source_location": "L242",
+      "_origin": "ast",
+      "id": "docs_technical_triggers_step_6_forward_return_labels_backfill_trigger_outcomes_py",
+      "community": 24,
+      "community_name": "Technical Triggers Logic",
+      "norm_label": "step 6 \u2014 forward-return labels (`backfill_trigger_outcomes.py`)"
     },
     {
       "label": "AGENTS.md",
@@ -26737,6 +27441,211 @@
       "_origin": "ast",
       "source": "backend_screener_rationale_432",
       "target": "backend_screener_run_canslim_screener",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L121",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes",
+      "target": "backfill_trigger_outcomes_compute_outcomes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L183",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes",
+      "target": "backfill_trigger_outcomes_fetch_pending",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L93",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes",
+      "target": "backfill_trigger_outcomes_fetch_prices",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L274",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes",
+      "target": "backfill_trigger_outcomes_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L89",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes",
+      "target": "backfill_trigger_outcomes_pct",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L197",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes",
+      "target": "backfill_trigger_outcomes_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L74",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes",
+      "target": "backfill_trigger_outcomes_today_ny",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_rationale_1",
+      "target": "backfill_trigger_outcomes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "backfill_trigger_outcomes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L185",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_fetch_pending",
+      "target": "backfill_trigger_outcomes_today_ny",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L160",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_compute_outcomes",
+      "target": "backfill_trigger_outcomes_pct",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L94",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_rationale_94",
+      "target": "backfill_trigger_outcomes_fetch_prices",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L230",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_run",
+      "target": "backfill_trigger_outcomes_fetch_prices",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L122",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_rationale_122",
+      "target": "backfill_trigger_outcomes_compute_outcomes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L242",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_run",
+      "target": "backfill_trigger_outcomes_compute_outcomes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L184",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_rationale_184",
+      "target": "backfill_trigger_outcomes_fetch_pending",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L205",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_run",
+      "target": "backfill_trigger_outcomes_fetch_pending",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "backfill_trigger_outcomes.py",
+      "source_location": "L283",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backfill_trigger_outcomes_main",
+      "target": "backfill_trigger_outcomes_run",
       "confidence_score": 1.0
     },
     {
@@ -41198,6 +42107,18 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "tests_test_trigger_audit_testtriggerhistorypayload_test_non_fatal_on_failure",
+      "target": "exception"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L278",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testfetchrobustness_test_failure_returns_empty_not_raise",
       "target": "exception"
     },
     {
@@ -55760,6 +56681,685 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L132",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "tests_test_trigger_outcomes_testbenchmarkalpha",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "tests_test_trigger_outcomes_testentryreference",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L258",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "tests_test_trigger_outcomes_testfetchrobustness",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L78",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "tests_test_trigger_outcomes_testforwardreturns",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L167",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L106",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "tests_test_trigger_outcomes_testpathmetrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L229",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes",
+      "target": "tests_test_trigger_outcomes_testresumability",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_1",
+      "target": "tests_test_trigger_outcomes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_34",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L139",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testbenchmarkalpha_test_alpha_is_return_minus_benchmark",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L151",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testbenchmarkalpha_test_alpha_none_without_benchmark",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L158",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testbenchmarkalpha_test_market_beating_move_can_be_negative_alpha",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L53",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testentryreference_test_entry_is_next_session_open_not_trigger_close",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L71",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testentryreference_test_falls_back_to_close_when_open_missing",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testentryreference_test_returns_none_when_no_session_follows",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testentryreference_test_returns_none_when_trigger_date_not_covered",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testforwardreturns_test_horizons_measured_from_entry_bar",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L94",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testforwardreturns_test_incomplete_horizons_are_none_not_zero",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L101",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testforwardreturns_test_outcome_bars_counts_sessions_held",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L205",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_complete_window_is_written",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L223",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_dry_run_writes_nothing",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L189",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_short_window_is_skipped_not_written",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L127",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testpathmetrics_test_ever_above_entry_false_for_never_worked",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L121",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testpathmetrics_test_ever_above_entry_true_when_high_exceeds",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L111",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testpathmetrics_test_max_gain_and_drawdown_include_entry_bar_exclude_trigger_bar",
+      "target": "tests_test_trigger_outcomes_bars",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L49",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_49",
+      "target": "tests_test_trigger_outcomes_testentryreference",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testentryreference",
+      "target": "tests_test_trigger_outcomes_testentryreference_test_entry_is_next_session_open_not_trigger_close",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L70",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testentryreference",
+      "target": "tests_test_trigger_outcomes_testentryreference_test_falls_back_to_close_when_open_missing",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L62",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testentryreference",
+      "target": "tests_test_trigger_outcomes_testentryreference_test_returns_none_when_no_session_follows",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L66",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testentryreference",
+      "target": "tests_test_trigger_outcomes_testentryreference_test_returns_none_when_trigger_date_not_covered",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L80",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testforwardreturns",
+      "target": "tests_test_trigger_outcomes_testforwardreturns_test_horizons_measured_from_entry_bar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L92",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testforwardreturns",
+      "target": "tests_test_trigger_outcomes_testforwardreturns_test_incomplete_horizons_are_none_not_zero",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L100",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testforwardreturns",
+      "target": "tests_test_trigger_outcomes_testforwardreturns_test_outcome_bars_counts_sessions_held",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L93",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_93",
+      "target": "tests_test_trigger_outcomes_testforwardreturns_test_incomplete_horizons_are_none_not_zero",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L125",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testpathmetrics",
+      "target": "tests_test_trigger_outcomes_testpathmetrics_test_ever_above_entry_false_for_never_worked",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L120",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testpathmetrics",
+      "target": "tests_test_trigger_outcomes_testpathmetrics_test_ever_above_entry_true_when_high_exceeds",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L108",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testpathmetrics",
+      "target": "tests_test_trigger_outcomes_testpathmetrics_test_max_gain_and_drawdown_include_entry_bar_exclude_trigger_bar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_109",
+      "target": "tests_test_trigger_outcomes_testpathmetrics_test_max_gain_and_drawdown_include_entry_bar_exclude_trigger_bar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_126",
+      "target": "tests_test_trigger_outcomes_testpathmetrics_test_ever_above_entry_false_for_never_worked",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L133",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_133",
+      "target": "tests_test_trigger_outcomes_testbenchmarkalpha",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L135",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testbenchmarkalpha",
+      "target": "tests_test_trigger_outcomes_testbenchmarkalpha_test_alpha_is_return_minus_benchmark",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L149",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testbenchmarkalpha",
+      "target": "tests_test_trigger_outcomes_testbenchmarkalpha_test_alpha_none_without_benchmark",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L155",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testbenchmarkalpha",
+      "target": "tests_test_trigger_outcomes_testbenchmarkalpha_test_market_beating_move_can_be_negative_alpha",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L156",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_156",
+      "target": "tests_test_trigger_outcomes_testbenchmarkalpha_test_market_beating_move_can_be_negative_alpha",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L169",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_client",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L195",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_complete_window_is_written",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L213",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_dry_run_writes_nothing",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L177",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_short_window_is_skipped_not_written",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L198",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_complete_window_is_written",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_client",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L216",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_dry_run_writes_nothing",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_client",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L182",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_short_window_is_skipped_not_written",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_client",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L178",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_178",
+      "target": "tests_test_trigger_outcomes_testincompletewindowsnotwritten_test_short_window_is_skipped_not_written",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L239",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testresumability",
+      "target": "tests_test_trigger_outcomes_testresumability_test_force_recomputes_measured_rows",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L246",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testresumability",
+      "target": "tests_test_trigger_outcomes_testresumability_test_only_considers_settled_triggers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L231",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testresumability",
+      "target": "tests_test_trigger_outcomes_testresumability_test_selects_only_unmeasured_rows_by_default",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L276",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testfetchrobustness",
+      "target": "tests_test_trigger_outcomes_testfetchrobustness_test_failure_returns_empty_not_raise",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L282",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testfetchrobustness",
+      "target": "tests_test_trigger_outcomes_testfetchrobustness_test_missing_env_exits_nonzero",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L260",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_testfetchrobustness",
+      "target": "tests_test_trigger_outcomes_testfetchrobustness_test_sorts_newest_first_response_ascending",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trigger_outcomes.py",
+      "source_location": "L261",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trigger_outcomes_rationale_261",
+      "target": "tests_test_trigger_outcomes_testfetchrobustness_test_sorts_newest_first_response_ascending",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "tests/test_watchlist_history.py",
       "source_location": "L61",
       "weight": 1.0,
@@ -60432,6 +62032,94 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_trigger_outcome_backfill",
+      "target": "decisions_2026_08_09_trigger_outcome_backfill_forward_return_backfill_for_trigger_history_and_the_prune_we_did_not_build",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L94",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_trigger_outcome_backfill_forward_return_backfill_for_trigger_history_and_the_prune_we_did_not_build",
+      "target": "decisions_2026_08_09_trigger_outcome_backfill_consequences",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L6",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_trigger_outcome_backfill_forward_return_backfill_for_trigger_history_and_the_prune_we_did_not_build",
+      "target": "decisions_2026_08_09_trigger_outcome_backfill_context",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L18",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_trigger_outcome_backfill_forward_return_backfill_for_trigger_history_and_the_prune_we_did_not_build",
+      "target": "decisions_2026_08_09_trigger_outcome_backfill_decision",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L68",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_trigger_outcome_backfill_forward_return_backfill_for_trigger_history_and_the_prune_we_did_not_build",
+      "target": "decisions_2026_08_09_trigger_outcome_backfill_rejected_the_6_month_rolling_prune",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L103",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_trigger_outcome_backfill_forward_return_backfill_for_trigger_history_and_the_prune_we_did_not_build",
+      "target": "decisions_2026_08_09_trigger_outcome_backfill_verification",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L24",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_trigger_outcome_backfill_decision",
+      "target": "decisions_2026_08_09_trigger_outcome_backfill_conventions_the_part_that_is_easy_to_get_silently_wrong",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-08-09_trigger-outcome-backfill.md",
+      "source_location": "L54",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_08_09_trigger_outcome_backfill_decision",
+      "target": "decisions_2026_08_09_trigger_outcome_backfill_guards",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "decisions/2026-08-09_watchlist-history.md",
       "source_location": "L1",
       "weight": 1.0,
@@ -62622,6 +64310,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/technical_triggers.md",
+      "source_location": "L242",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "docs_technical_triggers_technical_triggers_logic",
+      "target": "docs_technical_triggers_step_6_forward_return_labels_backfill_trigger_outcomes_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/technical_triggers.md",
       "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast",
@@ -62727,5 +64426,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "52575df4d31e38e8e575c01ea005beaedea5ede9"
+  "built_at_commit": "69755d6c05f019d3be6fb7b9f6761f82fdfe0a03"
 }

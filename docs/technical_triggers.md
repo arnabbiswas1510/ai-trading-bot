@@ -238,3 +238,36 @@ All audit writes are **non-fatal** — a research feature must never interrupt
 live screening or trading.
 
 Setup: run `migrations/add_trigger_history.sql` once.
+
+## Step 6 — Forward-return labels (`backfill_trigger_outcomes.py`)
+
+A stored trigger is only useful once we know what the stock did next. A weekly
+job (Sundays 12:00 UTC, `.github/workflows/weekly_trigger_outcomes.yml`) fills
+outcome columns on `trigger_history` for triggers that have settled.
+
+| Column | Meaning |
+|---|---|
+| `entry_ref_price` / `entry_ref_date` | The **next session's open** after the trigger — what the bot would actually have paid |
+| `fwd_1d_pct`, `fwd_5d_pct`, `fwd_20d_pct` | Close of the Nth session **of holding**, entry session counted as session 1 |
+| `max_gain_20d_pct` / `max_drawdown_20d_pct` | Best/worst excursion over the hold, **including** the entry session |
+| `ever_above_entry` | Did it ever trade above the entry reference — the empirical twin of the Thesis Stop's `closed_above_entry` latch |
+| `bench_fwd_20d_pct` / `alpha_20d_pct` | Same-window SPY return and the excess over it |
+| `outcome_bars` | Sessions actually measured (short windows are left unwritten) |
+
+Two conventions are load-bearing and neither announces itself if broken:
+
+1. **Entry is the next open, not the trigger close.** The bot buys at market
+   open the morning after a trigger; measuring from the trigger close would
+   credit an overnight gap the strategy never captured.
+2. **`fwd_1d` is the entry day's own close.** This matches the "Day 1 / Day 2"
+   language used throughout the project and the window the Thesis Stop watches.
+
+Only triggers older than 34 calendar days (~20 trading days plus holiday
+margin) are processed, and rows with too few bars are skipped rather than
+recorded on a partial window. The job selects on `outcomes_computed_at IS NULL`,
+so it is idempotent and resumable.
+
+Run manually with `python3 backfill_trigger_outcomes.py --dry-run [--limit N]`.
+
+Setup: run `migrations/add_trigger_outcomes.sql` (requires
+`add_trigger_history.sql` first).
