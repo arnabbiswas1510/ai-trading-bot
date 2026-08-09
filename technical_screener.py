@@ -6,6 +6,7 @@ from supabase import create_client, Client
 from telegram_notifier import TelegramNotifier
 from zoneinfo import ZoneInfo
 from scoring import compute_rs_score   # pure function — no external deps
+import trigger_audit
 
 # Sourced safely from environment variables
 raw_api_key = os.environ.get("FMP_API_KEY")
@@ -488,6 +489,16 @@ def write_triggers_to_supabase(triggers):
                 t["adjusted_score"]  = t.get("final_score")
                 t["failure_penalty"] = 0
                 t["penalty_reason"]  = None
+
+        # Archive the OUTGOING rows before the truncate destroys them. These are
+        # the previous run's triggers, which by now carry ai_evaluator's scores
+        # (written back after insert) and have already been acted on by the buy
+        # loop. Archiving the INCOMING rows instead would store NULL scores.
+        try:
+            existing = client.table("daily_triggers").select("*").execute().data or []
+            trigger_audit.save_trigger_history(client, existing)
+        except Exception as _ae:
+            print(f"⚠️ Could not archive trigger_history (non-fatal): {_ae}")
 
         print("🧹 Truncating daily_triggers table...")
         client.table("daily_triggers").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()

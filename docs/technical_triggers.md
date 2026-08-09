@@ -192,3 +192,49 @@ A ticker must pass **all three** to generate a trigger. There is no scoring or r
 ## Step 4: AI Breakout Evaluation
 After basic technical thresholds are met, an AI Evaluator (using OpenAI's LLM) scores each breakout on a scale of 0-100 based on CANSLIM principles (combining EPS growth, volume surge, and pivot proximity). The bot will prioritize buying breakouts with the highest ai_rating.
 
+
+---
+
+## Step 5: Point-in-Time Archive (`trigger_history` / `trigger_decisions`)
+
+`daily_triggers` is a **current-state** table — it is truncated on every screener
+run. At the time this was added the live table held nine rows: one day. Since at
+most 4 of N daily triggers are ever bought, the rejected candidates — the control
+group — were being deleted, leaving `trade_history` as a record of only the
+candidates already judged good.
+
+Two append-only tables preserve it. See
+`decisions/2026-08-09_trigger-history-and-decisions.md`.
+
+### `trigger_history` — what the screener saw
+
+One immutable row per `(triggered_at, ticker, trigger_type)`, never pruned,
+carrying every scoring field including `score_rationale`.
+
+> **Archived at truncate time, capturing the OUTGOING rows.** `ai_evaluator.py`
+> writes scores back *after* `technical_screener` inserts, so archiving the
+> incoming rows would store NULL `ai_rating`/`final_score` and silently defeat
+> the purpose. The outgoing rows are fully scored and already acted upon.
+
+### `trigger_decisions` — what the bot did, and why
+
+One row per `(decision_date, ticker, trigger_type)` with `decision`
+(BOUGHT/SKIPPED) and a stable `reason_code`:
+
+| Category | Codes |
+|---|---|
+| Bought | `BOUGHT` |
+| Quality gate | `AI_VETO`, `NO_AI_SCORE`, `SCORE_FLOOR`, `EXTENDED_ABOVE_PIVOT`, `BELOW_PIVOT` |
+| Capacity (`is_capacity = TRUE`) | `SLOTS_FULL`, `INSUFFICIENT_CASH`, `SHARES_ZERO` |
+| Other | `ALREADY_HELD`, `COOLING_OFF`, `BUY_FAILED`, `LOOP_HALTED` |
+
+The `is_capacity` split matters: a name skipped for lack of a slot says nothing
+about the quality model, but everything about the cost of `MAX_POSITIONS`.
+
+Scores are snapshotted onto the decision row rather than joined, because a
+trigger may be re-scored on a later run.
+
+All audit writes are **non-fatal** — a research feature must never interrupt
+live screening or trading.
+
+Setup: run `migrations/add_trigger_history.sql` once.

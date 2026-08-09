@@ -10,6 +10,7 @@ from ib_insync import IB, Stock, MarketOrder, Order
 from telegram_notifier import TelegramNotifier
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import trigger_audit
 try:
     from flex_query_sync import fetch_trade_confirms_for_ticker
 except ImportError:
@@ -1618,6 +1619,13 @@ def run_market_open_buys(ib: IB):
     stock_holdings = holdings
     if len(stock_holdings) >= MAX_POSITIONS:
         print(f"❌ Portfolio is fully invested with {len(stock_holdings)} stock positions. Standing down.")
+        # Every trigger today is foregone purely for lack of a slot. These rows
+        # are what makes the opportunity cost of MAX_POSITIONS measurable.
+        trigger_audit.record_decisions_bulk(
+            client, triggers, "SKIPPED", trigger_audit.SLOTS_FULL,
+            detail=f"Portfolio full at {len(stock_holdings)}/{MAX_POSITIONS} before cycle",
+            slots_free=0,
+        )
         return
 
     cycle_cash_spent = 0.0
@@ -1636,6 +1644,9 @@ def run_market_open_buys(ib: IB):
 
         # Don't buy a stock we already hold
         if ticker in active_tickers:
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.ALREADY_HELD,
+                detail="Already an open position")
             continue
 
         # ── Cooling-off period: skip tickers sold within the last 3 days ────────
@@ -1645,6 +1656,9 @@ def run_market_open_buys(ib: IB):
             recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
             if recent_sell_res.data:
                 print(f"   ⏳ {ticker} sold within last {COOLING_OFF_DAYS} days — cooling-off period active. Skipping.")
+                trigger_audit.record_trigger_decision(
+                    client, trigger, "SKIPPED", trigger_audit.COOLING_OFF,
+                    detail=f"Sold within {COOLING_OFF_DAYS}d (cutoff {cooling_cutoff})")
                 continue
         except Exception as cool_err:
             notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", cool_err)
@@ -1654,6 +1668,9 @@ def run_market_open_buys(ib: IB):
         ai_grade = trigger.get("ai_grade")
         if ai_grade == "D":
             print(f"   🚫 {ticker} vetoed by AI evaluator (D-grade, conviction < 30). Skipping.")
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.AI_VETO,
+                detail="D-grade, conviction < 30")
             continue
         if ai_grade:
             print(f"   🟢 {ticker} AI grade: {ai_grade} | "
@@ -1681,6 +1698,9 @@ def run_market_open_buys(ib: IB):
                 f"(final_score is NULL — ai_evaluator.py did not rate it). "
                 f"Skipping: refusing to buy on technicals alone."
             )
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.NO_AI_SCORE,
+                detail="final_score NULL — not rated by ai_evaluator.py")
             continue
 
         if trigger_type == "PRE_BREAKOUT_RELAXED":
@@ -1692,6 +1712,13 @@ def run_market_open_buys(ib: IB):
 
         if float(candidate_score) < float(min_score):
             print(f"   🚫 {ticker} {trigger_type} score {candidate_score} < floor {min_score}. Skipping.")
+            # The single most valuable rejection to record: these are the
+            # near-miss candidates whose outcomes are needed to test whether the
+            # score floor is set anywhere near the right level.
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.SCORE_FLOOR,
+                detail=f"score {candidate_score} < floor {min_score}",
+                candidate_score=float(candidate_score), min_score=float(min_score))
             continue
 
         # Size the position as an equal share of remaining capital across unfilled slots.
@@ -1709,10 +1736,19 @@ def run_market_open_buys(ib: IB):
         # Double check active holdings size again
         if stock_held_count >= MAX_POSITIONS:
             print(f"🚫 Portfolio capacity ({MAX_POSITIONS} stocks) reached during loop. Skipping further buys.")
+            trigger_audit.record_decisions_bulk(
+                client, triggers[triggers.index(trigger):], "SKIPPED",
+                trigger_audit.SLOTS_FULL,
+                detail=f"Capacity reached mid-cycle at {stock_held_count}/{MAX_POSITIONS}",
+                slots_free=0)
             break
 
         if available_cash < MIN_POSITION_SIZE:
             print(f"🚫 Insufficient cash to buy {ticker} (floor: ${MIN_POSITION_SIZE:,.0f}). Skipping.")
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.INSUFFICIENT_CASH,
+                detail=f"available ${available_cash:,.0f} < floor ${MIN_POSITION_SIZE:,.0f}",
+                available_cash=available_cash, slots_free=remaining_slots)
             continue
             
         # Buy reason tags the trigger source
@@ -1731,6 +1767,9 @@ def run_market_open_buys(ib: IB):
             print(f"   ⚠️ Contract qualification failed for {ticker}: {_qe}. Halting buy loop.")
             notifier.notify_buy_failure(ticker=ticker, shares=0, error=_qe)
             notifier.notify_buy_loop_halted(ticker=ticker, reason=str(_qe))
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.LOOP_HALTED,
+                detail=f"Contract qualification failed: {_qe}"[:500])
             break
 
         # -- Get price from IBKR (delayed market data) --
@@ -1752,6 +1791,9 @@ def run_market_open_buys(ib: IB):
             price_source  = "prev close (IBKR delayed unavailable)"
         if current_price <= 0:
             print(f"   ⚠️ No valid price for {ticker} — skipping.")
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.NO_PRICE,
+                detail=f"no valid price (source: {price_source})")
             continue
         print(f"   📡 {ticker} price: ${current_price:.2f} (source: {price_source})")
 
@@ -1761,6 +1803,11 @@ def run_market_open_buys(ib: IB):
         if extension_pct > MAX_PIVOT_EXTENSION:
             print(f"   ⛔ {ticker} is {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
                   f"— extended beyond {MAX_PIVOT_EXTENSION*100:.0f}% buy zone. Skipping.")
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.EXTENDED_ABOVE_PIVOT,
+                detail=f"{extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
+                       f"(max {MAX_PIVOT_EXTENSION*100:.0f}%)",
+                price=current_price, extension_pct=extension_pct)
             continue
         # Floor check. The gate above is a CEILING only, so a trigger that has
         # since collapsed below its pivot still passed — with
@@ -1770,6 +1817,10 @@ def run_market_open_buys(ib: IB):
         if extension_pct < -MAX_PIVOT_BREAKDOWN:
             print(f"   ⛔ {ticker} has fallen {abs(extension_pct)*100:.1f}% BELOW pivot "
                   f"${pivot_price:.2f} — breakout failed, not a valid entry. Skipping.")
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.BELOW_PIVOT,
+                detail=f"{abs(extension_pct)*100:.1f}% below pivot ${pivot_price:.2f}",
+                price=current_price, extension_pct=extension_pct)
             continue
         print(f"   ✅ {ticker} within buy zone: {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
               f"(max {MAX_PIVOT_EXTENSION*100:.0f}%)")
@@ -1779,6 +1830,10 @@ def run_market_open_buys(ib: IB):
         shares = int((position_size - PRICE_SAFETY_RESERVE) / current_price)
         if shares <= 0:
             print(f"⚠️ Price of {ticker} (${current_price:.2f}) is too high for the computed position size (${position_size:,.0f}). Skipping.")
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.SHARES_ZERO,
+                detail=f"price ${current_price:.2f} too high for position size ${position_size:,.0f}",
+                price=current_price, available_cash=available_cash, shares=0)
             continue
 
         # Place market buy order on IBKR
@@ -1825,6 +1880,11 @@ def run_market_open_buys(ib: IB):
                 # Skipping to the next ticker would change portfolio construction
                 # priority and is worse than halting for manual intervention.
                 notifier.notify_buy_loop_halted(ticker=ticker, reason=reject_msg)
+                trigger_audit.record_trigger_decision(
+                    client, trigger, "SKIPPED", trigger_audit.BUY_FAILED,
+                    detail=f"0 shares filled: {reject_msg}"[:500],
+                    candidate_score=candidate_score, price=current_price,
+                    shares=0)
                 break
 
             fill_price = round(trade.orderStatus.avgFillPrice, 2)
@@ -1890,6 +1950,15 @@ def run_market_open_buys(ib: IB):
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
             print(f"   Stop-Loss: ${stop_loss_val} | Trail: {pos_stop_loss_pct*100:.2f}% (IBKR-managed)")
+
+            # The positive class for the counterfactual: this trigger's score is
+            # paired with an actual outcome, while the SKIPPED rows are not.
+            trigger_audit.record_trigger_decision(
+                client, trigger, "BOUGHT", trigger_audit.BOUGHT,
+                detail=f"Filled {actual_shares} @ ${fill_price:.2f}",
+                candidate_score=candidate_score, min_score=min_score,
+                price=fill_price, extension_pct=extension_pct,
+                available_cash=available_cash, shares=actual_shares)
 
             # Update loop capacity state immediately after DB write.
             # Must happen before notify_buy so the tracker is correct even if

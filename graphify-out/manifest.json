@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1786298450.308995,
-    "ast_hash": "b3e247757df74f93f05291fd0b7db8bc",
+    "mtime": 1786305357.886194,
+    "ast_hash": "d41420ca4b1a8c52b9d9432e856e087a",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -250,8 +250,8 @@
     "semantic_hash": "98e26f5d88255bb29959ade7fd7b9e83"
   },
   "technical_screener.py": {
-    "mtime": 1785822051.8312836,
-    "ast_hash": "f36a7761971f7552c5ba12062acd63da",
+    "mtime": 1786305170.7150316,
+    "ast_hash": "1ace420399a4356d6e03644bf015d0be",
     "semantic_hash": ""
   },
   "telegram_notifier.py": {
@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
-    "mtime": 1785696688.640455,
-    "ast_hash": "19dfcad2767419691f4c913609798e73",
+    "mtime": 1786305415.956245,
+    "ast_hash": "9225bb685655f5dc3c5b11086f121e11",
     "semantic_hash": ""
   },
   "frontend/index.html": {
@@ -727,6 +727,26 @@
   "decisions/2026-08-09_watchlist-history.md": {
     "mtime": 1786304870.991643,
     "ast_hash": "0e7cf2fa431cc00fd4fd3a3fddde7a60",
+    "semantic_hash": ""
+  },
+  "migrations/add_trigger_history.sql": {
+    "mtime": 1786305158.9605446,
+    "ast_hash": "76896e1ec3d9ac7273b6222c4dfc9f09",
+    "semantic_hash": ""
+  },
+  "tests/test_trigger_audit.py": {
+    "mtime": 1786305345.7505467,
+    "ast_hash": "038ab3ff4faf0a70e711af615c6c68ad",
+    "semantic_hash": ""
+  },
+  "trigger_audit.py": {
+    "mtime": 1786305129.6834254,
+    "ast_hash": "b85c090d3f350d915d2d766dc1d5f0fa",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-09_trigger-history-and-decisions.md": {
+    "mtime": 1786305398.4538114,
+    "ast_hash": "132a5c45e4760aa533364f064d3658a9",
     "semantic_hash": ""
   }
 }
