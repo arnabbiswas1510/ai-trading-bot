@@ -53,10 +53,10 @@ SUPABASE_URL          = os.getenv("SUPABASE_URL")
 SUPABASE_KEY          = os.getenv("SUPABASE_KEY")
 IB_GATEWAY_HOST       = os.getenv("IB_GATEWAY_HOST", "ib-gateway")
 IB_GATEWAY_PORT       = int(os.getenv("IB_GATEWAY_PORT", 4000))
-from config import MAX_POSITIONS  # noqa: E402  (single source of truth; set via .env)
+from config import MAX_POSITIONS, STOP_LOSS_PCT, COOLING_OFF_DAYS  # noqa: E402  (single source of truth; set via .env)
 MIN_POSITION_SIZE     = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
-STOP_LOSS_PCT         = float(os.getenv("STOP_LOSS_PCT", 0.07))
-COOLING_OFF_DAYS      = int(os.getenv("COOLING_OFF_DAYS", 3))
+
+
 TRIGGER_LOOKBACK_DAYS = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION   = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))
 

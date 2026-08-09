@@ -14,7 +14,7 @@ windows when IBKR forces a disconnect.
 
 ### Step 1: Log into IBKR Client Portal
 - Go to: https://www.interactivebrokers.com/portal
-- Log in with `pambi2478` credentials + current Microsoft Authenticator code
+- Log in with your live-account credentials + current Microsoft Authenticator code
 
 ### Step 2: Navigate to Secure Login Settings
 - Click your **username/account** in the top right → **Settings**
@@ -45,7 +45,7 @@ windows when IBKR forces a disconnect.
 - Open Microsoft Authenticator on your phone
 - Tap **+** → **Other account (Google, Facebook, etc.)** or **Work/School account**
 - Tap **"Enter code manually"** (instead of scanning QR)
-- Account name: `IBKR pambi2478`
+- Account name: `IBKR <your-username>`
 - Secret key: paste the Base32 secret you just copied
 - Tap **Add**
 - Verify a 6-digit code is now showing in Microsoft Authenticator

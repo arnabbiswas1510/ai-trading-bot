@@ -1,175 +1,278 @@
 # Configuration Reference
 
-All properties are set via environment variables (`.env` file or Docker environment). No defaults are hardcoded in ways that would silently produce wrong behavior — missing critical variables cause startup failures.
+Every tunable parameter, its default, and what changing it does to trading behaviour.
+
+All configuration is environment-driven (`.env` or Docker environment). **No strategy
+parameter requires a code change.**
+
+> **Shared constants.** `MAX_POSITIONS`, `STOP_LOSS_PCT` and `COOLING_OFF_DAYS` are defined
+> once in `config.py` and imported by every module that trades — including the manual
+> `force_buy.py`, `force_sell.py` and `rotate_positions.py` tools. They previously carried
+> divergent defaults per file, which meant a manual buy attached a different stop than the
+> agent would have. A regression test enforces agreement; see
+> `tests/test_max_positions_config.py`.
 
 ---
 
-## Execution Agent (`execution_agent.py`)
+## Credentials
 
-### IBKR Connection
+| Variable | Required | Notes |
+|---|---|---|
+| `SUPABASE_URL` / `SUPABASE_KEY` | yes | Cloud state store |
+| `FMP_API_KEY` | yes | Price and fundamental data |
+| `OPENAI_API_KEY` | yes | Trigger evaluation; without it every trigger is rejected `NO_AI_SCORE` |
+| `IBKR_LIVE_USER` / `IBKR_LIVE_PASS` / `IBKR_TOTP_SECRET` | yes | Gateway login — see [IBKR TOTP setup](ibkr_totp_setup.md) |
+| `IBKR_ACCOUNT` | conditional | **Required if both live (`U…`) and paper (`DU…`) accounts are visible.** The agent refuses to guess |
+| `IBKR_FLEX_TOKEN` / `IBKR_FLEX_QUERY_ID` | optional | Cash-flow reconciliation. Token expires annually |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_IDS` | optional | Alerts |
 
-| Variable | Default | Type | Description |
-|----------|---------|------|-------------|
-| `IB_GATEWAY_HOST` | `localhost` | string | Hostname of the ib-gateway container |
-| `IB_GATEWAY_PORT` | `7497` | int | API port of the ib-gateway (paper: 7497, live: 4004) |
-
-### Position & Risk Management
-
-| Variable | Default | Type | Description |
-|----------|---------|------|-------------|
-| `MAX_POSITIONS` | `4` | int | Maximum concurrent open positions |
-| `MIN_POSITION_SIZE` | `5000.0` | float | Minimum USD floor per position; buy skipped if cash below this |
-| `STOP_LOSS_PCT` | `0.07` | float | Trailing stop percentage — 7% below peak (IBKR-managed) |
-| `PLATEAU_DAYS` | `10` | int | Days without a new intraday HWM before plateau rotation eligibility |
-| `COOLING_OFF_DAYS` | `3` | int | Days before a stopped-out ticker can be re-bought |
-
-### Buy Trigger Gating
-
-| Variable | Default | Type | Description |
-|----------|---------|------|-------------|
-| `TRIGGER_LOOKBACK_DAYS` | `3` | int | Days back to look for valid triggers (covers weekends/holidays) |
-| `MAX_PIVOT_EXTENSION` | `0.05` | float | Skip if current price >5% above pivot breakout close |
-
-### Moving Average Exit
-
-| Variable | Default | Type | Description |
-|----------|---------|------|-------------|
-| `EXIT_MA_TRIGGER_ENABLED` | `true` | bool | Master enable/disable for MA exit |
-| `EXIT_MA_TYPE` | `EMA` | string | `EMA` or `SMA` |
-| `EXIT_MA_WINDOW` | `21` | int | Lookback window in trading days |
-| `EXIT_MA_BUFFER_PCT` | `0.01` | float | Buffer below MA before exit triggers (1% default) |
-| `EXIT_MA_EOD_ONLY` | `true` | bool | Restrict MA check to 3:45–4:00 PM ET only |
-
-### Market Direction Filter (CANSLIM "M")
-
-| Variable | Default | Type | Description |
-|----------|---------|------|-------------|
-| `MARKET_DIRECTION_FILTER_ENABLED` | `true` | bool | Enable SPY SMA200 bear market gate |
-| `MARKET_DIRECTION_TICKER` | `SPY` | string | Ticker used to gauge market direction |
-| `MARKET_DIRECTION_SMA_WINDOW` | `200` | int | SMA window (O'Neil standard: 200-day) |
-
-### Credentials & APIs
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SUPABASE_URL` | Yes | Supabase project URL |
-| `SUPABASE_KEY` | Yes | Supabase service role key |
-| `FMP_API_KEY` | Yes | Financial Modeling Prep API key (live prices, MA history) |
-| `TELEGRAM_BOT_TOKEN` | Yes | Telegram bot token for notifications |
-| `TELEGRAM_CHAT_IDS` | Yes | Comma-separated list of Telegram chat IDs |
+TradingView requires no credentials.
 
 ---
 
-## Technical Screener (`technical_screener.py`)
+## Portfolio and risk
 
-Runs as a separate daily GitHub Actions job. Scans the watchlist for CANSLIM volume breakout conditions and writes results to `daily_triggers`.
+| Variable | Default | Effect |
+|---|---|---|
+| `MAX_POSITIONS` | `5` | Concurrent positions. Also the technical screener's candidate-quota target |
+| `MIN_POSITION_SIZE` | `5000` | Cash floor; below this no buy is attempted |
+| `PRICE_SAFETY_RESERVE` | `1000` | Withheld per order to absorb IBKR's 15–20 min quote lag |
+| `STOP_LOSS_PCT` | `0.10` | Base trailing stop from peak — the **floor** of the ATR band |
+| `ATR_STOP_MAX_PCT` | `0.12` | Ceiling of the ATR band |
+| `COOLING_OFF_DAYS` | `7` | Re-entry block after a sale |
 
-| Variable | Default | Type | Description |
-|----------|---------|------|-------------|
-| `SMA_WINDOW` | `50` | int | SMA window for above-MA filter |
-| `VOLUME_AVG_WINDOW` | `50` | int | Rolling average window for volume surge calculation |
-| `VOLUME_SURGE_MIN` | `1.40` | float | Minimum volume surge ratio to qualify (1.4x = 40% above avg) |
-| `ROLLING_HIGH_WINDOW` | `252` | int | Trading days for 52-week high calculation |
-| `PIVOT_PROXIMITY` | `0.98` | float | Close must be >= `rolling_high x 0.98` (within 2% of high) |
-| `MIN_PRICE_HISTORY` | `50` | int | Minimum trading days of history required to process a ticker |
-| `FMP_HISTORY_DAYS` | `380` | int | Calendar days of price history requested from FMP |
-| `FMP_API_KEY` | required | string | FMP API key |
-| `SUPABASE_URL` | required | string | Supabase project URL |
-| `SUPABASE_KEY` | required | string | Supabase service role key |
-| `TELEGRAM_BOT_TOKEN` | optional | string | Telegram notifications |
-| `TELEGRAM_CHAT_IDS` | optional | string | Comma-separated chat IDs |
+**Sizing** is `available_cash / remaining_slots`, recomputed before each buy. The
+per-position stop is `max(STOP_LOSS_PCT, min(ATR_STOP_MAX_PCT, 2.5 × entry_atr_pct))` — so
+in practice 10–12%, scaled to the name's own volatility.
 
----
-
-## Supabase Schema
-
-### `portfolio_positions` table
-
-Represents currently open positions managed by the bot.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | uuid | Primary key |
-| `ticker` | text | Stock symbol (e.g. `AAPL`) |
-| `shares` | integer | Number of shares held |
-| `buy_price` | numeric | Average fill price at purchase |
-| `buy_date` | timestamptz | Timestamp of purchase (set at insert) |
-| `buy_reason` | text | Human-readable buy rationale (e.g. "Vol Surge 2.1x") |
-| `buy_source` | text | Trigger source: `daily_triggers` or `momentum_triggers` |
-| `stop_loss` | numeric | Reference stop price at time of buy (`fill x 0.93`); IBKR manages the live trail |
-| `hwm_date` | date | **Date of last observed intraday price high.** Plateau clock: if `today - hwm_date >= PLATEAU_DAYS`, position is eligible for EOD rotation |
-| `oca_group` | text | IBKR OCA group name for the trailing stop order; used by self-healing to avoid double-placing |
-
-> [!NOTE]
-> **Removed columns (no longer written or read):**
-> `high_water_mark` (price), `profit_target`, `is_power_hold`, `power_hold_expiry`.
-> These are safe to drop from the schema (see `migrations/add_hwm_date.sql`).
-
-### `trade_history` table
-
-Archived closed positions.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | uuid | Primary key |
-| `ticker` | text | Stock symbol |
-| `shares` | integer | Number of shares sold |
-| `buy_price` | numeric | Entry fill price |
-| `buy_date` | text | ISO date of purchase |
-| `buy_reason` | text | Buy rationale |
-| `sell_price` | numeric | Exit fill price |
-| `sell_reason` | text | Why it was sold (e.g. "Plateau Rotation — no new HWM in 12 days") |
-| `sell_date` | text | ISO date of sale — used for cooling-off period checks |
-| `profit_loss` | numeric | `(sell_price - buy_price) x shares` |
-| `percent_return` | numeric | `(sell_price / buy_price - 1) x 100` |
-
-### `daily_triggers` table
-
-Output of the technical screener. Refreshed daily (full replace).
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `ticker` | text | Stock symbol |
-| `close_price` | numeric | Closing price at breakout date (used as pivot price) |
-| `volume_surge` | numeric | Volume as multiple of 50-day average |
-| `sma_50` | numeric | 50-day SMA at time of breakout |
-| `rolling_high_52w` | numeric | 52-week rolling high price |
-| `pivot_distance_pct` | numeric | % distance of close from 52-week high (negative = below) |
-| `triggered_at` | date | Date the breakout was detected |
-| `ai_rating` | numeric | AI-generated quality score (used to sort buy priority) |
-| `retention_period` | text | How long to keep this trigger (e.g. `1d`, `2d`) |
-
-### `watchlist` table
-
-Input to the technical screener. Populated by the fundamental screener (separate process).
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `ticker` | text | Stock symbol |
-| `created_at` | timestamptz | When this watchlist entry was added |
-| (other fundamental columns) | varies | See `fundamental_screener.md` |
+Raising `MAX_POSITIONS` with a fully-invested book does **not** free capital. New slots fill
+only as existing positions exit, and the book carries uneven weights until it fully turns
+over.
 
 ---
 
-## Migrations
+## Buy gating
 
-| File | Purpose |
-|------|---------|
-| `migrations/add_hwm_date.sql` | Adds `hwm_date DATE` column to `portfolio_positions`; backfills existing positions to `CURRENT_DATE`; comments out Phase 2 drops (run separately after verifying stability) |
+| Variable | Default | Effect |
+|---|---|---|
+| `TRIGGER_LOOKBACK_DAYS` | `3` | Trigger freshness window (covers weekends/holidays) |
+| `MAX_PIVOT_EXTENSION` | `0.05` | Buy-zone ceiling above pivot |
+| `MAX_PIVOT_BREAKDOWN` | `0.02` | Buy-zone floor below pivot |
+| `MIN_TRIGGER_SCORE` | `60` | Score floor, `BREAKOUT` |
+| `MIN_PRE_BREAKOUT_SCORE` | `65` | Score floor, `PRE_BREAKOUT` |
+| `MIN_RELAXED_TRIGGER_SCORE` | `58` | Score floor, `PRE_BREAKOUT_RELAXED` |
+| `MARKET_DIRECTION_FILTER_ENABLED` | `true` | Suspend buys when SPY < SMA-200 |
+| `MARKET_DIRECTION_SMA_WINDOW` | `200` | Regime lookback |
+| `MARKET_DIRECTION_TICKER` | `SPY` | Regime benchmark |
+
+The market filter gates **buying only** — it never forces an exit — and fails closed on
+missing data.
 
 ---
 
-## `force_buy.py` Properties
+## Exits
 
-Manual buy script (run directly in the execution-agent container). Inherits most config from `.env` but reads a subset:
+### Thesis Stop
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MAX_POSITIONS` | `4` | Position cap |
-| `MIN_POSITION_SIZE` | `5000.0` | Minimum position size |
-| `STOP_LOSS_PCT` | `0.07` | Trailing stop percentage |
-| `COOLING_OFF_DAYS` | `3` | Cooling-off period |
-| `TRIGGER_LOOKBACK_DAYS` | `3` | Trigger lookback |
-| `MAX_PIVOT_EXTENSION` | `0.05` | Pivot extension gate |
+| Variable | Default | Effect |
+|---|---|---|
+| `THESIS_STOP_ENABLED` | `true` | Master switch |
+| `THESIS_STOP_ATR_MULT` | `1.0` | Threshold in units of entry ATR |
+| `THESIS_STOP_START_DAY` | `2` | First eligible trading day |
+| `THESIS_STOP_LAST_DAY` | `5` | Last eligible trading day |
+| `THESIS_STOP_ATR_FALLBACK` | `3.0` | Used when `entry_atr_pct` is missing |
+
+Lowering `THESIS_STOP_ATR_MULT` cuts sooner and more often; 0.75 was tested and produced a
+wider confidence interval than 1.0.
+
+### Armed exit
+
+| Variable | Default | Effect |
+|---|---|---|
+| `ARMED_EXIT_TRAIL_PCT` | `0.006` | Trail distance once armed |
+| `ARMED_EXIT_DEADLINE_HOURS` | `3.25` | Forced market sell if unfilled |
+
+### Early loss and the superseded minimiser
+
+| Variable | Default | Effect |
+|---|---|---|
+| `EARLY_LOSS_STOP_PCT` | `0.02` | Kill-switch threshold, days 0–1 |
+| `INTRADAY_MINIMISER_ENABLED` | `false` | **Superseded by the Thesis Stop** |
+| `INTRADAY_PULLBACK_PCT` | `0.02` | Only used if the minimiser is re-enabled |
+| `INTRADAY_MINIMISER_START_DAY` | `2` | Only used if the minimiser is re-enabled |
+
+Re-enabling the minimiser is not recommended: it fired on positions that had rallied back to
+break-even — i.e. positions that were working — and roughly halved expectancy.
+
+### Moving-average exit
+
+| Variable | Default | Effect |
+|---|---|---|
+| `EXIT_MA_TRIGGER_ENABLED` | `true` | Master switch |
+| `EXIT_MA_TYPE` | `EMA` | `EMA` or `SMA` |
+| `EXIT_MA_WINDOW` | `21` | Period |
+| `EXIT_MA_BUFFER_PCT` | `0.01` | Breach tolerance below the MA |
+| `EXIT_MA_EOD_ONLY` | `true` | Restrict to 15:45–16:00 ET |
+
+Setting `EXIT_MA_EOD_ONLY=false` allows an intraday wick to force a sale the close would not
+have justified.
+
+### Plateau and rotation
+
+| Variable | Default | Effect |
+|---|---|---|
+| `STALE_EXIT_ENABLED` | `true` | Master switch |
+| `STALE_EXIT_DAYS` | `10` | Trading days without a new HWM |
+| `STALE_EXIT_MIN_DAYS_HELD` | `7` | Earliest eligible day |
+| `RANK_REPLACE_THRESHOLD` | `15` | Rotation margin, verdict `PASS` |
+| `RANK_REPLACE_FAIL_THRESHOLD` | `5` | Rotation margin, verdict `FAIL` |
+| `MOMENTUM_HEALTH_RS_WEIGHT` | `0.40` | Mₜ weight — relative strength |
+| `MOMENTUM_HEALTH_VOL_WEIGHT` | `0.35` | Mₜ weight — volume |
+| `MOMENTUM_HEALTH_SENT_WEIGHT` | `0.25` | Mₜ weight — sentiment |
+
+### Power Hold
+
+| Variable | Default | Effect |
+|---|---|---|
+| `POWER_HOLD_ENABLED` | `true` | Master switch |
+| `POWER_HOLD_GAIN_PCT` | `20.0` | Gain required to arm |
+| `POWER_HOLD_TRIGGER_DAYS` | `21` | Arming window (**calendar** days) |
+| `POWER_HOLD_DURATION_DAYS` | `56` | Protection length (**calendar** days) |
+| `POWER_HOLD_TRAIL_PCT` | `0.30` | Trail while power-held |
+
+Disabling Power Hold re-imposes the profit ladder on winners, which caps them near +20%. The
+strategy's returns are outlier-dependent; this switch has more effect on total return than
+almost any other.
+
+### Trailing-stop ladder
+
+| Variable | Default | Effect |
+|---|---|---|
+| `TRAIL_TIME_TIERS_ENABLED` | `false` | Age-based tightening (off) |
+| `BREAKOUT_VERDICT_MIN_GAIN` | `0.01` | Day-3 PASS gain requirement |
+| `BREAKOUT_VERDICT_MIN_VOL_PCT` | `0.75` | Day-3 PASS volume requirement |
+
+Profit tiers are code constants (`TRAIL_PROFIT_TIERS`): +20% → 6.5%, +30% → 6.0%,
++50% → 5.0%.
+
+---
+
+## Fundamental screener
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MIN_QUARTERLY_EPS_GROWTH` | `20` | Diluted EPS QoQ % — the strongest CAN SLIM signal |
+| `MIN_ANNUAL_EPS_GROWTH` | `25` | Diluted EPS YoY TTM % |
+| `MIN_REVENUE_GROWTH` | `15` | Revenue YoY TTM % — blocks cost-cutting posing as growth |
+| `EXCLUDED_SECTORS` | `Finance,Real Estate,Utilities` | Set empty to disable |
+
+Hard-coded floors: price > $15, 30-day average volume > 250,000, market cap > $300M,
+`is_primary` listings only.
+
+---
+
+## Technical screener
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SMA_WINDOW` | `50` | Trend filter period |
+| `VOLUME_AVG_WINDOW` | `50` | Volume baseline period |
+| `VOLUME_SURGE_MIN` | `1.50` | Breakout-bar volume multiple |
+| `ROLLING_HIGH_WINDOW` | `252` | Pivot lookback (~52 weeks) |
+| `PIVOT_PROXIMITY` | `0.95` | Close ≥ rolling high × this |
+| `RS_MIN_GATE` | `50` | Minimum RS percentile vs SPY |
+| `MIN_PRICE_HISTORY` | `50` | Bars required to evaluate a name |
+| `FMP_HISTORY_DAYS` | `380` | Price history fetched per ticker |
+| `PRE_BREAKOUT_PROXIMITY` | `0.08` | Max distance below the high |
+| `PRE_BREAKOUT_VOL_MAX` | `1.00` | Volume must be **contracting** |
+| `PRE_BREAKOUT_UPTREND_MIN` | `2` | Up-closes required of the last 3 |
+| `RELAXED_PRE_BREAKOUT_PROXIMITY` | `0.10` | Quota-fill variant |
+| `RELAXED_PRE_BREAKOUT_VOL_MAX` | `1.10` | Quota-fill variant |
+| `RELAXED_PRE_BREAKOUT_UPTREND_MIN` | `2` | Quota-fill variant |
+| `RELAXED_RS_MIN_GATE` | `50` | Quota-fill variant |
+
+---
+
+## AI evaluator
+
+| Variable | Default | Effect |
+|---|---|---|
+| `AI_BATCH_SIZE` | `8` | Triggers per prompt — small batches avoid lost-in-the-middle degradation |
+| `AI_BATCH_RETRIES` | `1` | Retries for tickers missing from a response |
+| `PRE_BREAKOUT_SCORE_BOOST` | `0` | Optional additive boost for coil setups |
+
+---
+
+## Managed exit tool
+
+Used by `managed_exit.py` for manual liquidation.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MANAGED_EXIT_ATR_FRACTION` | `0.40` | Trail as a fraction of ATR |
+| `MANAGED_EXIT_MIN_TRAIL_PCT` | `0.008` | Lower bound |
+| `MANAGED_EXIT_MAX_TRAIL_PCT` | `0.030` | Upper bound |
+| `MANAGED_EXIT_FLOOR_PCT` | `0.020` | Hard floor below reference |
+| `MANAGED_EXIT_DEADLINE` | `15:50` | Forced completion time (ET) |
+| `MANAGED_EXIT_POLL_SECONDS` | `30` | Poll interval |
+| `MANAGED_EXIT_DEFAULT_ATR_PCT` | `2.0` | Used when ATR is unavailable |
+
+---
+
+## Infrastructure
+
+| Variable | Default | Effect |
+|---|---|---|
 | `IB_GATEWAY_HOST` | `ib-gateway` | Gateway hostname |
-| `IB_GATEWAY_PORT` | `4004` | Gateway port |
+| `IB_GATEWAY_PORT` | `4000` | Gateway API port |
+| `LOG_DIR` | `/app/logs` | Log destination |
+| `DB_PATH` | `./trading_bot.db` | Local SQLite (UI settings only) |
+
+`READ_ONLY_API=no` must be set in the gateway container or order submission is rejected.
+
+---
+
+## Database schema
+
+### Live state
+
+| Table | Purpose |
+|---|---|
+| `watchlist` | Current fundamental survivors. **Truncated and rewritten daily** |
+| `daily_triggers` | Today's technical triggers, enriched with scores. **Truncated daily** |
+| `portfolio_positions` | Open positions and all exit-rule state |
+| `account_balances` | IBKR cash and equity snapshots |
+
+### Append-only research tables
+
+| Table | Purpose |
+|---|---|
+| `watchlist_history` | Point-in-time fundamental snapshots, with sector |
+| `trigger_history` | Every trigger ever emitted, fully scored, plus forward-return outcomes |
+| `trigger_decisions` | Every buy and skip with a reason code — the control group |
+| `trade_history` | Closed trades |
+| `cash_flows` | Deposits and withdrawals |
+
+Key `portfolio_positions` columns driving exits: `hwm_price`, `hwm_date`, `stop_loss_pct`,
+`entry_atr_pct`, `closed_above_entry`, `power_hold`, `exit_armed*`, `breakout_verdict`,
+`highest_unrealized_pct`.
+
+### Migrations
+
+Apply the SQL in `migrations/` before first run. Several rules degrade gracefully but
+**operate below design strength** until their migration is applied — most notably
+`add_closed_above_entry.sql`, without which the Thesis Stop uses a conservative fallback and
+fires less often than intended.
+
+---
+
+## Changing parameters safely
+
+1. Edit `.env`
+2. `docker compose up -d` to restart the affected services
+3. Confirm the value took effect in the agent log at the next cycle
+
+Strategy parameters in this repository were selected via paired stationary-block bootstrap
+across two independent universes, not by single-path optimisation. Changing one on the basis
+of a single backtest run — or a handful of live trades — is how a strategy gets overfitted.
+The ADRs in `decisions/` record what was tested, what was rejected, and why.

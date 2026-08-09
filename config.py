@@ -36,3 +36,16 @@ import os
 #
 # To change slot count: set MAX_POSITIONS in .env and restart. Nothing else.
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 5))
+
+# ── Risk ─────────────────────────────────────────────────────────────────────
+# Base trailing stop, measured from the position's PEAK, not from entry. Widened
+# 7% -> 10% on 2026-08-04: 7% was inside the normal daily range of the higher-ATR
+# names the screener surfaces, so it was stopping out working positions on noise.
+# The live per-position stop is max(STOP_LOSS_PCT, min(ATR_STOP_MAX_PCT,
+# 2.5 x entry ATR%)), so this acts as the floor of that band.
+STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.10))
+
+# Days a ticker is ineligible for re-entry after being sold. Widened 3 -> 7:
+# re-buying a name two days after it stopped out repeatedly re-entered the same
+# failing setup.
+COOLING_OFF_DAYS = int(os.getenv("COOLING_OFF_DAYS", 7))

@@ -68,9 +68,11 @@ IB_HOST      = os.getenv("IB_GATEWAY_HOST", "ib-gateway")
 IB_PORT      = int(os.getenv("IB_GATEWAY_PORT", 4000))
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-MAX_POSITIONS         = int(os.getenv("MAX_POSITIONS", 4))
-STOP_LOSS_PCT         = float(os.getenv("STOP_LOSS_PCT", 0.07))
-COOLING_OFF_DAYS      = int(os.getenv("COOLING_OFF_DAYS", 3))
+from config import (  # noqa: E402  (single source of truth; set via .env)
+    MAX_POSITIONS, STOP_LOSS_PCT, COOLING_OFF_DAYS,
+)
+
+
 TRIGGER_LOOKBACK_DAYS = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION   = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))
 CLIENT_ID             = 1   # Required for cash account sells (must stop agent first)

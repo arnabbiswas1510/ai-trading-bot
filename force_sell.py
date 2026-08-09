@@ -55,7 +55,8 @@ IB_HOST      = os.getenv("IB_GATEWAY_HOST", "ib-gateway")
 IB_PORT      = int(os.getenv("IB_GATEWAY_PORT", 4000))
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.07))
+from config import STOP_LOSS_PCT  # noqa: E402  (single source of truth; set via .env)
+
 
 # clientId=1: must match the execution-agent's session so IBKR cash account
 # recognises the sell as closing a long (not opening a short).

@@ -26,22 +26,40 @@ import json, os, sys
 sys.path.insert(0, os.path.join(%r, "backend"))
 sys.path.insert(0, %r)
 import config, execution_agent, force_buy, technical_screener, backtester
+import rotate_positions, force_sell
 print(json.dumps({
-    "config": config.MAX_POSITIONS,
-    "execution_agent": execution_agent.MAX_POSITIONS,
-    "force_buy": force_buy.MAX_POSITIONS,
-    "technical_screener": technical_screener.MAX_POSITIONS,
-    "backtester": backtester.DEFAULT_MAX_POSITIONS,
+    "max_positions": {
+        "config": config.MAX_POSITIONS,
+        "execution_agent": execution_agent.MAX_POSITIONS,
+        "force_buy": force_buy.MAX_POSITIONS,
+        "technical_screener": technical_screener.MAX_POSITIONS,
+        "rotate_positions": rotate_positions.MAX_POSITIONS,
+        "backtester": backtester.DEFAULT_MAX_POSITIONS,
+    },
+    "stop_loss_pct": {
+        "config": config.STOP_LOSS_PCT,
+        "execution_agent": execution_agent.STOP_LOSS_PCT,
+        "force_buy": force_buy.STOP_LOSS_PCT,
+        "rotate_positions": rotate_positions.STOP_LOSS_PCT,
+        "force_sell": force_sell.STOP_LOSS_PCT,
+    },
+    "cooling_off_days": {
+        "config": config.COOLING_OFF_DAYS,
+        "execution_agent": execution_agent.COOLING_OFF_DAYS,
+        "force_buy": force_buy.COOLING_OFF_DAYS,
+        "rotate_positions": rotate_positions.COOLING_OFF_DAYS,
+    },
 }))
 """ % (ROOT, ROOT)
 
 
-def _resolve(value=None):
-    """Return each module's MAX_POSITIONS under a given env value."""
+def _resolve(value=None, var="MAX_POSITIONS"):
+    """Return each module's view of the shared constants under a given env value."""
     env = dict(os.environ)
-    env.pop("MAX_POSITIONS", None)
+    for k in ("MAX_POSITIONS", "STOP_LOSS_PCT", "COOLING_OFF_DAYS"):
+        env.pop(k, None)
     if value is not None:
-        env["MAX_POSITIONS"] = str(value)
+        env[var] = str(value)
     res = subprocess.run([sys.executable, "-c", _PROBE], capture_output=True,
                          text=True, env=env, cwd=ROOT, timeout=120)
     assert res.returncode == 0, f"probe failed: {res.stderr[-2000:]}"
@@ -49,27 +67,48 @@ def _resolve(value=None):
 
 
 class TestSingleSourceOfTruth:
-    def test_all_modules_agree_on_default(self):
-        vals = _resolve()
+    @pytest.mark.parametrize("const", ["max_positions", "stop_loss_pct",
+                                       "cooling_off_days"])
+    def test_all_modules_agree_on_default(self, const):
+        vals = _resolve()[const]
         assert len(set(vals.values())) == 1, (
-            f"MAX_POSITIONS defaults diverged across modules: {vals}. "
-            "They must all resolve to the same number or the screener will "
-            "target a different portfolio size than the agent fills."
+            f"{const} defaults diverged across modules: {vals}. force_buy.py and "
+            "rotate_positions.py place REAL orders — a divergent stop or "
+            "cooling-off default there silently trades a different strategy."
         )
 
-    def test_default_is_five_per_adr(self):
+    def test_defaults_match_the_adrs(self):
         vals = _resolve()
-        assert vals["config"] == 5, (
+        assert vals["max_positions"]["config"] == 5, (
             "ADR 2026-08-04_power-hold-trail-and-five-slots.md selected 5 slots "
             "to cut outlier dependence (top-10 trades 109% -> 92% of P/L)."
         )
+        assert vals["stop_loss_pct"]["config"] == 0.10, (
+            "Base trail was widened 7% -> 10%; 7% sat inside the normal daily "
+            "range of the higher-ATR names the screener surfaces."
+        )
+        assert vals["cooling_off_days"]["config"] == 7
 
     @pytest.mark.parametrize("value", [3, 4, 6, 7])
-    def test_env_var_drives_every_module(self, value):
+    def test_max_positions_env_drives_every_module(self, value):
         """Changing slot count must need a .env edit only — never a code change."""
-        vals = _resolve(value)
+        vals = _resolve(value)["max_positions"]
         assert set(vals.values()) == {value}, (
             f"MAX_POSITIONS={value} did not propagate everywhere: {vals}"
+        )
+
+    @pytest.mark.parametrize("value", ["0.07", "0.12"])
+    def test_stop_loss_env_drives_every_module(self, value):
+        vals = _resolve(value, var="STOP_LOSS_PCT")["stop_loss_pct"]
+        assert set(vals.values()) == {float(value)}, (
+            f"STOP_LOSS_PCT={value} did not propagate everywhere: {vals}"
+        )
+
+    @pytest.mark.parametrize("value", [3, 14])
+    def test_cooling_off_env_drives_every_module(self, value):
+        vals = _resolve(value, var="COOLING_OFF_DAYS")["cooling_off_days"]
+        assert set(vals.values()) == {value}, (
+            f"COOLING_OFF_DAYS={value} did not propagate everywhere: {vals}"
         )
 
 
@@ -81,12 +120,15 @@ class TestNoLocalRedeclaration:
         ships as a separate image that does not contain config.py.
         """
         offenders = []
-        for name in ("execution_agent.py", "force_buy.py", "technical_screener.py"):
+        modules = ("execution_agent.py", "force_buy.py", "technical_screener.py",
+                   "rotate_positions.py", "force_sell.py")
+        for name in modules:
             path = os.path.join(os.path.dirname(__file__), "..", name)
             with open(path, encoding="utf-8") as fh:
                 src = fh.read()
-            if 'getenv("MAX_POSITIONS"' in src or "environ.get(\"MAX_POSITIONS\"" in src:
-                offenders.append(name)
+            for const in ("MAX_POSITIONS", "STOP_LOSS_PCT", "COOLING_OFF_DAYS"):
+                if f'getenv("{const}"' in src or f'environ.get("{const}"' in src:
+                    offenders.append((name, const))
         assert not offenders, (
             f"{offenders} re-read MAX_POSITIONS from the environment instead of "
             "importing it from config.py, reintroducing the drift this guards."

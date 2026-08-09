@@ -1,273 +1,222 @@
-# Technical Triggers Logic
+# Technical Triggers
 
-## Overview
+Setup detection. Runs against the fundamental watchlist after the close and writes scored
+candidates for the next session's open.
 
-**File:** `technical_screener.py`
-
-Runs daily on the fundamental watchlist from Supabase. Each ticker is checked for a CANSLIM-style price/volume breakout. Passing tickers are written to the `daily_triggers` table, which the execution agent reads at market open to place buy orders.
+**Source:** `technical_screener.py` · **Schedule:** Mon–Fri, after the fundamental screen ·
+**Output:** `daily_triggers`
 
 ---
 
-## Pipeline
+## Position in the pipeline
+
+The fundamental screen answers *is this a quality growth business?* This stage answers *is
+its price structure signalling accumulation right now?* Both must be true. Fundamentals
+without a setup is a watchlist; a setup without fundamentals is a chart pattern.
 
 ```
-Supabase watchlist (latest run)
+watchlist (latest run)
     │
-    ▼
-Fetch EOD price history via FMP (last 380 calendar days)
+    ▼  FMP EOD history — 380 calendar days, ≥ 50 bars required
     │
-    ▼
-Compute: SMA-50 | Avg Volume-50 | 52-week Rolling High
+    ▼  SMA-50 · 50-day average volume · 252-day rolling high · ATR% · RS vs SPY
     │
-    ▼
-Apply 3 breakout conditions (ALL must pass)
+    ▼  Phase 1  BREAKOUT
+    ▼  Phase 2  PRE_BREAKOUT            (names not already triggered)
+    ▼  Phase 3  PRE_BREAKOUT_RELAXED    (only if quota unmet)
     │
-    ▼
-Supabase daily_triggers table  (pruned at 56 days)
+    ▼  archive previous run → trigger_history, then truncate
+    │
+    ▼  daily_triggers  →  ai_evaluator.py scores in place
 ```
+
+Only the **most recent** watchlist run is screened, so stale fundamental candidates are
+never carried forward.
 
 ---
 
-## Step 1 — Watchlist Fetch
+## Relative strength
 
-Fetches only the **most recent run's tickers** from Supabase:
+RS is computed once per run and applied to every candidate:
 
-```python
-# Gets the single latest timestamp, then fetches all tickers from that run
-latest_ts = watchlist.select("created_at").order(desc).limit(1)
-tickers = watchlist.select("ticker").eq("created_at", latest_ts)
+```
+RS percentile = 12-week stock return, ranked against the 12-week SPY return
 ```
 
-This ensures only the freshest fundamental candidates are screened technically, not stale prior-week entries.
+`RS_MIN_GATE` (50) enforces O'Neil's leadership requirement — the stock must be outperforming
+the index, not merely rising with it. A stock making highs in a market making larger highs is
+a laggard.
+
+Missing history yields a neutral 50 rather than a rejection.
 
 ---
 
-## Step 2 — Price History Download
+## Trigger types
 
-**Endpoint:** `GET /stable/historical-price-eod/full?symbol={ticker}&from={from}&to={to}`
+Evaluated in priority order; a name that triggers in an earlier phase is not reconsidered.
 
-- **Lookback window:** 380 calendar days (guarantees 252+ trading days for a full 52-week high)
-- **Minimum required:** 50 trading days (tickers with less data are skipped)
-- **Retry logic:** 3 attempts, exponential backoff (1s → 2s → 4s), handles HTTP 429
+### `BREAKOUT` — the primary signal
 
-Data sorted ascending by date before indicator calculation.
+All three must hold on the latest bar:
 
----
-
-## Step 3 — Indicator Computation
-
-All indicators computed on the sorted daily OHLCV DataFrame:
-
-### 50-Day Simple Moving Average (SMA-50)
-```python
-df['sma_50'] = df['close'].rolling(window=50).mean()
-```
-
-### 50-Day Average Volume
-```python
-df['avg_volume_50'] = df['volume'].rolling(window=50).mean()
-```
-
-### 52-Week Rolling High
-```python
-window_size = min(252, len(df))   # Graceful handling for newer stocks
-df['rolling_high_52w'] = df['high'].rolling(
-    window=window_size,
-    min_periods=min(50, window_size)
-).max()
-```
-
-Uses `high` (not `close`) to capture true intraday highs in the 52-week range.
-
----
-
-## Step 4 — Breakout Conditions (All 3 Required)
-
-All conditions are evaluated on **today's bar** (`df.iloc[-1]`):
-
-### Condition 1 — Above 50-Day SMA
-```python
-is_above_50ma = current_close > sma_50
-```
-Price must be in a confirmed medium-term uptrend.
-
-### Condition 2 — Volume Surge >= 40% Above Average
-```python
-volume_surge_ratio = today_volume / avg_vol_50
-has_volume_surge = volume_surge_ratio >= 1.40
-```
-Requires today's volume to be at least **1.4× the 50-day average** — indicates institutional accumulation driving the move.
-
-### Condition 3 — Within 2% of 52-Week Rolling High
-```python
-is_breaking_high = current_close >= (rolling_high_52w * 0.98)
-```
-Price must be at or near a new 52-week high — the CANSLIM "pivot point" / breakout zone.
-
----
-
-## Configuration Parameters
-
-| Parameter | Default |
+| Condition | Test |
 |---|---|
-| `SMA_WINDOW` | `50` |
-| `VOLUME_AVG_WINDOW` | `50` |
-| `VOLUME_SURGE_MIN` | `1.50` |
-| `ROLLING_HIGH_WINDOW` | `252` |
-| `PIVOT_PROXIMITY` | `0.95` |
-| `MIN_PRICE_HISTORY` | `50` |
-| `FMP_HISTORY_DAYS` | `380` |
-| `RS_MIN_GATE` | `50` |
-| `MAX_POSITIONS` | `4` |
-| `RELAXED_PRE_BREAKOUT_PROXIMITY` | `0.10` |
-| `RELAXED_PRE_BREAKOUT_VOL_MAX` | `1.10` |
-| `RELAXED_RS_MIN_GATE` | `50` |
+| Trend | `close > SMA-50` |
+| Volume surge | `volume ≥ 1.50 × 50-day average` |
+| Pivot proximity | `close ≥ 252-day rolling high × 0.95` |
+
+Plus `RS ≥ 50`.
+
+The volume condition is what distinguishes a breakout from a drift. Price can cross a pivot
+on thin trade and fall straight back; **expanded volume is the evidence of institutional
+participation** — buyers with the size to sustain a move.
+
+`PIVOT_PROXIMITY = 0.95` admits names within 5% of the rolling high rather than requiring a
+literal new high, which catches the breakout bar itself rather than only its aftermath.
+
+### `PRE_BREAKOUT` — the coil
+
+Anticipates the breakout rather than reacting to it:
+
+| Condition | Test |
+|---|---|
+| Proximity | Within **8%** below the rolling high |
+| Trend | `close > SMA-50` — a coil, not a breakdown |
+| Volume | Last **3-day** average **< 1.00 ×** the 50-day average — *contracting* |
+| Advance | ≥ 2 of the last 3 closes up |
+| RS | ≥ 50 |
+
+The inverted volume requirement is the point. A base that tightens on **declining** volume
+means sellers are exhausted — supply has been absorbed. That is the classic pre-breakout
+condition, and entering here means entering before the pivot rather than chasing it.
+
+The trade-off is that confirmation has not arrived. This is why a pre-breakout is held to a
+*higher* score floor at the buy stage (65) than a confirmed breakout (60).
+
+### `PRE_BREAKOUT_RELAXED` — quota fill
+
+Identical structure with widened tolerances: proximity 10%, volume ≤ 1.10×.
+
+**Emitted only when the strict phases produce fewer than `MAX_POSITIONS` candidates.** The
+target is deliberately tied to portfolio capacity — the screen aims to give the buy loop
+enough options to fill the book without dropping quality gates entirely.
+
+Relaxed triggers carry the lowest score floor at the buy stage (58) but are, by construction,
+the weakest candidates of the day. If the book is routinely being filled from this phase, the
+constraint is upstream: the fundamental screen is not producing enough names in a genuine
+setup.
 
 ---
 
-## Quota Waterfall (`at least MAX_POSITIONS options`)
+## Scoring
 
-- Screener runs strict `BREAKOUT` + strict `PRE_BREAKOUT` first.
-- If total triggers are still below `MAX_POSITIONS`, it runs a controlled fallback:
-  - `trigger_type=PRE_BREAKOUT_RELAXED`
-  - Uses relaxed pre-breakout thresholds (`RELAXED_PRE_BREAKOUT_*`) while keeping RS gate enforced.
-- This keeps daily option count up without fully dropping quality gates.
+Each trigger receives a technical quality score from volume surge magnitude, distance from
+pivot, and extension above SMA-50. This is one of five components later combined by
+`ai_evaluator.py`:
 
----
+| Component | Weight |
+|---|---|
+| Technical | 30% |
+| Liquidity | 25% |
+| AI rating | 25% |
+| Sentiment | 10% |
+| RS vs SPY | 10% |
 
-## Step 5 — Breakout Record Construction
+A **failure penalty** may be applied from `breakout_learnings`, which records parameter
+combinations that have previously failed.
 
-If all 3 conditions pass, the following record is created:
-
-| Field | Calculation | Description |
-|-------|-------------|-------------|
-| `ticker` | — | Stock symbol |
-| `close_price` | `current_close` | Today's closing price |
-| `volume_surge` | `today_volume / avg_vol_50` | Volume ratio (e.g. 1.65 = 65% above avg) |
-| `sma_50` | `df['close'].rolling(50).mean()[-1]` | 50-day SMA value |
-| `rolling_high_52w` | Max high over up to 252 trading days | 52-week high anchor |
-| `pivot_distance_pct` | `((close / rolling_high) - 1.0) × 100` | % above/below the 52w high (negative = below) |
-
----
-
-## Step 6 — Supabase Persistence
-
-**Table:** `daily_triggers`
-
-```python
-client.table("daily_triggers").insert(triggers).execute()
-```
-
-**Pruning:** Records older than **56 days** are deleted on each run:
-```python
-prune_threshold = today - timedelta(days=56)
-client.table("daily_triggers").delete().lt("triggered_at", prune_threshold).execute()
-```
+`ATR%` and `est_days_to_target` are computed here and persisted. `entry_atr_pct` is later
+copied onto the position at fill and becomes the scaling factor for the
+[Thesis Stop](sell_logic.md#3-thesis-stop--days-25) — a trigger written without it forces
+that rule onto a generic 3.0% fallback.
 
 ---
 
-## Breakout Signal Summary
+## Trigger archive
 
-| Indicator | Threshold | Purpose |
-|-----------|-----------|---------|
-| Price vs. SMA-50 | > SMA-50 | Medium-term trend confirmation |
-| Volume Surge | >= 1.40x 50-day avg | Institutional demand signal |
-| 52-Week High Proximity | Within 2% of rolling high | CANSLIM pivot breakout zone |
+`daily_triggers` is current-state and truncated on every run. Before truncation, the
+**outgoing** rows are appended to `trigger_history`.
 
-A ticker must pass **all three** to generate a trigger. There is no scoring or ranking — it is a binary pass/fail gate.
+> **Archive the OUTGOING rows, not the incoming ones.** `ai_evaluator.py` writes
+> `ai_rating`, `final_score` and `score_rationale` back into `daily_triggers` *after* the
+> screener inserts. Archiving the rows being inserted would therefore store NULL scores — a
+> total, silent failure of the archive's purpose. The outgoing rows are fully scored and were
+> the basis of an actual trading decision. A test asserts the archive is fed from a `SELECT`.
 
----
-
-## Edge Cases Handled
-
-| Scenario | Handling |
-|----------|----------|
-| Fewer than 50 days of history | Skipped with warning |
-| Fewer than 252 days (newer stock) | 52w window shrinks to available history, min 50 days |
-| FMP API error / timeout | Skipped with error log |
-| HTTP 429 rate limit | Exponential backoff retry (up to 3x) |
-| Zero avg volume | `volume_surge_ratio` defaults to 0 (fails condition) |
-| No breakouts found | DB insert skipped, log message only |
-
-## Step 4: AI Breakout Evaluation
-After basic technical thresholds are met, an AI Evaluator (using OpenAI's LLM) scores each breakout on a scale of 0-100 based on CANSLIM principles (combining EPS growth, volume surge, and pivot proximity). The bot will prioritize buying breakouts with the highest ai_rating.
-
+`trigger_history` also carries forward-return outcomes, attached weekly — see below.
 
 ---
 
-## Step 5: Point-in-Time Archive (`trigger_history` / `trigger_decisions`)
+## Decision log
 
-`daily_triggers` is a **current-state** table — it is truncated on every screener
-run. At the time this was added the live table held nine rows: one day. Since at
-most 4 of N daily triggers are ever bought, the rejected candidates — the control
-group — were being deleted, leaving `trade_history` as a record of only the
-candidates already judged good.
+Every buy-loop verdict is appended to `trigger_decisions` with a stable reason code:
 
-Two append-only tables preserve it. See
-`decisions/2026-08-09_trigger-history-and-decisions.md`.
-
-### `trigger_history` — what the screener saw
-
-One immutable row per `(triggered_at, ticker, trigger_type)`, never pruned,
-carrying every scoring field including `score_rationale`.
-
-> **Archived at truncate time, capturing the OUTGOING rows.** `ai_evaluator.py`
-> writes scores back *after* `technical_screener` inserts, so archiving the
-> incoming rows would store NULL `ai_rating`/`final_score` and silently defeat
-> the purpose. The outgoing rows are fully scored and already acted upon.
-
-### `trigger_decisions` — what the bot did, and why
-
-One row per `(decision_date, ticker, trigger_type)` with `decision`
-(BOUGHT/SKIPPED) and a stable `reason_code`:
-
-| Category | Codes |
+| Class | Codes |
 |---|---|
 | Bought | `BOUGHT` |
-| Quality gate | `AI_VETO`, `NO_AI_SCORE`, `SCORE_FLOOR`, `EXTENDED_ABOVE_PIVOT`, `BELOW_PIVOT` |
-| Capacity (`is_capacity = TRUE`) | `SLOTS_FULL`, `INSUFFICIENT_CASH`, `SHARES_ZERO` |
-| Other | `ALREADY_HELD`, `COOLING_OFF`, `BUY_FAILED`, `LOOP_HALTED` |
+| Quality | `AI_VETO`, `NO_AI_SCORE`, `SCORE_FLOOR`, `EXTENDED_ABOVE_PIVOT`, `BELOW_PIVOT` |
+| Capacity | `SLOTS_FULL`, `INSUFFICIENT_CASH`, `SHARES_ZERO` |
+| Other | `ALREADY_HELD`, `COOLING_OFF`, `NO_PRICE`, `BUY_FAILED`, `LOOP_HALTED` |
 
-The `is_capacity` split matters: a name skipped for lack of a slot says nothing
-about the quality model, but everything about the cost of `MAX_POSITIONS`.
+`trade_history` alone cannot evaluate the buy model — it contains only candidates that passed
+every gate, which is selection on the dependent variable. The skip log is the control group.
 
-Scores are snapshotted onto the decision row rather than joined, because a
-trigger may be re-scored on a later run.
+Scores are snapshotted onto the decision row rather than joined, because a trigger may be
+re-scored on a later run.
 
-All audit writes are **non-fatal** — a research feature must never interrupt
-live screening or trading.
+All audit writes are non-fatal; research instrumentation must never interrupt live screening.
 
-Setup: run `migrations/add_trigger_history.sql` once.
+---
 
-## Step 6 — Forward-return labels (`backfill_trigger_outcomes.py`)
+## Forward-return outcomes
 
-A stored trigger is only useful once we know what the stock did next. A weekly
-job (Sundays 12:00 UTC, `.github/workflows/weekly_trigger_outcomes.yml`) fills
-outcome columns on `trigger_history` for triggers that have settled.
+A weekly job (`backfill_trigger_outcomes.py`, Sundays 12:00 UTC) attaches realised outcomes
+to settled triggers.
 
 | Column | Meaning |
 |---|---|
-| `entry_ref_price` / `entry_ref_date` | The **next session's open** after the trigger — what the bot would actually have paid |
-| `fwd_1d_pct`, `fwd_5d_pct`, `fwd_20d_pct` | Close of the Nth session **of holding**, entry session counted as session 1 |
-| `max_gain_20d_pct` / `max_drawdown_20d_pct` | Best/worst excursion over the hold, **including** the entry session |
-| `ever_above_entry` | Did it ever trade above the entry reference — the empirical twin of the Thesis Stop's `closed_above_entry` latch |
+| `entry_ref_price` / `entry_ref_date` | The **next session's open** — what the bot would have paid |
+| `fwd_1d_pct` / `fwd_5d_pct` / `fwd_20d_pct` | Close of the Nth session **of holding**, entry counted as session 1 |
+| `max_gain_20d_pct` / `max_drawdown_20d_pct` | Best and worst excursion, **including** the entry session |
+| `ever_above_entry` | Empirical twin of the Thesis Stop's `closed_above_entry` latch |
 | `bench_fwd_20d_pct` / `alpha_20d_pct` | Same-window SPY return and the excess over it |
-| `outcome_bars` | Sessions actually measured (short windows are left unwritten) |
+| `outcome_bars` | Sessions measured; short windows are left unwritten |
 
 Two conventions are load-bearing and neither announces itself if broken:
 
-1. **Entry is the next open, not the trigger close.** The bot buys at market
-   open the morning after a trigger; measuring from the trigger close would
-   credit an overnight gap the strategy never captured.
-2. **`fwd_1d` is the entry day's own close.** This matches the "Day 1 / Day 2"
-   language used throughout the project and the window the Thesis Stop watches.
+1. **Entry is the next session's open, not the trigger close.** The bot buys at the open the
+   morning after a trigger. Measuring from the trigger close would credit an overnight gap
+   that was never captured.
+2. **`fwd_1d` is the entry day's own close** — matching the day-numbering used by every
+   day-gated exit rule.
 
-Only triggers older than 34 calendar days (~20 trading days plus holiday
-margin) are processed, and rows with too few bars are skipped rather than
-recorded on a partial window. The job selects on `outcomes_computed_at IS NULL`,
-so it is idempotent and resumable.
+Only triggers older than 34 calendar days (~20 sessions plus holiday margin) are processed,
+and the job is idempotent (`outcomes_computed_at IS NULL`).
 
-Run manually with `python3 backfill_trigger_outcomes.py --dry-run [--limit N]`.
+Manual run: `python3 backfill_trigger_outcomes.py --dry-run [--limit N]`
 
-Setup: run `migrations/add_trigger_outcomes.sql` (requires
-`add_trigger_history.sql` first).
+---
+
+## Parameters
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SMA_WINDOW` | `50` | Trend filter |
+| `VOLUME_AVG_WINDOW` | `50` | Volume baseline |
+| `VOLUME_SURGE_MIN` | `1.50` | Breakout volume multiple |
+| `ROLLING_HIGH_WINDOW` | `252` | Pivot lookback |
+| `PIVOT_PROXIMITY` | `0.95` | Breakout proximity to the high |
+| `RS_MIN_GATE` | `50` | Leadership floor |
+| `MIN_PRICE_HISTORY` | `50` | Bars required |
+| `FMP_HISTORY_DAYS` | `380` | History fetched |
+| `PRE_BREAKOUT_PROXIMITY` | `0.08` | Coil distance below high |
+| `PRE_BREAKOUT_VOL_MAX` | `1.00` | Coil volume ceiling |
+| `PRE_BREAKOUT_UPTREND_MIN` | `2` | Up-closes of last 3 |
+| `RELAXED_*` | see [configuration](configuration.md) | Quota-fill variants |
+
+---
+
+## Setup
+
+Run `migrations/add_trigger_history.sql`, then `migrations/add_trigger_outcomes.sql`. Both
+are additive; the first self-seeds from the current `daily_triggers`.

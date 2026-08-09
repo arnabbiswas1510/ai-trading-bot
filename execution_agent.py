@@ -149,7 +149,7 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 # handful of outlier trades (top-10 trades fall from 109% -> 92% of total P/L on
 # the growth universe, 98% -> 74% on the broad one). The CAGR/drawdown gaps
 # themselves are inside the noise floor; the concentration reduction is not.
-from config import MAX_POSITIONS  # noqa: E402  (single source of truth; set via .env)
+from config import MAX_POSITIONS, STOP_LOSS_PCT, COOLING_OFF_DAYS  # noqa: E402  (single source of truth; set via .env)
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 # Base trailing stop, measured from the position's PEAK (not from entry — this
 # is not O'Neil's 7-8% hard stop from cost, it is much tighter in practice).
@@ -166,7 +166,7 @@ from config import MAX_POSITIONS  # noqa: E402  (single source of truth; set via
 #
 # Max per-trade loss rises from 7% to 10%. Hold time barely moves (avg 9d -> 12d,
 # max 60d either way) because the plateau exit, not the stop, bounds hold length.
-STOP_LOSS_PCT            = float(os.getenv("STOP_LOSS_PCT", 0.10))
+
 # Upper bound for the ATR-derived per-position stop. Lowered 0.14 -> 0.12: 14%
 # measured worse than the 10-12% band on both universes, clearly so on the
 # growth names (+34.5 vs +46.4 full period).
@@ -219,7 +219,7 @@ TRAIL_TIME_TIERS: list[tuple[int, float]] = [
 #     1 day   BROAD +16.6/-1.2   GROWTH +18.0/+9.2
 #     7 days  BROAD +16.6/-1.2   GROWTH +22.5/+13.9
 # A modest, consistent gain and no downside in either universe.
-COOLING_OFF_DAYS         = int(os.getenv("COOLING_OFF_DAYS", 7))
+
 MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
 MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
