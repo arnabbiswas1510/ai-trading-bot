@@ -15,8 +15,8 @@
     "semantic_hash": ""
   },
   "backend/backtester.py": {
-    "mtime": 1785202226.7600539,
-    "ast_hash": "12a37f9648461e20676776bd85c7f5e0",
+    "mtime": 1786306804.6938524,
+    "ast_hash": "c2e8f10bc14a078cc87b7162adde7101",
     "semantic_hash": ""
   },
   "backend/database.py": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1786305357.886194,
-    "ast_hash": "d41420ca4b1a8c52b9d9432e856e087a",
+    "mtime": 1786306795.2678907,
+    "ast_hash": "bf91c97cd9f6bba4a467e5edf41267b2",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -50,8 +50,8 @@
     "semantic_hash": "654b618b53b39b931eb3948d1840673e"
   },
   "force_buy.py": {
-    "mtime": 1786289636.4704502,
-    "ast_hash": "84328c7b0478ab58198f4d8361529585",
+    "mtime": 1786306795.258517,
+    "ast_hash": "dca06bc503dc6026107a34e0e5c52c96",
     "semantic_hash": ""
   },
   "force_sell.py": {
@@ -250,8 +250,8 @@
     "semantic_hash": "98e26f5d88255bb29959ade7fd7b9e83"
   },
   "technical_screener.py": {
-    "mtime": 1786305170.7150316,
-    "ast_hash": "1ace420399a4356d6e03644bf015d0be",
+    "mtime": 1786306917.5523617,
+    "ast_hash": "7f0f9deec4b4f5c9fc676e8450ceadb7",
     "semantic_hash": ""
   },
   "telegram_notifier.py": {
@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "migrations/drop_stale_position_columns.sql": {
-    "mtime": 1786298533.665307,
-    "ast_hash": "62dda05bdfbc3e12c4407516abb35468",
+    "mtime": 1786306365.858292,
+    "ast_hash": "b7dcfef06027d8400129a805ed41df63",
     "semantic_hash": ""
   },
   "decisions/2026-08-09_drop-stale-position-columns.md": {
@@ -772,6 +772,21 @@
   "decisions/2026-08-09_trigger-outcome-backfill.md": {
     "mtime": 1786306073.6120596,
     "ast_hash": "59795fac52e6270d5816406f7ae69e0b",
+    "semantic_hash": ""
+  },
+  "config.py": {
+    "mtime": 1786306779.7949653,
+    "ast_hash": "b7bc20d7bfc3d188df3750f95515bbd9",
+    "semantic_hash": ""
+  },
+  "tests/test_max_positions_config.py": {
+    "mtime": 1786306890.2824037,
+    "ast_hash": "0750e176462f689922b912bff51b7ac4",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-09_max-positions-single-source.md": {
+    "mtime": 1786306946.2996964,
+    "ast_hash": "69157b8f90e1721da084ec33d243ef93",
     "semantic_hash": ""
   }
 }

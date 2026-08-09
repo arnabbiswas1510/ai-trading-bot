@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir \
     openai>=1.0.0
 
 # Copy script files into the container (scoring.py included for RS calculations)
-COPY execution_agent.py telegram_notifier.py force_buy.py scoring.py ./
+COPY execution_agent.py telegram_notifier.py force_buy.py scoring.py config.py ./
 
 # Execute the agent loop
 CMD ["python", "execution_agent.py"]

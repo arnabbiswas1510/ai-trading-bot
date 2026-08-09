@@ -52,7 +52,7 @@ PRE_BREAKOUT_UPTREND_MIN  = int(os.environ.get("PRE_BREAKOUT_UPTREND_MIN",   2))
 # ── Daily candidate quota waterfall ───────────────────────────────────────────
 # Strong filters first; controlled relaxation only if strict pass yields < target.
 # Target = MAX_POSITIONS so the waterfall always aims to fill the portfolio.
-MAX_POSITIONS                   = int(os.environ.get("MAX_POSITIONS", 4))
+from config import MAX_POSITIONS  # noqa: E402  (single source of truth; set via .env)
 RELAXED_PRE_BREAKOUT_PROXIMITY  = float(os.environ.get("RELAXED_PRE_BREAKOUT_PROXIMITY", 0.10))
 RELAXED_PRE_BREAKOUT_VOL_MAX    = float(os.environ.get("RELAXED_PRE_BREAKOUT_VOL_MAX", 1.10))
 RELAXED_PRE_BREAKOUT_UPTREND_MIN = int(os.environ.get("RELAXED_PRE_BREAKOUT_UPTREND_MIN", 2))

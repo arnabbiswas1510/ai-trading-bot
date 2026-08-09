@@ -10,10 +10,13 @@ Key design decisions (matching live execution_agent.py behaviour):
   - Size:   available_cash / remaining_slots  (proportional — matches live bot)
   - Exit:   Trailing stop fires OR close < EMA-21 × 0.99 (no fixed profit target)
   - Market: Bullish when SPY close > SPY EMA-21 (matches live market filter)
-  - Slots:  4 concurrent positions (matches live MAX_POSITIONS=4)
+  - Slots:  MAX_POSITIONS concurrent positions, read from the same env var
+            the live bot uses (default 5) so a backtest cannot silently
+            simulate a different portfolio shape than production runs
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -22,7 +25,12 @@ import pandas as pd
 from fmp_client import FMPClient
 
 # ── Constants matching execution_agent.py ─────────────────────────────────────
-DEFAULT_MAX_POSITIONS = 4        # live bot uses MAX_POSITIONS=4
+# Mirrors config.MAX_POSITIONS. backend/ ships as its own image that does not
+# contain config.py, so the env var is read directly rather than imported — the
+# .env stays the single operational switch. Keep the default in sync with
+# config.py: a backtest run against a different slot count than live silently
+# answers a question nobody asked.
+DEFAULT_MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 5))
 DEFAULT_STOP_LOSS_PCT = 7.0      # trailing stop % from peak price
 DEFAULT_EMA_WINDOW    = 21       # EMA for market direction + exit signal
 DEFAULT_EXIT_BUFFER   = 0.01     # exit when close < EMA × (1 - buffer)

@@ -149,7 +149,7 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 # handful of outlier trades (top-10 trades fall from 109% -> 92% of total P/L on
 # the growth universe, 98% -> 74% on the broad one). The CAGR/drawdown gaps
 # themselves are inside the noise floor; the concentration reduction is not.
-MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 5))
+from config import MAX_POSITIONS  # noqa: E402  (single source of truth; set via .env)
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 # Base trailing stop, measured from the position's PEAK (not from entry — this
 # is not O'Neil's 7-8% hard stop from cost, it is much tighter in practice).
