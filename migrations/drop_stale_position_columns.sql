@@ -35,8 +35,10 @@ ALTER TABLE portfolio_positions DROP COLUMN IF EXISTS fmp_ticker;
 -- highest_rs_score: written only by force_buy.py:214; never read anywhere.
 ALTER TABLE portfolio_positions DROP COLUMN IF EXISTS highest_rs_score;
 
--- hwm_rs_score: zero references in the entire codebase outside its own
--- migration (add_hwm_rs_score.sql). NULL on every live row.
+-- hwm_rs_score: no production reader or writer anywhere in the codebase. The
+-- only references are in tests (conftest fixture + test_plateau_rotation.py,
+-- which explicitly asserts the column must NEVER be written — it was
+-- deliberately made dormant in favour of param_drift). NULL on every live row.
 ALTER TABLE portfolio_positions DROP COLUMN IF EXISTS hwm_rs_score;
 
 -- analysis_date: zero references outside its migration. Its siblings
