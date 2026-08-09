@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1786289608.7105818,
-    "ast_hash": "e3bcbd7f1e96ca103e6bcd27de015572",
+    "mtime": 1786298450.308995,
+    "ast_hash": "b3e247757df74f93f05291fd0b7db8bc",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -255,8 +255,8 @@
     "semantic_hash": ""
   },
   "telegram_notifier.py": {
-    "mtime": 1785822051.8318338,
-    "ast_hash": "8a4d7ddbfd22f02981b9759a25f9f34e",
+    "mtime": 1786298443.6395478,
+    "ast_hash": "ed36ccc5de2de09ba740bec8ac821ce1",
     "semantic_hash": ""
   },
   "tests/__init__.py": {
@@ -680,13 +680,38 @@
     "semantic_hash": ""
   },
   "migrations/drop_stale_position_columns.sql": {
-    "mtime": 1786289586.4381135,
-    "ast_hash": "62dda05bdfbc3e12c4407516abb35468",
+    "mtime": 1786292289.557136,
+    "ast_hash": "83b0505f57b8892518b8799f21a78066",
     "semantic_hash": ""
   },
   "decisions/2026-08-09_drop-stale-position-columns.md": {
     "mtime": 1786289794.175096,
     "ast_hash": "d67e7c6bc56b6b8e9a9159f8fba08401",
+    "semantic_hash": ""
+  },
+  "migrations/add_closed_above_entry.sql": {
+    "mtime": 1786298300.1273935,
+    "ast_hash": "d3f23df0499088b33ca11879f0d8ce2b",
+    "semantic_hash": ""
+  },
+  "research/entry_bt.py": {
+    "mtime": 1786298089.6857271,
+    "ast_hash": "a98e3cdc68a04b91aa1fe621e70935fe",
+    "semantic_hash": ""
+  },
+  "research/thesis_bt.py": {
+    "mtime": 1786297951.9443798,
+    "ast_hash": "5c970d58a7abf161c2de77dc32b86314",
+    "semantic_hash": ""
+  },
+  "tests/test_thesis_stop.py": {
+    "mtime": 1786298423.9176986,
+    "ast_hash": "da6a9d5b1203a3cf22457919df799182",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-09_thesis-stop.md": {
+    "mtime": 1786298505.272245,
+    "ast_hash": "4b884496b85432ea16199c39f05a96df",
     "semantic_hash": ""
   }
 }

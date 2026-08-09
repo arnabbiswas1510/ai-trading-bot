@@ -249,6 +249,43 @@ class TelegramNotifier:
         )
         self._send(msg)
 
+    def notify_thesis_stop(
+        self,
+        ticker: str,
+        buy_price: float,
+        current_price: float,
+        days_held: int,
+        entry_atr_pct: float,
+        threshold_pct: float,
+        atr_mult: float = 1.0,
+    ) -> None:
+        """Sent when the Thesis Stop arms an exit.
+
+        Fires only for breakouts that have never closed above entry and are now
+        more than THESIS_STOP_ATR_MULT x ATR below it — i.e. the breakout thesis
+        is dead, not merely wobbling.
+        """
+        if not self._is_configured():
+            return
+        try:
+            ret_pct = ((current_price / buy_price) - 1.0) * 100.0
+            msg = (
+                f"🧭 <b>THESIS STOP — ${ticker}</b>\n\n"
+                f"Breakout never confirmed: no close above entry in "
+                f"{days_held} days.\n\n"
+                f"  Entry:      <code>${buy_price:,.2f}</code>\n"
+                f"  Now:        <code>${current_price:,.2f}</code>  "
+                f"({ret_pct:+.2f}%)\n"
+                f"  Threshold:  <code>{threshold_pct:.2f}%</code>  "
+                f"({atr_mult:.2f}x ATR of {entry_atr_pct:.2f}%/day)\n\n"
+                f"🎯 <b>Exit armed</b> — tight trail rides any bounce rather than "
+                f"selling into this dip.\n"
+                f"🕒 {self._now_et()}"
+            )
+            self._send(msg)
+        except Exception:
+            pass
+
     def notify_breakout_verdict_fail(
         self,
         ticker: str,
