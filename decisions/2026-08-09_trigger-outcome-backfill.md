@@ -97,7 +97,9 @@ undo. Deleting research data to save megabytes is the expensive choice.
   unanswerable: does `ai_rating` correlate with `fwd_20d_pct`; do skipped
   candidates outperform bought ones; does `ever_above_entry` on day 1-2 predict
   eventual failure (the user's original observation about RSI and HWM).
-- Requires `add_trigger_history.sql` to be applied first.
+- Adds `migrations/add_trigger_outcomes.sql` (additive; columns default NULL).
+  Requires `migrations/add_trigger_history.sql` to be applied first — the new
+  columns hang off that table.
 - FMP is now a weekly dependency of the research pipeline, not just live pricing.
 
 ## Verification

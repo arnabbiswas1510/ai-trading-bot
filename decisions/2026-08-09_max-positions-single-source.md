@@ -38,6 +38,15 @@ Introduce `config.py` as the single source of truth. Root modules
 (`execution_agent`, `force_buy`, `technical_screener`) import from it. Slot
 count is changed by editing `.env` and restarting — **never** by editing code.
 
+> **Superseded in part by `2026-08-09_stop-loss-cooloff-single-source.md`.**
+> This ADR missed a fourth root module: `rotate_positions.py` carried its own
+> `MAX_POSITIONS = 4`. It was found later, during an unrelated audit, and is
+> fixed there along with the same drift in `STOP_LOSS_PCT` and
+> `COOLING_OFF_DAYS`. The omission is left visible rather than edited away — an
+> ADR that claims to have centralised a constant, while one copy survives, is
+> exactly the failure this pattern exists to prevent, and it recurred within a
+> day of being written.
+
 `backend/` is exempt from the import: it ships as its own image (`Dockerfile`
 copies only `backend/`), so `config.py` does not exist in that container.
 `backtester.py` reads the same env var with the same default instead, so `.env`
