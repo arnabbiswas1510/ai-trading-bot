@@ -69,7 +69,7 @@
   "67": "Fix the self-defeating power-hold rule; move to 5 slots",
   "68": "per_symbol",
   "69": "MANIFEST.json",
-  "70": "date",
+  "70": "get_ma_value",
   "71": "Commit a benchmark price dataset instead of re-fetching from FMP",
   "72": "Committed benchmark price dataset",
   "73": "_sb",
