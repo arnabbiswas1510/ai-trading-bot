@@ -402,6 +402,22 @@ class TelegramNotifier:
     # Exception Notifications (rate-limited)
     # ──────────────────────────────────────────────────────────────────────────
 
+    def notify_error(self, message: str) -> None:
+        """Send a non-exception critical alert message.
+
+        Used for operational risk conditions (e.g. margin loan active, uncertain
+        sell-price fallback) that are not Python exceptions but still require
+        immediate human attention.
+        """
+        msg = (
+            f"🚨 <b>TRADING BOT ALERT</b>\n"
+            f"\n"
+            f"{message}\n"
+            f"\n"
+            f"🕒 {self._now_et()}"
+        )
+        self._send(msg)
+
     def notify_exception(self, context: str, error: Exception) -> None:
         """
         Rate-limited exception alert. Suppresses duplicate (same context + error type)

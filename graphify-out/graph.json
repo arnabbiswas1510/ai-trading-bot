@@ -7050,8 +7050,8 @@
       "source_location": "L424",
       "_origin": "ast",
       "id": "execution_agent_nyse_holidays",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "_nyse_holidays()"
     },
     {
@@ -7061,8 +7061,8 @@
       "source_location": "L492",
       "_origin": "ast",
       "id": "execution_agent_trading_days_between",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "trading_days_between()"
     },
     {
@@ -7072,8 +7072,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "date",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "date"
     },
     {
@@ -7128,7 +7128,7 @@
       "_origin": "ast",
       "id": "execution_agent_fetch_historical_closes_with_dates",
       "community": 70,
-      "community_name": "get_ma_value",
+      "community_name": "date",
       "norm_label": "fetch_historical_closes_with_dates()"
     },
     {
@@ -7139,7 +7139,7 @@
       "_origin": "ast",
       "id": "execution_agent_calculate_sma",
       "community": 70,
-      "community_name": "get_ma_value",
+      "community_name": "date",
       "norm_label": "calculate_sma()"
     },
     {
@@ -7150,7 +7150,7 @@
       "_origin": "ast",
       "id": "execution_agent_calculate_ema",
       "community": 70,
-      "community_name": "get_ma_value",
+      "community_name": "date",
       "norm_label": "calculate_ema()"
     },
     {
@@ -7161,7 +7161,7 @@
       "_origin": "ast",
       "id": "execution_agent_get_ma_value",
       "community": 70,
-      "community_name": "get_ma_value",
+      "community_name": "date",
       "norm_label": "get_ma_value()"
     },
     {
@@ -7358,8 +7358,8 @@
       "source_location": "L1487",
       "_origin": "ast",
       "id": "execution_agent_is_market_bullish",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "is_market_bullish()"
     },
     {
@@ -7402,8 +7402,8 @@
       "source_location": "L2020",
       "_origin": "ast",
       "id": "execution_agent_fetch_ohlcv",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "_fetch_ohlcv()"
     },
     {
@@ -7457,8 +7457,8 @@
       "source_location": "L2349",
       "_origin": "ast",
       "id": "execution_agent_get_market_regime",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "_get_market_regime()"
     },
     {
@@ -7545,8 +7545,8 @@
       "source_location": "L425",
       "_origin": "ast",
       "id": "execution_agent_rationale_425",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "return the set of nyse market holidays for a given year.      computed algorithm"
     },
     {
@@ -7556,8 +7556,8 @@
       "source_location": "L493",
       "_origin": "ast",
       "id": "execution_agent_rationale_493",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "count nyse trading days in the half-open interval [start, end).      weekends an"
     },
     {
@@ -7579,7 +7579,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_563",
       "community": 70,
-      "community_name": "get_ma_value",
+      "community_name": "date",
       "norm_label": "fetch historical daily close prices and dates from fmp (oldest first)."
     },
     {
@@ -7590,7 +7590,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_588",
       "community": 70,
-      "community_name": "get_ma_value",
+      "community_name": "date",
       "norm_label": "compute simple moving average."
     },
     {
@@ -7601,7 +7601,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_594",
       "community": 70,
-      "community_name": "get_ma_value",
+      "community_name": "date",
       "norm_label": "compute exponential moving average."
     },
     {
@@ -7612,7 +7612,7 @@
       "_origin": "ast",
       "id": "execution_agent_rationale_606",
       "community": 70,
-      "community_name": "get_ma_value",
+      "community_name": "date",
       "norm_label": "calculate moving average value, appending current_price if today's eod bar isn't"
     },
     {
@@ -7776,8 +7776,8 @@
       "source_location": "L1488",
       "_origin": "ast",
       "id": "execution_agent_rationale_1488",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "canslim 'm' (market direction) filter.     returns true  if market_direction_tic"
     },
     {
@@ -7820,8 +7820,8 @@
       "source_location": "L2021",
       "_origin": "ast",
       "id": "execution_agent_rationale_2021",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "fetch ohlcv rows from fmp for the last `days` calendar days.      returns a list"
     },
     {
@@ -7875,8 +7875,8 @@
       "source_location": "L2350",
       "_origin": "ast",
       "id": "execution_agent_rationale_2350",
-      "community": 38,
-      "community_name": "execution_agent.py",
+      "community": 70,
+      "community_name": "date",
       "norm_label": "return current market regime based on spy vs its 21-day ema.      'uptrend'    \u2014"
     },
     {
@@ -10737,10 +10737,21 @@
       "norm_label": ".notify_manual_close()"
     },
     {
-      "label": ".notify_exception()",
+      "label": ".notify_error()",
       "file_type": "code",
       "source_file": "telegram_notifier.py",
       "source_location": "L405",
+      "_origin": "ast",
+      "id": "telegram_notifier_telegramnotifier_notify_error",
+      "community": 5,
+      "community_name": "TelegramNotifier",
+      "norm_label": ".notify_error()"
+    },
+    {
+      "label": ".notify_exception()",
+      "file_type": "code",
+      "source_file": "telegram_notifier.py",
+      "source_location": "L421",
       "_origin": "ast",
       "id": "telegram_notifier_telegramnotifier_notify_exception",
       "community": 5,
@@ -10880,12 +10891,23 @@
       "norm_label": "fires when reconcile_with_ibkr() detects a position closed manually in tws."
     },
     {
-      "label": "Rate-limited exception alert. Suppresses duplicate (same context + error type)",
+      "label": "Send a non-exception critical alert message.          Used for operational risk",
       "file_type": "rationale",
       "source_file": "telegram_notifier.py",
       "source_location": "L406",
       "_origin": "ast",
       "id": "telegram_notifier_rationale_406",
+      "community": 5,
+      "community_name": "TelegramNotifier",
+      "norm_label": "send a non-exception critical alert message.          used for operational risk"
+    },
+    {
+      "label": "Rate-limited exception alert. Suppresses duplicate (same context + error type)",
+      "file_type": "rationale",
+      "source_file": "telegram_notifier.py",
+      "source_location": "L422",
+      "_origin": "ast",
+      "id": "telegram_notifier_rationale_422",
       "community": 5,
       "community_name": "TelegramNotifier",
       "norm_label": "rate-limited exception alert. suppresses duplicate (same context + error type)"
@@ -15121,8 +15143,8 @@
       "source_location": "L90",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass_test_2_of_3_closes_up_accepted",
-      "community": 206,
-      "community_name": "_make_df",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": ".test_2_of_3_closes_up_accepted()"
     },
     {
@@ -15341,8 +15363,8 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_91",
-      "community": 206,
-      "community_name": "_make_df",
+      "community": 225,
+      "community_name": "TestPreBreakoutCoilPass",
       "norm_label": "2 of 3 closes rising meets pre_breakout_uptrend_min=2."
     },
     {
@@ -40759,6 +40781,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "telegram_notifier_telegramnotifier",
+      "target": "telegram_notifier_telegramnotifier_notify_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "telegram_notifier.py",
+      "source_location": "L421",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "telegram_notifier_telegramnotifier",
       "target": "telegram_notifier_telegramnotifier_notify_exception",
       "confidence_score": 1.0
     },
@@ -40954,7 +40987,19 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "telegram_notifier.py",
-      "source_location": "L433",
+      "source_location": "L417",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "telegram_notifier_telegramnotifier_notify_error",
+      "target": "telegram_notifier_telegramnotifier_now_et",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "telegram_notifier.py",
+      "source_location": "L449",
       "weight": 1.0,
       "_origin": "ast",
       "source": "telegram_notifier_telegramnotifier_notify_exception",
@@ -41085,7 +41130,19 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "telegram_notifier.py",
-      "source_location": "L435",
+      "source_location": "L419",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "telegram_notifier_telegramnotifier_notify_error",
+      "target": "telegram_notifier_telegramnotifier_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "telegram_notifier.py",
+      "source_location": "L451",
       "weight": 1.0,
       "_origin": "ast",
       "source": "telegram_notifier_telegramnotifier_notify_exception",
@@ -41235,6 +41292,17 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "telegram_notifier_rationale_406",
+      "target": "telegram_notifier_telegramnotifier_notify_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "telegram_notifier.py",
+      "source_location": "L422",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "telegram_notifier_rationale_422",
       "target": "telegram_notifier_telegramnotifier_notify_exception",
       "confidence_score": 1.0
     },
@@ -41243,7 +41311,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "telegram_notifier.py",
-      "source_location": "L405",
+      "source_location": "L421",
       "weight": 1.0,
       "_origin": "ast",
       "source": "telegram_notifier_telegramnotifier_notify_exception",
@@ -62933,5 +63001,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "add971812f5956220b27cd920d1eb4fbb3c3e868"
+  "built_at_commit": "7aebf533c0bc45a27d6bd85234479fa12eec7e0f"
 }

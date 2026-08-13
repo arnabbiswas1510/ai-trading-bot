@@ -1,16 +1,16 @@
 # Graph Report - ai-trading-bot  (2026-08-13)
 
 ## Corpus Check
-- 141 files · ~190,465 words
+- 141 files · ~190,542 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2187 nodes · 3410 edges · 230 communities (218 shown, 12 thin omitted)
+- 2189 nodes · 3414 edges · 230 communities (218 shown, 12 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 27 edges (avg confidence: 0.73)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `add97181`
+- Built from commit: `7aebf533`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -84,7 +84,7 @@
 - Fix the self-defeating power-hold rule; move to 5 slots
 - per_symbol
 - MANIFEST.json
-- get_ma_value
+- date
 - Commit a benchmark price dataset instead of re-fetching from FMP
 - Committed benchmark price dataset
 - _sb
@@ -248,7 +248,7 @@
 5. `make_trigger()` - 29 edges
 6. `monitor_portfolio_intraday()` - 27 edges
 7. `FMPClient` - 26 edges
-8. `TelegramNotifier` - 23 edges
+8. `TelegramNotifier` - 24 edges
 9. `_trigger()` - 23 edges
 10. `_run()` - 22 edges
 
@@ -290,8 +290,8 @@ Cohesion: 0.08
 Nodes (18): App(), BacktesterView(), BreakoutsView(), BreakoutTable(), sortByConviction(), daysHeld(), ExitConditionsPanel(), formatDate() (+10 more)
 
 ### Community 5 - "TelegramNotifier"
-Cohesion: 0.08
-Nodes (23): Mirrors stdout to a daily rotating log file without touching print() calls., Delete execution_YYYY-MM-DD.log files older than KEEP_DAYS.          Uses the da, TeeLogger, Fires from ai_evaluator.py after all 5-component scores are computed.         Sh, Fires after a successful IBKR market buy order is filled and recorded., Fires when a buy order placement on IBKR fails., Fires when the buy loop is stopped after a failed order attempt.          Distin, Sent when the Thesis Stop arms an exit.          Fires only for breakouts that h (+15 more)
+Cohesion: 0.07
+Nodes (24): Mirrors stdout to a daily rotating log file without touching print() calls., Delete execution_YYYY-MM-DD.log files older than KEEP_DAYS.          Uses the da, TeeLogger, Fires from ai_evaluator.py after all 5-component scores are computed.         Sh, Fires after a successful IBKR market buy order is filled and recorded., Fires when a buy order placement on IBKR fails., Fires when the buy loop is stopped after a failed order attempt.          Distin, Sent when the Thesis Stop arms an exit.          Fires only for breakouts that h (+16 more)
 
 ### Community 6 - "make_supabase_mock"
 Cohesion: 0.08
@@ -418,8 +418,8 @@ Cohesion: 0.12
 Nodes (17): 1. Dynamic trailing stop (IBKR-managed), 2. Early Loss Kill-switch — days 0–1, 3. Thesis Stop — days 2–5, 4. EMA-21 support breach — day 7+, 5. Plateau exit — day 7+, 6. Rank & Replace — day 7+, Armed Exit — the "smart sale" mechanism, Day-3 breakout verdict (+9 more)
 
 ### Community 38 - "execution_agent.py"
-Cohesion: 0.08
-Nodes (55): date, arm_exit(), cancel_ticker_sell_orders(), check_volume_distribution(), execute_sell(), _fetch_current_rs(), fetch_held_position_sentiment(), _fetch_ohlcv() (+47 more)
+Cohesion: 0.10
+Nodes (44): arm_exit(), cancel_ticker_sell_orders(), check_volume_distribution(), execute_sell(), _fetch_current_rs(), fetch_held_position_sentiment(), fetch_trade_confirms_for_ticker(), get_available_cash() (+36 more)
 
 ### Community 39 - "Fundamental Screener"
 Cohesion: 0.15
@@ -537,9 +537,9 @@ Nodes (12): end, rows, start, end, rows, start, end, rows (+4 more)
 Cohesion: 0.22
 Nodes (8): bar_interval, bytes, dataset, date_max, date_min, endpoint, file, generated_utc
 
-### Community 70 - "get_ma_value"
-Cohesion: 0.25
-Nodes (8): calculate_ema(), calculate_sma(), fetch_historical_closes_with_dates(), get_ma_value(), Fetch historical daily close prices and dates from FMP (oldest first)., Compute Simple Moving Average., Compute Exponential Moving Average., Calculate moving average value, appending current_price if today's EOD bar isn't
+### Community 70 - "date"
+Cohesion: 0.12
+Nodes (19): date, calculate_ema(), calculate_sma(), fetch_historical_closes_with_dates(), _fetch_ohlcv(), get_ma_value(), _get_market_regime(), is_market_bullish() (+11 more)
 
 ### Community 71 - "Commit a benchmark price dataset instead of re-fetching from FMP"
 Cohesion: 0.22
@@ -1030,8 +1030,8 @@ Cohesion: 0.50
 Nodes (4): end, rows, start, ETR
 
 ### Community 206 - "_make_df"
-Cohesion: 0.17
-Nodes (9): _make_df(), 15% below 52w high -> beyond 8% proximity -> None., At or above 52w high -> confirmed breakout territory -> None., Close (77) below SMA-50 (~90) -> below trend -> None., Stock -5% vs SPY +15% -> low RS -> None., Recent 3d avg vol 1.1x 50d avg -> sellers still active -> None., Strictly descending then tiny uptick: must compare vs prior row.         Use all, 2 of 3 closes rising meets PRE_BREAKOUT_UPTREND_MIN=2. (+1 more)
+Cohesion: 0.20
+Nodes (8): _make_df(), 15% below 52w high -> beyond 8% proximity -> None., At or above 52w high -> confirmed breakout territory -> None., Close (77) below SMA-50 (~90) -> below trend -> None., Stock -5% vs SPY +15% -> low RS -> None., Recent 3d avg vol 1.1x 50d avg -> sellers still active -> None., Strictly descending then tiny uptick: must compare vs prior row.         Use all, TestPreBreakoutCoilFail
 
 ### Community 207 - "EXC"
 Cohesion: 0.50
@@ -1094,8 +1094,8 @@ Cohesion: 0.43
 Nodes (5): increment_retention(), get_rating_text(), Append this run's screener output to the append-only `watchlist_history`.      `, run_screener(), save_watchlist_history()
 
 ### Community 225 - "TestPreBreakoutCoilPass"
-Cohesion: 0.40
-Nodes (3): 5% below high, vol contracting, 3/3 closes up -> PRE_BREAKOUT., Within 1% of pivot -> quality_score >= 70 (vol 0.6x avg -> contraction pts ~16)., TestPreBreakoutCoilPass
+Cohesion: 0.29
+Nodes (4): 5% below high, vol contracting, 3/3 closes up -> PRE_BREAKOUT., 2 of 3 closes rising meets PRE_BREAKOUT_UPTREND_MIN=2., Within 1% of pivot -> quality_score >= 70 (vol 0.6x avg -> contraction pts ~16)., TestPreBreakoutCoilPass
 
 ### Community 226 - "COHR"
 Cohesion: 0.50
@@ -1126,11 +1126,11 @@ Nodes (4): end, rows, start, EW
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `per_symbol` connect `per_symbol` to `flex_query_sync.py`, `C`, `BIRK`, `MANIFEST.json`, `AAPL`, `ABBV`, `ABNB`, `ABT`, `ACN`, `ADBE`, `ADI`, `ADP`, `ADSK`, `AEIS`, `AEP`, `AFL`, `AJG`, `ALAB`, `ALL`, `AMAT`, `AMD`, `AME`, `AMGN`, `AMKR`, `AMT`, `AMTM`, `AON`, `APD`, `APH`, `APO`, `APP`, `ARM`, `ARW`, `AS`, `AVGO`, `AXP`, `BA`, `BABA`, `BAC`, `BAM`, `BDX`, `BE`, `BKNG`, `BKR`, `BMY`, `BN`, `BNY`, `AMZN`, `BX`, `CAH`, `CARR`, `CAT`, `CCEP`, `CDNA`, `CDNS`, `CEG`, `CELH`, `CF`, `CI`, `CIEN`, `CL`, `CMC`, `CMCL`, `CMCSA`, `CME`, `CMG`, `FDX`, `COCO`, `COF`, `BSX`, `COHU`, `CRH`, `CRM`, `CRWD`, `CSCO`, `CSX`, `CTAS`, `CTVA`, `CVNA`, `CVS`, `CVX`, `CXW`, `D`, `DAL`, `DASH`, `DDOG`, `DE`, `DELL`, `DHR`, `DIOD`, `DIS`, `DLR`, `DUK`, `DVN`, `DXCM`, `DY`, `EA`, `ECL`, `ECO`, `EME`, `EMR`, `EOG`, `EPD`, `ETN`, `ETR`, `EXC`, `F`, `FANG`, `FAST`, `FCX`, `FERG`, `FITB`, `FLYW`, `COST`, `COP`, `ANET`, `COR`, `COHR`, `ELV`, `CB`, `EW`?**
-  _High betweenness centrality (0.316) - this node is a cross-community bridge._
+  _High betweenness centrality (0.312) - this node is a cross-community bridge._
 - **Why does `ET` connect `flex_query_sync.py` to `per_symbol`?**
-  _High betweenness centrality (0.256) - this node is a cross-community bridge._
-- **Why does `make_supabase_mock()` connect `make_supabase_mock` to `make_position`, `_AV`, `test_plateau_rotation.py`, `Self-Healing Order Tests`, `patch`, `make_ib_mock`, `entry_bt.py`, `_reconcile`, `._run_at`?**
-  _High betweenness centrality (0.102) - this node is a cross-community bridge._
+  _High betweenness centrality (0.252) - this node is a cross-community bridge._
+- **Why does `TelegramNotifier` connect `TelegramNotifier` to `ai_evaluator.py`, `technical_screener.py`, `force_buy.py`, `execution_agent.py`?**
+  _High betweenness centrality (0.100) - this node is a cross-community bridge._
 - **What connects `bar_interval`, `bytes`, `dataset` to the rest of the system?**
   _676 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `compute_liquidity_score` be split into smaller, more focused modules?**

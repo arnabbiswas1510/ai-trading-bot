@@ -245,6 +245,10 @@ Run `python -m graphify update .` to keep the graph current.
    before exporting.
 4. Generate the patch with `git format-patch -1 HEAD --stdout > <file>.patch`
    (or `git format-patch <range>` for multiple commits).
+   Patch filenames must always be prefixed with a serial number (for example:
+   `001_fix-...patch`, `002_fix-...patch`).
+   Always write the patch file in the repository root (`ai-trading-bot/`), not
+   in subdirectories.
 5. The patch's commit message must clearly and specifically describe the
    change (what changed, why, and the key files touched) — this becomes
    the comment carried forward into the patch/commit history whenever it
