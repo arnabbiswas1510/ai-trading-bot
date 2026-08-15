@@ -54,4 +54,29 @@ jobs:
             docker inspect ib-gateway       --format 'ib-gateway:       {{.State.Status}} (restarts: {{.RestartCount}})'
             docker inspect execution-agent  --format 'execution-agent:  {{.State.Status}} (restarts: {{.RestartCount}})'
             docker inspect can-slim-trading-bot --format 'can-slim-trading-bot: {{.State.Status}} (restarts: {{.RestartCount}})'
+
+            echo "=== Verifying the dashboard actually serves the deployed commit ==="
+            # Guards against the class of failure where the image is rebuilt and
+            # pulled correctly but the container serves a different bundle (e.g.
+            # a host bind mount shadowing /app/frontend/dist). Without this the
+            # deploy reports success while the UI silently stays on old code.
+            EXPECTED=$(git rev-parse HEAD)
+            SERVED=""
+            for i in $(seq 1 12); do
+              SERVED=$(curl -fsS -m 5 http://localhost:8000/api/version 2>/dev/null \
+                       | sed -n 's/.*"git_commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+              [ -n "$SERVED" ] && break
+              sleep 5
+            done
+
+            if [ -z "$SERVED" ]; then
+              echo "WARNING: /api/version did not respond; could not verify the served build."
+            elif [ "$SERVED" != "$EXPECTED" ]; then
+              echo "ERROR: dashboard is serving $SERVED but the repo is at $EXPECTED."
+              echo "The container did not pick up the new build. Check for a bind mount"
+              echo "shadowing /app/frontend/dist, or a failed image pull."
+              exit 1
+            else
+              echo "OK: dashboard is serving $SERVED"
+            fi
             exit 0

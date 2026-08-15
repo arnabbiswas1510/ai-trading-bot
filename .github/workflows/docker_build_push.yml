@@ -54,9 +54,11 @@ jobs:
           file: Dockerfile
           push: true
           tags: ghcr.io/${{ env.OWNER_LC }}/ai-trading-bot:latest
-          # GIT_COMMIT changes every push → busts the GHA layer cache for the
-          # `npm run build` step, preventing stale frontend bundles from being
-          # reused. BUILD_TIME surfaces in /api/version for deployment tracing.
+          # BUILD_TIME surfaces in /api/version for deployment tracing.
+          # NOTE: GIT_COMMIT does NOT bust the frontend layer cache — `ARG
+          # GIT_COMMIT` is declared only in the Dockerfile's stage 2, so the
+          # frontend-builder stage never sees it. The `no-cache-filters` below
+          # is the only thing forcing a fresh `npm run build`. Do not remove it.
           build-args: |
             GIT_COMMIT=${{ github.sha }}
             BUILD_TIME=${{ github.event.head_commit.timestamp }}

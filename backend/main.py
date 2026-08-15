@@ -217,6 +217,7 @@ def get_portfolio():
         
         for pos in positions:
             ticker = pos['ticker']
+            fmp_name = None
             try:
                 if fmp.is_configured():
                     # Get current price
@@ -225,6 +226,10 @@ def get_portfolio():
                         current_price = float(quote['price'])
                         db.update_position_price(ticker, current_price)
                         pos['current_price'] = current_price
+                    # The quote payload already carries the company name, so this
+                    # costs no extra request.
+                    if quote:
+                        fmp_name = (quote.get("name") or "").strip() or None
             except Exception as ex:
                 print(f"Could not update live price for {ticker}: {ex}")
                 
@@ -241,8 +246,16 @@ def get_portfolio():
             pos['value'] = round(value, 2)
             pos['pnl'] = round(pnl, 2)
             pos['pnl_pct'] = round(pnl_pct, 2)
-            # Attach company name — falls back to ticker if watchlist has no entry
-            pos['company_name'] = company_name_map.get(ticker, ticker)
+            # Attach company name. The watchlist only holds the current screener
+            # snapshot, so a ticker that has since dropped off it (SWK, CPAY) has
+            # no row there even though the position is still open — which is why
+            # some names rendered and others silently did not. Fall back to the
+            # name already present in the FMP quote before giving up on the ticker.
+            pos['company_name'] = (
+                company_name_map.get(ticker)
+                or fmp_name
+                or ticker
+            )
             updated_positions.append(pos)
             
         unrealized_pnl = portfolio_value - (cash + sum(pos['shares'] * pos['buy_price'] for pos in positions))

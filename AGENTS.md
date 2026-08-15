@@ -357,15 +357,35 @@ dead weight and actively confusing: it looks like outstanding work.
    git apply --check <file>.patch             && echo OUTSTANDING
    ```
 
-4. Act on the classification:
+4. If **neither** check passes, re-run the reverse check while ignoring the
+   generated graph artifacts before concluding anything:
+
+   ```bash
+   git apply --reverse --check --exclude='graphify-out/*' <file>.patch \
+     && echo APPLIED_SOURCE
+   ```
+
+   This step exists because `graphify-out/**` is regenerated, not authored.
+   Any `graphify update` commit landing *after* the patch was applied — including
+   the routine "Update knowledge graph" commit — rewrites `graph.json`,
+   `manifest.json` and friends, so those hunks can never reverse cleanly even
+   though the patch is fully applied. Without this step every patch that has
+   been through a normal apply-then-update cycle is misreported as ambiguous
+   and is never cleaned up.
+
+   Only `graphify-out/*` may be excluded. Never exclude a source, test, doc,
+   migration or `decisions/` path to force a patch into the "applied" bucket.
+
+5. Act on the classification:
 
    | Result | Action |
    |---|---|
    | Reverse-check passes | **Delete** — the change is on the remote |
+   | Reverse-check passes ignoring `graphify-out/*` | **Delete** — every authored hunk is on the remote; only regenerated graph output differs |
    | Forward-check passes | **Keep** — still outstanding, and say so |
    | Neither passes | **Keep** — partially applied or superseded; report it and do not guess |
 
-5. Report what was deleted and what was kept, with the reason for each.
+6. Report what was deleted and what was kept, with the reason for each.
 
 ### Why content-based, not name-based
 

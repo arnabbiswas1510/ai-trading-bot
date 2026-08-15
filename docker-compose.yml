@@ -53,7 +53,12 @@ services:
       - "8000:8000"
     volumes:
       - bot-data:/app/data
-      - /home/dietpi/docker/ai-trading-bot/frontend/dist:/app/frontend/dist  # hot-swap built UI
+      # NOTE: do NOT bind-mount frontend/dist here. The compiled UI ships inside
+      # the image (Dockerfile stage 1 runs `npm run build`, gated by
+      # scripts/verify-build.mjs). A host bind mount shadows that directory, and
+      # because `dist/` is gitignored the host copy is never refreshed by the
+      # deploy's `git reset --hard origin/main` — so the dashboard silently
+      # serves whatever bundle was last built by hand on the box, forever.
     restart: unless-stopped
     env_file:
       - .env

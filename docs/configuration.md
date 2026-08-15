@@ -266,12 +266,38 @@ fires less often than intended.
 
 ---
 
+## Deploying the dashboard
+
+The compiled React bundle ships **inside** the `trading-bot` image. Stage 1 of
+`Dockerfile` runs `npm run build`, which ends in `scripts/verify-build.mjs` — that
+script greps the compiled output for a list of feature fingerprints and exits
+non-zero if any are missing, so a partial or stale bundle fails the image build
+rather than reaching production.
+
+**Never bind-mount a host directory over `/app/frontend/dist`.** Because `dist/`
+is in `.gitignore`, a host copy is never refreshed by the deploy's
+`git reset --hard origin/main`. The mount shadows the freshly built assets and
+the dashboard serves whatever bundle was last compiled by hand on the box —
+indefinitely, and with no error anywhere. The image build, the registry push and
+the container restart all report success while the UI stays frozen.
+
+`deploy_to_server.yml` asserts against this after every deploy: it reads
+`/api/version` and fails the job if the served `git_commit` does not match the
+commit checked out on the server.
+
+To confirm what is actually running:
+
+```bash
+curl -s localhost:8000/api/version
+```
+
+---
+
 ## Changing parameters safely
 
 1. Edit `.env`
 2. `docker compose up -d` to restart the affected services
 3. Confirm the value took effect in the agent log at the next cycle
-
 Strategy parameters in this repository were selected via paired stationary-block bootstrap
 across two independent universes, not by single-path optimisation. Changing one on the basis
 of a single backtest run — or a handful of live trades — is how a strategy gets overfitted.
