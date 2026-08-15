@@ -89,8 +89,28 @@ def simulate(cfg, sig, bars, emas, dix, alldates, atrs, collect_exits=False):
                 blocked[p["sym"]] = di + cfg.get("cool", 0); continue
 
             c = bar["close"]
-            if c > p["entry"]:
-                p["closed_above"] = True
+            # Follow-through latch. Default "close" is the shipped design and the
+            # definition the +18.8 dCAGR result in decisions/2026-08-09_thesis-stop.md
+            # was measured on. "high" models the production FALLBACK that is active
+            # while migrations/add_closed_above_entry.sql is unapplied (an intraday
+            # poke disarms the rule). "none" removes the gate entirely.
+            latch = cfg.get("latch", "close")
+            if latch == "close":
+                if c > p["entry"]:
+                    p["closed_above"] = True
+            elif latch == "high":
+                if bar["high"] > p["entry"]:
+                    p["closed_above"] = True
+            elif latch == "close_margin":
+                # Meaningful follow-through: close above entry by a fraction of ATR,
+                # so a close one tick above entry does not disarm the rule.
+                m = cfg.get("latch_margin_atr", 0.25) * (p["atr0"] or 0.0)
+                if (c / p["entry"] - 1) * 100 > m:
+                    p["closed_above"] = True
+            elif latch == "none":
+                pass
+            else:
+                raise ValueError(f"unknown latch {latch!r}")
 
             nt = dyn_trail(cfg, (c / p["entry"] - 1) * 100, cal, p["trail"])
             if nt: p["trail"] = nt
@@ -102,7 +122,15 @@ def simulate(cfg, sig, bars, emas, dix, alldates, atrs, collect_exits=False):
                     and held <= cfg.get("thesis_last_day", 5)
                     and not p["closed_above"]):
                 a = p["atr0"]
-                if a and (c / p["entry"] - 1) * 100 <= -tm * a:
+                # Optional ceiling on the volatility-normalised threshold. Without
+                # it a very high-ATR name is effectively exempt: DELL at 7.6%/day
+                # gets a -7.6% thesis threshold, wider than most names' trailing
+                # stop, so the "cut it early while it is cheap" intent is lost.
+                thr = tm * a if a else None
+                cap = cfg.get("thesis_cap_pct")
+                if thr is not None and cap:
+                    thr = min(thr, cap)
+                if thr and (c / p["entry"] - 1) * 100 <= -thr:
                     if cfg.get("thesis_armed", True):
                         p["armed"] = True; p["armed_at"] = held
                         p["arm_peak"] = bar["high"]; p["arm_reason"] = "thesis"

@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir \
     openai>=1.0.0
 
 # Copy script files into the container (include trigger_audit for execution_agent import)
-COPY execution_agent.py telegram_notifier.py force_buy.py scoring.py config.py trigger_audit.py ./
+COPY execution_agent.py telegram_notifier.py force_buy.py scoring.py config.py trigger_audit.py schema_guard.py ./
 
 # Execute the agent loop
 CMD ["python", "execution_agent.py"]

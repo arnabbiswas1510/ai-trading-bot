@@ -11,6 +11,7 @@ from telegram_notifier import TelegramNotifier
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import trigger_audit
+import schema_guard
 try:
     from flex_query_sync import fetch_trade_confirms_for_ticker
 except ImportError:
@@ -1549,10 +1550,70 @@ def fetch_ibkr_delayed_price(ib: IB, contract) -> tuple:
     return ibkr_price, price_method
 
 
+_schema_alert_sent = False
+
+
+def assert_schema_ok(client) -> bool:
+    """Verify risk-rule columns exist. Returns False when new buys must be blocked.
+
+    Alerts once per degradation episode rather than every 15-minute cycle, and
+    sends a recovery notice when the migration is applied, so the Telegram signal
+    stays meaningful.
+    """
+    global _schema_alert_sent
+    try:
+        report = schema_guard.check_schema(client)
+    except Exception as e:
+        # A probe failure must not stop trading — that would turn a monitoring
+        # concern into an outage. Log and allow the cycle to proceed.
+        print(f"   ⚠️ Schema check failed to run ({e}) — continuing without it.")
+        return True
+
+    if report.degraded:
+        print("🚨 SCHEMA DEGRADED — new buys blocked this cycle:")
+        for table, col, why in report.missing_critical:
+            print(f"   • MISSING {table}.{col} — {why}")
+        print(f"   Fix: run {schema_guard.REPAIR_SCRIPT} in the Supabase SQL Editor.")
+        if not _schema_alert_sent:
+            try:
+                notifier.notify_error(report.summary())
+            except Exception:
+                pass
+            _schema_alert_sent = True
+        return False
+
+    if report.missing_advisory:
+        for table, why in report.missing_advisory:
+            print(f"   ⚠️ Analytics table missing: {table} — {why}")
+
+    if _schema_alert_sent:
+        print("✅ Schema restored — new buys re-enabled.")
+        try:
+            notifier.notify_error(
+                "✅ *Schema restored*\nAll risk-rule columns are present again. "
+                "New buys are re-enabled."
+            )
+        except Exception:
+            pass
+        _schema_alert_sent = False
+    return True
+
+
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
     print("⏳ Running Market Open Buy checks...")
     client = get_supabase_client()
+
+    # ── Schema degradation hard block ─────────────────────────────────────────
+    # If a column a live risk rule depends on is missing, that rule is silently
+    # inert (see schema_guard). Opening NEW positions while the controls meant to
+    # protect them are impaired is the specific mistake this prevents. Existing
+    # positions continue to be monitored and exited normally.
+    #
+    # Re-checked every cycle (it is a handful of LIMIT 1 queries), so applying the
+    # migration clears this automatically without restarting the container.
+    if not assert_schema_ok(client):
+        return
 
     # ── Margin-loan hard block ────────────────────────────────────────────────
     # Before evaluating any triggers, verify we are investing only our own money.
@@ -3264,6 +3325,20 @@ def main_loop():
 
             ib.execDetailsEvent += _persist_fill_to_supabase
             print("   🔗 execDetailsEvent hook registered (fills will be persisted to ibkr_fills).")
+
+            # ── Schema assertion at boot ──────────────────────────────────────
+            # Surface missing risk-rule columns immediately rather than waiting
+            # for the first buy cycle, so the operator learns at deploy time that
+            # a rule is inert. Never fatal: monitoring and exits must keep running.
+            try:
+                _boot_report = schema_guard.check_schema(get_supabase_client())
+                print(f"   🧬 {_boot_report.summary().splitlines()[0]}")
+                if _boot_report.degraded:
+                    for _t, _c, _w in _boot_report.missing_critical:
+                        print(f"      • MISSING {_t}.{_c} — {_w}")
+                    print(f"      Fix: run {schema_guard.REPAIR_SCRIPT} in the Supabase SQL Editor.")
+            except Exception as _sce:
+                print(f"   ⚠️ Boot schema check failed to run: {_sce}")
 
             # Prime positions cache unconditionally via reqPositions().
             # Unlike reqAccountUpdates(), reqPositions() does not require

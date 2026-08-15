@@ -27,7 +27,7 @@ const DIST_DIR = resolve(new URL(".", import.meta.url).pathname, "../dist/assets
 // Good choices: API URL fragments, unique UI text, error messages.
 const FEATURE_FINGERPRINTS = [
   // Core portfolio table
-  { feature: "Portfolio table",           string: "Plateau Days" },
+  { feature: "Portfolio table",           string: "Lifecycle / Tiers" },
   // EMA-21 exit logic (present since early versions)
   { feature: "EMA-21 exit label",         string: "EMA-21 Exit" },
   // 3-Tier Plateau Rotation (added 2026-07-16)
@@ -39,6 +39,16 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Plateau Health card",       string: "data-plateau-health-card" },
   // Entry Conviction scorecard
   { feature: "Entry Conviction card",     string: "Entry Conviction" },
+  // Position lifecycle / risk tier visibility (added 2026-08-14)
+  { feature: "Risk Rule Ladder card",     string: "data-risk-ladder" },
+  { feature: "Risk ladder heading",       string: "Risk Rule Ladder" },
+  { feature: "Thesis Stop rule row",      string: "Thesis Stop" },
+  { feature: "Kill-switch rule row",      string: "Early Loss Kill-switch" },
+  { feature: "Power Hold rule row",       string: "Power Hold (8-week rule)" },
+  { feature: "Plateau exit rule row",     string: "Plateau Exit" },
+  { feature: "Rank & Replace rule row",   string: "Rank & Replace" },
+  { feature: "Armed exit rule row",       string: "Armed Exit" },
+  { feature: "Latch degradation warning", string: "DISARMED by an intraday poke above entry" },
 ];
 
 // -- Load all JS bundle files --------------------------------------------------

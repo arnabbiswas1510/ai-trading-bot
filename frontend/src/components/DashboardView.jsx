@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import useSortableTable from '../hooks/useSortableTable';
+import {
+  evaluatePositionRules,
+  rulesTooltip,
+  STATE,
+  STATE_META,
+  RULES_CONFIG,
+} from '../lib/positionRules';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -18,8 +25,11 @@ import {
 } from 'lucide-react';
 
 // ── Constants mirrored from execution_agent.py env defaults ──────────────────
-const STOP_LOSS_PCT  = 0.07;  // 7% trailing stop
-const PLATEAU_DAYS   = 7;    // days without new HWM before plateau exit eligible (lowered from 10)
+// Fallback only — the agent writes the live per-position value into
+// portfolio_positions.stop_loss_pct (ATR-scaled, 10% floor / 12% cap).
+const STOP_LOSS_PCT  = RULES_CONFIG.STOP_LOSS_PCT;
+// Trading days without a new high water mark before the plateau exit fires.
+const PLATEAU_DAYS   = RULES_CONFIG.STALE_EXIT_DAYS;
 
 // ── Stable module-level sort-key functions ────────────────────────────────────
 // Must be module-level so the === reference stays identical across renders
@@ -27,6 +37,13 @@ const PLATEAU_DAYS   = 7;    // days without new HWM before plateau exit eligibl
 // Mirrors display fallback: entry_final_score → entry_ai_rating → 0
 const sortByConvictionPos = (p) => p.entry_final_score ?? p.entry_ai_rating ?? 0;
 const sortByMarketValue   = (p) => (p.current_price || p.buy_price) * p.shares;
+// Sort by risk urgency — higher = more urgent, so a descending sort puts armed and
+// degraded positions at the top. STATE_URGENCY is the reverse of the display order.
+const STATE_URGENCY = ['OFF', 'EXPIRED', 'SUPPRESSED', 'PENDING', 'ACTIVE', 'WATCH', 'DEGRADED', 'TRIGGERED', 'ARMED'];
+const sortByLifecyclePos = (p) => {
+  try { return STATE_URGENCY.indexOf(rulesFor(p).headline.state); }
+  catch { return -1; }
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function daysHeld(buyDate) {
@@ -222,8 +239,213 @@ function getStatusBadge(pos, days) {
   return null; // Normal — no special badge
 }
 
+// ── Risk-rule lifecycle ───────────────────────────────────────────────────────
+/**
+ * Evaluate every sell rule for a position using agent-equivalent day counts.
+ *
+ * The agent recomputes days_held live each cycle (trading_days_between), so the
+ * DB column goes stale between cycles. We recompute here for the same reason —
+ * showing a stale day count would mis-state which window a position is in.
+ */
+function rulesFor(pos, openPositions) {
+  const now = new Date();
+  const tdHeld = tradingDaysBetween(pos.buy_date, now);
+  const sinceHwm = pos.days_since_hwm != null
+    ? pos.days_since_hwm
+    : tradingDaysBetween(pos.hwm_date || pos.buy_date, now);
+  return evaluatePositionRules(pos, tdHeld, sinceHwm, daysHeld(pos.buy_date), openPositions);
+}
+
+/** Compact lifecycle cell: phase pill + one dot per rule, with a full tooltip. */
+function LifecycleCell({ pos, openPositions }) {
+  const { phase, rules } = rulesFor(pos, openPositions);
+  const rec = pos.rotation_recommendation;
+  const recLabel = rec === 'TIER_1' ? 'T1'
+                 : rec === 'TIER_2' ? 'T2'
+                 : rec === 'PROGRESS_DEFICIT' ? 'PD'
+                 : rec === 'FLOOR_BREAK' ? 'FB'
+                 : rec === 'RS_DECAY' ? 'RS'
+                 : rec === 'HARD_STOP' ? 'HS'
+                 : rec === 'PARAM_DRIFT' ? 'PD'
+                 : null;
+
+  // Only the states that mean "something needs your attention" get a visible dot.
+  // Pending / expired / suppressed rules are noise in a 1-line cell — they are
+  // still in the tooltip and in full in the expanded panel.
+  const notable = rules.filter(r =>
+    r.state === STATE.ARMED || r.state === STATE.TRIGGERED ||
+    r.state === STATE.DEGRADED || r.state === STATE.WATCH);
+
+  return (
+    <td title={rulesTooltip(pos.ticker, phase, rules)} style={{ whiteSpace: 'nowrap' }}>
+      <span style={{
+        display: 'inline-block', fontSize: '0.63rem', fontWeight: 800,
+        padding: '0.12rem 0.4rem', borderRadius: '4px',
+        color: phase.color, background: `${phase.color}1f`,
+        border: `1px solid ${phase.color}55`, letterSpacing: '0.03em',
+      }}>{phase.label}</span>
+
+      {recLabel && (
+        <span style={{
+          marginLeft: '0.3rem', fontSize: '0.58rem', fontWeight: 800,
+          padding: '0.1rem 0.28rem', borderRadius: '3px',
+          background: 'rgba(244,63,94,0.14)', color: '#f43f5e',
+          border: '1px solid rgba(244,63,94,0.4)',
+        }}>{recLabel}</span>
+      )}
+
+      <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.28rem', alignItems: 'center', minHeight: '0.75rem' }}>
+        {notable.length === 0 ? (
+          <span style={{ fontSize: '0.62rem', color: '#10b981', fontWeight: 600 }}>
+            ✓ all rules nominal
+          </span>
+        ) : notable.map(r => {
+          const m = STATE_META[r.state];
+          return (
+            <span key={r.id} style={{
+              fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.02em',
+              padding: '0.08rem 0.3rem', borderRadius: '3px',
+              color: m.color, background: `${m.color}1f`, border: `1px solid ${m.color}55`,
+            }}>{r.tier} {m.label}</span>
+          );
+        })}
+      </div>
+    </td>
+  );
+}
+
+/** Full-width risk ladder shown inside the expanded row. */
+function RiskLadder({ pos, formatCurrency, openPositions }) {
+  const { phase, rules } = rulesFor(pos, openPositions);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const price = pos.current_price || pos.buy_price;
+
+  const rowStyle = (color) => ({
+    display: 'grid',
+    gridTemplateColumns: 'auto minmax(150px, 1.1fr) minmax(200px, 2fr) auto',
+    gap: '0.6rem',
+    alignItems: 'baseline',
+    padding: '0.45rem 0.6rem',
+    borderLeft: `3px solid ${color}`,
+    background: `${color}0d`,
+    borderRadius: '0 7px 7px 0',
+    marginBottom: '0.3rem',
+  });
+
+  return (
+    <div data-risk-ladder="1" style={{
+      gridColumn: '1 / -1',
+      background: 'rgba(255,255,255,0.02)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: '10px',
+      padding: '0.85rem 1rem',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.7rem', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+          🛡️ Risk Rule Ladder
+        </span>
+        <span style={{
+          fontSize: '0.68rem', fontWeight: 800, padding: '0.12rem 0.45rem', borderRadius: '5px',
+          color: phase.color, background: `${phase.color}1f`, border: `1px solid ${phase.color}55`,
+        }}>{phase.label}</span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{phase.note}</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); setLegendOpen(o => !o); }}
+          style={{
+            marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+            padding: '0.15rem 0.5rem', borderRadius: '5px',
+            background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)',
+            border: '1px solid rgba(255,255,255,0.12)',
+          }}
+        >{legendOpen ? 'Hide legend' : 'What do the colours mean?'}</button>
+      </div>
+
+      {legendOpen && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.3rem 0.9rem',
+          marginBottom: '0.7rem', padding: '0.55rem 0.7rem',
+          background: 'rgba(255,255,255,0.03)', borderRadius: '8px',
+          border: '1px solid rgba(255,255,255,0.07)',
+        }}>
+          {Object.entries(STATE_META).map(([key, m]) => (
+            <div key={key} style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+              <span style={{ color: m.color, fontWeight: 800 }}>● {m.label}</span> — {m.meaning}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rules.map(r => {
+        const m = STATE_META[r.state];
+        const dim = r.state === STATE.EXPIRED || r.state === STATE.OFF;
+        return (
+          <div key={r.id} style={{ ...rowStyle(m.color), opacity: dim ? 0.55 : 1 }}>
+            {/* Tier chip */}
+            <span style={{
+              fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.04em',
+              padding: '0.1rem 0.32rem', borderRadius: '3px', whiteSpace: 'nowrap',
+              color: m.color, background: `${m.color}22`, border: `1px solid ${m.color}55`,
+            }}>{r.tier}</span>
+
+            {/* Name + window */}
+            <div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{r.name}</div>
+              {r.window && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{r.window}</div>}
+            </div>
+
+            {/* State + headline + explanation */}
+            <div>
+              <div style={{ fontSize: '0.74rem', fontWeight: 700, color: m.color }}>
+                {m.label} · <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{r.headline}</span>
+              </div>
+              {r.latch && (
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                  Follow-through latch: <b style={{ color: 'var(--text-secondary)' }}>{r.latch}</b>
+                </div>
+              )}
+              {r.progress && (
+                <div style={{ height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', margin: '0.3rem 0 0.1rem', maxWidth: '220px' }}>
+                  <div style={{
+                    height: '100%', borderRadius: '2px', background: m.color,
+                    width: `${Math.min(100, Math.max(0, (r.progress.value / r.progress.max) * 100))}%`,
+                  }} />
+                </div>
+              )}
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.45, marginTop: '0.2rem', whiteSpace: 'pre-wrap' }}>
+                {r.detail}
+              </div>
+            </div>
+
+            {/* Trigger level */}
+            <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+              {r.level != null ? (
+                <>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {r.levelLabel || 'Level'}
+                  </div>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: m.color, fontFamily: 'var(--font-display)' }}>
+                    {formatCurrency(r.level)}
+                  </div>
+                  {r.distancePct != null && (
+                    <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>
+                      {r.distancePct >= 0 ? '+' : ''}{r.distancePct.toFixed(2)}% from {formatCurrency(price)}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>—</div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Position Intelligence Panel (expandable) ─────────────────────────────────
-function ExitConditionsPanel({ pos, formatCurrency }) {
+function ExitConditionsPanel({ pos, formatCurrency, openPositions }) {
   const days = daysHeld(pos.buy_date);
   const hwmPrice  = pos.hwm_price || pos.buy_price;  // hwm_price: running peak IBKR tracks
   const stopLossPct = pos.stop_loss_pct || STOP_LOSS_PCT;
@@ -264,6 +486,9 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
       <td colSpan={11} style={{ padding: 0 }}>
         <div style={panelStyle}>
 
+          {/* ── Risk Rule Ladder — every applicable tier and its live state ─── */}
+          <RiskLadder pos={pos} formatCurrency={formatCurrency} openPositions={openPositions} />
+
           {/* ── Holding Info ─────────────────────────── */}
           <div style={cardStyle('147,197,253')}>
             <div style={labelStyle}>📅 Position</div>
@@ -275,39 +500,15 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
             </div>
           </div>
 
-          {/* ── Trail Stop ───────────────────────────── */}
-          <div style={cardStyle('248,113,113')}>
-            <div style={labelStyle}>🔴 Trail Stop (IBKR GTC)</div>
-            <div style={valueStyle('#f87171')}>{formatCurrency(trailStop)}</div>
-            <div style={noteStyle}>
-              {(stopLossPct * 100).toFixed(1)}% trailing stop · floor ≈ {formatCurrency(trailStop)}<br />
-              Managed by IBKR — fires automatically.<br />
-              EMA-21 exit also active at end of each trading day.
-            </div>
-          </div>
+          {/* ── Trail Stop card removed — superseded by the Risk Rule Ladder above,
+                 which shows the live trail level alongside every other rule. ── */}
 
-          {/* ── Time-Stop & Rotation Health ───────────────────────────── */}
+          {/* ── Live Momentum & Drift ───────────────────────────── */}
           {(() => {
-            const daysHeld = pos.days_held != null ? pos.days_held : 0;
-            const pct = Math.min(daysHeld / 7, 1.0);
-            
-            // Determine exit rule status
-            let timeStopStatus = "Relying on trailing stop";
-            let statusColor = "#10b981"; // green
-            if (daysHeld <= 2) {
-              timeStopStatus = "🛡️ Days 1-2: Room to breathe (Trailing stop active)";
-              statusColor = "#10b981";
-            } else if (daysHeld <= 6) {
-              timeStopStatus = "🔄 Days 3-6: Rank & Replace eligible (Drift check active)";
-              statusColor = "#f59e0b"; // orange
-            } else {
-              timeStopStatus = "⏱️ Day 7+: Mandatory Time-Stop if gain < 2.0% | EMA-21 active";
-              statusColor = pos.unrealized_gain_pct < 2.0 ? "#f43f5e" : "#10b981";
-            }
-
-            // Break-even status
+            // Live signals that feed Rank & Replace and the rotation recommendations.
+            // The rule-by-rule lifecycle lives in the Risk Rule Ladder above; this card
+            // is only the underlying evidence.
             const hasCushion = pos.highest_unrealized_pct >= 5.0;
-            const breakEvenColor = hasCushion ? "#10b981" : "var(--text-muted)";
 
             // Best available trigger score (informational context only)
             const entryScore = pos.entry_final_score;
@@ -332,7 +533,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
 
             // RS Score tracking: entry vs live (used in the RS decay indicator below)
             const entryRS = pos.entry_rs_score ?? null;
-            const liveRS  = pos.rs_score ?? null;
+            const liveRS  = pos.live_rs_score ?? pos.rs_score ?? null;
             // rsDecay > 0 means RS has weakened since entry (entry was higher than live)
             const rsDecay = (entryRS != null && liveRS != null) ? entryRS - liveRS : null;
             const rsDecayColor = rsDecay == null
@@ -361,33 +562,14 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
 
             return (
               <div style={cardStyle(hasCushion ? '16,185,129' : '245,158,11')}>
-                <div style={labelStyle}>⏱️ Rotation & Time-Stop Health</div>
+                <div style={labelStyle}>📊 Live Momentum & Drift</div>
 
-                {/* Progress bar */}
-                <div style={valueStyle(statusColor)}>
-                  {daysHeld} / 7 trading days held
-                </div>
-                <div style={{ height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', margin: '0.4rem 0' }}>
-                  <div style={{ height: '100%', width: `${pct * 100}%`, background: statusColor, borderRadius: '2px', transition: 'width 0.3s' }} />
-                </div>
-                <div style={{ ...noteStyle, color: statusColor, fontWeight: 600, marginBottom: '0.6rem' }}>
-                  {timeStopStatus}
-                </div>
-
-                {/* Profit Cushion / Break-Even status */}
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Peak Cushion:</span>
-                    <span style={{ fontWeight: 700, color: pos.highest_unrealized_pct >= 5.0 ? '#10b981' : 'var(--text-secondary)' }}>
-                      {pos.highest_unrealized_pct ? `+${pos.highest_unrealized_pct.toFixed(2)}%` : '0.00%'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginTop: '0.2rem' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Break-Even Stop:</span>
-                    <span style={{ fontWeight: 700, color: breakEvenColor }}>
-                      {hasCushion ? '🔒 Active (Locked)' : '⏳ Inactive (Need +5.0% peak)'}
-                    </span>
-                  </div>
+                {/* Peak cushion */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Peak Cushion:</span>
+                  <span style={{ fontWeight: 700, color: hasCushion ? '#10b981' : 'var(--text-secondary)' }}>
+                    {pos.highest_unrealized_pct ? `+${pos.highest_unrealized_pct.toFixed(2)}%` : '0.00%'}
+                  </span>
                 </div>
 
                 {/* Volume Distribution Status */}
@@ -402,7 +584,7 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginTop: '0.2rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Custom ATR Stop:</span>
                   <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>
-                    {pos.stop_loss_pct ? `${(pos.stop_loss_pct * 100).toFixed(2)}%` : '7.00%'}
+                    {pos.stop_loss_pct ? `${(pos.stop_loss_pct * 100).toFixed(2)}%` : `${(STOP_LOSS_PCT * 100).toFixed(2)}%`}
                   </span>
                 </div>
 
@@ -595,7 +777,8 @@ function ExitConditionsPanel({ pos, formatCurrency }) {
                         {tierInfo.label}
                       </div>
                       <div style={{ ...noteStyle, marginBottom: '0.5rem' }}>
-                        Tier 3 auto-rotate fires at day {PLATEAU_DAYS} if no action taken.
+                        Advisory only. Rank &amp; Replace can act on this automatically from day{' '}
+                        {RULES_CONFIG.RANK_REPLACE_MIN_DAYS} if the margin is met — see the Risk Rule Ladder above.
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
@@ -951,7 +1134,7 @@ export default function DashboardView({ data, marketData, trades }) {
                   <th onClick={() => requestSortPos('current_price')} style={{ cursor: 'pointer' }}>Current Price{getSortIconPos('current_price')}</th>
                   <th onClick={() => requestSortPos(sortByMarketValue)} style={{ cursor: 'pointer' }}>Market Value{getSortIconPos(sortByMarketValue)}</th>
                   <th onClick={() => requestSortPos('trail_stop')} style={{ cursor: 'pointer' }}>Trail Stop{getSortIconPos('trail_stop')}</th>
-                  <th onClick={() => requestSortPos('hwm_date')} style={{ cursor: 'pointer' }}>Plateau Days{getSortIconPos('hwm_date')}</th>
+                  <th onClick={() => requestSortPos(sortByLifecyclePos)} style={{ cursor: 'pointer' }} title="Which risk rules are live, armed or degraded for this position">Lifecycle / Tiers{getSortIconPos(sortByLifecyclePos)}</th>
                   <th onClick={() => requestSortPos('pnl')} style={{ cursor: 'pointer' }}>Profit/Loss ($){getSortIconPos('pnl')}</th>
                   <th onClick={() => requestSortPos('buy_date')} style={{ cursor: 'pointer' }}>Buy Date{getSortIconPos('buy_date')}</th>
 
@@ -1038,45 +1221,8 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
                           {formatCurrency(trailStop)}
                         </td>
-                        {/* Plateau Days + rotation badge */}
-                        {(() => {
-                          const serverDays = pos.days_since_hwm;
-                          const hwmDate    = pos.hwm_date || pos.buy_date;
-                          const daysSinceHWM = serverDays != null
-                            ? serverDays
-                            : tradingDaysBetween(hwmDate, new Date());
-                          const pct = Math.min(daysSinceHWM / PLATEAU_DAYS, 1.0);
-                          const isPlateauing = daysSinceHWM >= PLATEAU_DAYS;
-                          const color = isPlateauing ? 'var(--color-down)' : pct >= 0.7 ? '#f59e0b' : 'var(--color-up)';
-                          const rec = pos.rotation_recommendation;
-                          const recLabel = rec === 'TIER_1'           ? 'T1'
-                                         : rec === 'TIER_2'           ? 'T2'
-                                         : rec === 'PROGRESS_DEFICIT' ? 'PD'
-                                         : rec === 'FLOOR_BREAK'      ? 'FB'
-                                         : null;
-                          const recColor = rec === 'TIER_1'           ? '#f43f5e'
-                                         : rec === 'TIER_2'           ? '#f59e0b'
-                                         : rec === 'PROGRESS_DEFICIT' ? '#fbbf24'
-                                         : rec === 'FLOOR_BREAK'      ? '#ef4444'
-                                         : '#f59e0b';
-                          return (
-                            <td>
-                              <span style={{ fontWeight: 700, fontSize: '0.85rem', color }}>
-                                {daysSinceHWM}d
-                              </span>
-                              {recLabel && (
-                                <span style={{
-                                  marginLeft: '0.35rem', fontSize: '0.6rem', fontWeight: 800,
-                                  padding: '0.1rem 0.3rem', borderRadius: '3px',
-                                  background: `${recColor}22`, color: recColor,
-                                  border: `1px solid ${recColor}55`,
-                                  verticalAlign: 'middle',
-                                  letterSpacing: '0.04em',
-                                }}>{recLabel}</span>
-                              )}
-                            </td>
-                          );
-                        })()}
+                        {/* Lifecycle / risk tiers */}
+                        <LifecycleCell pos={pos} openPositions={positions.length} />
                         <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                           {pos.pnl >= 0 ? '+' : ''}{formatCurrency(pos.pnl)}
                         </td>
@@ -1086,7 +1232,7 @@ export default function DashboardView({ data, marketData, trades }) {
 
                       </tr>
                       {isOpen && (
-                        <ExitConditionsPanel pos={pos} formatCurrency={formatCurrency} />
+                        <ExitConditionsPanel pos={pos} formatCurrency={formatCurrency} openPositions={positions.length} />
                       )}
                     </React.Fragment>
                   );

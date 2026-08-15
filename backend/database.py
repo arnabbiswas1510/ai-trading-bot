@@ -441,7 +441,8 @@ def get_positions():
                 "profit_target": float(row["profit_target"]) if row.get("profit_target") is not None else 0.0,
                 "high_water_mark": float(row.get("high_water_mark") or row["buy_price"]),
                 "hwm_date": row.get("hwm_date"),
-                "is_power_hold": bool(row.get("is_power_hold", False)),
+                "is_power_hold": bool(row.get("power_hold") or row.get("is_power_hold") or False),
+                "power_hold": bool(row.get("power_hold") or row.get("is_power_hold") or False),
                 "power_hold_expiry": row.get("power_hold_expiry"),
                 # Entry conviction snapshot — written by execution_agent at buy time
                 "entry_final_score":        row.get("entry_final_score"),
@@ -455,6 +456,8 @@ def get_positions():
                 "entry_sentiment_score":    row.get("entry_sentiment_score"),
                 "entry_atr_pct":            row.get("entry_atr_pct"),
                 "entry_est_days_target":    row.get("entry_est_days_target"),
+                "entry_pivot_distance_pct": row.get("entry_pivot_distance_pct"),
+                "entry_volume_surge":       row.get("entry_volume_surge"),
                 # ── AI narrative rationale (the paragraph text from the screenshot) ──
                 "entry_score_rationale":    row.get("entry_score_rationale"),
                 # ── HWM / plateau fields ─────────────────────────────────────────
@@ -464,6 +467,23 @@ def get_positions():
                 "highest_unrealized_pct":   float(row.get("highest_unrealized_pct") or 0.0),
                 "stop_loss_pct":            float(row.get("stop_loss_pct") or 0.07),
                 "volume_distribution_flag": bool(row.get("volume_distribution_flag", False)),
+                # ── Risk-rule lifecycle state (drives the Risk Ladder in the UI) ──
+                # These decide whether a position lives or dies, so the dashboard has
+                # to be able to show their real state rather than inferring it.
+                # closed_above_entry is deliberately NOT coerced to a bool: `None`
+                # means the column is absent (migration not applied) and the agent is
+                # running on the weaker intraday fallback, which the UI must surface
+                # as DEGRADED rather than silently render as "not latched".
+                "closed_above_entry":       row.get("closed_above_entry"),
+                "breakout_verdict":         row.get("breakout_verdict"),
+                "intraday_high_today":      row.get("intraday_high_today"),
+                "exit_armed":               bool(row.get("exit_armed", False)),
+                "exit_armed_at":            row.get("exit_armed_at"),
+                "exit_armed_reason":        row.get("exit_armed_reason"),
+                "exit_armed_price":         row.get("exit_armed_price"),
+                # ── Live momentum (Rank & Replace inputs) ─────────────────────────
+                "momentum_health_score":    row.get("momentum_health_score"),
+                "live_sentiment_score":     row.get("live_sentiment_score"),
                 # ── Live RS score (for RS decay display) ─────────────────────────
                 "live_rs_score":            row.get("live_rs_score"),
                 "top_trigger_score":        row.get("top_trigger_score"),

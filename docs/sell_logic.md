@@ -117,13 +117,37 @@ The Thesis Stop targets the opposite set: breakouts that never followed through 
 `closed_above_entry` is a latch — once true it is never cleared, so a position that
 established follow-through is permanently exempt.
 
-> **Migration dependency.** The latch requires `migrations/add_closed_above_entry.sql`.
-> Until it is applied, a PGRST204 fallback treats *any* evidence of trading above entry
-> (`highest_unrealized_pct > 0`, `hwm_price > buy_price`, `intraday_high_today > buy_price`)
-> as follow-through. That fallback is deliberately **more** conservative than the latch — it
-> can only make the stop fire less often — but it means the rule is materially weaker than
-> designed until the migration runs, because an intraday poke above entry is enough to
-> exempt a position that never *closed* there.
+> **Migration dependency — and why an intraday poke must not exempt a position.**
+> The latch requires `migrations/add_closed_above_entry.sql` (consolidated into
+> `migrations/2026-08-13_apply_missing_migrations.sql`). Until it is applied, a PGRST204
+> fallback treats *any* evidence of trading above entry (`highest_unrealized_pct > 0`,
+> `hwm_price > buy_price`, `intraday_high_today > buy_price`) as follow-through. All three
+> are **intraday** measures, so a single tick above entry permanently exempts a position
+> that never *closed* there.
+>
+> That fallback is not equivalent to the rule and must not be relied on. On a breakout day
+> the open is often near the high, so most entries poke above entry within minutes: NBIX
+> printed above 168.33 intraday and closed below it on all 11 subsequent sessions; DELL
+> printed 514.00 on day 0 against a 496.04 entry and closed 494.51. Both were exempted by
+> the fallback and neither ever closed above entry.
+>
+> Measured cost of the fallback versus the close-based latch (`research/latch_bt.py`,
+> paired stationary-block bootstrap): **−9.9 ΔCAGR in the screener-passing universe,
+> 90% CI [+3.35, +18.40] in favour of the close latch, P=100%**; neutral in the broad
+> universe (CI spans zero). The fallback also fires the stop only 21 times versus 34, so it
+> is not selectively sparing winners — it broadly disables the rule.
+>
+> Since 2026-08-14 a missing latch column is detected by `schema_guard.py`, which **blocks
+> all new buys** until the migration is applied rather than letting the degradation pass
+> unnoticed. See `docs/buy_logic.md` and
+> `decisions/2026-08-14_schema-guard-fail-loud.md`.
+
+> **Backfill caution.** When applying the migration, `closed_above_entry` must **not** be
+> backfilled from `highest_unrealized_pct`, which is derived from the live intraday price
+> and would reproduce exactly the defect above. The repair script only pre-sets the latch
+> for positions already past the thesis window (`days_held > 5`), where it cannot change
+> behaviour, and leaves in-window positions `false` so the next EOD close establishes the
+> truth.
 
 ### Validation
 
@@ -292,6 +316,48 @@ if price data is unavailable, the market is treated as bearish.
 | `INTRADAY_MINIMISER_ENABLED` | `false` | Superseded by the Thesis Stop |
 | `BREAKOUT_VERDICT_MIN_GAIN` | `0.01` | Day-3 PASS gain |
 | `BREAKOUT_VERDICT_MIN_VOL_PCT` | `0.75` | Day-3 PASS volume |
+
+---
+
+## Dashboard: the Risk Rule Ladder
+
+Every rule on this page is rendered per position in **Dashboard → Open Positions**.
+
+The **Lifecycle / Tiers** column shows the position's current phase (`D1 · Kill-switch`,
+`D3 · Thesis window`, `D9 · Rotation window`, `Power Hold`, `Exiting`) plus a badge for any
+rule needing attention, or `✓ all rules nominal`. Hovering gives all nine rules in one
+tooltip; expanding the row opens the full **Risk Rule Ladder** with each rule's state,
+trigger price and distance to it.
+
+| State | Colour | Meaning |
+|---|---|---|
+| `ARMED` | red | A sell order is live at the broker right now |
+| `TRIGGERED` | red | The condition is met — the agent acts on the next cycle |
+| `DEGRADED` | orange | The rule exists and its window is open, but it **cannot** protect the position |
+| `WATCH` | amber | Within striking distance of its trigger |
+| `ACTIVE` | green | Live and protecting, comfortably clear |
+| `PENDING` | grey | Its window has not opened yet |
+| `SUPPRESSED` | blue | Deliberately switched off (Power Hold, or the book is not full) |
+| `EXPIRED` | dim | Its window has closed |
+
+`DEGRADED` is the state that matters. It is what the Thesis Stop reports when
+`closed_above_entry` is missing and an intraday poke above entry has exempted the
+position — the NBIX failure mode, which previously left no trace in the UI at all.
+
+Two behaviours worth knowing:
+
+- **Day counts are recomputed in the browser**, not read from `days_held`. That column is
+  a snapshot from the last agent cycle and is routinely a day behind, which would put a
+  position in the wrong window.
+- **Rank & Replace shows `SUPPRESSED` whenever fewer than `MAX_POSITIONS` slots are
+  filled**, because the agent gates the whole rule on a full book — with a free slot it
+  buys the trigger rather than rotating.
+
+> **Mirror warning.** `frontend/src/lib/positionRules.js` holds a **copy** of the
+> thresholds in `execution_agent.py`. Changing a threshold in the agent without changing
+> it there makes the dashboard lie. Every constant carries a comment naming its source.
+> Rationale and the rejected alternatives are in
+> `decisions/2026-08-14_position-lifecycle-visibility.md`.
 
 ---
 

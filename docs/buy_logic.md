@@ -26,10 +26,33 @@ Checked once, before any candidate is considered.
 
 | # | Block | Condition | Behaviour |
 |---|---|---|---|
-| 0a | Margin loan | `margin_loan > 0` | **Zero buys.** The system never trades on borrowed money |
-| 0b | Market direction | SPY < SMA-200 | Stand down from new buys; existing positions unaffected |
-| 0c | Trigger freshness | `triggered_at` within `TRIGGER_LOOKBACK_DAYS` (3) | Stale signals discarded — covers weekends and holidays |
-| 0d | Capacity | `len(holdings) ≥ MAX_POSITIONS` | All candidates recorded as `SLOTS_FULL` |
+| 0a | Schema integrity | A column a live risk rule depends on is missing | **Zero buys.** Monitoring and exits continue normally |
+| 0b | Margin loan | `margin_loan > 0` | **Zero buys.** The system never trades on borrowed money |
+| 0c | Market direction | SPY < SMA-200 | Stand down from new buys; existing positions unaffected |
+| 0d | Trigger freshness | `triggered_at` within `TRIGGER_LOOKBACK_DAYS` (3) | Stale signals discarded — covers weekends and holidays |
+| 0e | Capacity | `len(holdings) ≥ MAX_POSITIONS` | All candidates recorded as `SLOTS_FULL` |
+
+### Schema integrity block
+
+`schema_guard.py` probes the columns each live risk rule reads. If
+`portfolio_positions.closed_above_entry` (Thesis Stop), `hwm_rs_score` or
+`highest_rs_score` (Rule 1, RS Decay) is absent, the agent **refuses to open new
+positions** while continuing to monitor and exit existing ones.
+
+The asymmetry is deliberate. A missing column does not raise — the rule that reads it
+quietly takes a fallback path — so a degraded risk control produces no error. Opening
+fresh positions while the controls meant to protect them are impaired is the specific
+mistake being prevented; aborting the daemon instead would stop trailing-stop maintenance
+and exits, which is strictly worse.
+
+Analytics archives (`trigger_history`, `trigger_decisions`, `watchlist_history`) are
+**advisory** — their absence warns but never blocks trading.
+
+The check re-runs every buy cycle, so applying
+`migrations/2026-08-13_apply_missing_migrations.sql` clears the block automatically
+without restarting the container. Telegram receives one alert when the degradation is
+detected and one when it is resolved — not one per 15-minute cycle.
+See `decisions/2026-08-14_schema-guard-fail-loud.md` for why.
 
 The market filter **fails closed**: if SPY data cannot be retrieved, the market is treated
 as bearish. Standing down costs opportunity; buying blind into an unknown regime costs

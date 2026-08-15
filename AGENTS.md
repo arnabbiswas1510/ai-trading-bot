@@ -55,6 +55,7 @@ python -m graphify path "execute_sell" "TelegramNotifier"
 > 1. **Always inspect active `.py` code over `.md` docs**: The actual runtime behavior is defined strictly by the executable Python source files (`execution_agent.py`, `flex_query_sync.py`, etc.).
 > 2. **Docs are reference context, not execution ground truth**: Markdown files in `docs/` or `decisions/` provide historical context. Never declare a runtime rule based solely on `.md` documentation without reading the corresponding `.py` file.
 > 3. **Prune outdated docs immediately**: When refactoring code, update related `.md` files in `docs/` and run `python -m graphify update .` to prevent graph drift.
+> 4. **Close the loop**: every ADR-worthy change must update the matching `docs/` page in the same commit — see the [Doc Sync Rule](#-mandatory-doc-sync-rule-adr--docs). Reading code over docs is the *workaround* for drift; keeping docs current is the *fix*.
 
 ### Step 3 — Keep the graph fresh after code changes
 
@@ -64,39 +65,45 @@ python -m graphify update .   # free, no API key, re-extracts changed files only
 
 ---
 
-## ✏️ MANDATORY: Update Graph & Decisions After Every Code Change
+## ✏️ MANDATORY: Update Graph, Decisions & Docs After Every Code Change
 
 > **After making any code change — before committing — you MUST:**
 > 1. **Run `python -m graphify update .`** to keep `graphify-out/graph.json` current
 > 2. **Write or update a `decisions/` ADR** if the change qualifies (see ADR rules below)
+> 3. **Update the matching `docs/` page whenever you write an ADR** (see Doc Sync Rule below)
 
-### What triggers both actions
+### What triggers each action
 
-| Change type | Update graph? | Write ADR? |
-|---|---|---|
-| Core trading logic (buy/sell/stop/screen) | ✅ Always | ✅ Always |
-| Schema migration (new SQL file) | ✅ Always | ✅ Always |
-| Feature removed or replaced | ✅ Always | ✅ Always |
-| Significant refactor | ✅ Always | ✅ Always |
-| Bug fix (obvious root cause) | ✅ Always | ❌ Skip |
-| Test added or updated | ✅ Always | ❌ Skip |
-| UI tweak / dependency bump | ✅ Always | ❌ Skip |
+| Change type | Update graph? | Write ADR? | Update docs? |
+|---|---|---|---|
+| Core trading logic (buy/sell/stop/screen) | ✅ Always | ✅ Always | ✅ Always |
+| Schema migration (new SQL file) | ✅ Always | ✅ Always | ✅ Always |
+| Feature removed or replaced | ✅ Always | ✅ Always | ✅ Always |
+| Significant refactor | ✅ Always | ✅ Always | ✅ Always |
+| New/changed env var, threshold or default | ✅ Always | ⚠️ If behavioural | ✅ Always |
+| Bug fix (obvious root cause) | ✅ Always | ❌ Skip | ⚠️ Only if docs describe the broken behaviour |
+| Test added or updated | ✅ Always | ❌ Skip | ❌ Skip |
+| UI tweak / dependency bump | ✅ Always | ❌ Skip | ❌ Skip |
 
 The graph update is **always** required after any code change (it is fast and free).
 The ADR is only required for meaningful architectural decisions.
+**An ADR without a matching docs update is an incomplete change.**
 
 ### Commit order
 
 ```
 1. Make code changes
 2. Write ADR in decisions/ (if required)
-3. python -m graphify update .
-4. git add decisions/ graphify-out/ <changed files>
-5. git commit
-6. git push
+3. Update matching docs/ page(s)      <-- required whenever step 2 happened
+4. python -m graphify update .
+5. git add decisions/ docs/ graphify-out/ <changed files>
+6. git commit
+7. git push
 ```
 
-> ⚠️ Do NOT skip step 3. A stale graph silently gives wrong answers to future queries.
+> ⚠️ Do NOT skip step 4. A stale graph silently gives wrong answers to future queries.
+> ⚠️ Do NOT skip step 3. Stale docs are worse than no docs — they actively mislead,
+> and the Code vs. Documentation Ground-Truth Rule exists only because this keeps happening.
 
 ---
 
@@ -201,7 +208,55 @@ Use the actual date of the change. Use the commit message as a starting point fo
 
 ### After writing an ADR
 
-Run `python -m graphify update .` to keep the graph current.
+1. **Update the matching `docs/` page — this is mandatory, not optional** (see below).
+2. Run `python -m graphify update .` to keep the graph current.
+
+---
+
+## 🔄 MANDATORY: Doc Sync Rule (ADR ⇒ Docs)
+
+> **Every ADR must be accompanied by an update to the corresponding `docs/` page
+> in the same commit. An ADR records *why* a decision was made; the `docs/` page
+> records *what the system now does*. Shipping one without the other is what
+> creates the doc drift the Ground-Truth Rule already warns about.**
+
+### Which doc to update
+
+Route by what the change touched. If a change spans several areas, update **all**
+matching pages.
+
+| What changed in code | Doc page(s) that MUST be updated |
+|---|---|
+| Buy gates, trigger ranking/sorting, slot allocation, position sizing, cooling-off | `docs/buy_logic.md` |
+| Sell rules, stops, trailing logic, kill-switch, thesis stop, EMA/plateau exits, arming | `docs/sell_logic.md` |
+| Breakout / pre-breakout detection, quality & final scoring, RS gates | `docs/technical_triggers.md` |
+| Fundamental screen thresholds, watchlist construction | `docs/fundamental_screener.md` |
+| Any env var, threshold, default, or `config.py` constant | `docs/configuration.md` |
+| Container layout, deploy pipeline, gateway/IBKR connectivity | `README.md`, `docs/ibkr_totp_setup.md` |
+| New Supabase table/column that code reads or writes | The page describing the rule that consumes it |
+
+### What the doc update must contain
+
+- The **new** behaviour stated as current fact — not a changelog entry, and not
+  phrased as "we changed X to Y".
+- Any **numeric threshold, default, or env var name** that changed, so
+  `docs/configuration.md` and the code never disagree.
+- A link back to the ADR for the reasoning:
+  `See decisions/YYYY-MM-DD_slug.md for why.`
+- **Deletion of anything the change made false.** Removing a stale paragraph is
+  as important as adding a new one — per the Ground-Truth Rule, prune outdated
+  docs immediately.
+
+### If no doc page covers the change
+
+Say so explicitly in the commit message rather than silently skipping the step,
+and create a new page under `docs/` if the behaviour is user- or
+operator-visible. Do not invent pages for internal-only refactors.
+
+### Self-check before committing
+
+Ask: *"If someone read only `docs/` after this change, would they be misled about
+how the bot now behaves?"* If yes, the docs update is not finished.
 
 ---
 
@@ -253,6 +308,83 @@ Run `python -m graphify update .` to keep the graph current.
    change (what changed, why, and the key files touched) — this becomes
    the comment carried forward into the patch/commit history whenever it
    is applied and pushed. Do not use a generic or placeholder message.
+
+### Serial numbers are never reused
+
+The prefix is a monotonic counter over the **whole history of the project**,
+not over the files currently present. Deleting applied patches (see below)
+must never cause a number to be issued twice. Before creating a patch, find
+the highest number ever used — check the surviving files *and*
+`git log --oneline` / prior session notes — and take the next one.
+
+---
+
+## 🧹 MANDATORY: Delete Applied Patch Files on Pull + Hard Reset
+
+> **Trigger.** Whenever I ask you to *pull and hard reset* (or any equivalent
+> phrasing: "pull and reset", "reset to remote", "sync with origin",
+> "discard local and pull"), you must — after the reset — determine which
+> `NNN_*.patch` files in the repository root have already landed on the
+> remote, and delete exactly those.
+
+`git reset --hard` does not touch untracked files, so patch files survive the
+reset and accumulate. Once a patch's contents are in `origin`, the file is
+dead weight and actively confusing: it looks like outstanding work.
+
+### Procedure
+
+1. `git fetch origin` then `git reset --hard origin/<branch>`.
+   Warn me first if the working tree has uncommitted changes — a hard reset
+   destroys them.
+2. **Verify the reset actually happened before classifying anything:**
+
+   ```bash
+   test "$(git rev-parse HEAD)" = "$(git rev-parse origin/<branch>)" || exit 1
+   ```
+
+   This guard is not optional. The classification below tests the *working
+   tree*, not the remote, so running it while local commits are still
+   unpushed reports those commits as "applied" and would delete the patch
+   that is the only record of them.
+3. For **each** `NNN_*.patch` in the repository root, classify it against the
+   freshly-reset tree:
+
+   ```bash
+   # Already applied: every hunk is present, so it reverses cleanly.
+   git apply --reverse --check <file>.patch   && echo APPLIED
+
+   # Not applied: it still applies forward cleanly.
+   git apply --check <file>.patch             && echo OUTSTANDING
+   ```
+
+4. Act on the classification:
+
+   | Result | Action |
+   |---|---|
+   | Reverse-check passes | **Delete** — the change is on the remote |
+   | Forward-check passes | **Keep** — still outstanding, and say so |
+   | Neither passes | **Keep** — partially applied or superseded; report it and do not guess |
+
+5. Report what was deleted and what was kept, with the reason for each.
+
+### Why content-based, not name-based
+
+Do **not** decide by matching commit subjects in `git log`. Patches get
+squashed, reworded, rebased and amended before they land, so the subject on
+the remote frequently differs from the one in the patch file. `git apply
+--reverse --check` tests the only thing that matters: whether the tree already
+contains those changes. It is also correct when several patches were collapsed
+into one commit before pushing.
+
+### Safety rules
+
+- **Never delete a patch that is not fully represented in the remote.** When
+  the classification is ambiguous, keep the file and tell me.
+- Delete only files matching `NNN_*.patch` in the repository root. Never touch
+  `migrations/*.sql`, and never treat a `.patch` file elsewhere in the tree as
+  in scope.
+- This cleanup runs **only** on an explicit pull/hard-reset request. Do not
+  opportunistically delete patch files during unrelated work.
 
 ---
 
