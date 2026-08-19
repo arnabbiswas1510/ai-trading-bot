@@ -58,6 +58,8 @@ over.
 | `TRIGGER_LOOKBACK_DAYS` | `3` | Trigger freshness window (covers weekends/holidays) |
 | `MAX_PIVOT_EXTENSION` | `0.05` | Buy-zone ceiling above pivot |
 | `MAX_PIVOT_BREAKDOWN` | `0.02` | Buy-zone floor below pivot |
+| `MIN_VOL_SURGE_GATE` | `0.75` | Hard AI-independent volume surge floor; triggers below 0.75× the 50-day avg are skipped |
+| `MAX_PRE_BREAKOUT_PIVOT_DIST` | `0.05` | Max distance below 52W high for PRE_BREAKOUT entries; rejects speculative setups more than 5% away |
 | `MIN_TRIGGER_SCORE` | `60` | Score floor, `BREAKOUT` |
 | `MIN_PRE_BREAKOUT_SCORE` | `65` | Score floor, `PRE_BREAKOUT` |
 | `MIN_RELAXED_TRIGGER_SCORE` | `58` | Score floor, `PRE_BREAKOUT_RELAXED` |

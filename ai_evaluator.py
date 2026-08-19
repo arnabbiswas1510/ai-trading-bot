@@ -24,7 +24,11 @@ client = create_client(SUPABASE_URL, SUPABASE_KEY)
 ai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ── Grade boundaries (unchanged — used for backwards-compat ai_grade field) ──
-_GRADE_BOUNDARIES = [(70, "A", 15), (50, "B", 5), (30, "C", 0)]
+# D-veto threshold raised from 30 → 50: the AI historically never rates below 58,
+# so a 30 threshold is a dead letter. With prompt penalties now enforced for weak
+# setups (sub-par volume, below-pivot, negative ROE, Sell analyst), ratings of
+# 40-49 will occur for genuinely bad candidates — this threshold catches them.
+_GRADE_BOUNDARIES = [(70, "A", 15), (55, "B", 5), (50, "C", 0)]
 
 
 # ── AI batching configuration ─────────────────────────────────────────────────
@@ -185,6 +189,14 @@ SCORING RULES (non-negotiable — swing trade horizon is the primary filter):
    - EstDaysTo25% 16-30 (ATR 0.8-1.7%/day): acceptable swing horizon
    - EstDaysTo25% 31-60 (ATR 0.4-0.8%/day): marginal — reduce rating 15 pts
    - EstDaysTo25% > 60 (ATR < 0.4%/day): NOT a swing trade — cap rating at 35
+
+   MANDATORY QUALITY PENALTIES (apply first — these are hard disqualifiers):
+   - Volume surge < 0.75x avg volume: reduce rating by 25 pts (below-average volume is NOT a breakout signal — money is NOT confirming the move)
+   - Volume surge 0.75-1.0x avg volume: reduce rating by 10 pts (weak confirmation)
+   - Stock is > 3% below its 52-week pivot/high (DistFromPivot < -3%): reduce rating by 20 pts (speculative pre-breakout positioning, not a confirmed CAN SLIM entry)
+   - Negative ROE: reduce rating by 15 pts (company is unprofitable — violates CAN SLIM fundamentals; the 'E' requires earnings)
+   - Analyst consensus = "Sell": reduce rating by 20 pts (institutional consensus is actively bearish)
+   - Float > 1 billion shares: reduce rating by 20 pts (giant institutional stocks rarely move +25% in 2-6 weeks; they are index components, not growth leaders)
 
    MANDATORY LIQUIDITY PENALTIES:
    - Stock price under $15: cap rating at 45 (gap risk, no institutional interest)

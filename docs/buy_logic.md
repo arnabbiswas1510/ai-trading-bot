@@ -72,17 +72,19 @@ code, which is what makes the buy model auditable after the fact.
 |---|---|---|---|
 | 1 | Duplicate | Ticker already held | `ALREADY_HELD` |
 | 2 | Cooling-off | Sold within `COOLING_OFF_DAYS` (7) | `COOLING_OFF` |
-| 3 | AI veto | `ai_grade == "D"` (conviction < 30) | `AI_VETO` |
+| 3 | AI veto | `ai_grade == "D"` (conviction < 50) | `AI_VETO` |
 | 4 | Score present | `final_score` / `adjusted_score` is NULL | `NO_AI_SCORE` |
 | 5 | Score floor | Below the trigger-type minimum | `SCORE_FLOOR` |
 | 6 | Capacity (in-loop) | Slots filled by an earlier buy this cycle | `SLOTS_FULL` |
 | 7 | Cash floor | `available_cash < MIN_POSITION_SIZE` ($5,000) | `INSUFFICIENT_CASH` |
-| 8 | Contract | IBKR cannot qualify the contract | `LOOP_HALTED` *(halts loop)* |
-| 9 | Price | No IBKR price and no trigger close | `NO_PRICE` |
-| 10 | Buy zone — ceiling | `> pivot × (1 + MAX_PIVOT_EXTENSION)` | `EXTENDED_ABOVE_PIVOT` |
-| 11 | Buy zone — floor | `< pivot × (1 − MAX_PIVOT_BREAKDOWN)` | `BELOW_PIVOT` |
-| 12 | Share count | `shares ≤ 0` after safety reserve | `SHARES_ZERO` |
-| 13 | Fill | Order filled 0 shares | `BUY_FAILED` *(halts loop)* |
+| 8 | Volume surge | `volume_surge < MIN_VOL_SURGE_GATE` (0.75×) | `SCORE_FLOOR` |
+| 9 | PRE_BREAKOUT 52W distance | PRE_BREAKOUT > `MAX_PRE_BREAKOUT_PIVOT_DIST` (5%) below 52W high | `BELOW_PIVOT` |
+| 10 | Contract | IBKR cannot qualify the contract | `LOOP_HALTED` *(halts loop)* |
+| 11 | Price | No IBKR price and no trigger close | `NO_PRICE` |
+| 12 | Buy zone — ceiling | `> pivot × (1 + MAX_PIVOT_EXTENSION)` | `EXTENDED_ABOVE_PIVOT` |
+| 13 | Buy zone — floor | `< pivot × (1 − MAX_PIVOT_BREAKDOWN)` | `BELOW_PIVOT` |
+| 14 | Share count | `shares ≤ 0` after safety reserve | `SHARES_ZERO` |
+| 15 | Fill | Order filled 0 shares | `BUY_FAILED` *(halts loop)* |
 | — | Success | Order filled | `BOUGHT` |
 
 Capacity is re-checked **inside** the loop (gate 6) because an earlier fill in the same
@@ -165,6 +167,8 @@ converges to even weighting after full turnover.
 | `COOLING_OFF_DAYS` | `7` | Re-entry block after a sale |
 | `MAX_PIVOT_EXTENSION` | `0.05` | Buy-zone ceiling above pivot |
 | `MAX_PIVOT_BREAKDOWN` | `0.02` | Buy-zone floor below pivot |
+| `MIN_VOL_SURGE_GATE` | `0.75` | Minimum volume surge multiple (AI-independent hard gate) |
+| `MAX_PRE_BREAKOUT_PIVOT_DIST` | `0.05` | Max distance below 52W high for PRE_BREAKOUT entries |
 | `MIN_TRIGGER_SCORE` | `60` | Floor for `BREAKOUT` |
 | `MIN_PRE_BREAKOUT_SCORE` | `65` | Floor for `PRE_BREAKOUT` |
 | `MIN_RELAXED_TRIGGER_SCORE` | `58` | Floor for `PRE_BREAKOUT_RELAXED` |
