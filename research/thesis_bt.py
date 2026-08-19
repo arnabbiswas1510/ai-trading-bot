@@ -16,8 +16,30 @@ Trigger (all must hold):
     4%/day mover like DXCM isn't cut on noise)
 
 Exit is modelled as the ARMED exit, not a market sell at the trigger: a tight
-trail placed at the trigger bar that rides any bounce, with a deadline. On daily
-bars that is approximated as `max(next_open, trigger_close)` capped by the trail.
+trail placed at the trigger that rides any bounce, with a deadline.
+
+MODELLING THE ARMED EXIT (read before changing)
+-----------------------------------------------
+Two things about a trailing stop are easy to get wrong on daily bars, and this
+harness previously got both wrong in the same, favourable direction:
+
+1. ANCHOR. `arm_exit()` places the stop when the trigger fires, so the stop can
+   only ever trail from the price at THAT MOMENT. Seeding the high-water mark
+   with the trigger bar's HIGH back-dates the stop to a price that printed
+   before it existed: on the PASS universe a trigger bar's high sits a median
+   +2.93% above its close, so exits were booked ~3pp better than reachable.
+   The anchor is therefore the trigger CLOSE (`arm_ref`), matching the
+   daily-bar convention used for every other rule here.
+
+2. INTRA-BAR ORDER. A daily bar does not say whether the high or the low
+   printed first, and for a stop sitting BELOW the market the answer decides
+   whether it fills at all. Assuming high-first lets the trail ratchet up
+   before it can be hit — free money that no live order gets. `arm_path` makes
+   the assumption explicit and both are reported; a result is only trustworthy
+   if it holds under BOTH.
+
+Gaps are handled explicitly: if the first bar after arming opens through the
+stop, the fill is the OPEN, not the (unreachable) stop level.
 """
 import datetime, statistics, sys
 
@@ -48,11 +70,39 @@ def atr_pct_series(d):
     return out
 
 
+def armed_fill(p, bar, trail, path, first_bar):
+    """Price at which an armed trailing exit fills on *bar*, or None.
+
+    The trail trails from `p["arm_peak"]`, seeded at the trigger CLOSE — never
+    from a price that printed before the stop was placed. See the module
+    docstring.
+
+    path='optimistic'   the bar's high prints first, so the trail ratchets up
+                        before it can be hit (upper bound on performance)
+    path='conservative' the bar's low prints first, so a stop already below the
+                        market is taken out before any new high lifts it
+                        (lower bound)
+    """
+    if path == "optimistic":
+        p["arm_peak"] = max(p["arm_peak"], bar["high"])
+        lvl = p["arm_peak"] * (1 - trail)
+        return lvl if bar["low"] <= lvl else None
+
+    lvl = p["arm_peak"] * (1 - trail)
+    if first_bar and bar["open"] <= lvl:
+        return bar["open"]          # gapped through: the stop level was never available
+    if bar["low"] <= lvl:
+        return lvl
+    p["arm_peak"] = max(p["arm_peak"], bar["high"])
+    return None
+
+
 def simulate(cfg, sig, bars, emas, dix, alldates, atrs, collect_exits=False):
     open_pos, closed = [], []
     blocked = {}
     slots = cfg.get("slots", 4)
     armed_trail = cfg.get("armed_trail", 0.006)
+    arm_path = cfg.get("arm_path", "conservative")
 
     for di, day in enumerate(alldates):
         still = []
@@ -66,10 +116,10 @@ def simulate(cfg, sig, bars, emas, dix, alldates, atrs, collect_exits=False):
 
             # ── armed exit resolution (models arm_exit(): ride the bounce) ──
             if p.get("armed"):
-                p["arm_peak"] = max(p["arm_peak"], bar["high"])
-                lvl = p["arm_peak"] * (1 - armed_trail)
-                if bar["low"] <= lvl:
-                    closed.append(((lvl / p["entry"] - 1) * 100, held, p["arm_reason"], di))
+                px = armed_fill(p, bar, armed_trail, arm_path,
+                                held - p["armed_at"] == 1)
+                if px is not None:
+                    closed.append(((px / p["entry"] - 1) * 100, held, p["arm_reason"], di))
                     blocked[p["sym"]] = di + cfg.get("cool", 0); continue
                 if held - p["armed_at"] >= cfg.get("arm_deadline_days", 1):
                     closed.append(((bar["close"] / p["entry"] - 1) * 100, held, p["arm_reason"], di))
@@ -133,7 +183,10 @@ def simulate(cfg, sig, bars, emas, dix, alldates, atrs, collect_exits=False):
                 if thr and (c / p["entry"] - 1) * 100 <= -thr:
                     if cfg.get("thesis_armed", True):
                         p["armed"] = True; p["armed_at"] = held
-                        p["arm_peak"] = bar["high"]; p["arm_reason"] = "thesis"
+                        # Anchor at the TRIGGER CLOSE. Using bar["high"] here
+                        # back-dates the stop to a price that printed before it
+                        # was placed — see the module docstring.
+                        p["arm_peak"] = c; p["arm_reason"] = "thesis"
                         still.append(p); continue
                     closed.append(((c / p["entry"] - 1) * 100, held, "thesis", di))
                     blocked[p["sym"]] = di + cfg.get("cool", 0); continue
@@ -197,10 +250,14 @@ BASE = dict(profit_tiers=[(50, .050), (30, .060), (20, .065)], time_tiers=[],
             thesis_atr=None)
 
 if __name__ == "__main__":
-    hdr = f"{'config':34}{'n':>5}{'exp%':>8}{'payoff':>8}{'avgloss':>9}{'big20':>7}{'CAGR':>8}"
+    # CAGR is reported under both intra-bar path assumptions. The armed exit is
+    # only credible where BOTH bound it above a plain market sell.
+    hdr = (f"{'config':34}{'n':>5}{'exp%':>8}{'payoff':>8}{'avgloss':>9}"
+           f"{'big20':>7}{'CAGRc':>8}{'CAGRo':>8}")
     for fname, label in [("broad_names.txt", "BROAD"), ("pass_names.txt", "PASS")]:
         sig, bars, emas, dix, alld, atrs, years = load(fname)
         print(f"\n===== {label}  symbols={len(bars)}  years={years:.2f} =====")
+        print("  CAGRc = conservative path (low first)   CAGRo = optimistic (high first)")
         print(hdr)
         variants = [("baseline (no thesis stop)", dict(BASE))]
         for mult in (0.75, 1.0, 1.25, 1.5, 2.0):
@@ -210,6 +267,10 @@ if __name__ == "__main__":
         variants.append(("thesis 1.0x d2 MARKET sell",
                          dict(BASE, thesis_atr=1.0, thesis_day=2, thesis_armed=False)))
         for name, cfg in variants:
-            s = stats(simulate(cfg, sig, bars, emas, dix, alld, atrs), years)
-            print(f"{name:34}{s['n']:>5}{s['exp']:>+8.2f}{s['payoff']:>8.2f}"
-                  f"{s['avg_loss']:>+9.2f}{s['big20']:>6.1f}%{s['cagr']:>+8.1f}")
+            sc = stats(simulate(dict(cfg, arm_path="conservative"),
+                                sig, bars, emas, dix, alld, atrs), years)
+            so = stats(simulate(dict(cfg, arm_path="optimistic"),
+                                sig, bars, emas, dix, alld, atrs), years)
+            print(f"{name:34}{sc['n']:>5}{sc['exp']:>+8.2f}{sc['payoff']:>8.2f}"
+                  f"{sc['avg_loss']:>+9.2f}{sc['big20']:>6.1f}%"
+                  f"{sc['cagr']:>+8.1f}{so['cagr']:>+8.1f}")

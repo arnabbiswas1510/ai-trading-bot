@@ -63,6 +63,26 @@ Configuration (all env-overridable): `THESIS_STOP_ENABLED=true`,
 
 ## Evidence
 
+> ⚠️ **CORRECTED 2026-08-17.** The figures in this section were produced by a
+> backtest that anchored the armed exit's trailing stop to the trigger bar's
+> *high* — a price that printed before the stop was placed. Corrected values:
+> PASS **+10.29 [−1.21, +23.37] P=92%** (CI now crosses zero), BROAD **−9.43
+> [−25.14, +6.96] P=15%**. The "armed exit beat an immediate market sell in
+> both universes" claim below does **not** survive: corrected, it wins on PASS
+> and straddles/loses on BROAD. The thesis stop remains enabled on the strength
+> of its point estimate and loss-side metrics, but is no longer a demonstrated
+> result. See `decisions/2026-08-17_armed-exit-backtest-lookahead.md`.
+> The original numbers are retained below for the record.
+>
+> ⚠️ **RE-EXAMINED 2026-08-17.** A four-slice sweep on the corrected model found
+> **no multiplier/start-day positive in both universes under both intra-bar path
+> assumptions**, and a slot-free counterfactual showed the rule's *direct* effect
+> on the trades it cuts is near zero (−0.11% mean BROAD, +0.51% PASS), with
+> essentially no winners cut (0 of 89 PASS cuts would have reached +20%). The
+> portfolio-level ΔCAGR swings are dominated by slot-timing luck. The rule stays
+> **enabled and untuned at 1.0× from day 2**, reclassified as loss-shaping rather
+> than return-enhancing. See `decisions/2026-08-17_thesis-stop-reexamination.md`.
+
 Paired stationary-block bootstrap, 2000 reps, against baseline, in both
 mandated universes (broad unselected n=256, screener-passing n=79):
 

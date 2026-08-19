@@ -1,5 +1,12 @@
 # Decision: Armed Trailing Exit for Day 0-6 Loss-Cutting Signals
 
+> ⚠️ **PARTIALLY SUPERSEDED — 2026-08-17.** The evidence cited here came from a
+> backtest with a look-ahead bug, and the noise figures in "Why these specific
+> numbers" below are wrong by roughly an order of magnitude (traded names average
+> 4.19% ATR/day, not 0.3–0.6%). The mechanism is still in production but is no
+> longer considered proven. See
+> `decisions/2026-08-17_armed-exit-backtest-lookahead.md`.
+
 ## Problem
 
 For the first week of a position (Day 0-6), two independent signals could
