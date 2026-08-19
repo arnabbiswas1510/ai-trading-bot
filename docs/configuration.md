@@ -94,6 +94,26 @@ wider confidence interval than 1.0.
 | `ARMED_EXIT_TRAIL_PCT` | `0.006` | Trail distance once armed |
 | `ARMED_EXIT_DEADLINE_HOURS` | `3.25` | Forced market sell if unfilled |
 
+### Smart OCA managed exit
+
+Drives `process_exit_requests()` — the queue-driven OCA exit fed by
+`request_exit.py`. Requires `migrations/add_exit_requests.sql`.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `OCA_EXIT_ENABLED` | `true` | Master switch. When false the queue is ignored and the automated ladder governs every position |
+| `OCA_EXIT_SETTLE_MINUTE` | `45` | Earliest minute past 09:00 ET to place legs. Avoids computing a limit off opening-auction noise |
+| `OCA_EXIT_ATR_FRACTION` | `0.33` | Trail as a fraction of `entry_atr_pct` when `stop_mode='ATR_AUTO'` |
+| `OCA_EXIT_MIN_TRAIL_PCT` | `0.015` | Lower clamp. Below this the trail sits inside ordinary noise and fires instantly, cancelling the upper leg |
+| `OCA_EXIT_MAX_TRAIL_PCT` | `0.040` | Upper clamp |
+| `OCA_EXIT_DEFAULT_ATR_PCT` | `3.0` | Used when the position has no ATR on record |
+| `OCA_EXIT_DEFAULT_FLOOR_PCT` | `0.05` | Hard floor below the placement price when the request sets none. **Not optional in effect** — the automated ladder is suspended for managed tickers, so this is the protection |
+| `OCA_EXIT_DEFAULT_EXPIRY_DAYS` | `3` | Trading days before an unfilled OCA is closed at market |
+
+Raising `OCA_EXIT_DEFAULT_FLOOR_PCT` widens the worst case on every managed
+position, because no other stop is active while the OCA is placed. See
+`decisions/2026-08-18_smart-oca-managed-exit.md`.
+
 ### Early loss and the superseded minimiser
 
 | Variable | Default | Effect |
@@ -246,6 +266,7 @@ Used by `managed_exit.py` for manual liquidation.
 | `daily_triggers` | Today's technical triggers, enriched with scores. **Truncated daily** |
 | `portfolio_positions` | Open positions and all exit-rule state |
 | `account_balances` | IBKR cash and equity snapshots |
+| `exit_requests` | Smart OCA managed-exit queue. Outlives the position it refers to, so it doubles as the exit audit trail (`migrations/add_exit_requests.sql`) |
 
 ### Append-only research tables
 

@@ -409,6 +409,32 @@ THESIS_STOP_ATR_FALLBACK = float(os.getenv("THESIS_STOP_ATR_FALLBACK", 3.0))
 ARMED_EXIT_TRAIL_PCT      = float(os.getenv("ARMED_EXIT_TRAIL_PCT",      0.006))  # 0.6%
 ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25))   # ~half a trading day
 
+# ── Smart OCA Managed Exit (queue-driven, see migrations/add_exit_requests.sql) ─
+# A row in `exit_requests` asks the agent to exit a named position via an IBKR
+# OCA pair rather than a market dump:
+#     upper leg = LMT sell at an optimistic recovery target
+#     lower leg = TRAIL sell that ratchets up behind any bounce
+# One cancels the other. The agent drains the queue every monitoring cycle, so a
+# request made at 11:00 acts at 11:00 — "first thing in the morning" is just the
+# special case where the request was queued overnight.
+#
+# The legs are NOT placed at 09:30. The opening auction has the widest spreads
+# and the wildest prints of the session; a limit computed off a 09:30 tick is
+# computed off noise. We wait until the tape settles.
+OCA_EXIT_ENABLED          = os.getenv("OCA_EXIT_ENABLED", "true").lower() == "true"
+OCA_EXIT_SETTLE_MINUTE    = int(os.getenv("OCA_EXIT_SETTLE_MINUTE", 45))   # place from 09:45 ET
+# Trail sizing for stop_mode='ATR_AUTO'. A trail tighter than the stock's own
+# noise fires on the first random wiggle, which just reproduces "sell now" with
+# extra steps and forfeits the upper leg entirely.
+OCA_EXIT_ATR_FRACTION     = float(os.getenv("OCA_EXIT_ATR_FRACTION",     0.33))
+OCA_EXIT_MIN_TRAIL_PCT    = float(os.getenv("OCA_EXIT_MIN_TRAIL_PCT",    0.015))  # 1.5%
+OCA_EXIT_MAX_TRAIL_PCT    = float(os.getenv("OCA_EXIT_MAX_TRAIL_PCT",    0.040))  # 4.0%
+OCA_EXIT_DEFAULT_ATR_PCT  = float(os.getenv("OCA_EXIT_DEFAULT_ATR_PCT",  3.0))
+# Backstop applied in software each cycle: an OCA can sit unfilled indefinitely
+# while the position bleeds, so bound both the price and the time.
+OCA_EXIT_DEFAULT_FLOOR_PCT = float(os.getenv("OCA_EXIT_DEFAULT_FLOOR_PCT", 0.05))  # 5% below placement
+OCA_EXIT_DEFAULT_EXPIRY_DAYS = int(os.getenv("OCA_EXIT_DEFAULT_EXPIRY_DAYS", 3))
+
 # ── O'Neil 8-Week Hold Rule ───────────────────────────────────────────────────
 # From "How to Make Money in Stocks": a stock that gains 20%+ within 3 weeks of a
 # proper breakout is behaving like a genuine market leader and should be held for
@@ -919,6 +945,341 @@ def arm_exit(ib: IB, client: Client, ticker: str, shares: int, current_price: fl
     except Exception as arm_err:
         notifier.notify_exception("arm_exit() — execution_agent.py", arm_err)
         print(f"   ⚠️ {ticker}: failed to arm exit: {arm_err}")
+
+
+def resolve_oca_trail_pct(pos: dict, stop_mode: str, stop_value) -> tuple[float, str]:
+    """
+    Resolves the OCA lower leg's trailing percent.
+
+    'ATR_AUTO' scales the trail to the stock's own volatility. This matters more
+    than it looks: a 1% trail on a name with a 7% average true range fires on
+    the first tick of ordinary noise, which cancels the upper leg and turns the
+    whole OCA into an expensive market order.
+    """
+    if stop_mode == "TRAIL_PCT" and stop_value:
+        return float(stop_value) / 100.0, f"fixed {float(stop_value):.2f}%"
+
+    atr_pct = pos.get("entry_atr_pct")
+    source = "entry_atr_pct"
+    if not atr_pct or float(atr_pct) <= 0:
+        atr_pct, source = OCA_EXIT_DEFAULT_ATR_PCT, "default (no ATR on record)"
+    atr_pct = float(atr_pct)
+
+    raw = (atr_pct / 100.0) * OCA_EXIT_ATR_FRACTION
+    trail = max(OCA_EXIT_MIN_TRAIL_PCT, min(OCA_EXIT_MAX_TRAIL_PCT, raw))
+    note = f"auto: {OCA_EXIT_ATR_FRACTION:.0%} of {atr_pct:.2f}% ATR ({source})"
+    if abs(trail - raw) > 1e-9:
+        note += f", clamped to {trail*100:.2f}%"
+    return trail, note
+
+
+def resolve_oca_limit_price(pos: dict, limit_mode: str, limit_value,
+                            ref_price: float) -> float | None:
+    """
+    Resolves the OCA upper leg's limit price from stored *intent*.
+
+    Requests are frequently queued outside market hours, so a literal price
+    captured at request time would be stale by the time it is placed. Only
+    'ABS' pins an absolute price; everything else is resolved here against the
+    live reference price or the position's entry.
+    """
+    entry = float(pos.get("buy_price") or 0)
+    mode = (limit_mode or "").upper()
+
+    if mode == "NONE":
+        return None
+    if mode == "ABS":
+        return float(limit_value) if limit_value else None
+    if mode == "BREAKEVEN":
+        return entry or None
+    if mode == "PCT_FROM_ENTRY":
+        return entry * (1 + float(limit_value or 0) / 100.0) if entry else None
+    if mode == "PCT_FROM_PRICE":
+        return ref_price * (1 + float(limit_value or 0) / 100.0) if ref_price else None
+    return None
+
+
+def place_oca_exit(ib: IB, contract, shares: int, limit_price: float | None,
+                   trail_pct: float, account: str) -> tuple[str, list]:
+    """
+    Places the OCA exit pair on an open position:
+
+        upper leg  LMT  SELL @ limit_price   -- the optimistic recovery target
+        lower leg  TRAIL SELL trail_pct      -- ratchets up behind any bounce
+
+    The lower leg is deliberately a TRAIL and not a static STP. With a static
+    stop, a position that rallies most of the way to the limit and then fades
+    still exits at the original stop, surrendering the entire move. A trail
+    follows the advance and banks whatever the bounce actually delivered, which
+    is the only reason waiting for the upper leg is worth the risk at all.
+
+    ocaType=1 (CANCEL_WITH_BLOCK) is required, not cosmetic: in a cash account
+    two SELL orders for the same shares are otherwise liable to be rejected as
+    exceeding the position, and a partial fill on one leg must reduce the other
+    rather than leave a naked short.
+
+    Returns (oca_group, [trades]).
+    """
+    group = f"OCA_{contract.symbol}_{int(time.time())}"
+    trades = []
+
+    if limit_price and limit_price > 0:
+        lmt = Order()
+        lmt.action        = 'SELL'
+        lmt.orderType     = 'LMT'
+        lmt.totalQuantity = shares
+        lmt.lmtPrice      = round(float(limit_price), 2)
+        lmt.tif           = 'GTC'
+        lmt.account       = account
+        lmt.ocaGroup      = group
+        lmt.ocaType       = 1
+        lmt.transmit      = True
+        trades.append(ib.placeOrder(contract, lmt))
+
+    trail = TrailingStopOrder('SELL', shares,
+                              trailingPercent=round(trail_pct * 100, 2))
+    trail.tif      = 'GTC'
+    trail.account  = account
+    trail.ocaGroup = group
+    trail.ocaType  = 1
+    trail.transmit = True
+    trades.append(ib.placeOrder(contract, trail))
+
+    ib.sleep(1)
+    return group, trades
+
+
+def process_exit_requests(ib: IB) -> None:
+    """
+    Drains the `exit_requests` queue — the Smart OCA Managed Exit.
+
+    Runs on every monitoring cycle rather than only at the open, because an
+    exit decision made at 11:00 should not wait until the next session. The
+    settle window (OCA_EXIT_SETTLE_MINUTE) only defers requests that arrived
+    before the market opened; anything queued intraday is placed at once.
+
+    Two states are handled:
+      PENDING -> cancel the existing GTC trail, place the OCA pair, mark PLACED.
+      PLACED  -> detect a fill, or enforce the software backstops (hard floor
+                 and expiry). An OCA left alone can sit unfilled indefinitely
+                 while the position bleeds, so both bounds are mandatory.
+    """
+    if not OCA_EXIT_ENABLED:
+        return
+
+    client = get_supabase_client()
+    try:
+        rows = (client.table("exit_requests")
+                .select("*")
+                .in_("status", ["PENDING", "PLACED"])
+                .execute().data) or []
+    except Exception as e:
+        # Table absent (migration not yet applied) must not take down the loop —
+        # every other risk rule still needs to run this cycle.
+        msg = str(e)
+        if "42P01" in msg or "exit_requests" in msg or "PGRST205" in msg:
+            print("   ⚠️ exit_requests table missing — run migrations/add_exit_requests.sql")
+        else:
+            notifier.notify_exception("process_exit_requests() — execution_agent.py", e)
+        return
+
+    if not rows:
+        return
+
+    tz = ZoneInfo("America/New_York")
+    now_ny = datetime.datetime.now(tz)
+    print(f"🎯 Smart OCA Exit queue: {len(rows)} request(s) in flight")
+
+    try:
+        holdings = {p["ticker"].upper(): p for p in
+                    (client.table("portfolio_positions").select("*").execute().data or [])}
+    except Exception as e:
+        notifier.notify_exception("process_exit_requests() — execution_agent.py", e)
+        return
+
+    account = get_ibkr_account(ib)
+
+    for req in rows:
+        ticker = (req.get("ticker") or "").upper()
+        rid    = req.get("id")
+        try:
+            pos = holdings.get(ticker)
+            if not pos:
+                # Already gone — either a leg filled and reconcile_with_ibkr()
+                # archived it, or it was sold by another path.
+                _close_exit_request(client, rid, "FILLED" if req["status"] == "PLACED" else "CANCELLED",
+                                    outcome="LIMIT_OR_TRAIL" if req["status"] == "PLACED" else None,
+                                    note="position no longer held")
+                print(f"   ✅ {ticker}: position closed — exit request #{rid} resolved.")
+                continue
+
+            shares = int(pos["shares"])
+            current_price = get_live_price(ticker)
+            if current_price <= 0:
+                print(f"   ⚠️ {ticker}: no price this cycle — deferring exit request #{rid}.")
+                continue
+
+            # ── PENDING: place the OCA ──────────────────────────────────────
+            if req["status"] == "PENDING":
+                if now_ny.hour == 9 and now_ny.minute < OCA_EXIT_SETTLE_MINUTE:
+                    print(f"   ⏳ {ticker}: waiting for the tape to settle "
+                          f"(placing from 09:{OCA_EXIT_SETTLE_MINUTE:02d} ET).")
+                    continue
+
+                trail_pct, trail_note = resolve_oca_trail_pct(
+                    pos, (req.get("stop_mode") or "ATR_AUTO").upper(), req.get("stop_value"))
+                limit_price = resolve_oca_limit_price(
+                    pos, req.get("limit_mode"), req.get("limit_value"), current_price)
+
+                if limit_price and limit_price <= current_price:
+                    # The target is already at or below the market: the limit
+                    # would fill instantly at a worse price than a plain sell.
+                    print(f"   ⚠️ {ticker}: limit ${limit_price:.2f} is at/below market "
+                          f"${current_price:.2f} — dropping upper leg, trail only.")
+                    limit_price = None
+
+                contract = Stock(ticker, 'SMART', 'USD')
+                ib.qualifyContracts(contract)
+                # The existing GTC trailing stop MUST go first. Left in place it
+                # is a third competing SELL outside the OCA group, so a fill on
+                # it would not cancel the OCA legs.
+                cancel_ticker_sell_orders(ib, ticker)
+                ib.sleep(1)
+
+                group, _ = place_oca_exit(ib, contract, shares, limit_price, trail_pct, account)
+
+                floor_pct = float(req.get("hard_floor_pct") or OCA_EXIT_DEFAULT_FLOOR_PCT * 100) / 100.0
+                stop_ref  = current_price * (1 - trail_pct)
+
+                client.table("exit_requests").update({
+                    "status": "PLACED",
+                    "oca_group": group,
+                    "placed_at": now_ny.isoformat(),
+                    "placed_price": round(current_price, 4),
+                    "placed_limit_price": round(limit_price, 2) if limit_price else None,
+                    "placed_stop_price": round(stop_ref, 2),
+                    "placed_trail_pct": round(trail_pct * 100, 4),
+                    "updated_at": now_ny.isoformat(),
+                }).eq("id", rid).execute()
+
+                entry = float(pos.get("buy_price") or 0)
+                lim_txt = (f"${limit_price:.2f} ({(limit_price/entry-1)*100:+.2f}% vs entry)"
+                           if limit_price else "none (trail only)")
+                print(f"   🎯 {ticker}: OCA placed — limit {lim_txt}, "
+                      f"trail {trail_pct*100:.2f}% ({trail_note}), floor {floor_pct*100:.2f}%")
+                notifier._send(
+                    f"🎯 <b>{ticker}</b> Smart OCA exit placed\n"
+                    f"Limit: {lim_txt}\n"
+                    f"Trail: {trail_pct*100:.2f}% (anchor ~${stop_ref:.2f})\n"
+                    f"Floor: ${current_price*(1-floor_pct):.2f} · expires in "
+                    f"{int(req.get('expires_after_days') or OCA_EXIT_DEFAULT_EXPIRY_DAYS)}d"
+                )
+                continue
+
+            # ── PLACED: enforce the software backstops ──────────────────────
+            placed_price = float(req.get("placed_price") or current_price)
+            floor_pct = float(req.get("hard_floor_pct") or OCA_EXIT_DEFAULT_FLOOR_PCT * 100) / 100.0
+            floor_level = placed_price * (1 - floor_pct)
+
+            try:
+                placed_at = datetime.datetime.fromisoformat(
+                    str(req["placed_at"]).replace("Z", "+00:00")).astimezone(tz)
+            except Exception:
+                placed_at = now_ny
+            expiry_days = int(req.get("expires_after_days") or OCA_EXIT_DEFAULT_EXPIRY_DAYS)
+            days_open = trading_days_between(placed_at.date(), now_ny.date()) - 1
+
+            buy_price  = float(pos["buy_price"])
+            buy_reason = pos.get("buy_reason", "Unknown")
+            try:
+                buy_date = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
+            except Exception:
+                buy_date = now_ny
+
+            breach = current_price <= floor_level
+            expired = days_open >= expiry_days
+
+            if breach or expired:
+                why = (f"hard floor ${floor_level:.2f} breached" if breach
+                       else f"expired after {days_open} trading day(s)")
+                reason = (f"Smart OCA Exit — {why}; closing at market "
+                          f"(limit ${req.get('placed_limit_price') or 0:.2f} never filled)")
+                print(f"🚨 {ticker}: Smart OCA backstop firing — {why}")
+                cancel_ticker_sell_orders(ib, ticker)
+                ib.sleep(1)
+                ok = execute_sell(ib, client, ticker, shares, buy_price, buy_date,
+                                  buy_reason, current_price, reason, pos_row=pos)
+                if ok:
+                    _close_exit_request(client, rid, "FILLED",
+                                        outcome="FLOOR" if breach else "EXPIRY",
+                                        filled_price=current_price, note=why)
+                else:
+                    print(f"   ⚠️ {ticker}: backstop sell not confirmed — retrying next cycle.")
+                continue
+
+            lim = req.get("placed_limit_price")
+            lim_txt = f"limit ${float(lim):.2f}" if lim else "trail only"
+            print(f"   🎯 {ticker}: OCA live — ${current_price:.2f} | {lim_txt} | "
+                  f"floor ${floor_level:.2f} | day {days_open}/{expiry_days}")
+
+        except Exception as req_err:
+            notifier.notify_exception(f"process_exit_requests() {ticker} — execution_agent.py", req_err)
+            try:
+                client.table("exit_requests").update({
+                    "last_error": str(req_err)[:500],
+                    "updated_at": now_ny.isoformat(),
+                }).eq("id", rid).execute()
+            except Exception:
+                pass
+            print(f"   ⚠️ {ticker}: exit request #{rid} failed this cycle: {req_err}")
+
+
+def _close_exit_request(client: Client, rid, status: str, outcome: str | None = None,
+                        filled_price: float | None = None, note: str | None = None) -> None:
+    """Terminal-state writer for an exit_requests row."""
+    payload = {"status": status, "updated_at": datetime.datetime.now(
+        ZoneInfo("America/New_York")).isoformat()}
+    if outcome:
+        payload["outcome"] = outcome
+    if filled_price:
+        payload["filled_price"] = round(float(filled_price), 4)
+        payload["filled_at"] = payload["updated_at"]
+    if note:
+        payload["note"] = note
+    try:
+        client.table("exit_requests").update(payload).eq("id", rid).execute()
+    except Exception as e:
+        print(f"   ⚠️ Could not close exit request #{rid}: {e}")
+
+
+def get_oca_managed_tickers(client: Client) -> set:
+    """
+    Tickers whose exit is currently owned by a Smart OCA request.
+
+    The automated ladder (thesis stop, dollar stop, intraday minimiser, EMA
+    exit) must not act on these. Those rules call execute_sell()/arm_exit(),
+    both of which cancel every open SELL order for the ticker — which would
+    silently destroy the OCA the user explicitly asked for. The OCA plus its
+    floor and expiry backstops fully govern the position instead.
+    """
+    if not OCA_EXIT_ENABLED:
+        return set()
+    try:
+        rows = (client.table("exit_requests")
+                .select("ticker,status")
+                .eq("status", "PLACED")
+                .execute().data) or []
+        # Re-assert the predicate in Python. The server-side .eq() already
+        # filters, but this makes the function total: any row that is not
+        # unambiguously a PLACED exit_requests row can never suspend the
+        # automated exit ladder. Wrongly suspending it would leave a position
+        # with no stop at all.
+        return {
+            str(r["ticker"]).upper() for r in rows
+            if isinstance(r, dict) and r.get("status") == "PLACED" and r.get("ticker")
+        }
+    except Exception:
+        return set()
 
 
 def _compute_dynamic_trail_pct(
@@ -2609,6 +2970,11 @@ def monitor_portfolio_intraday(ib: IB):
     # relative to the last price we polled (not the stored HWM price, which
     # IBKR now owns).
     intraday_peak: dict = {}
+    # Positions whose exit is owned by a Smart OCA request. Every automated rule
+    # below funnels into execute_sell()/arm_exit(), and both cancel all open SELL
+    # orders for the ticker — which would wipe out the OCA. Skip them entirely;
+    # process_exit_requests() governs these positions.
+    oca_managed = get_oca_managed_tickers(client)
     active_positions = []
     for pos in positions:
         ticker     = pos["ticker"]
@@ -2633,6 +2999,12 @@ def monitor_portfolio_intraday(ib: IB):
             continue
 
         pos_stop_loss_pct = float(pos.get("stop_loss_pct") or STOP_LOSS_PCT)
+
+        if ticker in oca_managed:
+            print(f"   🎯 {ticker}: Smart OCA exit active — automated exit rules "
+                  f"suspended (OCA + floor/expiry backstops govern this position).")
+            active_positions.append(pos)
+            continue
 
         print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
               f"| Held: {days_held}d | IBKR Trail: {pos_stop_loss_pct*100:.2f}%")
@@ -3495,6 +3867,8 @@ def main_loop():
                 # same day rather than waiting until the next morning.
                 if is_market_open:
                     reconcile_with_ibkr(ib)        # Sync IBKR → Supabase before checks
+                    process_exit_requests(ib)       # Smart OCA managed exits (before monitor:
+                                                    # it decides which tickers monitor must skip)
                     run_market_open_buys(ib)        # No-op when portfolio is full
                     monitor_portfolio_intraday(ib)  # Trailing stops, MA exits, plateau rotation
                     ib.sleep(900)

@@ -66,6 +66,10 @@ ADVISORY_TABLES: dict[str, str] = {
     "watchlist_history":
         "point-in-time fundamental screen archive "
         "(migrations/add_watchlist_history.sql)",
+    "exit_requests":
+        "Smart OCA managed-exit queue — without it request_exit.py cannot queue "
+        "an exit and the agent falls back to the automated ladder only "
+        "(migrations/add_exit_requests.sql)",
 }
 
 REPAIR_SCRIPT = "migrations/2026-08-13_apply_missing_migrations.sql"

@@ -32,6 +32,7 @@ for that cycle — an early `continue` means later rules are unreachable until t
 
 | # | Check | Days | Window | Action |
 |---|---|---|---|---|
+| 0 | **Smart OCA Managed Exit** | all | every cycle | **suspends rules 1–13 for that ticker** |
 | 1 | Armed-exit deadline | 0–6 | every cycle | force market sell |
 | 2 | Early Loss Kill-switch | 0–1 | every cycle | arm exit |
 | 3 | **Early Dollar Stop** | 0–5 | every cycle | arm exit |
@@ -45,6 +46,10 @@ for that cycle — an early `continue` means later rules are unreachable until t
 | 11 | Day-3 breakout verdict | 3 | EOD, once | *(records verdict)* |
 | 12 | Follow-through latch update | all | EOD | *(sets `closed_above_entry`)* |
 | 13 | Rank & Replace | 7+ | EOD, once daily | market sell + refill |
+
+`process_exit_requests()` runs before `monitor_portfolio_intraday()` in the main
+loop, because it decides which tickers the ladder must skip. See
+[Smart OCA Managed Exit](#smart-oca-managed-exit) below.
 
 ---
 
@@ -454,6 +459,122 @@ Two behaviours worth knowing:
 
 | Script | Purpose |
 |---|---|
+| `request_exit.py` | **Queue a Smart OCA Managed Exit — agent places the orders, nothing gets stopped** |
 | `force_sell.py` | Immediate liquidation of a named position |
 | `managed_exit.py` | Run an armed exit manually |
 | `rotate_positions.py` | Interactive holdings-vs-triggers review; **not** part of the daemon |
+
+`force_sell.py` and `managed_exit.py` connect to IBKR directly as `clientId=1`,
+so the execution-agent must be **stopped** before running either — which leaves
+every other position unmonitored. Prefer `request_exit.py` unless the situation
+is a true emergency where waiting up to 15 minutes is itself the risk.
+
+---
+
+## Smart OCA Managed Exit
+
+A queue-driven exit that lets you leave a position with a defined optimistic
+target and a defined floor, without taking the agent offline.
+
+You write a row to `exit_requests`; the execution-agent drains the queue on its
+normal 15-minute cycle and places an IBKR **OCA pair** on the position:
+
+| Leg | Order type | Purpose |
+|---|---|---|
+| Upper | `LMT` SELL at a recovery target | the optimistic exit |
+| Lower | `TRAIL` SELL | ratchets up behind any bounce |
+
+One fills, the other is cancelled (`ocaType=1`).
+
+### Why the lower leg trails instead of sitting still
+
+With a static stop, a position that rallies most of the way to your limit and
+then fades still exits at the original stop price — the whole move is handed
+back. The trail follows the advance and banks whatever the bounce actually
+delivered. That retained upside is the only reason waiting for the upper leg
+beats selling now.
+
+### The automated ladder is suspended while a request is `PLACED`
+
+Every rule in the evaluation order above calls `execute_sell()` or `arm_exit()`,
+and both cancel all open SELL orders for the ticker — which would destroy the
+OCA. So the ladder skips OCA-managed tickers entirely.
+
+Because that removes the normal safety net, two backstops are enforced in
+software every cycle and are **not optional**:
+
+| Backstop | Default | Behaviour |
+|---|---|---|
+| Hard floor | `OCA_EXIT_DEFAULT_FLOOR_PCT` = 5% | market-exit if price falls this far below the placement price |
+| Expiry | `OCA_EXIT_DEFAULT_EXPIRY_DAYS` = 3 | market-exit after this many trading days if neither leg filled |
+
+Without the floor, a name that gaps down and keeps sliding sits unsold behind an
+unreachable limit. Without the expiry, an OCA can sit unfilled indefinitely
+while the position bleeds.
+
+`get_oca_managed_tickers()` re-checks `status == 'PLACED'` in Python even though
+the query filters server-side: wrongly suspending the ladder is the one failure
+mode that leaves a position with no stop at all, so it fails closed.
+
+### Placement timing
+
+Requests are drained every cycle, so an exit queued at 11:00 is placed at 11:00.
+Requests queued before the open wait until `OCA_EXIT_SETTLE_MINUTE` (09:45 ET) —
+the opening auction has the widest spreads of the session, and a limit computed
+off a 09:30 tick is computed off noise.
+
+Before placing, the agent cancels the position's existing GTC trailing stop.
+Left in place it would be a third SELL order outside the OCA group, so filling
+it would not cancel the OCA legs.
+
+If the resolved limit is at or below the current market it is dropped and the
+trail is placed alone — such a limit would fill instantly at a worse price than
+a plain sell.
+
+### Request modes
+
+Requests store *intent*, not prices, because a row queued at 22:00 carrying a
+literal price is stale by 09:30. The agent resolves the real price at placement.
+
+| `limit_mode` | Resolves to |
+|---|---|
+| `BREAKEVEN` *(default)* | entry price |
+| `ABS` | `limit_value` literally |
+| `PCT_FROM_ENTRY` | `entry × (1 + limit_value/100)` |
+| `PCT_FROM_PRICE` | `price at placement × (1 + limit_value/100)` |
+| `NONE` | no upper leg — trail only |
+
+| `stop_mode` | Resolves to |
+|---|---|
+| `ATR_AUTO` *(default)* | `OCA_EXIT_ATR_FRACTION × entry_atr_pct`, clamped to `[OCA_EXIT_MIN_TRAIL_PCT, OCA_EXIT_MAX_TRAIL_PCT]` |
+| `TRAIL_PCT` | `stop_value` percent |
+
+`ATR_AUTO` exists because a trail tighter than the stock's own noise fires on
+the first random wiggle, cancels the upper leg, and reproduces "sell now" with
+extra steps. A 1% trail on a name with a 7% average true range is not a tight
+stop, it is an immediate one.
+
+### Usage
+
+```bash
+# Recover-to-a-level exit
+python request_exit.py DELL --limit-abs 489.89 --trail 2.5
+
+# Wait for breakeven, trail scaled to the stock's own ATR
+python request_exit.py DELL --breakeven --trail auto
+
+# Target +3% above entry, 4% floor, 5 trading days
+python request_exit.py NVDA --limit-pct-entry 3 --trail 2 --floor 4 --expires 5
+
+python request_exit.py --list           # in-flight requests
+python request_exit.py --cancel DELL    # withdraw
+```
+
+Requires `migrations/add_exit_requests.sql`. At most one active request per
+ticker is permitted — two OCA groups on the same shares would be rejected by a
+cash account, and the second would cancel the first's protection.
+
+Set `OCA_EXIT_ENABLED=false` to disable the feature; the queue is then ignored
+and the automated ladder governs every position.
+
+See `decisions/2026-08-18_smart-oca-managed-exit.md` for why.
