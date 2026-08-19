@@ -309,6 +309,27 @@ how the bot now behaves?"* If yes, the docs update is not finished.
    the comment carried forward into the patch/commit history whenever it
    is applied and pushed. Do not use a generic or placeholder message.
 
+### Do NOT run `graphify update .` after APPLYING a patch
+
+The patch already contains the regenerated `graphify-out/` artifacts — that is
+why they are in the permitted file list above. Re-running the update on the
+machine that applied it re-stats every file and rewrites **only the `mtime`
+fields in `manifest.json`**; every `ast_hash` is byte-identical, so the commit
+records nothing but checkout timestamps.
+
+That empty commit is actively harmful:
+
+- It becomes the head commit, so the GitHub Actions run is titled
+  *"Update knowledge graph after applying patch NNN"* instead of the change
+  that was actually deployed.
+- It triggers a redundant image build and production redeploy.
+- It guarantees the patch can never reverse cleanly, which is the entire reason
+  the `APPLIED_SOURCE` escape hatch below has to exist.
+
+Run `graphify update .` when you **author** a change, never when you apply one.
+If a graph refresh is ever genuinely needed post-apply, fold it into the work
+commit with `git commit --amend` rather than adding a trailing commit.
+
 ### Serial numbers are never reused
 
 The prefix is a monotonic counter over the **whole history of the project**,

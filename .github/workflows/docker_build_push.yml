@@ -1,9 +1,31 @@
 name: Build and Push Docker Images to GHCR
 
+# No `run-name:` on purpose. GitHub's default run title is the FIRST LINE of the
+# head commit message, which is exactly what we want; an explicit `run-name`
+# would render the entire multi-line body this project uses for commits. The
+# titles were wrong because a bookkeeping commit was landing on top of the real
+# work, not because the default was wrong — fixed by `paths-ignore` below plus
+# the "do not re-run graphify after applying a patch" rule in AGENTS.md.
+
 on:
   push:
     branches:
       - main
+    # Documentation-only pushes cannot change either image: both Dockerfiles
+    # COPY an explicit list of source files (no docs/, decisions/ or
+    # graphify-out/), and .dockerignore excludes docs/, README.md and AGENTS.md
+    # regardless. Building for them wastes a deploy cycle AND — because the
+    # knowledge-graph commit is pushed separately after a patch is applied —
+    # makes the most recent run describe bookkeeping instead of the change.
+    #
+    # A push touching BOTH code and docs still builds: paths-ignore only skips
+    # when EVERY changed file matches.
+    paths-ignore:
+      - 'graphify-out/**'
+      - 'decisions/**'
+      - 'docs/**'
+      - '**.md'
+      - '*.patch'
   workflow_dispatch:
 
 permissions:
