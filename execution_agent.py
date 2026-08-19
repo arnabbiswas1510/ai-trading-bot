@@ -1163,11 +1163,18 @@ def process_exit_requests(ib: IB) -> None:
                     pos, req.get("limit_mode"), req.get("limit_value"), current_price)
 
                 if limit_price and limit_price <= current_price:
-                    # The target is already at or below the market: the limit
-                    # would fill instantly at a worse price than a plain sell.
-                    print(f"   ⚠️ {ticker}: limit ${limit_price:.2f} is at/below market "
-                          f"${current_price:.2f} — dropping upper leg, trail only.")
-                    limit_price = None
+                    # The target is already met. Keep the leg: a SELL limit can
+                    # never fill BELOW its limit price, so a marketable one fills
+                    # at the better prevailing bid (limit 489.89 into a 495 market
+                    # fills near 495). Dropping it here would decline the exact
+                    # price the request asked for, and leave the position riding
+                    # on the trail alone after its goal had already been reached.
+                    # It is also safer than a market order: if the bid collapses
+                    # before the fill, the order rests at the limit instead of
+                    # chasing the drop down.
+                    print(f"   ⚡ {ticker}: limit ${limit_price:.2f} is already marketable "
+                          f"vs ${current_price:.2f} — target met, expect an immediate fill "
+                          f"at or above the limit.")
 
                 contract = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(contract)

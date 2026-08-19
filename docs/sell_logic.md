@@ -543,9 +543,12 @@ Before placing, the agent cancels the position's existing GTC trailing stop.
 Left in place it would be a third SELL order outside the OCA group, so filling
 it would not cancel the OCA legs.
 
-If the resolved limit is at or below the current market it is dropped and the
-trail is placed alone — such a limit would fill instantly at a worse price than
-a plain sell.
+If the resolved limit is already at or below the current market, the leg is
+still placed. A **sell** limit can never fill below its limit price, so a
+marketable one fills at the better prevailing bid — a $489.89 limit into a $495
+market fills near $495. Dropping it would decline the exact price the request
+asked for. It is also safer than a market order: if the bid collapses before
+the fill, the order rests at the limit instead of chasing the drop down.
 
 ### Request modes
 

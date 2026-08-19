@@ -285,10 +285,12 @@ class TestQueuePending:
         _, place, _, _ = _run_queue([_pending()], [_pos()], 468.61, hour=9, minute=50)
         place.assert_called_once()
 
-    def test_drops_an_upper_leg_that_is_already_below_the_market(self):
-        # Such a limit would fill instantly at a worse price than a plain sell.
+    def test_keeps_an_upper_leg_that_is_already_marketable(self):
+        # A SELL limit never fills below its limit price, so a marketable one
+        # fills at the better prevailing bid. Dropping it would decline the very
+        # price the request asked for and leave the position on the trail alone.
         _, place, _, _ = _run_queue([_pending(limit_value=450.0)], [_pos()], 468.61)
-        assert place.call_args.args[3] is None
+        assert place.call_args.args[3] == 450.0
 
     def test_resolves_a_missing_position_instead_of_placing(self):
         sb, place, _, _ = _run_queue([_pending()], [], 468.61)
