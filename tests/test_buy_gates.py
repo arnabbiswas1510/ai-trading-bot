@@ -213,3 +213,58 @@ class TestPivotBuyZoneFloor:
     def test_ceiling_still_enforced(self):
         assert not self._run_at(112.0).placeOrder.called, \
             "Extended stocks must still be rejected"
+
+
+# ── Volume gate: overloaded column semantics ──────────────────────────────────
+
+class TestVolumeGateRespectsTriggerType:
+    """
+    Regression guard for the volume-gate inversion.
+
+    `daily_triggers.volume_surge` carries two different metrics:
+
+      BREAKOUT      today's volume / 50d avg  -> HIGHER is better (screener
+                    requires >= VOLUME_SURGE_MIN = 1.50)
+      PRE_BREAKOUT  3-day volume CONTRACTION ratio -> LOWER is better (screener
+                    requires < PRE_BREAKOUT_VOL_MAX = 1.00)
+
+    Applying MIN_VOL_SURGE_GATE to both inverted pre-breakout selection: it
+    rejected the tightest, most constructive coils and admitted the loosest.
+    On 2026-08-19 it rejected FRO (0.69, score 80), PTGX (0.66, 73) and RS
+    (0.66, 67) and bought LPG (0.77, 65) — the worst coil of the four.
+    See decisions/2026-08-19_volume-gate-inversion.md.
+    """
+
+    def _run(self, vol, trigger_type):
+        trigger = make_trigger("AAPL", close_price=100.0, volume_surge=vol)
+        trigger["trigger_type"] = trigger_type
+        mock_sb = make_supabase_mock(portfolio=[], daily_triggers=[trigger])
+        ib = make_ib_mock()
+        _run_buys(ib, mock_sb, live_price=100.0, ibkr_price=100.0)
+        return ib
+
+    def test_confirmed_breakout_below_gate_is_rejected(self):
+        assert not self._run(0.64, "BREAKOUT").placeOrder.called, \
+            "A confirmed breakout on below-average volume must still be blocked"
+
+    def test_confirmed_breakout_above_gate_is_bought(self):
+        assert self._run(1.60, "BREAKOUT").placeOrder.called, \
+            "A confirmed breakout on strong volume must still be bought"
+
+    def test_tight_pre_breakout_coil_is_not_rejected(self):
+        """The core inversion: 0.66x is a tight coil, the signal we want."""
+        assert self._run(0.66, "PRE_BREAKOUT").placeOrder.called, \
+            "A tight pre-breakout coil must not be rejected by the surge gate"
+
+    def test_very_tight_pre_breakout_coil_is_not_rejected(self):
+        assert self._run(0.40, "PRE_BREAKOUT").placeOrder.called, \
+            "Heavy volume contraction is the most constructive coil, not a veto"
+
+    def test_relaxed_pre_breakout_coil_is_not_rejected(self):
+        assert self._run(0.66, "PRE_BREAKOUT_RELAXED").placeOrder.called, \
+            "PRE_BREAKOUT_RELAXED carries the same contraction semantics"
+
+    def test_loose_pre_breakout_coil_still_allowed_by_this_gate(self):
+        """The screener's own < 1.00 gate governs looseness, not this one."""
+        assert self._run(0.95, "PRE_BREAKOUT").placeOrder.called, \
+            "The surge gate must not second-guess the screener's contraction gate"

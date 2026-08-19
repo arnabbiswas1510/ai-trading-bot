@@ -10,8 +10,8 @@
     "semantic_hash": ""
   },
   "ai_evaluator.py": {
-    "mtime": 1787106423.0167296,
-    "ast_hash": "0d1b0090e614c555fcb07e6edde19275",
+    "mtime": 1787149414.5431998,
+    "ast_hash": "c29f46aedd1c1f6b44340a4b7db630a1",
     "semantic_hash": ""
   },
   "backend/backtester.py": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1787109206.7404892,
-    "ast_hash": "41e387c452363e74c66f2e4fb3405b7d",
+    "mtime": 1787149470.977055,
+    "ast_hash": "d036cdb58970c9c53576387f4fec95dd",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "tests/test_buy_gates.py": {
-    "mtime": 1785851043.5913355,
-    "ast_hash": "8532393217650c92f1229a6ea2fb350c",
+    "mtime": 1787149455.4283805,
+    "ast_hash": "4dc085e710f750939c0dd617f7d28bf3",
     "semantic_hash": ""
   },
   "tests/test_dynamic_trail.py": {
@@ -395,13 +395,13 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1787106516.2942152,
-    "ast_hash": "6105eaa0a714b4b1cdb33fe5fb8d8489",
+    "mtime": 1787149537.867766,
+    "ast_hash": "043a444a61559cbfc9a77d4a67ba6611",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1787108483.0635192,
-    "ast_hash": "aebabb978d7e130a2c1ae02e29b879c0",
+    "mtime": 1787149527.182404,
+    "ast_hash": "59022a189ed20a25793ea5481cc1d920",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -867,6 +867,11 @@
   "decisions/2026-08-17_thesis-stop-reexamination.md": {
     "mtime": 1786978424.4886472,
     "ast_hash": "2c0326b08d9e50d5663c37cfa13febed",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-19_volume-gate-inversion.md": {
+    "mtime": 1787149511.2283368,
+    "ast_hash": "548024ee776155e77812987200cc8c33",
     "semantic_hash": ""
   }
 }

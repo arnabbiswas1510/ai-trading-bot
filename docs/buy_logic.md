@@ -77,7 +77,7 @@ code, which is what makes the buy model auditable after the fact.
 | 5 | Score floor | Below the trigger-type minimum | `SCORE_FLOOR` |
 | 6 | Capacity (in-loop) | Slots filled by an earlier buy this cycle | `SLOTS_FULL` |
 | 7 | Cash floor | `available_cash < MIN_POSITION_SIZE` ($5,000) | `INSUFFICIENT_CASH` |
-| 8 | Volume surge | `volume_surge < MIN_VOL_SURGE_GATE` (0.75×) | `SCORE_FLOOR` |
+| 8 | Volume surge | **`BREAKOUT` only:** `volume_surge < MIN_VOL_SURGE_GATE` (0.75×) | `SCORE_FLOOR` |
 | 9 | PRE_BREAKOUT 52W distance | PRE_BREAKOUT > `MAX_PRE_BREAKOUT_PIVOT_DIST` (5%) below 52W high | `BELOW_PIVOT` |
 | 10 | Contract | IBKR cannot qualify the contract | `LOOP_HALTED` *(halts loop)* |
 | 11 | Price | No IBKR price and no trigger close | `NO_PRICE` |
@@ -89,6 +89,24 @@ code, which is what makes the buy model auditable after the fact.
 
 Capacity is re-checked **inside** the loop (gate 6) because an earlier fill in the same
 cycle may have consumed the last slot.
+
+### ⚠️ `volume_surge` is an overloaded column
+
+`daily_triggers.volume_surge` carries **two different metrics with opposite
+polarity**, depending on `trigger_type`. Read this before writing any rule that
+consumes it.
+
+| Trigger type | What the column holds | Screener gate | Good direction |
+|---|---|---|---|
+| `BREAKOUT` | today's volume ÷ 50-day avg | `≥ VOLUME_SURGE_MIN` (1.50) | **higher** |
+| `PRE_BREAKOUT` | 3-day avg volume ÷ 50-day avg (**contraction**) | `< PRE_BREAKOUT_VOL_MAX` (1.00) | **lower** |
+| `PRE_BREAKOUT_RELAXED` | same contraction ratio | `< RELAXED_PRE_BREAKOUT_VOL_MAX` (1.10) | **lower** |
+
+On a pre-breakout, volume drying up while the stock coils beneath its pivot is
+the *constructive* signal — supply exhausting before the move. Applying a
+**minimum** to that number rejects the tightest coils and admits the loosest.
+Gate 8 is scoped to `BREAKOUT` for exactly this reason.
+See `decisions/2026-08-19_volume-gate-inversion.md` for why.
 
 ### Score floors by trigger type
 
@@ -167,7 +185,7 @@ converges to even weighting after full turnover.
 | `COOLING_OFF_DAYS` | `7` | Re-entry block after a sale |
 | `MAX_PIVOT_EXTENSION` | `0.05` | Buy-zone ceiling above pivot |
 | `MAX_PIVOT_BREAKDOWN` | `0.02` | Buy-zone floor below pivot |
-| `MIN_VOL_SURGE_GATE` | `0.75` | Minimum volume surge multiple (AI-independent hard gate) |
+| `MIN_VOL_SURGE_GATE` | `0.75` | Minimum volume surge multiple, **confirmed `BREAKOUT` triggers only** (AI-independent hard gate) |
 | `MAX_PRE_BREAKOUT_PIVOT_DIST` | `0.05` | Max distance below 52W high for PRE_BREAKOUT entries |
 | `MIN_TRIGGER_SCORE` | `60` | Floor for `BREAKOUT` |
 | `MIN_PRE_BREAKOUT_SCORE` | `65` | Floor for `PRE_BREAKOUT` |

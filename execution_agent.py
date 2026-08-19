@@ -232,7 +232,12 @@ MAX_PIVOT_BREAKDOWN      = float(os.getenv("MAX_PIVOT_BREAKDOWN", 0.02))  # skip
 # Hard volume surge gate — independent of AI score. A surge below this multiple
 # of the 50-day avg volume means money is NOT confirming the move and is not a
 # valid CAN SLIM breakout signal regardless of how the AI scores the setup.
-# APH (0.64x) and FROG (0.86x) would both be blocked by this gate.
+#
+# Applies to CONFIRMED breakouts only. The screener reuses the `volume_surge`
+# column to carry a 3-day volume CONTRACTION ratio on PRE_BREAKOUT rows, where a
+# LOW value is the desirable signal. An earlier revision applied this gate to
+# every trigger type, which inverted pre-breakout selection — see
+# decisions/2026-08-19_volume-gate-inversion.md.
 MIN_VOL_SURGE_GATE       = float(os.getenv("MIN_VOL_SURGE_GATE", 0.75))
 # For PRE_BREAKOUT triggers, reject if the stock is still too far below its
 # 52-week pivot (pivot_distance_pct stored by the screener). This is distinct
@@ -2267,8 +2272,17 @@ def run_market_open_buys(ib: IB):
         # CAN SLIM requires above-average volume to confirm a breakout. Below
         # MIN_VOL_SURGE_GATE× the 50-day avg, institutional money is not
         # participating — do not buy regardless of AI score.
+        #
+        # CONFIRMED BREAKOUTS ONLY. The `volume_surge` column is overloaded: the
+        # screener stores today's volume / 50d avg for BREAKOUT rows (higher is
+        # better, gated at VOLUME_SURGE_MIN=1.50), but for PRE_BREAKOUT rows it
+        # stores the 3-day volume CONTRACTION ratio (technical_screener.py:417),
+        # where LOWER is better and the screener already requires < 1.00. A coil
+        # tightening on drying volume is the constructive setup CAN SLIM wants.
+        # Applying a minimum to that number inverts the selection: it rejects the
+        # tightest coils and admits the loosest. Do not gate pre-breakouts here.
         trigger_vol_surge = float(trigger.get("volume_surge") or 0)
-        if trigger_vol_surge < MIN_VOL_SURGE_GATE:
+        if trigger_type == "BREAKOUT" and trigger_vol_surge < MIN_VOL_SURGE_GATE:
             print(f"   🚫 {ticker} volume surge {trigger_vol_surge:.2f}x < gate {MIN_VOL_SURGE_GATE:.2f}x "
                   f"— institutional money not confirming. Skipping.")
             trigger_audit.record_trigger_decision(

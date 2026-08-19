@@ -149,10 +149,26 @@ def _format_trigger_block(t: dict, fundamentals: dict, news_by_ticker: dict) -> 
         "❌ Long-term only"
     )
 
+    # The `volume_surge` column is overloaded by the screener. On BREAKOUT rows
+    # it is today's volume / 50d avg, where higher confirms institutional
+    # buying. On PRE_BREAKOUT rows it is the 3-day volume CONTRACTION ratio
+    # (technical_screener.py:417), where LOWER is the constructive signal — a
+    # coil tightening on drying volume. Emitting both as "VolSurge" invited the
+    # model to penalise the best pre-breakout coils for looking like failed
+    # breakouts, so label the metric for what it actually is.
+    trig_type = str(t.get("trigger_type") or "BREAKOUT")
+    vol_val   = t.get("volume_surge")
+    if trig_type.startswith("PRE_BREAKOUT"):
+        vol_line = (f"  VolContraction={vol_val}x of 50d avg "
+                    f"(lower = tighter coil, <1.0 required)")
+    else:
+        vol_line = f"  VolSurge={vol_val}x of 50d avg (higher = stronger confirmation)"
+
     return (
         f"\n- {ticker}:\n"
         f"  Price=${price}, AvgDailyVol={avg_vol:,}, CompanySize={size}, RS_vs_SPY={rs}/100\n"
-        f"  VolSurge={t.get('volume_surge')}x, DistFromPivot={t.get('pivot_distance_pct')}%\n"
+        f"  SetupType={trig_type}\n"
+        f"{vol_line}, DistFromPivot={t.get('pivot_distance_pct')}%\n"
         f"  ATR={atr_pct}%/day, EstDaysTo25%={est_days} [{swing_label}]\n"
         f"  Q-EPS={f_data.get('q_eps_growth','N/A')}%, A-EPS={f_data.get('a_eps_growth','N/A')}%,"
         f" RevGrowth={f_data.get('revenue_growth','N/A')}%, ROE={f_data.get('roe','N/A')}%\n"
@@ -191,8 +207,12 @@ SCORING RULES (non-negotiable — swing trade horizon is the primary filter):
    - EstDaysTo25% > 60 (ATR < 0.4%/day): NOT a swing trade — cap rating at 35
 
    MANDATORY QUALITY PENALTIES (apply first — these are hard disqualifiers):
-   - Volume surge < 0.75x avg volume: reduce rating by 25 pts (below-average volume is NOT a breakout signal — money is NOT confirming the move)
-   - Volume surge 0.75-1.0x avg volume: reduce rating by 10 pts (weak confirmation)
+   - CONFIRMED BREAKOUTS ONLY (SetupType=BREAKOUT), judged on VolSurge:
+     * VolSurge < 0.75x avg volume: reduce rating by 25 pts (below-average volume is NOT a breakout signal — money is NOT confirming the move)
+     * VolSurge 0.75-1.0x avg volume: reduce rating by 10 pts (weak confirmation)
+   - PRE-BREAKOUT SETUPS (SetupType=PRE_BREAKOUT*), judged on VolContraction — do NOT apply the VolSurge penalties above:
+     * A LOW VolContraction is the constructive signal: supply is drying up while the stock coils under its pivot. Do NOT penalise it for being below 1.0x.
+     * VolContraction > 0.85x: reduce rating by 10 pts (coil is loose — sellers still active)
    - Stock is > 3% below its 52-week pivot/high (DistFromPivot < -3%): reduce rating by 20 pts (speculative pre-breakout positioning, not a confirmed CAN SLIM entry)
    - Negative ROE: reduce rating by 15 pts (company is unprofitable — violates CAN SLIM fundamentals; the 'E' requires earnings)
    - Analyst consensus = "Sell": reduce rating by 20 pts (institutional consensus is actively bearish)

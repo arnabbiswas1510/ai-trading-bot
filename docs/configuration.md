@@ -58,7 +58,7 @@ over.
 | `TRIGGER_LOOKBACK_DAYS` | `3` | Trigger freshness window (covers weekends/holidays) |
 | `MAX_PIVOT_EXTENSION` | `0.05` | Buy-zone ceiling above pivot |
 | `MAX_PIVOT_BREAKDOWN` | `0.02` | Buy-zone floor below pivot |
-| `MIN_VOL_SURGE_GATE` | `0.75` | Hard AI-independent volume surge floor; triggers below 0.75× the 50-day avg are skipped |
+| `MIN_VOL_SURGE_GATE` | `0.75` | Hard AI-independent volume surge floor. **Applies to `BREAKOUT` triggers only** — on `PRE_BREAKOUT*` rows the same `volume_surge` column holds a volume *contraction* ratio where lower is better, so a floor would invert selection. See `decisions/2026-08-19_volume-gate-inversion.md` |
 | `MAX_PRE_BREAKOUT_PIVOT_DIST` | `0.05` | Max distance below 52W high for PRE_BREAKOUT entries; rejects speculative setups more than 5% away |
 | `MIN_TRIGGER_SCORE` | `60` | Score floor, `BREAKOUT` |
 | `MIN_PRE_BREAKOUT_SCORE` | `65` | Score floor, `PRE_BREAKOUT` |
