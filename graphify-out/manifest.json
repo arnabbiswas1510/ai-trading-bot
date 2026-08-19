@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1787106459.528938,
-    "ast_hash": "7299be634a37c53a13d43ea968f0ac81",
+    "mtime": 1787107105.565127,
+    "ast_hash": "2569894ee5bff91471b7c01988a65814",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1787106531.5059357,
-    "ast_hash": "102e83be627abc96864c57da15f8e729",
+    "mtime": 1787107124.36031,
+    "ast_hash": "b6e6139277750a9eaf036aa2d513f2a6",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1786978449.9463246,
-    "ast_hash": "1b8bd6b37ae3dabc34bc9272747dbf77",
+    "mtime": 1787107152.2837055,
+    "ast_hash": "d52cc61f5088441f9d4cde1fbe4e1570",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -842,6 +842,11 @@
   "decisions/2026-08-18_buy-gate-hardening-vol-surge-pivot-ai-penalties.md": {
     "mtime": 1787106560.026328,
     "ast_hash": "dddf47468d05fd9aa452f8892b3d96c2",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-18_early-dollar-stop.md": {
+    "mtime": 1787107174.083316,
+    "ast_hash": "3dd9569fbad211dc06b0f7852ac108ac",
     "semantic_hash": ""
   }
 }

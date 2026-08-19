@@ -99,6 +99,8 @@ wider confidence interval than 1.0.
 | Variable | Default | Effect |
 |---|---|---|
 | `EARLY_LOSS_STOP_PCT` | `0.02` | Kill-switch threshold, days 0–1 |
+| `EARLY_DOLLAR_STOP_AMOUNT` | `500` | Max dollar loss per position on days 0–`EARLY_DOLLAR_STOP_MAX_DAY`; 0 to disable |
+| `EARLY_DOLLAR_STOP_MAX_DAY` | `5` | Last trading day (inclusive) the dollar stop is active |
 | `INTRADAY_MINIMISER_ENABLED` | `false` | **Superseded by the Thesis Stop** |
 | `INTRADAY_PULLBACK_PCT` | `0.02` | Only used if the minimiser is re-enabled |
 | `INTRADAY_MINIMISER_START_DAY` | `2` | Only used if the minimiser is re-enabled |

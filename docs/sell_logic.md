@@ -34,16 +34,17 @@ for that cycle — an early `continue` means later rules are unreachable until t
 |---|---|---|---|---|
 | 1 | Armed-exit deadline | 0–6 | every cycle | force market sell |
 | 2 | Early Loss Kill-switch | 0–1 | every cycle | arm exit |
-| 3 | HWM / peak metric update | all | every cycle | *(no exit)* |
-| 4 | Trail tightening + power-hold arming | all | every cycle | *(re-places broker order)* |
-| 5 | **Thesis Stop** | 2–5 | every cycle | arm exit |
-| 6 | Intraday Loss Minimiser | 2+ | every cycle | **disabled by default** |
-| 7 | Trailing-stop self-heal | all | every cycle | *(no exit)* |
-| 8 | EMA-21 support breach | 7+ | EOD 15:45–16:00 | market sell |
-| 9 | Plateau exit | 7+ | EOD 15:45–16:00 | market sell |
-| 10 | Day-3 breakout verdict | 3 | EOD, once | *(records verdict)* |
-| 11 | Follow-through latch update | all | EOD | *(sets `closed_above_entry`)* |
-| 12 | Rank & Replace | 7+ | EOD, once daily | market sell + refill |
+| 3 | **Early Dollar Stop** | 0–5 | every cycle | arm exit |
+| 4 | HWM / peak metric update | all | every cycle | *(no exit)* |
+| 5 | Trail tightening + power-hold arming | all | every cycle | *(re-places broker order)* |
+| 6 | **Thesis Stop** | 2–5 | every cycle | arm exit |
+| 7 | Intraday Loss Minimiser | 2+ | every cycle | **disabled by default** |
+| 8 | Trailing-stop self-heal | all | every cycle | *(no exit)* |
+| 9 | EMA-21 support breach | 7+ | EOD 15:45–16:00 | market sell |
+| 10 | Plateau exit | 7+ | EOD 15:45–16:00 | market sell |
+| 11 | Day-3 breakout verdict | 3 | EOD, once | *(records verdict)* |
+| 12 | Follow-through latch update | all | EOD | *(sets `closed_above_entry`)* |
+| 13 | Rank & Replace | 7+ | EOD, once daily | market sell + refill |
 
 ---
 
@@ -90,6 +91,33 @@ current_price ≤ buy_price × (1 − EARLY_LOSS_STOP_PCT)      # default 2%
 
 Arms the exit. A breakout that reverses 2% within its first two sessions has already
 falsified its premise; the base 10–12% trailing stop is far too wide to be useful this early.
+
+---
+
+## 2b. Early Dollar Stop — days 0–5
+
+```
+shares × (current_price − buy_price) ≤ −EARLY_DOLLAR_STOP_AMOUNT    # default $500
+```
+
+A flat dollar cap on unrealized loss during the first `EARLY_DOLLAR_STOP_MAX_DAY` trading
+days (default 5). Percentage-based stops are blind to position size; this provides a uniform
+floor regardless of ATR or share price.
+
+Checked on the 15-minute monitoring cycle. Arms the exit (0.6% tight trail via `arm_exit()`)
+rather than immediately market-selling, so a bounce can still be captured.
+
+**Simulation result (19 trades, 2026-07-09 → 2026-08-18):**
+
+| Threshold | Total saved | Trades helped |
+|---|---|---|
+| $400 | $3,698 | 6 trades (5 winners at risk) |
+| **$500** | **$2,936** | **5 trades (2 winners at risk)** |
+| $600 | $2,436 | 5 trades (0 winners at risk) |
+| $750 | $1,686 | 5 trades (0 winners at risk) |
+
+$500 is the default — best savings/risk ratio in the historical sample.
+Set `EARLY_DOLLAR_STOP_AMOUNT=0` to disable. See `decisions/2026-08-18_early-dollar-stop.md`.
 
 ---
 
@@ -155,12 +183,49 @@ Paired stationary-block bootstrap, 2,000 resamples, two independent universes:
 
 | Universe | ΔCAGR | 90% CI | P(improvement) |
 |---|---|---|---|
-| Screener-passing (n≈78) | **+18.8** | [+7.1, +33.0] | 100% |
-| Broad (n=256) | −0.7 | [−15.9, +15.6] | 47% |
+| Screener-passing (n≈78) | +10.3 | [−1.2, +23.4] | 92% |
+| Broad (n=256) | −9.4 | [−25.1, +7.0] | 15% |
 
-Average loss improved in both (−4.43% → −3.52% and −5.60% → −4.39%). Armed exit outperformed
-an immediate market sell in both. Multiplier 1.0 was chosen over 0.75 for the tighter CI
-lower bound. Details: `decisions/2026-08-09_thesis-stop.md`.
+**Neither universe reaches significance: both confidence intervals cross zero.**
+
+Earlier revisions of this page reported +18.8 [+7.1, +33.0] at P=100%. That figure came
+from a backtest that anchored the armed exit's trailing stop to the trigger bar's *high* —
+a price that printed before the stop was placed. See
+`decisions/2026-08-17_armed-exit-backtest-lookahead.md` for the correction, and
+`decisions/2026-08-09_thesis-stop.md` for the original reasoning.
+
+#### What the rule actually does — and why it is not tuned for CAGR
+
+A follow-up re-examination (`research/thesis_reexam_bt.py`, 5 ATR multipliers × 2 start
+days, scored in four slices: both universes × both intra-bar path assumptions) found
+**no configuration positive in all four slices**. `0.75×` from day 3 is *significantly
+harmful* on the broad universe (−11.0 [−21.7, −1.4]) and *significantly helpful* on the
+screener-passing universe (+10.7 [+1.1, +22.8]) — significant in opposite directions.
+
+`research/thesis_counterfactual_bt.py` explains why. Removing the 4-slot constraint makes
+every signal a trade in both arms, which isolates the rule's effect on the positions it
+actually cuts from the knock-on effect of freeing a slot early:
+
+| At the shipped 1.0× from day 2 | Broad | Screener-passing |
+|---|---|---|
+| Positions cut | 387 of 2315 (16.7%) | 89 of 598 (14.9%) |
+| Cut at | −3.54% mean | −4.06% mean |
+| Would have ended at, if held | −3.43% mean | −4.56% mean |
+| **Direct effect** | **−0.11% mean / +0.62% median** | **+0.51% mean / +0.81% median** |
+| Cuts that would have reached ≥ +20% | 3 of 387 | 0 of 89 |
+
+Per-trade expectancy across *all* signals never moves more than 0.05pp at any multiplier
+in the grid. **The Thesis Stop exits positions that were going to lose about the same
+amount anyway, and it does not cut winners.** The large portfolio-level ΔCAGR swings in
+either direction come from which slot happened to be free on which day — path-dependent
+luck, not edge. Selecting a multiplier by that number would be fitting noise, so the
+multiplier is deliberately left at `1.0` and is not tuned.
+
+The Thesis Stop is therefore justified as **loss-shaping and capital recycling on an
+invalidated entry** — a smaller average loss (−4.43% → −4.14% broad, −5.60% → −4.96%
+pass), a shorter left tail on the traded universe (worst-period CAGR −0.5 → +19.9), and
+capital returned from a breakout that never broke out — **not** as a CAGR improvement.
+See `decisions/2026-08-17_thesis-stop-reexamination.md` for why.
 
 ---
 
@@ -267,13 +332,37 @@ Tiers 1 and 2 never market-sell. They call `arm_exit()`, which:
 3. Starts a `ARMED_EXIT_DEADLINE_HOURS` (3.25 h) countdown, checked every cycle
 4. Forces a market sell if the deadline expires unfilled
 
-**Rationale.** The instant a loss threshold is breached is frequently a local trough;
-market-selling there prints the low tick. A 0.6% trail follows any bounce upward while
-conceding almost nothing if the decline resumes, and the deadline guarantees the position is
-closed within half a session rather than drifting for days.
+**Intent.** The instant a loss threshold is breached is frequently a local trough;
+market-selling there prints the low tick. The trail is meant to follow a bounce upward and
+concede little if the decline resumes, with the deadline bounding the wait.
 
-Backtests confirmed the armed exit beat an immediate market sell on both universes — on the
-broad universe an immediate market sell was **worse than no rule at all** (−7.6 ΔCAGR).
+> ⚠️ **This mechanism does not currently achieve that intent, and the 0.6% default is
+> known to be too tight.** Two independent problems:
+>
+> **The trail is inside the noise band.** Traded names average 4.19% ATR/day with a 3.20%
+> median daily range; even the quietest decile ranges 1.62%. A 0.6% trail is under a fifth
+> of the calmest normal session, so it typically fills on the first chop — roughly 0.6%
+> *below* the trigger price, i.e. worse than the market sell it replaced. The same
+> observation is recorded independently in `decisions/2026-08-04_managed-exit-tool.md`.
+>
+> **A trailing stop cannot sell at a high.** It fills at `peak × (1 − trail)` by
+> construction — always below the peak, never at it. No value of `ARMED_EXIT_TRAIL_PCT`
+> makes it capture a bounce; tightening it only produces an earlier, lower fill. Capturing
+> a bounce requires a resting limit *above* the market.
+>
+> The claim that backtests confirmed the armed exit beats an immediate market sell **in
+> both universes was an artifact** of a look-ahead bug. Corrected, the comparison is split:
+> the armed exit wins on the screener-passing universe (+37.4 vs +35.7 CAGR) and straddles
+> or loses on the broad universe (+14.2 conservative / +17.6 optimistic vs +15.9), where
+> the outcome depends on unknowable intra-bar ordering. Per this project's two-universe
+> rule that is **unproven**. See
+> `decisions/2026-08-17_armed-exit-backtest-lookahead.md`.
+>
+> The mechanism is retained pending a replacement, because the alternatives were measured
+> to be within roughly ±0.15% of one another per exit — the current design is
+> mildly wrong, not catastrophic. `EARLY_LOSS_STOP_PCT` (2%) is deliberately tight
+> *because* it arms rather than sells; the two must be retuned together if arming is
+> removed.
 
 Requires `exit_armed*` columns. On PGRST204 the IBKR stop is still placed, but deadline
 tracking is lost.

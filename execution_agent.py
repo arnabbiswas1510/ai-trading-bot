@@ -341,6 +341,25 @@ EARLY_LOSS_STOP_PCT          = float(os.getenv("EARLY_LOSS_STOP_PCT",          0
 # Day threshold when universal intraday pullback minimiser becomes active.
 INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2))
 
+# ── Hard dollar-loss stop for Days 0-5 ────────────────────────────────────────
+# A flat dollar cap on unrealized loss during the first EARLY_DOLLAR_STOP_MAX_DAY
+# trading days. Percentage-based stops are blind to position-size differences; a
+# 5% ATR stop on a $25K position is $1,250 — far too much to risk on a new entry
+# that hasn't confirmed itself.
+#
+# Simulation against 19 closed trades (2026-07-09 → 2026-08-18):
+#   Total early losses (days 0-5): $6,205 across 8 trades
+#   $500 stop: saves $2,936 on 5 trades (RSI +$890, HWM +$963, APH +$555,
+#              OII +$270, FROG +$258) — best savings/winner-risk ratio
+#   $600 stop: saves $2,436 (no winners at risk but saves less)
+#   $400 stop: saves $3,698 but 5 winners flagged as potentially at risk
+#
+# The rule does NOT replace the IBKR GTC trailing stop; it is checked on the
+# 15-minute monitoring cycle and fires an armed exit (0.6% tight trail) so a
+# bounce can be captured. See arm_exit().
+EARLY_DOLLAR_STOP_AMOUNT     = float(os.getenv("EARLY_DOLLAR_STOP_AMOUNT",    500.0))
+EARLY_DOLLAR_STOP_MAX_DAY    = int(os.getenv("EARLY_DOLLAR_STOP_MAX_DAY",       5))
+
 # ── Thesis Stop (ATR-normalised failure-to-advance exit) ──────────────────────
 # A proper breakout works almost immediately; failure to advance IS the sell
 # signal. This exits breakouts that never worked, while they are still cheap.
@@ -2765,6 +2784,29 @@ def monitor_portfolio_intraday(ib: IB):
                     "monitor_portfolio_intraday() trail update", _tighten_err
                 )
                 print(f"   ⚠️ {ticker}: trail update failed: {_tighten_err}")
+
+        # ── Hard dollar-loss stop for Days 0-EARLY_DOLLAR_STOP_MAX_DAY ────────────
+        # Caps the maximum dollar loss on any new position before it has confirmed
+        # itself. Percentage-based stops are blind to position size; this provides
+        # a uniform dollar floor regardless of share price or ATR-derived trail.
+        # Checked on the 15-minute monitoring cycle and fires arm_exit() so a
+        # bounce can still be captured rather than selling at the worst tick.
+        if (EARLY_DOLLAR_STOP_AMOUNT > 0
+                and days_held <= EARLY_DOLLAR_STOP_MAX_DAY
+                and not power_held
+                and not pos.get("exit_armed")):
+            unrealized_dollar_loss = shares * (current_price - buy_price)
+            if unrealized_dollar_loss <= -EARLY_DOLLAR_STOP_AMOUNT:
+                reason = (
+                    f"Early Dollar Stop — Day {days_held}: "
+                    f"unrealized loss ${abs(unrealized_dollar_loss):,.0f} "
+                    f">= ${EARLY_DOLLAR_STOP_AMOUNT:,.0f} threshold "
+                    f"({unrealized_pct:.2f}% on ${shares * buy_price:,.0f} position)"
+                )
+                print(f"🚨 {ticker}: Early Dollar Stop triggered — arming exit — {reason}")
+                arm_exit(ib, client, ticker, shares, current_price, reason, now_ny)
+                active_positions.append(pos)
+                continue
 
         # ── Thesis Stop (ATR-normalised failure-to-advance) ──────────────────────
         # A proper breakout works almost immediately. If the position has never
