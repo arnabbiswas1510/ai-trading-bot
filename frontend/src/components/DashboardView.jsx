@@ -187,8 +187,20 @@ function getCleanExitReason(raw, pctReturn) {
   if (lower.includes('ema-21') || lower.includes('exit ma') || lower.includes('moving average')) {
     return 'EMA-21 Exit';
   }
-  if (lower.includes('stale rotation') || lower.includes('plateau rotation')) {
-    return 'Plateau Rotation';
+  if (lower.includes('stale rotation') || lower.includes('plateau rotation') || lower.includes('plateau exit')) {
+    return 'Plateau Exit';
+  }
+  if (lower.includes('early dollar stop') || lower.includes('dollar stop')) {
+    return 'Early Dollar Stop';
+  }
+  if (lower.includes('thesis stop')) {
+    return 'Thesis Stop';
+  }
+  if (lower.includes('early loss kill-switch') || lower.includes('kill-switch') || lower.includes('kill_switch')) {
+    return 'Early Loss Kill-switch';
+  }
+  if (lower.includes('intraday loss minimiser') || lower.includes('intraday minimiser')) {
+    return 'Intraday Minimiser';
   }
   if (lower.includes('force sell') || lower.includes('user request')) {
     return 'Manual Force Sell';
@@ -196,12 +208,14 @@ function getCleanExitReason(raw, pctReturn) {
   if (lower.includes('manual close')) {
     return 'Manual Close';
   }
+  // GTC trailing stop fired at IBKR — the raw reason from the agent is
+  // "Trailing stop (IBKR GTC TRAIL order)" — catch it cleanly here.
+  if (lower.includes('trailing stop') || lower.includes('trail order')) {
+    return pctReturn >= 24.0 ? 'Profit Target (+25%)' : 'Trailing Stop';
+  }
+  // Legacy: reconciliation note written by older agent versions
   if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
-    if (pctReturn >= 24.0) {
-      return 'Profit Target (+25%)';
-    } else {
-      return 'Stop Loss (-7%)';
-    }
+    return pctReturn >= 24.0 ? 'Profit Target (+25%)' : 'Trailing Stop';
   }
 
   return raw;
@@ -214,7 +228,19 @@ function getDetailedExitTooltip(raw, pctReturn) {
   if (lower.includes('ema-21') || lower.includes('exit ma')) {
     return raw;
   }
-  if (lower.includes('stale rotation')) {
+  if (lower.includes('stale rotation') || lower.includes('plateau')) {
+    return raw;
+  }
+  if (lower.includes('thesis stop')) {
+    return raw;
+  }
+  if (lower.includes('early dollar stop') || lower.includes('dollar stop')) {
+    return raw;
+  }
+  if (lower.includes('early loss kill-switch') || lower.includes('kill-switch')) {
+    return raw;
+  }
+  if (lower.includes('intraday loss minimiser') || lower.includes('intraday minimiser')) {
     return raw;
   }
   if (lower.includes('force sell') || lower.includes('user request')) {
@@ -223,11 +249,13 @@ function getDetailedExitTooltip(raw, pctReturn) {
   if (lower.includes('manual close')) {
     return `Manual Close on IBKR reconciled at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
   }
-  if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
+  // GTC trailing stop — return the raw reason (includes the stop %) plus the final return.
+  if (lower.includes('trailing stop') || lower.includes('trail order')
+      || lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
     if (pctReturn >= 24.0) {
       return `Profit Target Filled (+25.0% target) with final return of +${pctReturn.toFixed(2)}%`;
     } else {
-      return `Trailing Stop Loss Triggered (-7.0% stop) with final return of ${pctReturn.toFixed(2)}%`;
+      return `${raw}\nFinal return: ${pctReturn.toFixed(2)}%`;
     }
   }
   return `${raw} (${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}%)`;
@@ -498,6 +526,31 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions }) {
               Source: CANSLIM Breakout<br />
               Entry: {formatCurrency(pos.buy_price)} · High: {formatCurrency(hwmPrice)}
             </div>
+            {/* Live dollar P&L — most visible loss signal */}
+            {pos.current_price != null && pos.buy_price != null && pos.shares != null && (() => {
+              const dollarPnl = pos.shares * (pos.current_price - pos.buy_price);
+              const pctPnl = ((pos.current_price / pos.buy_price) - 1) * 100;
+              const isLoss = dollarPnl < 0;
+              const color = isLoss ? '#f43f5e' : '#10b981';
+              return (
+                <div style={{
+                  marginTop: '0.5rem', padding: '0.35rem 0.5rem',
+                  background: isLoss ? 'rgba(244,63,94,0.08)' : 'rgba(16,185,129,0.08)',
+                  border: `1px solid ${isLoss ? 'rgba(244,63,94,0.25)' : 'rgba(16,185,129,0.25)'}`,
+                  borderRadius: '6px',
+                }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: '0.1rem' }}>Unrealized P&L</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: '1rem', fontWeight: 800, color, fontFamily: 'var(--font-display)' }}>
+                      {dollarPnl >= 0 ? '+' : ''}{formatCurrency(dollarPnl)}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color }}>
+                      {pctPnl >= 0 ? '+' : ''}{pctPnl.toFixed(2)}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* ── Trail Stop card removed — superseded by the Risk Rule Ladder above,
@@ -892,6 +945,37 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions }) {
                     {pos.entry_score_rationale}
                   </div>
                 )}
+
+                {/* ── Entry quality flags — surfaces the gate violations at buy time ── */}
+                {(() => {
+                  const flags = [];
+                  const volSurge = pos.entry_volume_surge;
+                  const pivotDist = pos.entry_pivot_distance_pct;
+                  if (volSurge != null && volSurge < 0.75) {
+                    flags.push({ icon: '📉', color: '#f43f5e', text: `Vol surge ${volSurge.toFixed(2)}× — below 0.75× gate (new gate now blocks this)` });
+                  } else if (volSurge != null && volSurge < 1.0) {
+                    flags.push({ icon: '⚠️', color: '#f59e0b', text: `Vol surge ${volSurge.toFixed(2)}× — below average (weak confirmation)` });
+                  }
+                  if (pivotDist != null && pivotDist < -5) {
+                    flags.push({ icon: '📍', color: '#f43f5e', text: `${Math.abs(pivotDist).toFixed(1)}% below 52W pivot at entry — new gate now blocks PRE_BREAKOUT entries >5% below pivot` });
+                  } else if (pivotDist != null && pivotDist < -3) {
+                    flags.push({ icon: '📍', color: '#f59e0b', text: `${Math.abs(pivotDist).toFixed(1)}% below 52W pivot at entry` });
+                  }
+                  if (!flags.length) return null;
+                  return (
+                    <div style={{ marginTop: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {flags.map((f, i) => (
+                        <div key={i} style={{
+                          fontSize: '0.68rem', padding: '0.3rem 0.5rem', borderRadius: '5px',
+                          background: `${f.color}12`, border: `1px solid ${f.color}35`, color: f.color,
+                          fontWeight: 600,
+                        }}>
+                          {f.icon} {f.text}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}

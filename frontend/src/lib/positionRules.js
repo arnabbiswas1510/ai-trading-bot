@@ -21,6 +21,8 @@ export const RULES_CONFIG = {
   ],
   EARLY_LOSS_STOP_PCT: 0.02,      // kill-switch, days 0–1
   EARLY_LOSS_LAST_DAY: 1,
+  EARLY_DOLLAR_STOP_AMOUNT: 500,  // hard dollar cap on unrealised loss, days 0–5
+  EARLY_DOLLAR_STOP_MAX_DAY: 5,
   THESIS_STOP_ATR_MULT: 1.0,
   THESIS_STOP_START_DAY: 2,
   THESIS_STOP_LAST_DAY: 5,
@@ -190,6 +192,60 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
       detail: `Arms an exit if price falls ${(C.EARLY_LOSS_STOP_PCT * 100).toFixed(0)}% below entry in the first two `
             + 'sessions. A breakout that reverses that fast has already falsified its premise, and the 10–12% '
             + 'trailing stop is far too wide to be useful this early.',
+    });
+  }
+
+  // ── 3b. Early Dollar Stop (days 0–EARLY_DOLLAR_STOP_MAX_DAY) ─────────────────
+  // Flat dollar cap on unrealised loss during the first 5 trading days.
+  // Complements the % kill-switch (days 0-1) and ATR-based thesis stop (days 2-5).
+  {
+    const dollarCap  = C.EARLY_DOLLAR_STOP_AMOUNT;
+    const maxDay     = C.EARLY_DOLLAR_STOP_MAX_DAY;
+    const shares     = num(pos.shares) ?? 0;
+    const posSize    = shares > 0 ? shares * buy : null;
+    const dollarLoss = shares > 0 ? shares * (price - buy) : null; // negative when losing
+    const triggerPx  = (shares > 0 && dollarCap > 0) ? buy - dollarCap / shares : null;
+    const away       = triggerPx != null ? pctAway(price, triggerPx) : null;
+    const usedDollar = dollarLoss != null ? Math.max(0, -dollarLoss) : 0;
+    const capEquivPct = (posSize != null && posSize > 0) ? (dollarCap / posSize * 100) : null;
+
+    let state, headline, detail;
+    const base = `Arms an exit if the unrealised dollar loss reaches $${dollarCap.toFixed(0)} at any point during days 0–${maxDay}. `
+               + (capEquivPct != null ? `On this $${posSize != null ? (posSize/1000).toFixed(1) : '?'}K position that is ≈ ${capEquivPct.toFixed(2)}%. ` : '')
+               + 'Fires arm_exit() (0.6% tight trail) rather than a market sell, so any bounce can be captured.';
+
+    if (dollarCap <= 0) {
+      state   = STATE.OFF;
+      headline = 'Disabled (EARLY_DOLLAR_STOP_AMOUNT = 0)';
+      detail   = base;
+    } else if (daysHeld > maxDay) {
+      state   = STATE.EXPIRED;
+      headline = `Window closed after day ${maxDay}`;
+      detail   = base;
+    } else if (dollarLoss != null && dollarLoss <= -dollarCap) {
+      state   = STATE.TRIGGERED;
+      headline = `Loss $${usedDollar.toFixed(0)} ≥ $${dollarCap.toFixed(0)} cap — exit arming`;
+      detail   = base;
+    } else if (away != null && away <= 1.0) {
+      state   = STATE.WATCH;
+      headline = `$${usedDollar.toFixed(0)} / $${dollarCap.toFixed(0)} · ${away.toFixed(2)}% above trigger`;
+      detail   = base;
+    } else {
+      state   = STATE.ACTIVE;
+      headline = `$${usedDollar.toFixed(0)} / $${dollarCap.toFixed(0)} used`
+               + (away != null ? ` · ${away.toFixed(1)}% of room` : '');
+      detail   = base + ' This is the primary early-exit for any position losing more than the daily floor before confirming itself.';
+    }
+
+    const done = state === STATE.EXPIRED || state === STATE.OFF;
+    rules.push({
+      id: 'dollar_stop', tier: 'T1', name: 'Early Dollar Stop',
+      state, headline, detail,
+      level: done ? null : triggerPx,
+      levelLabel: 'Fires at',
+      distancePct: done ? null : away,
+      window: `Days 0–${maxDay}`,
+      progress: (!done && dollarCap > 0) ? { value: usedDollar, max: dollarCap } : undefined,
     });
   }
 
@@ -403,9 +459,9 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
   } else if (powerHold) {
     phase = { key: 'POWER_HOLD', label: `D${daysHeld} · Power Hold`, color: '#8b5cf6', note: 'Discretionary exits suppressed; a 30% disaster stop is the only backstop.' };
   } else if (daysHeld <= C.EARLY_LOSS_LAST_DAY) {
-    phase = { key: 'KILL_SWITCH', label: `D${daysHeld} · Kill-switch`, color: '#3b82f6', note: 'Days 0–1: a 2% reverse from entry arms an exit.' };
+    phase = { key: 'KILL_SWITCH', label: `D${daysHeld} · Kill-switch`, color: '#3b82f6', note: `Days 0–1: a 2% reverse arms an exit. $${C.EARLY_DOLLAR_STOP_AMOUNT} dollar cap also active.` };
   } else if (daysHeld <= C.THESIS_STOP_LAST_DAY) {
-    phase = { key: 'THESIS', label: `D${daysHeld} · Thesis window`, color: '#0ea5e9', note: 'Days 2–5: the Thesis Stop is the primary loss-cutter.' };
+    phase = { key: 'THESIS', label: `D${daysHeld} · Thesis window`, color: '#0ea5e9', note: `Days 2–5: Thesis Stop is the primary loss-cutter. $${C.EARLY_DOLLAR_STOP_AMOUNT} dollar cap still active.` };
   } else if (daysHeld < C.EXIT_MA_MIN_DAYS) {
     phase = { key: 'TRANSITION', label: `D${daysHeld} · Transition`, color: '#64748b', note: 'Day 6: the loss rules have expired and the rotation rules have not yet armed — trailing stop only.' };
   } else {

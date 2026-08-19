@@ -85,8 +85,8 @@
     "semantic_hash": "ea784afbb70e3556552a205fb0191bf5"
   },
   "frontend/src/components/DashboardView.jsx": {
-    "mtime": 1786829735.2202294,
-    "ast_hash": "a5bf610a60e4185b0bae003e1be0405f",
+    "mtime": 1787107549.5683198,
+    "ast_hash": "9d1207b105f9ba40c86bc0616061a51f",
     "semantic_hash": ""
   },
   "frontend/src/components/ReturnsView.jsx": {
@@ -805,8 +805,8 @@
     "semantic_hash": ""
   },
   "frontend/src/lib/positionRules.js": {
-    "mtime": 1786829735.2206788,
-    "ast_hash": "ef8488d781de2ce1e214649462964c76",
+    "mtime": 1787107476.8652205,
+    "ast_hash": "b2caf37d03506185ba7950e7212fc1b1",
     "semantic_hash": ""
   },
   "decisions/2026-08-14_position-lifecycle-visibility.md": {
