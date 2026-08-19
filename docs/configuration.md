@@ -106,6 +106,9 @@ Drives `process_exit_requests()` — the queue-driven OCA exit fed by
 | `OCA_EXIT_ATR_FRACTION` | `0.33` | Trail as a fraction of `entry_atr_pct` when `stop_mode='ATR_AUTO'` |
 | `OCA_EXIT_MIN_TRAIL_PCT` | `0.015` | Lower clamp. Below this the trail sits inside ordinary noise and fires instantly, cancelling the upper leg |
 | `OCA_EXIT_MAX_TRAIL_PCT` | `0.040` | Upper clamp |
+| `OCA_EXIT_UPPER_ATR_FRACTION` | `0.50` | Upper leg as a fraction of `entry_atr_pct` above the placement price when `limit_mode='ATR_AUTO'` (the default). Larger than the trail fraction so the optimistic leg always sits further out than the protective one |
+| `OCA_EXIT_MIN_UPPER_PCT` | `0.0075` | Lower clamp — keeps a quiet stock's target outside the bid/ask spread |
+| `OCA_EXIT_MAX_UPPER_PCT` | `0.050` | Upper clamp — keeps a volatile stock's target reachable by a realistic bounce |
 | `OCA_EXIT_DEFAULT_ATR_PCT` | `3.0` | Used when the position has no ATR on record |
 | `OCA_EXIT_DEFAULT_FLOOR_PCT` | `0.05` | Hard floor below the placement price when the request sets none. **Not optional in effect** — the automated ladder is suspended for managed tickers, so this is the protection |
 | `OCA_EXIT_DEFAULT_EXPIRY_DAYS` | `3` | Trading days before an unfilled OCA is closed at market |

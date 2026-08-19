@@ -31,13 +31,19 @@ WHY THE LOWER LEG IS A TRAIL, NOT A STOP
     waiting instead of selling now.
 
 USAGE
+    # Simplest smart exit — everything is derived from the stock's own ATR
+    python request_exit.py LPG
+
+    # ...or, equivalently, straight from SQL:
+    #     INSERT INTO exit_requests (ticker) VALUES ('LPG');
+
     # Force sell — market exit on the agent's next cycle, agent stays running
     python request_exit.py DELL --now
 
-    # Recover-to-a-level exit (the common case)
+    # Recover-to-a-level exit
     python request_exit.py DELL --limit-abs 489.89 --trail 2.5
 
-    # Wait for breakeven, trail scaled to the stock's own ATR
+    # Wait for breakeven (needs a bounce — see the warning it prints)
     python request_exit.py DELL --breakeven --trail auto
 
     # Target +3% above entry, hard floor 4%, give it 5 trading days
@@ -153,6 +159,10 @@ def main():
     ap.add_argument("--cancel", metavar="TICKER", help="cancel the active request for TICKER")
 
     g = ap.add_mutually_exclusive_group()
+    g.add_argument("--limit-atr", action="store_true",
+                   help="upper leg at a fraction of the stock's ATR above the price "
+                        "when placed (DEFAULT). Stays reachable however far underwater "
+                        "the position is, because it ignores the entry price")
     g.add_argument("--limit-abs", type=float, metavar="PRICE",
                    help="upper leg at an absolute price")
     g.add_argument("--limit-pct-entry", type=float, metavar="PCT",
@@ -160,7 +170,9 @@ def main():
     g.add_argument("--limit-pct-price", type=float, metavar="PCT",
                    help="upper leg at PCT above the price when placed")
     g.add_argument("--breakeven", action="store_true",
-                   help="upper leg at the entry price (default)")
+                   help="upper leg at the entry price. Note this needs a bounce "
+                        "proportional to the loss already taken, so it can be "
+                        "unreachable on a deep loser")
     g.add_argument("--no-limit", action="store_true",
                    help="no upper leg — trailing exit only")
     g.add_argument("--now", action="store_true",
@@ -221,7 +233,7 @@ def main():
     elif args.limit_pct_price is not None:
         limit_mode, limit_value = "PCT_FROM_PRICE", args.limit_pct_price
     else:
-        limit_mode, limit_value = "BREAKEVEN", None
+        limit_mode, limit_value = "ATR_AUTO", None
 
     if args.now:
         stop_mode, stop_value = "MARKET", None
@@ -253,6 +265,22 @@ def main():
                   f"({(px/entry-1)*100:+.2f}%)")
         elif limit_mode == "BREAKEVEN":
             print(f"  Upper (LMT)  ${entry:.2f} (breakeven)   P&L if filled $0.00")
+            ref = _ref_price(pos)
+            if ref and entry > ref:
+                print(f"               ⚠️  needs a {(entry/ref-1)*100:+.2f}% bounce from ${ref:.2f} "
+                      f"to fill — consider the default ATR target instead")
+        elif limit_mode == "ATR_AUTO":
+            atr = float(pos.get("entry_atr_pct") or 3.0)
+            frac = max(0.0075, min(0.050, (atr / 100.0) * 0.50))
+            ref  = _ref_price(pos)
+            print(f"  Upper (LMT)  ATR_AUTO — 50% of {atr:.2f}% ATR = {frac*100:+.2f}% "
+                  f"above the price when placed")
+            if ref:
+                px = ref * (1 + frac)
+                print(f"               ≈ ${px:.2f} against today's ${ref:.2f}   "
+                      f"P&L if filled ${shares*(px-entry):+,.2f} ({(px/entry-1)*100:+.2f}%)")
+            print("               anchors to the CURRENT price, so it stays reachable")
+            print("               however far underwater the position is")
         elif limit_mode == "NONE":
             print("  Upper (LMT)  none — trailing exit only")
         else:

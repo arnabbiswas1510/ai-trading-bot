@@ -564,13 +564,48 @@ literal price is stale by 09:30. The agent resolves the real price at placement.
 
 | `limit_mode` | Resolves to |
 |---|---|
-| `BREAKEVEN` *(default)* | entry price |
+| `ATR_AUTO` *(default)* | `price at placement × (1 + clamp(OCA_EXIT_UPPER_ATR_FRACTION × entry_atr_pct, OCA_EXIT_MIN_UPPER_PCT, OCA_EXIT_MAX_UPPER_PCT))` |
+| `BREAKEVEN` | entry price |
 | `ABS` | `limit_value` literally |
 | `PCT_FROM_ENTRY` | `entry × (1 + limit_value/100)` |
 | `PCT_FROM_PRICE` | `price at placement × (1 + limit_value/100)` |
 | `NONE` | no upper leg — trail only |
 
 `limit_cap` caps the resolved target in every mode.
+
+### Why `ATR_AUTO` is the default
+
+`BREAKEVEN` anchors the target to the **entry** price, so the bounce it needs
+grows with the loss already taken — the deeper underwater, the less likely it
+fills. On DELL (entry $496.04, price $468.61) breakeven required a **+5.85%**
+rally, so that leg could never realistically fill and the OCA could only resolve
+via the trail or the expiry.
+
+`ATR_AUTO` anchors to the **current** price instead, so entry drops out of the
+maths and the target is always about half a session's move away:
+
+| Position | ATR | Upper leg | Bounce needed | Trail |
+|---|---|---|---|---|
+| LPG | 4.0% | +2.00% | reachable | 1.50% |
+| DELL | 7.6% | +3.80% | reachable | 2.51% |
+
+The upper fraction (0.50) is larger than the trail fraction (0.33), so the
+optimistic leg always sits further out than the protective one at any ATR. Both
+clamps matter: the floor keeps a quiet stock's target outside the spread, the
+ceiling keeps a volatile stock's target reachable.
+
+This means the minimum viable request is just a ticker — everything else is
+derived from the position and its ATR:
+
+```sql
+INSERT INTO exit_requests (ticker) VALUES ('LPG');
+```
+
+```bash
+python request_exit.py LPG
+```
+
+See `decisions/2026-08-19_atr-anchored-upper-leg.md` for why.
 
 ### Next-morning re-anchoring
 

@@ -1,0 +1,45 @@
+-- migrations/add_exit_requests_atr_default.sql
+--
+-- Make a bare insert do the right thing:
+--
+--     INSERT INTO exit_requests (ticker) VALUES ('LPG');
+--
+-- ...should queue a smart exit that actually completes, without the operator
+-- having to reason about limit modes at all.
+--
+-- WHY THE OLD DEFAULT WAS WRONG
+--   limit_mode defaulted to 'BREAKEVEN', which anchors the upper leg to the
+--   ENTRY price. The bounce required to fill is therefore proportional to the
+--   loss already taken — the deeper underwater, the further away the target,
+--   the longer the position bleeds. Measured against real positions:
+--
+--     LPG    entry 49.88   now 49.41   -> breakeven needs +0.94%   (workable)
+--     DELL   entry 496.04  now 468.61  -> breakeven needs +5.85%   (unreachable)
+--
+--   On DELL the upper leg could never realistically fill, so the OCA degenerated
+--   into "trail down, or wait for the 3-day expiry and market out" — precisely
+--   the bounce-dependence the queue was meant to avoid.
+--
+-- WHAT ATR_AUTO DOES INSTEAD
+--   Anchors to the CURRENT price plus OCA_EXIT_UPPER_ATR_FRACTION (0.50) of the
+--   stock's ATR, clamped to [0.75%, 5.0%]. Entry price drops out of the maths
+--   entirely, so the target is always about half a session's move away and
+--   scales to each stock's own volatility:
+--
+--     LPG    ATR 4.0%  -> +2.0%  target 50.40   (trail 1.50%)
+--     DELL   ATR 7.6%  -> +3.8%  target 486.41  (trail 2.51%)
+--
+--   The upper fraction (0.50) is deliberately larger than the trail fraction
+--   (0.33), so the optimistic leg always sits further from the current price
+--   than the protective one.
+--
+-- SAFE TO RE-RUN. Only changes the column default; existing rows are untouched,
+-- and any request that explicitly set limit_mode keeps what it asked for.
+
+ALTER TABLE exit_requests ALTER COLUMN limit_mode SET DEFAULT 'ATR_AUTO';
+
+-- Backfill guard: rows queued but not yet placed under the old default were
+-- created without an explicit choice being recorded, so they would still be
+-- resolved as BREAKEVEN. Nothing is rewritten here on purpose — a PENDING row
+-- may have been deliberately queued as BREAKEVEN by request_exit.py. Cancel and
+-- re-queue if you want an in-flight request moved onto the new default.

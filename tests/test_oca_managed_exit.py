@@ -506,3 +506,72 @@ class TestQueueResilience:
              patch("execution_agent.get_supabase_client", return_value=sb):
             execution_agent.process_exit_requests(MagicMock())
         sb.table.assert_not_called()
+
+
+# ── ATR_AUTO upper leg (the default for a bare insert) ───────────────────────
+
+class TestAtrAutoUpperLeg:
+    """
+    The upper leg must stay reachable however far underwater the position is.
+
+    BREAKEVEN anchors to the ENTRY, so the bounce it demands grows with the loss
+    already taken — on DELL (entry 496.04, price 468.61) it needed +5.85%, which
+    is why that OCA could only ever resolve via the trail or the expiry.
+    ATR_AUTO anchors to the CURRENT price, so entry drops out entirely.
+    See decisions/2026-08-19_atr-anchored-upper-leg.md.
+    """
+
+    def test_targets_a_fraction_of_atr_above_the_current_price(self):
+        # 7.6% ATR * 0.50 = 3.8%, inside the [0.75%, 5.0%] clamp
+        got = execution_agent.resolve_oca_limit_price(_pos(atr=7.6), "ATR_AUTO", None, 468.61)
+        assert abs(got - 468.61 * 1.038) < 0.01
+
+    def test_ignores_entry_price_entirely(self):
+        """The whole point: a deep loser gets the same target as a winner."""
+        a = execution_agent.resolve_oca_limit_price(_pos(buy_price=496.04, atr=4.0), "ATR_AUTO", None, 100.0)
+        b = execution_agent.resolve_oca_limit_price(_pos(buy_price=10.00, atr=4.0), "ATR_AUTO", None, 100.0)
+        assert a == b == 102.0
+
+    def test_is_always_reachable_on_a_deep_loser(self):
+        """On DELL, breakeven needed +5.85%; ATR_AUTO needs 3.8%."""
+        price = 468.61
+        atr_target = execution_agent.resolve_oca_limit_price(_pos(atr=7.6), "ATR_AUTO", None, price)
+        be_target  = execution_agent.resolve_oca_limit_price(_pos(), "BREAKEVEN", None, price)
+        assert atr_target < be_target
+
+    def test_quiet_stock_is_clamped_up_off_the_spread(self):
+        # 0.5% ATR * 0.50 = 0.25% -> clamped up to the 0.75% floor
+        got = execution_agent.resolve_oca_limit_price(_pos(atr=0.5), "ATR_AUTO", None, 100.0)
+        assert abs(got - 100.75) < 1e-6
+
+    def test_wild_stock_is_clamped_down_to_something_reachable(self):
+        # 20% ATR * 0.50 = 10% -> clamped down to the 5% ceiling
+        got = execution_agent.resolve_oca_limit_price(_pos(atr=20.0), "ATR_AUTO", None, 100.0)
+        assert abs(got - 105.0) < 1e-6
+
+    def test_missing_atr_falls_back_to_the_default(self):
+        # default ATR 3.0% * 0.50 = 1.5%
+        got = execution_agent.resolve_oca_limit_price(_pos(atr=None), "ATR_AUTO", None, 100.0)
+        assert abs(got - 101.5) < 1e-6
+
+    def test_is_the_default_when_no_mode_is_stored(self):
+        """A bare `INSERT INTO exit_requests (ticker) VALUES (...)` path."""
+        got = execution_agent.resolve_oca_limit_price(_pos(atr=4.0), None, None, 100.0)
+        assert abs(got - 102.0) < 1e-6
+
+    def test_upper_leg_sits_further_out_than_the_trail(self):
+        """Optimistic leg must be looser than the protective one, at any ATR."""
+        for atr in (1.0, 2.0, 4.0, 7.6, 12.0):
+            pos = _pos(atr=atr)
+            trail, _ = execution_agent.resolve_oca_trail_pct(pos, "ATR_AUTO", None)
+            upper = execution_agent.resolve_oca_limit_price(pos, "ATR_AUTO", None, 100.0)
+            assert (upper / 100.0 - 1) > 0, f"upper must be above the market at ATR {atr}"
+            assert 100.0 * (1 - trail) < upper, f"legs crossed at ATR {atr}"
+
+    def test_limit_cap_still_applies(self):
+        got = execution_agent.resolve_oca_limit_price(_pos(atr=7.6), "ATR_AUTO", None, 468.61,
+                                                      limit_cap=475.0)
+        assert got == 475.0
+
+    def test_no_reference_price_yields_no_leg(self):
+        assert execution_agent.resolve_oca_limit_price(_pos(), "ATR_AUTO", None, 0) is None

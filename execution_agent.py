@@ -435,6 +435,21 @@ OCA_EXIT_ATR_FRACTION     = float(os.getenv("OCA_EXIT_ATR_FRACTION",     0.33))
 OCA_EXIT_MIN_TRAIL_PCT    = float(os.getenv("OCA_EXIT_MIN_TRAIL_PCT",    0.015))  # 1.5%
 OCA_EXIT_MAX_TRAIL_PCT    = float(os.getenv("OCA_EXIT_MAX_TRAIL_PCT",    0.040))  # 4.0%
 OCA_EXIT_DEFAULT_ATR_PCT  = float(os.getenv("OCA_EXIT_DEFAULT_ATR_PCT",  3.0))
+# Upper-leg sizing for limit_mode='ATR_AUTO' — the default for a bare insert.
+#
+# BREAKEVEN was the original default, but it anchors the target to the ENTRY
+# price, so the bounce required is proportional to how much the position is
+# already down: a name 5.5% underwater needs a 5.9% rally before the leg can
+# fill, which is exactly when you least want to wait. ATR_AUTO anchors to the
+# CURRENT price instead, so entry drops out of the maths and the target is
+# always about half a day's move away — reachable regardless of the loss, and
+# self-scaling to each stock's own volatility.
+#
+# Clamped at both ends: a very quiet name would otherwise get a target inside
+# the spread, and a very volatile one a target no realistic bounce reaches.
+OCA_EXIT_UPPER_ATR_FRACTION = float(os.getenv("OCA_EXIT_UPPER_ATR_FRACTION", 0.50))
+OCA_EXIT_MIN_UPPER_PCT    = float(os.getenv("OCA_EXIT_MIN_UPPER_PCT",    0.0075))  # 0.75%
+OCA_EXIT_MAX_UPPER_PCT    = float(os.getenv("OCA_EXIT_MAX_UPPER_PCT",    0.050))   # 5.0%
 # Backstop applied in software each cycle: an OCA can sit unfilled indefinitely
 # while the position bleeds, so bound both the price and the time.
 OCA_EXIT_DEFAULT_FLOOR_PCT = float(os.getenv("OCA_EXIT_DEFAULT_FLOOR_PCT", 0.05))  # 5% below placement
@@ -952,6 +967,21 @@ def arm_exit(ib: IB, client: Client, ticker: str, shares: int, current_price: fl
         print(f"   ⚠️ {ticker}: failed to arm exit: {arm_err}")
 
 
+def _position_atr_pct(pos: dict) -> tuple[float, str]:
+    """
+    The ATR percent both OCA legs are sized from, with its provenance.
+
+    Note this is `entry_atr_pct` — the ATR recorded when the position was
+    opened, not today's. It is the only ATR the position row carries. For a
+    name whose volatility has since expanded this sizes both legs slightly
+    tight; the hard floor and expiry backstops bound that.
+    """
+    atr_pct = pos.get("entry_atr_pct")
+    if not atr_pct or float(atr_pct) <= 0:
+        return OCA_EXIT_DEFAULT_ATR_PCT, "default (no ATR on record)"
+    return float(atr_pct), "entry_atr_pct"
+
+
 def resolve_oca_trail_pct(pos: dict, stop_mode: str, stop_value) -> tuple[float, str]:
     """
     Resolves the OCA lower leg's trailing percent.
@@ -964,11 +994,7 @@ def resolve_oca_trail_pct(pos: dict, stop_mode: str, stop_value) -> tuple[float,
     if stop_mode == "TRAIL_PCT" and stop_value:
         return float(stop_value) / 100.0, f"fixed {float(stop_value):.2f}%"
 
-    atr_pct = pos.get("entry_atr_pct")
-    source = "entry_atr_pct"
-    if not atr_pct or float(atr_pct) <= 0:
-        atr_pct, source = OCA_EXIT_DEFAULT_ATR_PCT, "default (no ATR on record)"
-    atr_pct = float(atr_pct)
+    atr_pct, source = _position_atr_pct(pos)
 
     raw = (atr_pct / 100.0) * OCA_EXIT_ATR_FRACTION
     trail = max(OCA_EXIT_MIN_TRAIL_PCT, min(OCA_EXIT_MAX_TRAIL_PCT, raw))
@@ -988,6 +1014,12 @@ def resolve_oca_limit_price(pos: dict, limit_mode: str, limit_value,
     'ABS' pins an absolute price; everything else is resolved here against the
     live reference price or the position's entry.
 
+    'ATR_AUTO' is the default and the one to reach for on a force sell: it
+    targets the current price plus a fraction of the stock's ATR, so the leg is
+    reachable within about half a session no matter how far underwater the
+    position is. BREAKEVEN, by contrast, demands a bounce proportional to the
+    loss already taken.
+
     limit_cap is the ceiling on the resolved target, and exists because
     PCT_FROM_PRICE is momentum-following by construction: re-anchoring to the
     open means the better the gap, the greedier the target becomes, so it never
@@ -999,10 +1031,20 @@ def resolve_oca_limit_price(pos: dict, limit_mode: str, limit_value,
     prevailing bid.
     """
     entry = float(pos.get("buy_price") or 0)
-    mode = (limit_mode or "").upper()
+    mode = (limit_mode or "ATR_AUTO").upper()
 
     if mode == "NONE":
         return None
+    elif mode == "ATR_AUTO":
+        # Anchored to the CURRENT price, not the entry, so the target stays
+        # reachable no matter how far underwater the position is. See the
+        # OCA_EXIT_UPPER_ATR_FRACTION comment for why this is the default.
+        if not ref_price:
+            return None
+        atr_pct, _ = _position_atr_pct(pos)
+        raw  = (atr_pct / 100.0) * OCA_EXIT_UPPER_ATR_FRACTION
+        frac = max(OCA_EXIT_MIN_UPPER_PCT, min(OCA_EXIT_MAX_UPPER_PCT, raw))
+        price = ref_price * (1 + frac)
     elif mode == "ABS":
         price = float(limit_value) if limit_value else None
     elif mode == "BREAKEVEN":
