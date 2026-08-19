@@ -124,6 +124,13 @@ rather than immediately market-selling, so a bounce can still be captured.
 $500 is the default — best savings/risk ratio in the historical sample.
 Set `EARLY_DOLLAR_STOP_AMOUNT=0` to disable. See `decisions/2026-08-18_early-dollar-stop.md`.
 
+**Overlap with the Thesis Stop (rule 6).** On days 2–5 a losing position can satisfy both
+rules at once. The dollar stop is evaluated first and pre-empts the thesis stop, so the exit
+is recorded as `Early Dollar Stop`. This is intentional — a hard cap on absolute money at
+risk outranks the softer thesis-invalidation cut — and the position is armed either way, so
+only the recorded reason differs. On smaller positions the same percentage drawdown stays
+under the dollar cap and the thesis stop is reached normally.
+
 ---
 
 ## 3. Thesis Stop — days 2–5

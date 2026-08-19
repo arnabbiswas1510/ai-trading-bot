@@ -31,7 +31,12 @@ BD_DAY5 = "2026-06-10T12:00:00+00:00"
 BD_DAY7 = "2026-06-08T12:00:00+00:00"
 
 
-def _make_pos(ticker="AAPL", buy_price=100.0, buy_date=BD_DAY4, shares=100,
+# 20 shares @ $100 = a $2,000 position, so the 5% drawdowns these tests use are
+# ~$100 of unrealized loss. That keeps them clear of the Early Dollar Stop's
+# $500 cap, which evaluates first and would otherwise arm the exit before the
+# Thesis Stop is ever reached. See TestDollarStopTakesPrecedence for the
+# deliberate ordering when both rules qualify.
+def _make_pos(ticker="AAPL", buy_price=100.0, buy_date=BD_DAY4, shares=20,
               entry_atr_pct=3.0, closed_above_entry=False,
               highest_unrealized_pct=0.0, hwm_price=None,
               intraday_high_today=None, exit_armed=False):
@@ -99,6 +104,35 @@ def _run(ib, sb, live_price, hour=11, minute=30):
         mock_dt.timedelta = datetime.timedelta
         execution_agent.monitor_portfolio_intraday(ib)
     return mock_sell, mock_arm
+
+
+class TestDollarStopTakesPrecedence:
+    """
+    The Early Dollar Stop is evaluated before the Thesis Stop in
+    monitor_portfolio_intraday. That ordering is deliberate: a hard cap on
+    absolute money at risk outranks the softer thesis-invalidation cut. Both
+    rules arm the exit, so the position leaves either way — only the recorded
+    reason differs. These tests pin the ordering so it cannot drift silently.
+    """
+
+    def test_dollar_stop_wins_when_both_rules_qualify(self):
+        # 200 sh @ $100 -> $20,000 position. A drop to $95 is -$1,000, which
+        # clears the $500 cap, and the position also satisfies the Thesis Stop
+        # (day 4, never closed above entry, beyond 1x ATR).
+        pos = _make_pos(buy_date=BD_DAY4, shares=200, entry_atr_pct=3.0,
+                        closed_above_entry=False)
+        _, mock_arm = _run(_make_ib([pos]), _make_sb([pos]), 95.0)
+        mock_arm.assert_called_once()
+        assert "Early Dollar Stop" in mock_arm.call_args.args[5]
+
+    def test_thesis_stop_still_fires_when_loss_is_under_the_cap(self):
+        # Same setup, but 20 sh -> -$100 of loss, under the $500 cap, so the
+        # Thesis Stop is reached.
+        pos = _make_pos(buy_date=BD_DAY4, shares=20, entry_atr_pct=3.0,
+                        closed_above_entry=False)
+        _, mock_arm = _run(_make_ib([pos]), _make_sb([pos]), 95.0)
+        mock_arm.assert_called_once()
+        assert "Thesis Stop" in mock_arm.call_args.args[5]
 
 
 class TestThesisStopFires:

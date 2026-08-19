@@ -31,7 +31,7 @@ BD_DAY0 = "2026-06-17T12:00:00+00:00"  # same trading day as mock now
 
 
 def _make_pos(ticker="AAPL", buy_price=100.0, buy_date=BD_DAY3,
-              verdict=None, intraday_high_today=None, shares=100,
+              verdict=None, intraday_high_today=None, shares=20,
               exit_armed=False, exit_armed_at=None, exit_armed_reason=None):
     return {
         "ticker": ticker, "buy_price": buy_price,
