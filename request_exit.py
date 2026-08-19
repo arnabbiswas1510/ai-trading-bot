@@ -136,6 +136,15 @@ def cmd_cancel(sb, ticker):
         print("  need them gone right now, cancel them in TWS.")
 
 
+def _ref_price(pos: dict) -> float:
+    """Best-effort reference price for the confirmation preview only."""
+    for k in ("current_price", "hwm_price", "buy_price"):
+        v = pos.get(k)
+        if v:
+            return float(v)
+    return 0.0
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Queue a Smart OCA Managed Exit (agent places the orders).")
@@ -160,6 +169,11 @@ def main():
 
     ap.add_argument("--trail", default="auto",
                     help="lower leg trailing percent, or 'auto' to scale to ATR (default: auto)")
+    ap.add_argument("--limit-cap", type=float, default=None, metavar="PRICE",
+                    help="never ask more than PRICE for the upper leg. Pair this with "
+                         "--limit-pct-price: re-anchoring to the open is momentum-following, "
+                         "so without a cap a big gap up makes the target greedier and it "
+                         "never takes the gift. Capping at entry is the usual choice")
     ap.add_argument("--floor", type=float, default=None, metavar="PCT",
                     help="market-exit if price falls PCT%% below the placement price")
     ap.add_argument("--expires", type=int, default=None, metavar="DAYS",
@@ -243,6 +257,15 @@ def main():
             print("  Upper (LMT)  none — trailing exit only")
         else:
             print(f"  Upper (LMT)  {limit_mode} {limit_value:+.2f}% (resolved at placement)")
+            if limit_mode == "PCT_FROM_PRICE":
+                print(f"               re-anchors to the price when placed "
+                      f"(~09:45 ET), not to tonight's ${_ref_price(pos):.2f}")
+        if args.limit_cap:
+            cap = args.limit_cap
+            print(f"  Cap          ${cap:.2f}   never ask more than this "
+                  f"(P&L ${shares*(cap-entry):+,.2f}, {(cap/entry-1)*100:+.2f}%)")
+        elif limit_mode == "PCT_FROM_PRICE":
+            print("  Cap          none — ⚠ a large gap up will scale the target up with it")
         print(f"  Lower        {stop_mode}" + (f" {stop_value:.2f}%" if stop_value else
               f" (scaled to ATR {pos.get('entry_atr_pct') or '?'}%)"))
         if args.floor is not None:
@@ -261,6 +284,7 @@ def main():
         "ticker": ticker,
         "limit_mode": limit_mode,
         "limit_value": limit_value,
+        "limit_cap": args.limit_cap,
         "stop_mode": stop_mode,
         "stop_value": stop_value,
         "hard_floor_pct": args.floor,

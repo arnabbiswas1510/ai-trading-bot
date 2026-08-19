@@ -51,12 +51,33 @@ stop removes it and leaves nothing but the downside.
 
 Requests are usually queued outside market hours. A row carrying
 `limit_price = 489.89` written at 22:00 is stale by 09:30. Storing the mode
-(`BREAKEVEN`, `PCT_FROM_ENTRY`, `ABS`, …) lets the agent resolve the real price
-at placement time. `ATR_AUTO` likewise scales the trail to the stock's own
-volatility, reusing the reasoning already proven in `managed_exit.py`: a 1%
-trail on a name with a 7% average true range fires on the first tick of
-ordinary noise, cancels the upper leg, and reproduces "sell now" with extra
-steps.
+(`BREAKEVEN`, `PCT_FROM_ENTRY`, `PCT_FROM_PRICE`, `ABS`, …) lets the agent
+resolve the real price at placement time. `ATR_AUTO` likewise scales the trail
+to the stock's own volatility, reusing the reasoning already proven in
+`managed_exit.py`: a 1% trail on a name with a 7% average true range fires on
+the first tick of ordinary noise, cancels the upper leg, and reproduces "sell
+now" with extra steps.
+
+This is what makes next-morning sales work. `PCT_FROM_PRICE` prices off the
+09:45 settled price, so an overnight gap moves the plan with the stock rather
+than stranding a target the open made unreachable.
+
+### The limit cap
+
+`PCT_FROM_PRICE` alone is momentum-following by construction: re-anchoring to
+the open means the better the gap, the greedier the target becomes, so it never
+takes the gift it was waiting for. On DELL, a +4.54% re-anchor into a gap to
+$495 asks $517.50 — above the 52-week high of $514 — turning a −$48 exit on a
+−$1,262 trade into a bet on a new all-time high.
+
+`limit_cap` bounds the resolved target in every mode. Capping at the entry
+price expresses the actual intent: *sell X% above wherever it opens, but never
+hold out for more than breakeven.* A capped target landing below the market is
+harmless — a SELL limit cannot fill under its limit price, so it fills at the
+better prevailing bid.
+
+The trailing leg needs no equivalent: it is already a percentage and
+re-anchors on its own.
 
 ### A separate table, not columns on `portfolio_positions`
 

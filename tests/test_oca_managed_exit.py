@@ -78,6 +78,51 @@ class TestResolveLimit:
         assert execution_agent.resolve_oca_limit_price(_pos(), "NONE", None, 468.61) is None
 
 
+class TestLimitCap:
+    """
+    PCT_FROM_PRICE is momentum-following by construction: re-anchoring to the
+    open makes the target greedier the better the gap, so without a ceiling it
+    never takes the gift it was waiting for.
+    """
+
+    def test_cap_binds_when_the_gap_would_overshoot(self):
+        # DELL gaps to 495; +4.54% would ask 517.50, above the 52w high of 514.
+        got = execution_agent.resolve_oca_limit_price(
+            _pos(), "PCT_FROM_PRICE", 4.54, 495.0, limit_cap=496.04)
+        assert got == 496.04
+
+    def test_cap_is_inert_on_a_modest_gap(self):
+        got = execution_agent.resolve_oca_limit_price(
+            _pos(), "PCT_FROM_PRICE", 4.54, 470.0, limit_cap=496.04)
+        assert abs(got - 470.0 * 1.0454) < 1e-6
+
+    def test_uncapped_pct_from_price_scales_with_the_gap(self):
+        # The behaviour the cap exists to bound — pinned so it cannot regress.
+        got = execution_agent.resolve_oca_limit_price(
+            _pos(), "PCT_FROM_PRICE", 4.54, 495.0)
+        assert got > 517.0
+
+    def test_cap_applies_to_every_mode(self):
+        assert execution_agent.resolve_oca_limit_price(
+            _pos(), "PCT_FROM_ENTRY", 10, 468.61, limit_cap=496.04) == 496.04
+        assert execution_agent.resolve_oca_limit_price(
+            _pos(), "ABS", 600.0, 468.61, limit_cap=496.04) == 496.04
+
+    def test_cap_below_market_still_yields_a_price_not_none(self):
+        # A capped target under the market is fine: a SELL limit cannot fill
+        # below its limit, so it fills at the better prevailing bid.
+        got = execution_agent.resolve_oca_limit_price(
+            _pos(), "PCT_FROM_PRICE", 4.54, 500.0, limit_cap=496.04)
+        assert got == 496.04
+
+    def test_zero_or_missing_cap_is_ignored(self):
+        base = execution_agent.resolve_oca_limit_price(_pos(), "BREAKEVEN", None, 468.61)
+        assert execution_agent.resolve_oca_limit_price(
+            _pos(), "BREAKEVEN", None, 468.61, limit_cap=0) == base
+        assert execution_agent.resolve_oca_limit_price(
+            _pos(), "BREAKEVEN", None, 468.61, limit_cap=None) == base
+
+
 # ── place_oca_exit ───────────────────────────────────────────────────────────
 
 class TestPlaceOca:
@@ -296,6 +341,44 @@ class TestQueuePending:
         sb, place, _, _ = _run_queue([_pending()], [], 468.61)
         place.assert_not_called()
         assert sb._tables["exit_requests"].update.call_args.args[0]["status"] == "CANCELLED"
+
+
+class TestNextMorningReanchor:
+    """
+    End-to-end: a request queued tonight must price off tomorrow's settled
+    price, not tonight's. This is the whole point of storing intent.
+    """
+
+    def _req(self, **kw):
+        r = _pending(limit_mode="PCT_FROM_PRICE", limit_value=4.54,
+                     limit_cap=496.04, stop_mode="TRAIL_PCT", stop_value=2.5)
+        r.update(kw)
+        return r
+
+    def test_gap_up_is_capped_at_breakeven(self):
+        _, place, _, _ = _run_queue([self._req()], [_pos()], 495.00)
+        assert place.call_args.args[3] == 496.04
+
+    def test_gap_down_re_anchors_the_target_downward(self):
+        # 455 * 1.0454 = 475.66 — the plan follows the stock rather than
+        # stranding the target at a level the open made unreachable.
+        _, place, _, _ = _run_queue([self._req()], [_pos()], 455.00)
+        assert abs(place.call_args.args[3] - 455.0 * 1.0454) < 0.01
+
+    def test_flat_open_is_close_to_the_hand_computed_target(self):
+        _, place, _, _ = _run_queue([self._req()], [_pos()], 468.61)
+        assert abs(place.call_args.args[3] - 489.89) < 0.05
+
+    def test_trail_percent_is_unaffected_by_the_gap(self):
+        for price in (455.0, 468.61, 495.0):
+            _, place, _, _ = _run_queue([self._req()], [_pos()], price)
+            assert abs(place.call_args.args[4] - 0.025) < 1e-9
+
+    def test_placed_price_records_the_actual_open_not_the_request_time_price(self):
+        sb, _, _, _ = _run_queue([self._req()], [_pos()], 495.00)
+        payload = sb._tables["exit_requests"].update.call_args.args[0]
+        assert payload["placed_price"] == 495.00
+        assert payload["placed_limit_price"] == 496.04
 
 
 def _placed(**kw):

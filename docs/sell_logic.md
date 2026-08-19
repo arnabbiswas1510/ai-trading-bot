@@ -563,6 +563,35 @@ literal price is stale by 09:30. The agent resolves the real price at placement.
 | `PCT_FROM_PRICE` | `price at placement × (1 + limit_value/100)` |
 | `NONE` | no upper leg — trail only |
 
+`limit_cap` caps the resolved target in every mode.
+
+### Next-morning re-anchoring
+
+`PCT_FROM_PRICE` is the mode for "sell tomorrow morning, priced off tomorrow".
+The target is computed from the price at placement (~09:45 ET), so an overnight
+gap moves the plan with the stock instead of stranding a target the open made
+unreachable — or handing back a gap up.
+
+**Always pair it with `limit_cap`.** `PCT_FROM_PRICE` is momentum-following by
+construction: the better the gap, the greedier the target, so uncapped it never
+takes the gift it was waiting for. Capping at the entry price converts
+"sell X% above wherever it opens" into "sell X% above the open, but never hold
+out for more than breakeven".
+
+Worked example — a request for +4.54% capped at entry $496.04:
+
+| Opens at | Uncapped target | With cap | Outcome |
+|---|---|---|---|
+| $455 | $475.66 | $475.66 | target follows the stock down, still sells into a bounce |
+| $468 | $489.34 | $489.34 | cap inert |
+| $495 | $517.50 ← above the 52w high | **$496.04** | takes breakeven instead of chasing |
+| $500 | $522.65 | **$496.04** | already marketable, fills near $500 |
+
+The trailing leg is a percentage, so it re-anchors automatically and needs no
+cap.
+
+---
+
 | `stop_mode` | Resolves to |
 |---|---|
 | `ATR_AUTO` *(default)* | `OCA_EXIT_ATR_FRACTION × entry_atr_pct`, clamped to `[OCA_EXIT_MIN_TRAIL_PCT, OCA_EXIT_MAX_TRAIL_PCT]` |
@@ -580,14 +609,14 @@ stop, it is an immediate one.
 # Force sell — market exit, agent stays running
 python request_exit.py DELL --now
 
-# Recover-to-a-level exit
+# Next-morning sale: price off tomorrow's open, never ask above breakeven
+python request_exit.py DELL --limit-pct-price 4.54 --limit-cap 496.04 --trail 2.5
+
+# Recover-to-a-level exit (fixed price, ignores the gap)
 python request_exit.py DELL --limit-abs 489.89 --trail 2.5
 
 # Wait for breakeven, trail scaled to the stock's own ATR
 python request_exit.py DELL --breakeven --trail auto
-
-# Target +3% above entry, 4% floor, 5 trading days
-python request_exit.py NVDA --limit-pct-entry 3 --trail 2 --floor 4 --expires 5
 
 python request_exit.py --list           # in-flight requests
 python request_exit.py --cancel DELL    # withdraw

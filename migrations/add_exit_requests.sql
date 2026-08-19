@@ -36,6 +36,14 @@ CREATE TABLE IF NOT EXISTS exit_requests (
     limit_mode          TEXT        NOT NULL DEFAULT 'BREAKEVEN',
     limit_value         NUMERIC,
 
+    -- Ceiling on the resolved limit. Exists because PCT_FROM_PRICE is
+    -- momentum-following by construction: re-anchoring to the open means the
+    -- better the gap, the greedier the target, so it never takes the gift it
+    -- was waiting for. Capping at (typically) breakeven turns "sell 4.5% above
+    -- wherever it opens" into "sell 4.5% above the open, but never hold out for
+    -- more than breakeven".
+    limit_cap           NUMERIC,
+
     -- Lower leg (protective). TRAIL_PCT is strongly preferred over ABS:
     -- a static stop surrenders the entire bounce the upper leg is waiting for.
     -- TRAIL_PCT : IBKR native TRAIL, stop_value percent
@@ -94,3 +102,6 @@ DROP POLICY IF EXISTS "service role full access on exit_requests" ON exit_reques
 CREATE POLICY "service role full access on exit_requests"
     ON exit_requests FOR ALL
     USING (true) WITH CHECK (true);
+
+-- Idempotent top-up for installs created before limit_cap existed.
+ALTER TABLE exit_requests ADD COLUMN IF NOT EXISTS limit_cap NUMERIC;

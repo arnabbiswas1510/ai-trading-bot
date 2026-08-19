@@ -974,7 +974,7 @@ def resolve_oca_trail_pct(pos: dict, stop_mode: str, stop_value) -> tuple[float,
 
 
 def resolve_oca_limit_price(pos: dict, limit_mode: str, limit_value,
-                            ref_price: float) -> float | None:
+                            ref_price: float, limit_cap=None) -> float | None:
     """
     Resolves the OCA upper leg's limit price from stored *intent*.
 
@@ -982,21 +982,36 @@ def resolve_oca_limit_price(pos: dict, limit_mode: str, limit_value,
     captured at request time would be stale by the time it is placed. Only
     'ABS' pins an absolute price; everything else is resolved here against the
     live reference price or the position's entry.
+
+    limit_cap is the ceiling on the resolved target, and exists because
+    PCT_FROM_PRICE is momentum-following by construction: re-anchoring to the
+    open means the better the gap, the greedier the target becomes, so it never
+    takes the gift it was waiting for. Capping at (typically) breakeven turns
+    "sell 4.5% above wherever it opens" into "sell 4.5% above the open, but
+    never hold out for more than breakeven" — which is what an exit plan
+    actually wants. A capped target that lands below the market is fine: a SELL
+    limit cannot fill under its limit price, so it simply fills at the better
+    prevailing bid.
     """
     entry = float(pos.get("buy_price") or 0)
     mode = (limit_mode or "").upper()
 
     if mode == "NONE":
         return None
-    if mode == "ABS":
-        return float(limit_value) if limit_value else None
-    if mode == "BREAKEVEN":
-        return entry or None
-    if mode == "PCT_FROM_ENTRY":
-        return entry * (1 + float(limit_value or 0) / 100.0) if entry else None
-    if mode == "PCT_FROM_PRICE":
-        return ref_price * (1 + float(limit_value or 0) / 100.0) if ref_price else None
-    return None
+    elif mode == "ABS":
+        price = float(limit_value) if limit_value else None
+    elif mode == "BREAKEVEN":
+        price = entry or None
+    elif mode == "PCT_FROM_ENTRY":
+        price = entry * (1 + float(limit_value or 0) / 100.0) if entry else None
+    elif mode == "PCT_FROM_PRICE":
+        price = ref_price * (1 + float(limit_value or 0) / 100.0) if ref_price else None
+    else:
+        return None
+
+    if price and limit_cap and float(limit_cap) > 0:
+        price = min(price, float(limit_cap))
+    return price
 
 
 def place_oca_exit(ib: IB, contract, shares: int, limit_price: float | None,
@@ -1160,7 +1175,8 @@ def process_exit_requests(ib: IB) -> None:
                 trail_pct, trail_note = resolve_oca_trail_pct(
                     pos, (req.get("stop_mode") or "ATR_AUTO").upper(), req.get("stop_value"))
                 limit_price = resolve_oca_limit_price(
-                    pos, req.get("limit_mode"), req.get("limit_value"), current_price)
+                    pos, req.get("limit_mode"), req.get("limit_value"), current_price,
+                    req.get("limit_cap"))
 
                 if limit_price and limit_price <= current_price:
                     # The target is already met. Keep the leg: a SELL limit can
