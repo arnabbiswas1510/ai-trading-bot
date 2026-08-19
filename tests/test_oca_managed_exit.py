@@ -348,6 +348,64 @@ class TestQueueBackstops:
         assert not any(c.args[0].get("status") == "FILLED" for c in upd.call_args_list)
 
 
+class TestQueueMarketMode:
+    """--now: a force sell routed through the queue, so the agent stays up."""
+
+    def _market(self, **kw):
+        r = _pending(stop_mode="MARKET", stop_value=None,
+                     limit_mode="NONE", limit_value=None)
+        r.update(kw)
+        return r
+
+    def test_sells_at_market_without_placing_an_oca(self):
+        sb, place, sell, _ = _run_queue([self._market()], [_pos()], 468.61)
+        place.assert_not_called()
+        sell.assert_called_once()
+        assert sell.call_args.args[2] == "DELL"
+        assert sell.call_args.args[3] == 46
+
+    def test_cancels_the_existing_stop_before_selling(self):
+        _, _, _, cancel = _run_queue([self._market()], [_pos()], 468.61)
+        cancel.assert_called_once()
+
+    def test_marks_the_request_filled_with_a_market_outcome(self):
+        sb, _, _, _ = _run_queue([self._market()], [_pos()], 468.61)
+        payload = sb._tables["exit_requests"].update.call_args.args[0]
+        assert payload["status"] == "FILLED"
+        assert payload["outcome"] == "MARKET"
+
+    def test_does_not_wait_for_the_settle_window(self):
+        # "Get me out" is urgent by definition; deferring it to 09:45 would
+        # silently convert a force sell into a 15-minute wait.
+        _, _, sell, _ = _run_queue([self._market()], [_pos()], 468.61, hour=9, minute=31)
+        sell.assert_called_once()
+
+    def test_stays_pending_when_the_sell_is_not_confirmed(self):
+        sb = _queue_sb([self._market()], [_pos()])
+        now = datetime.datetime(2026, 8, 18, 11, 30, tzinfo=NY)
+        with patch("execution_agent.get_supabase_client", return_value=sb), \
+             patch("execution_agent.get_live_price", return_value=468.61), \
+             patch("execution_agent.get_ibkr_account", return_value="U1"), \
+             patch("execution_agent.cancel_ticker_sell_orders"), \
+             patch("execution_agent.execute_sell", return_value=False), \
+             patch("execution_agent.notifier"), \
+             patch("execution_agent.datetime") as mdt:
+            mdt.datetime.now.side_effect = lambda *a, **kw: now
+            mdt.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
+            mdt.timedelta, mdt.timezone = datetime.timedelta, datetime.timezone
+            execution_agent.process_exit_requests(MagicMock())
+        upd = sb._tables["exit_requests"].update
+        assert not any(c.args[0].get("status") == "FILLED" for c in upd.call_args_list)
+
+    def test_market_requests_never_suspend_the_automated_ladder(self):
+        # A PENDING market request must not strip a position's stops while it
+        # waits for the next cycle.
+        sb = MagicMock()
+        sb.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            self._market()]
+        assert execution_agent.get_oca_managed_tickers(sb) == set()
+
+
 class TestQueueResilience:
     def test_missing_table_does_not_break_the_cycle(self):
         sb = MagicMock()

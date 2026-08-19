@@ -31,6 +31,9 @@ WHY THE LOWER LEG IS A TRAIL, NOT A STOP
     waiting instead of selling now.
 
 USAGE
+    # Force sell — market exit on the agent's next cycle, agent stays running
+    python request_exit.py DELL --now
+
     # Recover-to-a-level exit (the common case)
     python request_exit.py DELL --limit-abs 489.89 --trail 2.5
 
@@ -46,12 +49,22 @@ USAGE
     python request_exit.py --list          # show queued / in-flight requests
     python request_exit.py --cancel DELL   # withdraw a request
 
+TWO DIFFERENT INTENTS
+    --now      "get me out."       Market sell, no upper leg, no waiting.
+    otherwise  "get me out well."  OCA pair, bounded by a floor and an expiry.
+
+    Both run through the queue, so neither requires stopping the agent. Only
+    force_sell.py acts in under 15 minutes, and it is the only one that still
+    needs the agent stopped — reserve it for the case where the delay itself
+    is the risk.
+
 SAFETY
-    While a request is PLACED, the agent SUSPENDS its automated exit rules for
-    that ticker (thesis stop, dollar stop, intraday minimiser, EMA-21 exit).
+    While an OCA request is PLACED, the agent SUSPENDS its automated exit rules
+    for that ticker (thesis stop, dollar stop, intraday minimiser, EMA-21 exit).
     Those all cancel open SELL orders, which would destroy the OCA. The OCA's
     own hard floor and expiry are what protect the position instead — so do not
-    set --floor absurdly wide.
+    set --floor absurdly wide. (--now exits immediately, so it never suspends
+    anything.)
 """
 
 import os
@@ -141,6 +154,9 @@ def main():
                    help="upper leg at the entry price (default)")
     g.add_argument("--no-limit", action="store_true",
                    help="no upper leg — trailing exit only")
+    g.add_argument("--now", action="store_true",
+                   help="MARKET exit on the next agent cycle — a force sell routed "
+                        "through the queue, so the agent never has to be stopped")
 
     ap.add_argument("--trail", default="auto",
                     help="lower leg trailing percent, or 'auto' to scale to ATR (default: auto)")
@@ -180,7 +196,9 @@ def main():
         sys.exit(1)
 
     # ── Resolve the upper leg intent ─────────────────────────────────────────
-    if args.no_limit:
+    if args.now:
+        limit_mode, limit_value = "NONE", None
+    elif args.no_limit:
         limit_mode, limit_value = "NONE", None
     elif args.limit_abs is not None:
         limit_mode, limit_value = "ABS", args.limit_abs
@@ -191,7 +209,9 @@ def main():
     else:
         limit_mode, limit_value = "BREAKEVEN", None
 
-    if str(args.trail).lower() == "auto":
+    if args.now:
+        stop_mode, stop_value = "MARKET", None
+    elif str(args.trail).lower() == "auto":
         stop_mode, stop_value = "ATR_AUTO", None
     else:
         stop_mode, stop_value = "TRAIL_PCT", float(args.trail)
@@ -200,28 +220,38 @@ def main():
     shares = int(pos["shares"])
 
     print("=" * 66)
-    print(f"  Smart OCA Managed Exit — {ticker}")
+    print(f"  {'MARKET Exit' if args.now else 'Smart OCA Managed Exit'} — {ticker}")
     print("=" * 66)
     print(f"  Holding      {shares} sh @ ${entry:.2f}  (cost ${shares*entry:,.2f})")
-    if limit_mode == "ABS":
-        px = float(limit_value)
-        print(f"  Upper (LMT)  ${px:.2f}   P&L if filled ${shares*(px-entry):+,.2f} "
-              f"({(px/entry-1)*100:+.2f}%)")
-    elif limit_mode == "BREAKEVEN":
-        print(f"  Upper (LMT)  ${entry:.2f} (breakeven)   P&L if filled $0.00")
-    elif limit_mode == "NONE":
-        print("  Upper (LMT)  none — trailing exit only")
+
+    if args.now:
+        print("  Action       SELL AT MARKET on the agent's next cycle (within 15 min)")
+        print()
+        print("  This is a force sell. It does NOT wait for a bounce and has no")
+        print("  upper leg — use it when you want out, not when you want out well.")
+        print("  The agent stays running, so the rest of the portfolio keeps its")
+        print("  stops. If you need the fill in under 15 minutes, force_sell.py")
+        print("  is still the only tool that acts immediately.")
     else:
-        print(f"  Upper (LMT)  {limit_mode} {limit_value:+.2f}% (resolved at placement)")
-    print(f"  Lower        {stop_mode}" + (f" {stop_value:.2f}%" if stop_value else
-          f" (scaled to ATR {pos.get('entry_atr_pct') or '?'}%)"))
-    if args.floor is not None:
-        print(f"  Hard floor   {args.floor:.2f}% below the placement price")
-    if args.expires is not None:
-        print(f"  Expiry       {args.expires} trading day(s), then market exit")
-    print()
-    print("  While this is active the agent SUSPENDS its automated exit rules for")
-    print(f"  {ticker} — the OCA plus the floor/expiry backstops govern it instead.")
+        if limit_mode == "ABS":
+            px = float(limit_value)
+            print(f"  Upper (LMT)  ${px:.2f}   P&L if filled ${shares*(px-entry):+,.2f} "
+                  f"({(px/entry-1)*100:+.2f}%)")
+        elif limit_mode == "BREAKEVEN":
+            print(f"  Upper (LMT)  ${entry:.2f} (breakeven)   P&L if filled $0.00")
+        elif limit_mode == "NONE":
+            print("  Upper (LMT)  none — trailing exit only")
+        else:
+            print(f"  Upper (LMT)  {limit_mode} {limit_value:+.2f}% (resolved at placement)")
+        print(f"  Lower        {stop_mode}" + (f" {stop_value:.2f}%" if stop_value else
+              f" (scaled to ATR {pos.get('entry_atr_pct') or '?'}%)"))
+        if args.floor is not None:
+            print(f"  Hard floor   {args.floor:.2f}% below the placement price")
+        if args.expires is not None:
+            print(f"  Expiry       {args.expires} trading day(s), then market exit")
+        print()
+        print("  While this is active the agent SUSPENDS its automated exit rules for")
+        print(f"  {ticker} — the OCA plus the floor/expiry backstops govern it instead.")
 
     if not args.yes:
         if input("\n  Type 'yes' to queue this exit: ").strip().lower() != "yes":

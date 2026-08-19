@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS exit_requests (
     -- TRAIL_PCT : IBKR native TRAIL, stop_value percent
     -- ATR_AUTO  : trail scaled to entry_atr_pct (stop_value ignored)
     -- ABS       : literal stop price
+    -- MARKET    : not an OCA at all — sell at market on the next agent cycle.
+    --             This is a force sell routed through the queue so it does not
+    --             require stopping the execution-agent. limit_mode is ignored.
     stop_mode           TEXT        NOT NULL DEFAULT 'ATR_AUTO',
     stop_value          NUMERIC,
 

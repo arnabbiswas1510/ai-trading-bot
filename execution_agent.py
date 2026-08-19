@@ -1121,6 +1121,37 @@ def process_exit_requests(ib: IB) -> None:
 
             # ── PENDING: place the OCA ──────────────────────────────────────
             if req["status"] == "PENDING":
+                # MARKET mode is not an OCA at all — it is a force sell routed
+                # through the queue so it does not require stopping the agent.
+                # "Get me out now" and "get me out well" are different
+                # intents; conflating them would make every urgent exit wait
+                # on a bounce that may never come.
+                if (req.get("stop_mode") or "").upper() == "MARKET":
+                    reason = req.get("note") or "Queued market exit (request_exit.py --now)"
+                    reason = f"Smart Exit Queue — {reason}"
+                    print(f"🚨 {ticker}: queued MARKET exit firing — {reason}")
+                    cancel_ticker_sell_orders(ib, ticker)
+                    ib.sleep(1)
+                    buy_price  = float(pos["buy_price"])
+                    buy_reason = pos.get("buy_reason", "Unknown")
+                    try:
+                        buy_date = datetime.datetime.fromisoformat(
+                            pos["buy_date"].replace('Z', '+00:00'))
+                    except Exception:
+                        buy_date = now_ny
+                    ok = execute_sell(ib, client, ticker, shares, buy_price, buy_date,
+                                      buy_reason, current_price, reason, pos_row=pos)
+                    if ok:
+                        _close_exit_request(client, rid, "FILLED", outcome="MARKET",
+                                            filled_price=current_price,
+                                            note="queued market exit")
+                    else:
+                        # execute_sell() only returns False when it could not
+                        # confirm the position left IBKR. Leave PENDING so the
+                        # next cycle retries rather than orphaning the position.
+                        print(f"   ⚠️ {ticker}: market exit not confirmed — retrying next cycle.")
+                    continue
+
                 if now_ny.hour == 9 and now_ny.minute < OCA_EXIT_SETTLE_MINUTE:
                     print(f"   ⏳ {ticker}: waiting for the tape to settle "
                           f"(placing from 09:{OCA_EXIT_SETTLE_MINUTE:02d} ET).")

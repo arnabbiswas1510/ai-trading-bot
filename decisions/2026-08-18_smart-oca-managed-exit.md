@@ -105,6 +105,25 @@ Not cosmetic. In a cash account two unblocked SELL orders for the same shares
 are liable to be rejected as exceeding the position, and a partial fill on one
 leg must reduce its sibling rather than leave a naked short.
 
+### The queue carries two intents, not one
+
+"Get me out" and "get me out well" are different requests, and conflating them
+would make every urgent exit wait on a bounce that may never arrive. So
+`stop_mode='MARKET'` bypasses the OCA entirely and sells at market on the next
+cycle — a force sell routed through the queue rather than around it.
+
+This matters because it is what actually retires `force_sell.py` from routine
+use. Without it the queue only handles the patient case, and any time the user
+genuinely wanted out they would still have to stop the agent and take the whole
+portfolio offline — the exact cost this ADR set out to remove.
+
+`MARKET` requests deliberately ignore the 09:45 settle window: an exit the user
+called urgent, silently deferred, is no longer the thing they asked for. They
+also never suspend the automated ladder, since they do not leave a resting
+order behind. The trade-off is honest and narrow — `force_sell.py` remains the
+only tool that acts in under 15 minutes, and stays appropriate when that delay
+is itself the risk.
+
 ## Consequences
 
 **Positive**
@@ -127,7 +146,8 @@ leg must reduce its sibling rather than leave a naked short.
 **Neutral**
 - `force_sell.py` and `managed_exit.py` are unchanged and remain the right
   tools for a true emergency, when waiting for the next 15-minute cycle is
-  itself the risk.
+  itself the risk. In all other cases `request_exit.py --now` supersedes
+  `force_sell.py`: same outcome, without taking the portfolio offline.
 
 ## DELL — the first request
 

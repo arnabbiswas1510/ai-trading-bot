@@ -457,17 +457,33 @@ Two behaviours worth knowing:
 
 ## Manual tools
 
-| Script | Purpose |
-|---|---|
-| `request_exit.py` | **Queue a Smart OCA Managed Exit — agent places the orders, nothing gets stopped** |
-| `force_sell.py` | Immediate liquidation of a named position |
-| `managed_exit.py` | Run an armed exit manually |
-| `rotate_positions.py` | Interactive holdings-vs-triggers review; **not** part of the daemon |
+| Script | Purpose | Agent must be stopped? | Speed |
+|---|---|---|---|
+| `request_exit.py --now` | **Force sell via the queue** | **No** | next cycle (≤15 min) |
+| `request_exit.py` | **Smart OCA managed exit** | **No** | next cycle (≤15 min) |
+| `force_sell.py` | Immediate liquidation | **Yes** | immediate |
+| `managed_exit.py` | Run an armed exit manually | **Yes** | immediate |
+| `rotate_positions.py` | Interactive holdings-vs-triggers review; **not** part of the daemon | — | — |
 
 `force_sell.py` and `managed_exit.py` connect to IBKR directly as `clientId=1`,
-so the execution-agent must be **stopped** before running either — which leaves
-every other position unmonitored. Prefer `request_exit.py` unless the situation
-is a true emergency where waiting up to 15 minutes is itself the risk.
+so the execution-agent must be stopped before running either — which leaves
+every other position unmonitored. Reserve them for the case where a delay of up
+to 15 minutes is itself the risk. For everything else use `request_exit.py`.
+
+### Choosing between the two queue modes
+
+| | `--now` | OCA (default) |
+|---|---|---|
+| Intent | "get me out" | "get me out well" |
+| Order | market sell | `LMT` upper + `TRAIL` lower |
+| Waits for a bounce? | no | yes, bounded by floor + expiry |
+| Suspends the automated ladder? | no — it exits immediately | **yes**, while `PLACED` |
+| Use when | thesis is broken, news is bad, you want it gone | the drop looks like an overreaction and you want a better price |
+
+`--now` is the direct replacement for `force_sell.py` in normal use: same
+outcome, but the agent keeps running so the rest of the portfolio keeps its
+stops. It does not wait for the 09:45 settle window — an urgent exit deferred
+to 09:45 would silently become a wait.
 
 ---
 
@@ -548,6 +564,7 @@ literal price is stale by 09:30. The agent resolves the real price at placement.
 |---|---|
 | `ATR_AUTO` *(default)* | `OCA_EXIT_ATR_FRACTION × entry_atr_pct`, clamped to `[OCA_EXIT_MIN_TRAIL_PCT, OCA_EXIT_MAX_TRAIL_PCT]` |
 | `TRAIL_PCT` | `stop_value` percent |
+| `MARKET` | not an OCA — sell at market on the next cycle (`--now`). `limit_mode` is ignored |
 
 `ATR_AUTO` exists because a trail tighter than the stock's own noise fires on
 the first random wiggle, cancels the upper leg, and reproduces "sell now" with
@@ -557,6 +574,9 @@ stop, it is an immediate one.
 ### Usage
 
 ```bash
+# Force sell — market exit, agent stays running
+python request_exit.py DELL --now
+
 # Recover-to-a-level exit
 python request_exit.py DELL --limit-abs 489.89 --trail 2.5
 

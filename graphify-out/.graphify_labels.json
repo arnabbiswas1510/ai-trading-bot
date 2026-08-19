@@ -22,7 +22,7 @@
   "20": "flex_query_sync.py",
   "21": "breakout_bt.py",
   "22": "_reconcile",
-  "23": "Phase 2 — Configure the Trading Bot",
+  "23": "IBKR TOTP Setup Guide — Automated 2FA for Live Trading Bot",
   "24": "configuration.md",
   "25": "Technical Triggers",
   "26": "technical_screener.py",
@@ -34,7 +34,7 @@
   "32": "Centralise STOP_LOSS_PCT and COOLING_OFF_DAYS in config.py",
   "33": "Backtest-corrected exit parameters; keep the entry tightening",
   "34": "make_position",
-  "35": "IBKR TOTP Setup Guide — Automated 2FA for Live Trading Bot",
+  "35": "Phase 1 — Extract the TOTP Base32 Secret from IBKR",
   "36": "Decision: Early Loss Kill-switch + Day-2 Universal Intraday Minimiser",
   "37": "Sell Logic",
   "38": "execution_agent.py",
@@ -240,5 +240,7 @@
   "238": "C",
   "239": "FDX",
   "240": "Decision",
-  "241": "test_reconcile_detects_short_positions"
+  "241": "test_reconcile_detects_short_positions",
+  "242": "place_oca_exit",
+  "243": "3. Thesis Stop — days 2–5"
 }
