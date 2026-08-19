@@ -3,7 +3,8 @@
 Every exit rule in the live agent, in evaluation order.
 
 **Source:** `execution_agent.py` — `monitor_portfolio_intraday()` (15-minute cycle),
-`execute_sell()` (market liquidation), `arm_exit()` (armed trailing exit).
+`execute_sell()` (market liquidation), `arm_exit()` (armed trailing exit),
+`enqueue_smart_exit()` (hands the exit to the Smart OCA queue).
 
 ---
 
@@ -39,17 +40,47 @@ for that cycle — an early `continue` means later rules are unreachable until t
 | 4 | HWM / peak metric update | all | every cycle | *(no exit)* |
 | 5 | Trail tightening + power-hold arming | all | every cycle | *(re-places broker order)* |
 | 6 | **Thesis Stop** | 2–5 | every cycle | arm exit |
-| 7 | Intraday Loss Minimiser | 2+ | every cycle | **disabled by default** |
+| 7 | Intraday Loss Minimiser | 2+ | every cycle | **disabled by default** — arm exit (day 0–6) / **queue smart exit** (day 7+) |
 | 8 | Trailing-stop self-heal | all | every cycle | *(no exit)* |
-| 9 | EMA-21 support breach | 7+ | EOD 15:45–16:00 | market sell |
-| 10 | Plateau exit | 7+ | EOD 15:45–16:00 | market sell |
+| 9 | EMA-21 support breach | 7+ | EOD 15:45–16:00 | **queue smart exit** |
+| 10 | Plateau exit | 7+ | EOD 15:45–16:00 | **queue smart exit** |
 | 11 | Day-3 breakout verdict | 3 | EOD, once | *(records verdict)* |
 | 12 | Follow-through latch update | all | EOD | *(sets `closed_above_entry`)* |
 | 13 | Rank & Replace | 7+ | EOD, once daily | market sell + refill |
 
 `process_exit_requests()` runs before `monitor_portfolio_intraday()` in the main
-loop, because it decides which tickers the ladder must skip. See
+loop, because it decides which tickers the ladder must skip. It then runs a
+**second time** afterwards, so an exit queued by rule 7/9/10 has its OCA placed
+on the same cycle instead of idling `PENDING` for another 15 minutes. See
 [Smart OCA Managed Exit](#smart-oca-managed-exit) below.
+
+### Which rules sell smart, and which sell at market
+
+Three exit mechanisms exist because urgency differs. Using the smart exit
+everywhere would be actively harmful — see
+`decisions/2026-08-19_smart-exit-for-discretionary-rules.md`.
+
+| Mechanism | Used by | Why |
+|---|---|---|
+| **Smart OCA queue** (limit + trail, 3-day expiry) | EMA-21 breach, plateau, intraday minimiser day 7+, all manual requests | Not urgent. A considered exit deserves a limit target, not whichever tick the cycle noticed |
+| **Armed exit** (0.6% trail, ~3.25h deadline) | Kill-switch, dollar stop, thesis stop, intraday minimiser day 0–6 | Urgent. Rides a bounce but still exits the same session |
+| **Market order** | Rank & Replace, armed-exit deadline, OCA floor/expiry backstop | Must complete now — see below |
+
+The market-order cases are deliberate, not oversights:
+
+- **Rank & Replace** is a *swap*. The sell exists only to fund the replacement
+  buy immediately afterwards. An OCA that fills in three days ties up the cash,
+  keeps the slot occupied, and forfeits the trigger it was rotating into.
+- **Day 0–6 loss cutters** must not use the queue: a `PLACED` OCA suspends the
+  whole ladder for up to `OCA_EXIT_DEFAULT_EXPIRY_DAYS`, and placement is
+  deferred to `OCA_EXIT_SETTLE_MINUTE`, so a kill-switch firing at 14:00 would
+  wait for the next morning.
+- **Backstops** (armed-exit deadline, OCA floor/expiry) are what catch a smart
+  exit that fails to fill. A backstop that can itself fail to fill is not one.
+
+If enqueueing fails — typically the migration has not been applied — the rule
+falls back to `execute_sell()`. A triggered sell rule never executes nothing.
+Set `SMART_EXIT_FOR_RULES=false` to restore market selling for rules 7/9/10.
 
 ---
 
@@ -251,7 +282,10 @@ Evaluated **only in the 15:45–16:00 ET window** by default (`EXIT_MA_EOD_ONLY=
 prevents an intraday wick from triggering a sale that the close would not have justified.
 
 Suppressed before day 7 so that normal post-breakout consolidation is not read as failure,
-and suppressed entirely by Power Hold. Fires as a market sell.
+and suppressed entirely by Power Hold. Fires as a **Smart OCA exit**: the breach is an EOD
+signal on a position past its consolidation window, so it gets an ATR-sized limit target and
+a trail rather than a market print. Falls back to a market sell if the queue is unavailable.
+See `decisions/2026-08-19_smart-exit-for-discretionary-rules.md`.
 
 ---
 
@@ -266,8 +300,10 @@ clock runs.
 
 This is a **capital velocity** rule, not a risk rule. The position may sit comfortably above
 its trailing stop and its EMA — but with a hard cap of 5 slots, dead money costs the return
-of the best trigger it is blocking. Suppressed by Power Hold; fires as a market sell in the
-EOD window.
+of the best trigger it is blocking. Suppressed by Power Hold; fires as a **Smart OCA exit**
+in the EOD window — the trigger condition is "nothing has happened for 10 trading days", so
+there is no reason to demand an immediate fill. Falls back to a market sell if the queue is
+unavailable. See `decisions/2026-08-19_smart-exit-for-discretionary-rules.md`.
 
 ---
 
@@ -519,9 +555,13 @@ beats selling now.
 
 ### The automated ladder is suspended while a request is `PLACED`
 
-Every rule in the evaluation order above calls `execute_sell()` or `arm_exit()`,
-and both cancel all open SELL orders for the ticker — which would destroy the
-OCA. So the ladder skips OCA-managed tickers entirely.
+Every rule in the evaluation order above ends in `execute_sell()` or
+`arm_exit()`, and both cancel all open SELL orders for the ticker — which would
+destroy the OCA. So the ladder skips OCA-managed tickers entirely.
+
+This applies equally to rule-generated requests: once rule 7/9/10 has enqueued
+an exit and it reaches `PLACED`, that ticker's ladder is suspended too, and the
+floor and expiry below are its only protection.
 
 Because that removes the normal safety net, two backstops are enforced in
 software every cycle and are **not optional**:

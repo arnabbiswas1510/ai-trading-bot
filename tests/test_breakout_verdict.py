@@ -89,7 +89,7 @@ def _make_sb(positions):
     return sb
 
 
-def _run(ib, sb, positions, live_price, hour=11, minute=30, ohlcv=None):
+def _run(ib, sb, positions, live_price, hour=11, minute=30, ohlcv=None, enqueue_ok=True):
     tz = ZoneInfo("America/New_York")
     now_mock = datetime.datetime(2026, 6, 17, hour, minute, tzinfo=tz)
     ohlcv_val = ohlcv if ohlcv is not None else []
@@ -101,6 +101,7 @@ def _run(ib, sb, positions, live_price, hour=11, minute=30, ohlcv=None):
          patch("execution_agent.place_trailing_stop", return_value=("TS_MOCK", 0.07)), \
          patch("execution_agent.execute_sell") as mock_sell, \
          patch("execution_agent.arm_exit") as mock_arm, \
+         patch("execution_agent.enqueue_smart_exit", return_value=enqueue_ok) as mock_enqueue, \
          patch("execution_agent.datetime") as mock_dt:
         mock_dt.datetime.now.side_effect = lambda *a, **kw: now_mock
         mock_dt.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
@@ -109,6 +110,10 @@ def _run(ib, sb, positions, live_price, hour=11, minute=30, ohlcv=None):
         mock_dt.timezone = datetime.timezone
         mock_dt.timedelta = datetime.timedelta
         execution_agent.monitor_portfolio_intraday(ib)
+    # Day 7+ discretionary rules now hand the exit to the Smart OCA queue
+    # instead of market-selling. Exposed as an attribute so the 16 existing
+    # call sites that only care about sell/arm keep their 2-tuple unpacking.
+    _run.last_enqueue = mock_enqueue
     return mock_sell, mock_arm
 
 
@@ -283,15 +288,27 @@ class TestIntradayLossMinimiser:
 
     def test_day7_fallback_fires(self):
         """FAIL pos Day 7 (outside the Day 0-6 armed-exit scope), intraday high well
-        below entry (no rally) -> hard fallback sell (immediate, not armed)."""
+        below entry (no rally) -> hard fallback exit, routed to the Smart OCA queue
+        rather than armed. See decisions/2026-08-19_smart-exit-for-discretionary-rules.md."""
         pos = _make_pos(buy_date=BD_DAY7, buy_price=100.0, verdict="FAIL",
                         intraday_high_today=99.2)
         ib, sb = _make_ib([pos]), _make_sb([pos])
         mock_sell, mock_arm = _run(ib, sb, [pos], 98.8, hour=11, minute=30)
-        mock_sell.assert_called_once()
         mock_arm.assert_not_called()
-        reason = mock_sell.call_args.args[8]
+        mock_sell.assert_not_called()
+        _run.last_enqueue.assert_called_once()
+        reason = _run.last_enqueue.call_args.args[2]
         assert "fallback" in reason.lower() and "Day 7" in reason
+
+    def test_day7_fallback_still_sells_when_the_queue_is_unavailable(self):
+        """The migration may not be applied. A triggered sell rule must never
+        execute nothing, so enqueue failure falls back to the market sell."""
+        pos = _make_pos(buy_date=BD_DAY7, buy_price=100.0, verdict="FAIL",
+                        intraday_high_today=99.2)
+        ib, sb = _make_ib([pos]), _make_sb([pos])
+        mock_sell, mock_arm = _run(ib, sb, [pos], 98.8, hour=11, minute=30, enqueue_ok=False)
+        mock_sell.assert_called_once()
+        assert "fallback" in mock_sell.call_args.args[8].lower()
 
 
 class TestIntradayMinimiserDisabledByDefault:

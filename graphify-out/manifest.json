@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1787150209.0574543,
-    "ast_hash": "0daa8b554e08911f1c46e8b2cc22a91f",
+    "mtime": 1787150855.9382513,
+    "ast_hash": "880e7cfbb6860aca52684db4b03a7662",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -270,8 +270,8 @@
     "semantic_hash": ""
   },
   "tests/test_breakout_verdict.py": {
-    "mtime": 1787109573.785873,
-    "ast_hash": "7fdf6d38bcf3e1bb1765d39a76cfb0fc",
+    "mtime": 1787151018.7907279,
+    "ast_hash": "7f9885779562f3f456c09677e6da1341",
     "semantic_hash": ""
   },
   "tests/test_buy_fill_verification.py": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "tests/test_plateau_rotation.py": {
-    "mtime": 1785822056.4770508,
-    "ast_hash": "255bbe78e900afc374c280d3700606dc",
+    "mtime": 1787150977.1340575,
+    "ast_hash": "8ebb1905eafec1f9c16b486228f5d094",
     "semantic_hash": ""
   },
   "tests/test_pre_breakout.py": {
@@ -325,8 +325,8 @@
     "semantic_hash": "c6399e27028dd7316d27a6d535b2244e"
   },
   "tests/test_sell_logic.py": {
-    "mtime": 1785696688.7428398,
-    "ast_hash": "071025d9bd8e39a4eabad8dcec27044d",
+    "mtime": 1787150991.8552847,
+    "ast_hash": "e7a9ff98c4e88cee67566c14ba20f077",
     "semantic_hash": ""
   },
   "tests/test_short_fix_and_new_logic.py": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1787150405.468851,
-    "ast_hash": "17e82aa35830868b59875a0a75c79b83",
+    "mtime": 1787151105.5335977,
+    "ast_hash": "67ff95fc2ac2af89c713c4d22434273d",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1787150395.6511781,
-    "ast_hash": "716b6cc35f8777cc6284862bca9e591c",
+    "mtime": 1787151097.797833,
+    "ast_hash": "6addf177439a9114c6c88b87287bf4fd",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -840,8 +840,8 @@
     "semantic_hash": ""
   },
   "tests/test_oca_managed_exit.py": {
-    "mtime": 1787150299.0900984,
-    "ast_hash": "3e62f68b4923e322508ca2185350a4c5",
+    "mtime": 1787150899.1694202,
+    "ast_hash": "1096ceb0a57c8e58592550130ae25435",
     "semantic_hash": ""
   },
   "decisions/2026-08-18_smart-oca-managed-exit.md": {
@@ -882,6 +882,11 @@
   "decisions/2026-08-19_atr-anchored-upper-leg.md": {
     "mtime": 1787150372.2775066,
     "ast_hash": "24642e316c3f7b668af529ec43d44da8",
+    "semantic_hash": ""
+  },
+  "decisions/2026-08-19_smart-exit-for-discretionary-rules.md": {
+    "mtime": 1787151059.5986226,
+    "ast_hash": "9e0719badc8bc5d5570b959655b7d920",
     "semantic_hash": ""
   }
 }

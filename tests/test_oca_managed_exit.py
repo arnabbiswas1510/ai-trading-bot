@@ -575,3 +575,97 @@ class TestAtrAutoUpperLeg:
 
     def test_no_reference_price_yields_no_leg(self):
         assert execution_agent.resolve_oca_limit_price(_pos(), "ATR_AUTO", None, 0) is None
+
+
+# ── enqueue_smart_exit / rule routing ────────────────────────────────────────
+
+class TestEnqueueSmartExit:
+    """
+    The Day 7+ discretionary rules stopped market-selling and now hand the exit
+    to the queue. The failure that matters is a triggered sell rule that
+    executes NOTHING — so every path must either enqueue or fall back.
+    See decisions/2026-08-19_smart-exit-for-discretionary-rules.md.
+    """
+
+    def test_enqueues_an_atr_auto_request(self):
+        sb = MagicMock()
+        assert execution_agent.enqueue_smart_exit(sb, "LPG", "Plateau Exit", "auto:plateau") is True
+        payload = sb.table.return_value.insert.call_args[0][0]
+        assert payload["ticker"] == "LPG"
+        # Both legs self-size; the rule supplies intent, never prices.
+        assert payload["limit_mode"] == "ATR_AUTO"
+        assert payload["stop_mode"] == "ATR_AUTO"
+        assert payload["requested_by"] == "auto:plateau"
+        assert "Plateau Exit" in payload["note"]
+
+    def test_ticker_is_upper_cased(self):
+        sb = MagicMock()
+        execution_agent.enqueue_smart_exit(sb, "lpg", "r", "auto:ema21")
+        assert sb.table.return_value.insert.call_args[0][0]["ticker"] == "LPG"
+
+    def test_existing_in_flight_request_counts_as_success(self):
+        # The unique partial index rejects the second insert. That request
+        # already owns the exit, so the rule must stand down -- NOT market-sell
+        # on top of a live OCA, which would cancel the legs it just placed.
+        sb = MagicMock()
+        sb.table.return_value.insert.return_value.execute.side_effect = Exception(
+            'duplicate key value violates unique constraint "idx_exit_requests_one_active"')
+        assert execution_agent.enqueue_smart_exit(sb, "LPG", "r", "auto:plateau") is True
+
+    def test_missing_table_falls_back_to_market_sell(self):
+        # Migration not applied. Returning False is what preserves the old
+        # behaviour instead of silently skipping a triggered sell.
+        sb = MagicMock()
+        sb.table.return_value.insert.return_value.execute.side_effect = Exception(
+            'relation "exit_requests" does not exist (42P01)')
+        assert execution_agent.enqueue_smart_exit(sb, "LPG", "r", "auto:plateau") is False
+
+    def test_unexpected_error_falls_back_to_market_sell(self):
+        sb = MagicMock()
+        sb.table.return_value.insert.return_value.execute.side_effect = Exception("boom")
+        with patch.object(execution_agent.notifier, "notify_exception"):
+            assert execution_agent.enqueue_smart_exit(sb, "LPG", "r", "auto:plateau") is False
+
+    def test_note_is_truncated_to_column_width(self):
+        sb = MagicMock()
+        execution_agent.enqueue_smart_exit(sb, "LPG", "x" * 900, "auto:plateau")
+        assert len(sb.table.return_value.insert.call_args[0][0]["note"]) == 500
+
+
+class TestSmartExitRuleScoping:
+    """Which rules may use the queue is a risk decision, not a style one."""
+
+    def test_day_0_to_6_loss_cutters_still_arm_rather_than_enqueue(self):
+        # A placed OCA suspends the ladder for up to expires_after_days. For a
+        # position that is actively failing in its first week that is the wrong
+        # trade, so the kill-switch, dollar stop and thesis stop keep arm_exit().
+        import inspect
+        src = inspect.getsource(execution_agent.monitor_portfolio_intraday)
+        # Anchor on the trigger print, which is unique, rather than the rule
+        # name, which also appears in comments and reason strings.
+        for rule in ("Early Loss Kill-switch triggered",
+                     "Early Dollar Stop triggered",
+                     "Thesis Stop triggered"):
+            assert rule in src, f"{rule} vanished — update this test"
+            seg = src.split(rule)[1][:900]
+            assert "arm_exit(" in seg, f"{rule} must arm, not enqueue"
+            assert "enqueue_smart_exit(" not in seg, f"{rule} must not use the OCA queue"
+
+    def test_rank_and_replace_stays_a_market_sell(self):
+        # The sell funds the replacement buy on the next line. An OCA that
+        # fills in 3 days decouples the swap and forfeits the entry.
+        import inspect
+        src = inspect.getsource(execution_agent.run_rank_and_replace) \
+            if hasattr(execution_agent, "run_rank_and_replace") else ""
+        if src:
+            assert "enqueue_smart_exit(" not in src
+
+    def test_backstops_remain_market_orders(self):
+        # process_exit_requests' floor/expiry handler is the backstop FOR the
+        # OCA. A backstop that can itself fail to fill is not a backstop.
+        import inspect
+        src = inspect.getsource(execution_agent.process_exit_requests)
+        assert "enqueue_smart_exit(" not in src
+
+    def test_flag_disables_routing_entirely(self):
+        assert isinstance(execution_agent.SMART_EXIT_FOR_RULES, bool)

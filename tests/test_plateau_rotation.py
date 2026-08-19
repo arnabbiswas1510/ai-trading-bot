@@ -58,6 +58,7 @@ def _run_eod(ib, supabase_mock, live_rs_return=None, live_price=105.0):
          patch("execution_agent.cancel_ticker_sell_orders"), \
          patch("execution_agent.place_trailing_stop", return_value=("TS_MOCK", 0.07)), \
          patch("execution_agent.execute_sell") as mock_sell, \
+         patch("execution_agent.enqueue_smart_exit", return_value=True) as mock_enq, \
          patch("execution_agent._fetch_current_rs", return_value=live_rs_return), \
          patch("execution_agent.datetime") as mock_dt:
 
@@ -69,6 +70,10 @@ def _run_eod(ib, supabase_mock, live_rs_return=None, live_price=105.0):
         mock_dt.timedelta = datetime.timedelta
 
         execution_agent.monitor_portfolio_intraday(ib)
+        # The plateau exit now hands the position to the Smart OCA queue rather
+        # than market-selling it. Exposed as an attribute so existing call sites
+        # that only assert on execute_sell keep working unchanged.
+        _run_eod.last_enqueue = mock_enq
         return mock_sell
 
 
@@ -251,9 +256,15 @@ class TestPlateauStaleExit:
         with patch("execution_agent._fetch_ohlcv", return_value=[]):
             mock_sell = _run_eod(ib, mock_sb, live_price=106.0)
 
-        sold = [c for c in mock_sell.call_args_list if c[0][2] == "AAPL"]
-        assert sold, "Plateau exit should fire after the stall threshold"
-        assert "Plateau Exit" in sold[0][0][8]
+        # Routed to the Smart OCA queue rather than sold at market: a stalled
+        # position is the least urgent exit in the ladder, so it should get a
+        # limit target rather than whichever tick the cycle noticed.
+        # See decisions/2026-08-19_smart-exit-for-discretionary-rules.md.
+        queued = [c for c in _run_eod.last_enqueue.call_args_list if c[0][1] == "AAPL"]
+        assert queued, "Plateau exit should fire after the stall threshold"
+        assert "Plateau Exit" in queued[0][0][2]
+        assert queued[0][0][3] == "auto:plateau"
+        assert not [c for c in mock_sell.call_args_list if c[0][2] == "AAPL"]
 
     def test_holds_when_stall_is_below_threshold(self):
         pos = self._pos(hwm_date=_hwm(11))          # 9 trading days stalled
@@ -334,5 +345,5 @@ class TestPlateauStaleExit:
         with patch("execution_agent._fetch_ohlcv", return_value=[]):
             mock_sell = _run_eod(ib, mock_sb, live_price=110.0)
 
-        assert [c for c in mock_sell.call_args_list
-                if c[0][2] == "AAPL" and "Plateau Exit" in c[0][8]]
+        assert [c for c in _run_eod.last_enqueue.call_args_list
+                if c[0][1] == "AAPL" and "Plateau Exit" in c[0][2]]

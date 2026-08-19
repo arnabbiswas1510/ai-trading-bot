@@ -109,6 +109,7 @@ Drives `process_exit_requests()` — the queue-driven OCA exit fed by
 | `OCA_EXIT_UPPER_ATR_FRACTION` | `0.50` | Upper leg as a fraction of `entry_atr_pct` above the placement price when `limit_mode='ATR_AUTO'` (the default). Larger than the trail fraction so the optimistic leg always sits further out than the protective one |
 | `OCA_EXIT_MIN_UPPER_PCT` | `0.0075` | Lower clamp — keeps a quiet stock's target outside the bid/ask spread |
 | `OCA_EXIT_MAX_UPPER_PCT` | `0.050` | Upper clamp — keeps a volatile stock's target reachable by a realistic bounce |
+| `SMART_EXIT_FOR_RULES` | `true` | Route the discretionary Day 7+ rules (EMA-21 breach, plateau, intraday minimiser) through the Smart OCA queue instead of selling at market. Deliberately does **not** apply to the Day 0–6 loss cutters, Rank & Replace, or the backstops — see `docs/sell_logic.md` and `decisions/2026-08-19_smart-exit-for-discretionary-rules.md`. Set `false` to restore market selling |
 | `OCA_EXIT_DEFAULT_ATR_PCT` | `3.0` | Used when the position has no ATR on record |
 | `OCA_EXIT_DEFAULT_FLOOR_PCT` | `0.05` | Hard floor below the placement price when the request sets none. **Not optional in effect** — the automated ladder is suspended for managed tickers, so this is the protection |
 | `OCA_EXIT_DEFAULT_EXPIRY_DAYS` | `3` | Trading days before an unfilled OCA is closed at market |

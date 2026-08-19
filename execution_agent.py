@@ -455,6 +455,17 @@ OCA_EXIT_MAX_UPPER_PCT    = float(os.getenv("OCA_EXIT_MAX_UPPER_PCT",    0.050))
 OCA_EXIT_DEFAULT_FLOOR_PCT = float(os.getenv("OCA_EXIT_DEFAULT_FLOOR_PCT", 0.05))  # 5% below placement
 OCA_EXIT_DEFAULT_EXPIRY_DAYS = int(os.getenv("OCA_EXIT_DEFAULT_EXPIRY_DAYS", 3))
 
+# Route the *discretionary* Day 7+ exits (EMA-21 breach, plateau, intraday
+# minimiser after the consolidation window) through the Smart OCA queue instead
+# of selling at market on whichever 15-minute tick happened to notice.
+#
+# Scoped to Day 7+ non-urgent rules ON PURPOSE. The Day 0-6 loss cutters
+# (kill-switch, dollar stop, thesis stop) keep arm_exit(): a placed OCA
+# suspends the automated ladder for up to OCA_EXIT_DEFAULT_EXPIRY_DAYS, which
+# is exactly the wrong trade for a position that is actively failing.
+# See decisions/2026-08-19_smart-exit-for-discretionary-rules.md.
+SMART_EXIT_FOR_RULES = os.getenv("SMART_EXIT_FOR_RULES", "true").lower() == "true"
+
 # ── O'Neil 8-Week Hold Rule ───────────────────────────────────────────────────
 # From "How to Make Money in Stocks": a stock that gains 20%+ within 3 weeks of a
 # proper breakout is behaving like a genuine market leader and should be held for
@@ -1109,6 +1120,52 @@ def place_oca_exit(ib: IB, contract, shares: int, limit_price: float | None,
 
     ib.sleep(1)
     return group, trades
+
+
+def enqueue_smart_exit(client: Client, ticker: str, reason: str,
+                       requested_by: str = "auto") -> bool:
+    """
+    Route an automated sell rule through the Smart OCA Exit queue.
+
+    Rather than calling place_oca_exit() from each rule, the rule writes the
+    same row a human would write with request_exit.py. One placement path, one
+    audit trail, one set of backstops — and every rule automatically inherits
+    ATR_AUTO sizing, the hard floor and the expiry.
+
+    Only non-urgent Day 7+ rules should call this. Loss-cutting rules must not:
+    an OCA suspends the automated ladder for up to `expires_after_days`, which
+    is the wrong trade for a position that is actively failing.
+    See decisions/2026-08-19_smart-exit-for-discretionary-rules.md.
+
+    Returns True when the exit is owned by the queue (freshly enqueued, or a
+    request was already in flight) and the caller must NOT also market-sell.
+    Returns False when enqueueing failed, in which case the caller must fall
+    back to execute_sell() — never leave a triggered sell rule unexecuted.
+    """
+    try:
+        client.table("exit_requests").insert({
+            "ticker":       ticker.upper(),
+            "limit_mode":   "ATR_AUTO",
+            "stop_mode":    "ATR_AUTO",
+            "note":         reason[:500],
+            "requested_by": requested_by,
+        }).execute()
+        print(f"   🎯 {ticker}: queued Smart OCA exit ({requested_by}) — {reason}")
+        return True
+    except Exception as e:
+        msg = str(e)
+        # Unique partial index idx_exit_requests_one_active: a request is
+        # already in flight for this ticker. That request owns the exit, so
+        # this is success, not failure — the rule must stand down either way.
+        if "23505" in msg or "idx_exit_requests_one_active" in msg or "duplicate key" in msg.lower():
+            print(f"   🎯 {ticker}: exit request already in flight — leaving it to the queue.")
+            return True
+        if "42P01" in msg or "PGRST205" in msg:
+            print(f"   ⚠️ exit_requests table missing — run migrations/add_exit_requests.sql. "
+                  f"Falling back to a market sell for {ticker}.")
+            return False
+        notifier.notify_exception(f"enqueue_smart_exit({ticker}) — execution_agent.py", e)
+        return False
 
 
 def process_exit_requests(ib: IB) -> None:
@@ -3377,14 +3434,18 @@ def monitor_portfolio_intraday(ib: IB):
                     active_positions.append(pos)
                 else:
                     print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser firing — {reason}")
-                    execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                    if not (SMART_EXIT_FOR_RULES
+                            and enqueue_smart_exit(client, ticker, reason, "auto:intraday_minimiser")):
+                        execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
                 continue
 
             # Hard fallback remains scoped to FAIL verdict positions.
             if days_held >= 7 and pos.get("breakout_verdict") == "FAIL":
                 reason = f"Intraday Loss Minimiser fallback — no qualifying intraday rally by Day 7 ({days_held}d)"
                 print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser fallback sell (Day 7)")
-                execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                if not (SMART_EXIT_FOR_RULES
+                        and enqueue_smart_exit(client, ticker, reason, "auto:intraday_minimiser_fallback")):
+                    execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
                 continue
 
 
@@ -3432,7 +3493,9 @@ def monitor_portfolio_intraday(ib: IB):
                             f"below MA ${ma_val:.2f} with {EXIT_MA_BUFFER_PCT*100:.1f}% buffer (${threshold:.2f})"
                         )
                         print(f"🚨 {ticker} breached Moving Average exit! {reason}")
-                        execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                        if not (SMART_EXIT_FOR_RULES
+                                and enqueue_smart_exit(client, ticker, reason, "auto:ema21")):
+                            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
                         continue
 
         # ── Plateau (Stale) Exit — Day 7+, EOD only ──────────────────────────────
@@ -3461,8 +3524,10 @@ def monitor_portfolio_intraday(ib: IB):
                             f"current ${current_price:.2f}). Rotating capital to a fresh breakout."
                         )
                         print(f"🔄 {ticker} has plateaued — {reason}")
-                        execute_sell(ib, client, ticker, shares, buy_price, buy_date,
-                                     buy_reason, current_price, reason)
+                        if not (SMART_EXIT_FOR_RULES
+                                and enqueue_smart_exit(client, ticker, reason, "auto:plateau")):
+                            execute_sell(ib, client, ticker, shares, buy_price, buy_date,
+                                         buy_reason, current_price, reason)
                         continue
             except Exception as _stale_err:
                 notifier.notify_exception("monitor_portfolio_intraday() plateau exit", _stale_err)
@@ -3706,6 +3771,17 @@ def monitor_portfolio_intraday(ib: IB):
                     buy_reason_rr = pos.get("buy_reason", "Unknown")
                     current_price_rr = get_live_price(ticker_m)
 
+                    # Deliberately a MARKET sell, not a Smart OCA exit, even
+                    # though this is the least urgent rule in the ladder.
+                    # Rank & Replace is a *swap*: the sell exists only to fund
+                    # the named replacement buy on the very next line. An OCA
+                    # may not fill for up to OCA_EXIT_DEFAULT_EXPIRY_DAYS, so
+                    # routing it through the queue would decouple the two
+                    # halves — cash stays tied up, the slot stays occupied, and
+                    # the trigger being rotated into is likely gone by the time
+                    # the sell completes. A better exit price is not worth
+                    # losing the entry it was taken for.
+                    # See decisions/2026-08-19_smart-exit-for-discretionary-rules.md.
                     sold = execute_sell(ib, client, ticker_m, shares_rr, buy_price_rr,
                                         buy_date_rr, buy_reason_rr, current_price_rr, reason,
                                         pos_row=pos, market_regime=market_regime)
@@ -3981,6 +4057,12 @@ def main_loop():
                                                     # it decides which tickers monitor must skip)
                     run_market_open_buys(ib)        # No-op when portfolio is full
                     monitor_portfolio_intraday(ib)  # Trailing stops, MA exits, plateau rotation
+                    # Drain again: the Day 7+ rules above enqueue rather than
+                    # market-sell, and a triggered exit must not idle as PENDING
+                    # for a further 15 minutes (unprotected — PENDING does not
+                    # suspend the ladder, but the trail is still live) before its
+                    # OCA goes out. Idempotent: a no-op when nothing was queued.
+                    process_exit_requests(ib)
                     ib.sleep(900)
                     continue
 

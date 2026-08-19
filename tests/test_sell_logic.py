@@ -235,6 +235,7 @@ class TestMovingAverageExits:
              patch("execution_agent.fetch_historical_closes_with_dates", return_value=hist_data), \
              patch("execution_agent.get_live_price", return_value=98.0), \
              patch("execution_agent.execute_sell") as mock_sell, \
+             patch("execution_agent.enqueue_smart_exit", return_value=True) as mock_enq, \
              patch("execution_agent.EXIT_MA_TRIGGER_ENABLED", True), \
              patch("execution_agent.EXIT_MA_TYPE", "EMA"), \
              patch("execution_agent.EXIT_MA_WINDOW", 21), \
@@ -248,10 +249,15 @@ class TestMovingAverageExits:
             mock_datetime.timezone = datetime.timezone
             mock_datetime.timedelta = datetime.timedelta
             execution_agent.monitor_portfolio_intraday(ib)
-            mock_sell.assert_called_once()
-            args, kwargs = mock_sell.call_args
-            assert args[2] == "AAPL"
-            assert "EMA-21 Exit" in args[8]
+            # Day 7+ EMA breach is a considered exit, not an emergency, so it
+            # is handed to the Smart OCA queue instead of sold at market.
+            # See decisions/2026-08-19_smart-exit-for-discretionary-rules.md.
+            mock_sell.assert_not_called()
+            mock_enq.assert_called_once()
+            args, kwargs = mock_enq.call_args
+            assert args[1] == "AAPL"
+            assert "EMA-21 Exit" in args[2]
+            assert args[3] == "auto:ema21"
 
     def test_ma_exit_does_not_trigger_within_buffer(self):
         """Price below MA but within buffer -> no exit."""
