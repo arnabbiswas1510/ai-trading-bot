@@ -122,7 +122,8 @@ position, because no other stop is active while the OCA is placed. See
 
 | Variable | Default | Effect |
 |---|---|---|
-| `EARLY_LOSS_STOP_PCT` | `0.02` | Kill-switch threshold, days 0–1 |
+| `EARLY_LOSS_STOP_PCT` | `0.01` | Kill-switch threshold, entry day |
+| `EARLY_LOSS_STOP_MAX_DAY` | `0` | Last day the kill-switch may fire (0 = entry day only) |
 | `EARLY_DOLLAR_STOP_AMOUNT` | `500` | Max dollar loss per position on days 0–`EARLY_DOLLAR_STOP_MAX_DAY`; 0 to disable |
 | `EARLY_DOLLAR_STOP_MAX_DAY` | `5` | Last trading day (inclusive) the dollar stop is active |
 | `INTRADAY_MINIMISER_ENABLED` | `false` | **Superseded by the Thesis Stop** |
@@ -180,8 +181,10 @@ almost any other.
 | `BREAKOUT_VERDICT_MIN_GAIN` | `0.01` | Day-3 PASS gain requirement |
 | `BREAKOUT_VERDICT_MIN_VOL_PCT` | `0.75` | Day-3 PASS volume requirement |
 
-Profit tiers are code constants (`TRAIL_PROFIT_TIERS`): +20% → 6.5%, +30% → 6.0%,
-+50% → 5.0%.
+Profit tiers are code constants (`TRAIL_PROFIT_TIERS`): +6% → 1.5%.
+
+This is a deliberate first-leg profit lock rather than a late-stage winner ladder. See
+`decisions/2026-08-20_hwm-profit-lock-first-leg.md` for why.
 
 ---
 

@@ -3,6 +3,7 @@ import useSortableTable from '../hooks/useSortableTable';
 import {
   evaluatePositionRules,
   rulesTooltip,
+  buildLifecycle,
   STATE,
   STATE_META,
   RULES_CONFIG,
@@ -159,6 +160,12 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function activeProfitLockTier(pos) {
+  const effPct = typeof pos?.stop_loss_pct === 'number' ? pos.stop_loss_pct : RULES_CONFIG.STOP_LOSS_PCT;
+  if (pos?.power_hold || pos?.is_power_hold) return null;
+  return RULES_CONFIG.TRAIL_PROFIT_TIERS.find(([, pct]) => pct != null && Math.abs(effPct - pct) < 1e-6) || null;
+}
+
 function getCleanExitReason(raw, pctReturn) {
   if (!raw) return 'Manual Close';
   const lower = raw.toLowerCase();
@@ -286,7 +293,14 @@ function rulesFor(pos, openPositions) {
 
 /** Compact lifecycle cell: phase pill + one dot per rule, with a full tooltip. */
 function LifecycleCell({ pos, openPositions }) {
-  const { phase, rules } = rulesFor(pos, openPositions);
+  const evald = rulesFor(pos, openPositions);
+  const { phase, rules } = evald;
+  const now = new Date();
+  const sinceHwm = pos.days_since_hwm != null
+    ? pos.days_since_hwm
+    : tradingDaysBetween(pos.hwm_date || pos.buy_date, now);
+  const lifecycle = buildLifecycle(pos, evald, tradingDaysBetween(pos.buy_date, now), sinceHwm);
+  const upNext = lifecycle.next[0];
   const rec = pos.rotation_recommendation;
   const recLabel = rec === 'TIER_1' ? 'T1'
                  : rec === 'TIER_2' ? 'T2'
@@ -305,7 +319,7 @@ function LifecycleCell({ pos, openPositions }) {
     r.state === STATE.DEGRADED || r.state === STATE.WATCH);
 
   return (
-    <td title={rulesTooltip(pos.ticker, phase, rules)} style={{ whiteSpace: 'nowrap' }}>
+    <td title={rulesTooltip(pos.ticker, phase, rules, lifecycle)} style={{ whiteSpace: 'nowrap' }}>
       <span style={{
         display: 'inline-block', fontSize: '0.63rem', fontWeight: 800,
         padding: '0.12rem 0.4rem', borderRadius: '4px',
@@ -338,7 +352,141 @@ function LifecycleCell({ pos, openPositions }) {
           );
         })}
       </div>
+
+      {upNext && (
+        <div
+          title={`${upNext.when} — ${upNext.label}\n${upNext.detail || ''}`}
+          style={{
+            marginTop: '0.22rem', fontSize: '0.6rem', lineHeight: 1.3,
+            color: 'var(--text-muted)', maxWidth: '15rem',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >
+          <span style={{ opacity: 0.75 }}>next ▸ </span>
+          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{upNext.label}</span>
+        </div>
+      )}
     </td>
+  );
+}
+
+// ── Position Journey — past / present / next in one glance ───────────────────
+/**
+ * Answers the three questions an operator has when looking at a holding:
+ *   1. Which phase is it in right now?      → the day track
+ *   2. What happens to it next?             → the "Next" column
+ *   3. What has already happened to it?     → the "So far" column
+ *
+ * All content comes from buildLifecycle() in positionRules.js, so it can never
+ * contradict the Risk Rule Ladder below it.
+ */
+function PositionJourney({ pos, openPositions }) {
+  const now = new Date();
+  const tdHeld = tradingDaysBetween(pos.buy_date, now);
+  const sinceHwm = pos.days_since_hwm != null
+    ? pos.days_since_hwm
+    : tradingDaysBetween(pos.hwm_date || pos.buy_date, now);
+  const evald = rulesFor(pos, openPositions);
+  const { past, track, next, phase, offTrack } = buildLifecycle(pos, evald, tdHeld, sinceHwm);
+
+  const toneColor = { good: '#10b981', bad: '#f43f5e', neutral: 'var(--text-secondary)' };
+
+  const segColor = (s) => s.status === 'current' ? phase.color
+                        : s.status === 'done' ? '#475569'
+                        : 'rgba(255,255,255,0.14)';
+
+  const colHead = {
+    fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.08em',
+    textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.45rem',
+  };
+
+  const item = (e) => (
+    <div key={e.key} style={{
+      display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.45rem',
+      padding: '0.35rem 0', alignItems: 'start',
+    }}>
+      <span style={{ fontSize: '0.75rem', lineHeight: 1.35 }}>{e.icon}</span>
+      <div>
+        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: toneColor[e.tone] || 'var(--text-secondary)', lineHeight: 1.35 }}>
+          {e.label}
+          {e.when && (
+            <span style={{ marginLeft: '0.35rem', fontSize: '0.63rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              · {e.when}
+            </span>
+          )}
+        </div>
+        {e.detail && (
+          <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', lineHeight: 1.45, marginTop: '0.1rem' }}>
+            {e.detail}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      gridColumn: '1 / -1',
+      background: 'rgba(255,255,255,0.02)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: '10px',
+      padding: '0.85rem 1rem',
+      marginBottom: '0.5rem',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.7rem', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+          🧭 Position Journey
+        </span>
+        <span style={{
+          fontSize: '0.68rem', fontWeight: 800, padding: '0.12rem 0.45rem', borderRadius: '5px',
+          color: phase.color, background: `${phase.color}1f`, border: `1px solid ${phase.color}55`,
+        }}>{phase.label}</span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{phase.note}</span>
+      </div>
+
+      {/* ── The day track: where it is in its life ─────────────────────────── */}
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.3rem' }}>
+        {track.map((s) => (
+          <div key={s.key} title={`${s.label} (${s.short}) — ${s.owns}`} style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              height: '5px', borderRadius: '3px', background: segColor(s),
+              boxShadow: s.status === 'current' ? `0 0 0 1px ${phase.color}88` : 'none',
+            }} />
+            <div style={{
+              marginTop: '0.25rem', fontSize: '0.6rem', lineHeight: 1.25,
+              fontWeight: s.status === 'current' ? 800 : 600,
+              color: s.status === 'current' ? phase.color
+                   : s.status === 'done' ? 'var(--text-muted)' : 'rgba(148,163,184,0.55)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {s.short} {s.label}
+            </div>
+          </div>
+        ))}
+      </div>
+      {offTrack && (
+        <div style={{ fontSize: '0.65rem', color: phase.color, fontWeight: 700, marginBottom: '0.3rem' }}>
+          ▲ {phase.label} overrides the normal day track.
+        </div>
+      )}
+
+      {/* ── Past and future, side by side ──────────────────────────────────── */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: '0.9rem', marginTop: '0.75rem',
+      }}>
+        <div>
+          <div style={colHead}>⏮ What has happened</div>
+          {past.length ? past.map(item)
+            : <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Nothing yet — just entered.</div>}
+        </div>
+        <div style={{ borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: '0.9rem' }}>
+          <div style={colHead}>⏭ What happens next</div>
+          {next.length ? next.map(item)
+            : <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Nothing scheduled — the trailing stop is the only live exit.</div>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -477,6 +625,7 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions }) {
   const days = daysHeld(pos.buy_date);
   const hwmPrice  = pos.hwm_price || pos.buy_price;  // hwm_price: running peak IBKR tracks
   const stopLossPct = pos.stop_loss_pct || STOP_LOSS_PCT;
+  const profitLockTier = activeProfitLockTier(pos);
   // Trail stop floor = hwm_price × (1 - trail%)  — matches IBKR's own calculation.
   // IBKR trails from the running peak (hwm_price), not the current price.
   const trailStop = parseFloat((hwmPrice * (1 - stopLossPct)).toFixed(2));
@@ -511,8 +660,11 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions }) {
 
   return (
     <tr>
-      <td colSpan={11} style={{ padding: 0 }}>
+      <td colSpan={12} style={{ padding: 0 }}>
         <div style={panelStyle}>
+
+          {/* ── Position Journey — phase, history and what comes next ──────── */}
+          <PositionJourney pos={pos} openPositions={openPositions} />
 
           {/* ── Risk Rule Ladder — every applicable tier and its live state ─── */}
           <RiskLadder pos={pos} formatCurrency={formatCurrency} openPositions={openPositions} />
@@ -524,7 +676,24 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions }) {
             <div style={noteStyle}>
               Bought {formatDate(pos.buy_date)}<br />
               Source: CANSLIM Breakout<br />
-              Entry: {formatCurrency(pos.buy_price)} · High: {formatCurrency(hwmPrice)}
+              Entry: {formatCurrency(pos.buy_price)} · HWM: {formatCurrency(hwmPrice)}
+              {pos.hwm_date ? ` (${formatDate(pos.hwm_date)})` : ''}
+            </div>
+            <div style={{
+              marginTop: '0.55rem',
+              padding: '0.4rem 0.55rem',
+              background: profitLockTier ? 'rgba(56,189,248,0.08)' : 'rgba(255,255,255,0.04)',
+              border: profitLockTier ? '1px solid rgba(56,189,248,0.28)' : '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '7px',
+            }}>
+              <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.14rem' }}>
+                Profit Lock
+              </div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: profitLockTier ? '#38bdf8' : 'var(--text-secondary)' }}>
+                {profitLockTier
+                  ? `ACTIVE — ${formatCurrency(hwmPrice * (1 - profitLockTier[1]))} stop (${(profitLockTier[1] * 100).toFixed(1)}% below HWM)`
+                  : `Standby — activates after +${RULES_CONFIG.TRAIL_PROFIT_TIERS[0][0]}% gain`}
+              </div>
             </div>
             {/* Live dollar P&L — most visible loss signal */}
             {pos.current_price != null && pos.buy_price != null && pos.shares != null && (() => {
@@ -1216,6 +1385,7 @@ export default function DashboardView({ data, marketData, trades }) {
                   <th onClick={() => requestSortPos('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIconPos('shares')}</th>
                   <th onClick={() => requestSortPos('buy_price')} style={{ cursor: 'pointer' }}>Buy Price{getSortIconPos('buy_price')}</th>
                   <th onClick={() => requestSortPos('current_price')} style={{ cursor: 'pointer' }}>Current Price{getSortIconPos('current_price')}</th>
+                  <th onClick={() => requestSortPos('hwm_price')} style={{ cursor: 'pointer' }} title="Highest price reached since entry">High Water Mark{getSortIconPos('hwm_price')}</th>
                   <th onClick={() => requestSortPos(sortByMarketValue)} style={{ cursor: 'pointer' }}>Market Value{getSortIconPos(sortByMarketValue)}</th>
                   <th onClick={() => requestSortPos('trail_stop')} style={{ cursor: 'pointer' }}>Trail Stop{getSortIconPos('trail_stop')}</th>
                   <th onClick={() => requestSortPos(sortByLifecyclePos)} style={{ cursor: 'pointer' }} title="Which risk rules are live, armed or degraded for this position">Lifecycle / Tiers{getSortIconPos(sortByLifecyclePos)}</th>
@@ -1231,6 +1401,7 @@ export default function DashboardView({ data, marketData, trades }) {
                   const hwmPrice  = pos.hwm_price || pos.buy_price;
                   const stopLossPct = pos.stop_loss_pct || STOP_LOSS_PCT;
                   const trailStop = parseFloat((hwmPrice * (1 - stopLossPct)).toFixed(2));
+                  const profitLockTier = activeProfitLockTier(pos);
 
 
                   return (
@@ -1298,12 +1469,32 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td style={{ color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                           {formatCurrency(pos.current_price)}
                         </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 600, color: '#93c5fd' }}>
+                            {formatCurrency(hwmPrice)}
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                            {pos.hwm_date ? formatDate(pos.hwm_date) : 'Since entry'}
+                          </div>
+                        </td>
                         <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                           {formatCurrency((pos.current_price || pos.buy_price) * pos.shares)}
                         </td>
                         {/* Trail Stop: red, from high_water_mark */}
-                        <td style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
-                          {formatCurrency(trailStop)}
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <div style={{ color: 'var(--color-down)', fontWeight: 600, fontSize: '0.85rem' }}>
+                            {formatCurrency(trailStop)}
+                          </div>
+                          <div style={{
+                            fontSize: '0.64rem',
+                            marginTop: '0.12rem',
+                            color: profitLockTier ? '#38bdf8' : 'var(--text-muted)',
+                            fontWeight: profitLockTier ? 700 : 500,
+                          }}>
+                            {profitLockTier
+                              ? `HWM lock active · ${(profitLockTier[1] * 100).toFixed(1)}%`
+                              : 'Base / ATR trail'}
+                          </div>
                         </td>
                         {/* Lifecycle / risk tiers */}
                         <LifecycleCell pos={pos} openPositions={positions.length} />

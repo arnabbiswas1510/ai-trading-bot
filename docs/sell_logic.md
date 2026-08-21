@@ -35,7 +35,7 @@ for that cycle — an early `continue` means later rules are unreachable until t
 |---|---|---|---|---|
 | 0 | **Smart OCA Managed Exit** | all | every cycle | **suspends rules 1–13 for that ticker** |
 | 1 | Armed-exit deadline | 0–6 | every cycle | force market sell |
-| 2 | Early Loss Kill-switch | 0–1 | every cycle | arm exit |
+| 2 | Early Loss Kill-switch | 0 | every cycle | arm exit |
 | 3 | **Early Dollar Stop** | 0–5 | every cycle | arm exit |
 | 4 | HWM / peak metric update | all | every cycle | *(no exit)* |
 | 5 | Trail tightening + power-hold arming | all | every cycle | *(re-places broker order)* |
@@ -104,10 +104,14 @@ own volatility explains?*
 
 | Unrealised gain | Trail |
 |---|---|
-| < +20% | initial (10–12%) |
-| ≥ +20% | 6.5% |
-| ≥ +30% | 6.0% |
-| ≥ +50% | 5.0% |
+| < +6% | initial (10–12%) |
+| ≥ +6% | 1.5% |
+
+This is an explicit **first-leg profit lock**. Once a trade proves it can reach a modest gain,
+the bot stops giving it 10-12% of room from the peak and instead treats any 1.5% give-back as
+evidence that the breakout has stalled.
+
+See `decisions/2026-08-20_hwm-profit-lock-first-leg.md` for why.
 
 Time-based tightening (`TRAIL_TIME_TIERS_ENABLED`) exists but is **off by default**.
 
@@ -119,14 +123,36 @@ cycle.
 
 ---
 
-## 2. Early Loss Kill-switch — days 0–1
+## 2. Early Loss Kill-switch — entry day only
 
 ```
-current_price ≤ buy_price × (1 − EARLY_LOSS_STOP_PCT)      # default 2%
+days_held ≤ EARLY_LOSS_STOP_MAX_DAY                        # default 0 (entry day)
+current_price ≤ buy_price × (1 − EARLY_LOSS_STOP_PCT)      # default 1%
 ```
 
-Arms the exit. A breakout that reverses 2% within its first two sessions has already
-falsified its premise; the base 10–12% trailing stop is far too wide to be useful this early.
+Arms the exit. A breakout that closes 1% below its entry on the very day it was bought
+has already falsified its premise; the base 10–12% trailing stop is far too wide to be
+useful this early.
+
+The window is deliberately **the entry day only**. A 5-minute replay of all 17 closed
+trades, reproducing the live mechanics exactly (15-minute checks, `arm_exit()` 0.6% trail,
+3.25-hour deadline), measured against the realised exits:
+
+| Threshold | Window | Loser savings | Winner impact | Net |
+|---|---|---|---|---|
+| 2.0% | days 0–1 | +$2,348 | −$1,873 (1 winner) | +$475 |
+| 1.0% | days 0–1 | +$3,637 | −$2,345 (3 winners) | +$1,292 |
+| **1.0%** | **day 0** | **+$3,426** | **$0 (0 winners)** | **+$3,426** |
+
+Extending the window past the entry day is what causes the damage — CPAY alone cost
+−$1,873 — while catching nothing on the losers that day 0 had not already caught. No
+winner in the sample ever closed 1% below entry on its entry day, so the two populations
+separate cleanly on day 0.
+
+Because the trigger *arms* a 0.6% trailing exit rather than selling outright, a tight
+threshold is cheap: a position that immediately recovers rides the bounce back up.
+
+See `decisions/2026-08-20_early-loss-day0-tightening.md` for why.
 
 ---
 
@@ -408,7 +434,7 @@ concede little if the decline resumes, with the deadline bounding the wait.
 >
 > The mechanism is retained pending a replacement, because the alternatives were measured
 > to be within roughly ±0.15% of one another per exit — the current design is
-> mildly wrong, not catastrophic. `EARLY_LOSS_STOP_PCT` (2%) is deliberately tight
+> mildly wrong, not catastrophic. `EARLY_LOSS_STOP_PCT` (1%) is deliberately tight
 > *because* it arms rather than sells; the two must be retuned together if arming is
 > removed.
 
@@ -433,7 +459,8 @@ if price data is unavailable, the market is treated as bearish.
 |---|---|---|
 | `STOP_LOSS_PCT` | `0.10` | Base trailing stop |
 | `ATR_STOP_MAX_PCT` | `0.12` | Cap on ATR-derived stop |
-| `EARLY_LOSS_STOP_PCT` | `0.02` | Kill-switch, days 0–1 |
+| `EARLY_LOSS_STOP_PCT` | `0.01` | Kill-switch threshold, entry day |
+| `EARLY_LOSS_STOP_MAX_DAY` | `0` | Last day the kill-switch may fire |
 | `THESIS_STOP_ENABLED` | `true` | Thesis Stop master switch |
 | `THESIS_STOP_ATR_MULT` | `1.0` | ATR multiple for the threshold |
 | `THESIS_STOP_START_DAY` / `LAST_DAY` | `2` / `5` | Active window |
@@ -456,15 +483,44 @@ if price data is unavailable, the market is treated as bearish.
 
 ---
 
-## Dashboard: the Risk Rule Ladder
+## Dashboard: the Position Journey and the Risk Rule Ladder
 
 Every rule on this page is rendered per position in **Dashboard → Open Positions**.
 
-The **Lifecycle / Tiers** column shows the position's current phase (`D1 · Kill-switch`,
-`D3 · Thesis window`, `D9 · Rotation window`, `Power Hold`, `Exiting`) plus a badge for any
-rule needing attention, or `✓ all rules nominal`. Hovering gives all nine rules in one
-tooltip; expanding the row opens the full **Risk Rule Ladder** with each rule's state,
-trigger price and distance to it.
+### Position Journey
+
+Expanding a position opens the **Position Journey** panel, which answers three questions
+without requiring any knowledge of this document:
+
+1. **Which phase is it in?** A day-indexed track runs across the top — `D0 Kill-switch`,
+   `D1 Dollar cap`, `D2–5 Thesis window`, `D6 Transition`, `D7+ Rotation`. Completed
+   segments are dimmed, the current segment is highlighted in the phase colour, and
+   upcoming segments are faint. `Power Hold` and `Exiting` override the track entirely,
+   which the panel states explicitly rather than leaving a segment lit.
+2. **What happens next?** The right-hand column lists the nearest price level that would
+   act on the position (which rule, at what price, how far away), the next scheduled phase
+   change and how many sessions away it is, the day-3 verdict if it is still pending, the
+   gain needed to arm the HWM profit lock, and the plateau countdown once it is within
+   five stale sessions. When an exit is armed, this collapses to the single fact that
+   matters: the trail level and the forced-market-sell time.
+3. **What has already happened?** The left-hand column is the position's history — entry
+   price and size, whether it survived the Kill-switch day, whether it has ever closed
+   above entry, the day-3 verdict, the high-water mark and how far below it price now sits,
+   whether the profit lock or Power Hold engaged, and whether an exit is armed and why.
+
+The panel is derived from the same evaluated rules as the ladder below it, so the two can
+never disagree.
+
+### Compact column and ladder
+
+The **Lifecycle / Tiers** column shows the position's current phase (`D0 · Kill-switch`,
+`D3 · Thesis window`, `D9 · Rotation window`, `Power Hold`, `Exiting`), a badge for any
+rule needing attention (or `✓ all rules nominal`), and a `next ▸` line naming the single
+most imminent event. Hovering gives all rules plus the full history and next-step list in
+one tooltip; expanding the row opens the **Risk Rule Ladder** with each rule's state,
+trigger price and distance to it. The **Trail Stop** column also tells you whether the
+position is still on its base/ATR stop or whether the **HWM profit lock** is active, and the
+expanded **Position** card repeats that status with the live locked stop level.
 
 | State | Colour | Meaning |
 |---|---|---|

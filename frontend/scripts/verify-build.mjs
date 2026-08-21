@@ -49,6 +49,10 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Rank & Replace rule row",   string: "Rank & Replace" },
   { feature: "Armed exit rule row",       string: "Armed Exit" },
   { feature: "Latch degradation warning", string: "DISARMED by an intraday poke above entry" },
+  // Position Journey — phase / history / next step (added 2026-08-20)
+  { feature: "Position Journey card",     string: "Position Journey" },
+  { feature: "Journey history column",    string: "What has happened" },
+  { feature: "Journey next column",       string: "What happens next" },
 ];
 
 // -- Load all JS bundle files --------------------------------------------------

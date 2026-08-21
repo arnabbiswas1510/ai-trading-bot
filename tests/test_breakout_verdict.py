@@ -2,7 +2,7 @@
 tests/test_breakout_verdict.py
 
 Tests for the Breakout Verdict (Day 3 EOD), Intraday Loss Minimiser (Day 4+),
-Early Loss Kill-switch (Day 0-1), and the Armed Trailing Exit (Day 0-6
+Early Loss Kill-switch (Day 0), and the Armed Trailing Exit (Day 0-6
 loss-cutting: sell signals arm a tight trailing stop instead of an instant
 sell, bounded by a hard deadline).
 
@@ -339,11 +339,11 @@ class TestIntradayMinimiserDisabledByDefault:
 
 class TestEarlyLossKillSwitch:
 
-    def test_fires_on_day0_at_two_percent_loss(self):
-        """Day 0 at -2.0% or worse must arm the exit (not sell instantly)."""
+    def test_fires_on_day0_at_one_percent_loss(self):
+        """Day 0 at -1.0% or worse must arm the exit (not sell instantly)."""
         pos = _make_pos(buy_date=BD_DAY0, buy_price=100.0, verdict=None, intraday_high_today=None)
         ib, sb = _make_ib([pos]), _make_sb([pos])
-        mock_sell, mock_arm = _run(ib, sb, [pos], 98.0, hour=11, minute=30)
+        mock_sell, mock_arm = _run(ib, sb, [pos], 99.0, hour=11, minute=30)
         mock_arm.assert_called_once()
         mock_sell.assert_not_called()
         reason = mock_arm.call_args.args[5]
@@ -352,10 +352,10 @@ class TestEarlyLossKillSwitch:
     def test_tight_trigger_arms_rather_than_sells(self):
         """
         Regression guard for a wrong assumption: this threshold was once raised
-        to 7% on the theory that 2% cuts legitimate breakouts. It does not sell —
-        it arms a 0.6% trailing exit that rides any bounce — so a tight trigger
-        is cheap. An FMP replay of the 13 real closed trades showed loosening it
-        cost ~$2,450.
+        to 7% on the theory that a tight stop cuts legitimate breakouts. It does
+        not sell — it arms a 0.6% trailing exit that rides any bounce — so a
+        tight trigger is cheap. An FMP replay of the 13 real closed trades
+        showed loosening it cost ~$2,450.
         """
         pos = _make_pos(buy_date=BD_DAY0, buy_price=100.0, verdict=None, intraday_high_today=None)
         ib, sb = _make_ib([pos]), _make_sb([pos])
@@ -363,12 +363,25 @@ class TestEarlyLossKillSwitch:
         mock_arm.assert_called_once()
         mock_sell.assert_not_called()
 
-    def test_does_not_fire_on_day1_if_above_threshold(self):
-        """Day 1 at -1.9% should not trigger the Day 0-1 hard stop."""
+    def test_does_not_fire_on_day0_above_threshold(self):
+        """Day 0 at -0.9% is inside the threshold and must not arm."""
+        pos = _make_pos(buy_date=BD_DAY0, buy_price=100.0, verdict=None, intraday_high_today=None)
+        ib, sb = _make_ib([pos]), _make_sb([pos])
+        mock_sell, mock_arm = _run(ib, sb, [pos], 99.1, hour=11, minute=30)
+        mock_sell.assert_not_called()
+        mock_arm.assert_not_called()
+
+    def test_does_not_fire_on_day1(self):
+        """
+        The window is Day 0 only. A 5-minute replay of all 17 closed trades showed
+        extending it to Day 1 turned a +$3,426 net gain into +$1,292, because Day 1
+        triggers hit winners (CPAY alone cost -$1,873) while adding nothing on the
+        losers that Day 0 had not already caught.
+        See decisions/2026-08-20_early-loss-day0-tightening.md.
+        """
         pos = _make_pos(buy_date=BD_DAY1, buy_price=100.0, verdict=None, intraday_high_today=None)
         ib, sb = _make_ib([pos]), _make_sb([pos])
-        mock_sell, mock_arm = _run(ib, sb, [pos], 98.1, hour=11, minute=30)
-        mock_sell.assert_not_called()
+        mock_sell, mock_arm = _run(ib, sb, [pos], 95.0, hour=11, minute=30)
         mock_arm.assert_not_called()
 
 

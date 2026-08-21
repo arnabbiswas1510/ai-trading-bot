@@ -203,7 +203,7 @@ class TestThesisStopDoesNotCutWorkingPositions:
 class TestThesisStopWindow:
 
     def test_not_fired_before_start_day(self):
-        """Day 1 belongs to the Early Loss Kill-switch, not the thesis stop."""
+        """Day 1 is before the thesis-stop window opens on Day 2."""
         pos = _make_pos(buy_date=BD_DAY1, entry_atr_pct=3.0)
         _, mock_arm = _run(_make_ib([pos]), _make_sb([pos]), 95.0)
         if mock_arm.called:

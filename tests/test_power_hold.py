@@ -139,7 +139,7 @@ class TestArming:
 class TestPowerHoldTrailWidening:
     """
     The rule was previously self-defeating: TRAIL_PROFIT_TIERS tightens the trail
-    to 6.5% at exactly the +20% gain that arms the power hold, so every armed
+    to an aggressive profit-lock at exactly the +20% gain that arms the power hold, so every armed
     position still exited on the trailing stop and the rule was inert. While
     power-held the ladder must be bypassed and the trail widened instead.
     """
