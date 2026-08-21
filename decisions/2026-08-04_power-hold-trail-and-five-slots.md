@@ -1,8 +1,19 @@
 # Fix the self-defeating power-hold rule; move to 5 slots
 
 **Date:** 2026-08-04
-**Status:** Accepted
+**Status:** Accepted — decision 1 (5 slots) not yet realised in the live book
 **Supersedes (in part):** `2026-08-04_backtest-noise-floor-and-slot-count.md` (slot count left open there)
+
+> **Implementation note added 2026-08-20.** `MAX_POSITIONS = 5` is set, but the
+> live book is still sized for 4. Position sizing is
+> `available_cash / remaining_slots`, so the four open positions each consumed a
+> quarter of capital and no cash remains to fill a fifth slot. The configured
+> value will not take effect until the portfolio is liquidated and rebuilt.
+>
+> The decision below stands; it simply has not been realised yet. Anything that
+> needs the slot count the book is *actually* sized for — currently only the
+> Early Dollar Stop — must read `EFFECTIVE_POSITION_SLOTS`, not `MAX_POSITIONS`.
+> See `2026-08-20_slot-derived-early-dollar-stop.md` and FU-007.
 
 ## Context
 

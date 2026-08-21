@@ -67,7 +67,13 @@ flat dollar stop, ATR-normalised thesis stop, and stacked combinations — each 
 > figures: 2.0% days 0–1 = **−$176**; 1.0% days 0–1 = **+$893**; **1.0% day 0 = +$3,027**;
 > 0.75% day 0 = +$3,097. The ranking and therefore this decision are unchanged — every
 > configuration was inflated by roughly the same $400 of TTWO/SGHC regressions — but the
-> absolute numbers below are overstated. The harness has been fixed.
+> absolute numbers are overstated. The harness has been fixed.
+>
+> **This applies to every figure in this section**, not just the table above:
+> arming versus market-selling is +$3,027 vs +$2,735 (not +$3,426 vs +$3,110), and
+> the combination-stack row was measured with the same bug. The conclusions each
+> supported are unaffected, because the bias was in the same direction for every
+> configuration compared.
 
 Day 1 is where the harm comes from. CPAY — a **winner** — was cut for −$1,873 by the
 previous days-0–1 window, which is most of what that rule earned on the losers. At a 1%
@@ -79,7 +85,7 @@ populations separate cleanly on day 0, which is what makes the tighter threshold
 ### 2. Arming beats selling, in every family
 
 `arm_exit()` outperformed an immediate market sell in every configuration tested — for the
-chosen rule, +$3,426 versus +$3,110. The trigger price is frequently a local trough; the
+chosen rule, +$3,027 versus +$2,735 (corrected; originally reported as +$3,426 vs +$3,110). The trigger price is frequently a local trough; the
 0.6% trail rides the rebound out of it. This is why a tight trigger is cheap and a loose
 one is not: the rule is a *request to leave on the next bounce*, not a market order.
 

@@ -1,8 +1,26 @@
 # Make MAX_POSITIONS a single env-driven constant
 
 Date: 2026-08-09
-Status: Accepted
-Relates to: `2026-08-04_power-hold-trail-and-five-slots.md`
+Status: Accepted — with one documented exception (see below)
+Relates to: `2026-08-04_power-hold-trail-and-five-slots.md`,
+`2026-08-20_slot-derived-early-dollar-stop.md`
+
+> **Exception added 2026-08-20.** `MAX_POSITIONS` remains the single source for
+> every module that *buys*. The Early Dollar Stop deliberately reads a separate
+> `EFFECTIVE_POSITION_SLOTS` (currently `4`) instead, because it needs the slot
+> count the book is **actually sized for**, not the configured target.
+>
+> This is not a regression of the drift this ADR fixed. The bug here was four
+> modules independently declaring the same concept with different values. This is
+> one module declaring a *different* concept — realised slot size versus target
+> slot count — which genuinely diverges whenever `MAX_POSITIONS` is raised on a
+> fully-invested book, since existing positions keep their original sizing until
+> the book turns over.
+>
+> The distinction has a cost: two constants that must be reconciled by hand. That
+> reconciliation is tracked as FU-007 and the constant is to be deleted once the
+> portfolio is rebuilt at the target count. If it is still present long after
+> that, this exception has become the very drift the ADR was written to prevent.
 
 ## Context
 

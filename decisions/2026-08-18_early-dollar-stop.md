@@ -1,7 +1,26 @@
 # ADR: Early Dollar Stop — $500 Hard Cap on Days 0–5
 
 **Date:** 2026-08-18  
-**Status:** Accepted
+**Status:** Superseded in part by
+[`2026-08-20_slot-derived-early-dollar-stop.md`](2026-08-20_slot-derived-early-dollar-stop.md)
+
+> **The rule survives; the $500 sizing and the simulation below do not.**
+>
+> The cap is no longer a flat dollar amount. It is now
+> `(equity / EFFECTIVE_POSITION_SLOTS) × EARLY_DOLLAR_STOP_PCT` — about $1,500
+> at current equity — because positions cluster around one slot's worth of
+> capital, which made a flat figure an unstable percentage in disguise ($500 was
+> 1.0% on the $48K OII position and 2.5% on the $20K PTGX one).
+>
+> **Do not cite the $2,936 saving below.** It measured the rule in isolation and
+> predates the 2026-08-20 tightening of the kill-switch to 1% on day 0. With that
+> rule running alongside, every loser credited to the dollar stop here is caught
+> a day earlier anyway, so at $500 the rule's only remaining distinct effect was
+> cutting two eventual winners (CPAY −$1,873, DXCM −$1,367) and the full stack
+> netted **−$272**.
+>
+> The day window (0–5), the `arm_exit()` mechanism, the precedence over the
+> Thesis Stop and the reasoning in the Context section below all still hold.
 
 ---
 

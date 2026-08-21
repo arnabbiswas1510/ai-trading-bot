@@ -30,6 +30,20 @@ hypothetical exit against the realised exit:
 | Arm at +5%, sell on 2.0% give-back from HWM | **+$3,504**, safer but left more on the table |
 | Stall-aware rules (no new HWM for N days + weakness) | materially weaker than a pure HWM cap |
 
+> **Note added 2026-08-20 (same day).** A separate aggregation bug was found in
+> `research/exit_rule_replay.py`, which summed only positive deltas on losing
+> trades and so overstated any configuration that made some trades worse. The
+> table above came from a different ad-hoc script (daily bars, reconstructed
+> HWMs) rather than that harness, and the **chosen** row reports *worsened 0* —
+> with no negative deltas there is nothing for that class of bug to hide, so
+> +$4,375 stands.
+>
+> The **+3% row is not immune**: it carries a regression, so its +$5,311 may be
+> overstated by however much that regression cost. It was rejected anyway, and
+> rejecting it is the conservative direction, so the decision is unaffected. But
+> the margin between +3% and +6% is smaller than the table implies and should not
+> be cited as-is. Re-derive both on the fixed harness at the next review.
+
 The key finding was that a **tight give-back cap from the peak** explains the
 problem better than a delayed "wait for weakness confirmation" rule. The money
 was being lost during the waiting.
