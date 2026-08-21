@@ -498,10 +498,16 @@ POWER_HOLD_DURATION_DAYS  = int(os.getenv("POWER_HOLD_DURATION_DAYS", 56))  # 8 
 # Trail width applied WHILE a position is power-held, replacing the profit ladder.
 #
 # Without this the rule was self-defeating: TRAIL_PROFIT_TIERS tightens the trail
-# to 6.5% at exactly +20% gain — the same threshold that arms the power hold — so
-# the ladder strangled the leaders the rule exists to protect. Instrumenting the
+# well below the +20% gain that arms the power hold — under the ladder in force at
+# the time, to 6.5% at exactly +20% — so the ladder strangled the leaders the rule
+# exists to protect. Instrumenting the
 # backtest showed the rule armed on 9% (growth) / 6% (broad) of trades and then
 # *100% of those still exited on the trailing stop*, making it inert.
+#
+# The current HWM profit lock makes this worse, not better: it clamps to 1.5% from
+# the peak at only +6% gain, so by the time a position reaches +20% it is already
+# on the tightest rung. Bypassing the ladder while power-held is therefore load-
+# bearing — see decisions/2026-08-20_hwm-profit-lock-first-leg.md.
 #
 # Widening the trail while power-held recovers the intended behaviour. The effect
 # is large, monotonic in the trail width, and consistent across both universes
@@ -3286,10 +3292,11 @@ def monitor_portfolio_intraday(ib: IB):
             print(f"   🏆 {ticker}: power-hold active (day {calendar_days} of "
                   f"{POWER_HOLD_DURATION_DAYS}) — discretionary exits suppressed.")
 
-        # While power-held the profit ladder is bypassed entirely: it would
-        # otherwise clamp the trail to 6.5% at the very +20% gain that arms this
-        # rule, which made the rule inert (every armed position still exited on
-        # the trail). Widen to POWER_HOLD_TRAIL_PCT so the leader can actually run.
+        # While power-held the profit ladder is bypassed entirely: the HWM profit
+        # lock would otherwise clamp the trail to 1.5% from the peak from +6% gain
+        # onward, long before the +20% that arms this rule, which made the rule
+        # inert (every armed position still exited on the trail). Widen to
+        # POWER_HOLD_TRAIL_PCT so the leader can actually run.
         if power_held:
             new_trail_pct = (
                 POWER_HOLD_TRAIL_PCT

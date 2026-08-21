@@ -227,11 +227,11 @@ matching pages.
 
 | What changed in code | Doc page(s) that MUST be updated |
 |---|---|
-| Buy gates, trigger ranking/sorting, slot allocation, position sizing, cooling-off | `docs/buy_logic.md` |
-| Sell rules, stops, trailing logic, kill-switch, thesis stop, EMA/plateau exits, arming | `docs/sell_logic.md` |
+| Buy gates, trigger ranking/sorting, slot allocation, position sizing, cooling-off | `docs/buy_logic.md`, `README.md` |
+| Sell rules, stops, trailing logic, kill-switch, thesis stop, EMA/plateau exits, arming | `docs/sell_logic.md`, `README.md` |
 | Breakout / pre-breakout detection, quality & final scoring, RS gates | `docs/technical_triggers.md` |
 | Fundamental screen thresholds, watchlist construction | `docs/fundamental_screener.md` |
-| Any env var, threshold, default, or `config.py` constant | `docs/configuration.md` |
+| Any env var, threshold, default, or `config.py` constant | `docs/configuration.md`, `.env.template` |
 | Container layout, deploy pipeline, gateway/IBKR connectivity | `README.md`, `docs/ibkr_totp_setup.md` |
 | New Supabase table/column that code reads or writes | The page describing the rule that consumes it |
 
@@ -255,8 +255,52 @@ operator-visible. Do not invent pages for internal-only refactors.
 
 ### Self-check before committing
 
-Ask: *"If someone read only `docs/` after this change, would they be misled about
-how the bot now behaves?"* If yes, the docs update is not finished.
+**Step 1 — the grep. This is mandatory and not a judgement call.**
+
+The routing table above is a *starting point*, not an exhaustive list. It tells you
+where documentation for a subsystem is *supposed* to live; it cannot tell you where
+a stale copy of the value you just changed actually *is*. Only a search can.
+
+For every numeric value, threshold, default and env var name you changed, grep the
+whole repository — not just `docs/`:
+
+```bash
+# Example: after changing EARLY_LOSS_STOP_PCT from 0.02 to 0.01 and the
+# trail ladder from 6.5% to 1.5%
+grep -rn "6\.5%\|days 0–1\|days 0-1\|EARLY_LOSS_STOP_PCT" \
+  --include=*.md --include=*.template --include=*.py --include=*.js --include=*.jsx \
+  . | grep -v node_modules | grep -v graphify-out | grep -v "/dist/"
+```
+
+Search for the **distinctive** terms — the env var name, the old percentage as it
+is written in prose (`6.5%`), the old day range. Do not grep a bare number like
+`0.02`; it matches unrelated code and buries the real hits. Always exclude
+`node_modules`, `graphify-out` and `frontend/dist` — the built bundle contains a
+copy of every string and will swamp the output.
+
+Every hit showing the **old** value is part of this change. In particular this
+catches the three places the routing table alone will miss:
+
+- **`README.md`** — it carries the full tier-by-tier sell-rule spec with live
+  numbers, not just deploy instructions.
+- **`.env.template`** — drift here is *functional*, not cosmetic: a fresh
+  deployment silently inherits the old threshold. This is the highest-severity
+  miss on this list and the easiest to overlook.
+- **Frontend mirrors** (`frontend/src/lib/positionRules.js`) — these are
+  deliberate copies of backend constants and go stale silently.
+- **Code comments in unrelated functions** — a threshold is often quoted in the
+  rationale for a *different* rule (e.g. the power-hold comments explaining why
+  they bypass the profit ladder). These mislead the next reader of that code.
+
+**Step 2 — the read-through.**
+
+Ask: *"If someone read only `README.md` and `docs/` after this change, would they
+be misled about how the bot now behaves?"* If yes, the docs update is not finished.
+
+> ⚠️ Do not reason about which documents *ought* to mention the rule and stop
+> there. That reasoning is what produces stale docs: it fails precisely when a
+> value has been duplicated somewhere the routing table never anticipated. Run
+> the grep and let the result — not the mental model — define the file list.
 
 ---
 
