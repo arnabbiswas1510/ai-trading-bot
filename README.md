@@ -161,21 +161,41 @@ A native IBKR `TRAIL` order placed at fill. Initial distance is
 `max(10%, min(12%, 2.5 × entry ATR%))` — volatility-scaled, so a name that routinely swings
 4% a day is not stopped out by ordinary noise.
 
-It **ratchets one way only**, tightening as unrealised gain builds:
+It **ratchets one way only**, tightening as unrealised gain builds. There is a single rung:
 
 | Unrealised gain | Trail tightens to |
 |---|---|
-| ≥ +20% | 6.5% |
-| ≥ +30% | 6.0% |
-| ≥ +50% | 5.0% |
+| ≥ +6% | 1.5% from the high-water mark |
+
+This is the **HWM profit lock**. It replaced a 20/30/50% → 6.5/6.0/5.0% ladder that was far
+too loose to matter: across nine closed winners, $8,071 of open profit was given back from
+peak before the exit actually fired. Arming at +6% and capping give-back at 1.5% recovers
++$4,375 of that on the same trades without worsening a single one.
+See [decisions/2026-08-20_hwm-profit-lock-first-leg.md](decisions/2026-08-20_hwm-profit-lock-first-leg.md).
 
 Because it lives at the broker, this is the one protection that survives the bot being
 offline. Treat it as the disaster backstop, not the primary exit.
 
-### Tier 1 — Early Loss Kill-switch (days 0–1)
+### Tier 1 — Early Loss Kill-switch (entry day only)
 
-Down 2% from entry in the first two sessions → arm the exit. A breakout that immediately
+Down 1% from entry on the day it was bought → arm the exit. A breakout that immediately
 reverses was not a breakout.
+
+The window is deliberately **the entry day only**. A 5-minute replay of all 17 closed trades
+found that extending it to day 1 cut winners (CPAY alone −$1,873) while catching nothing the
+entry day had not already caught — turning a +$3,426 net gain into +$1,292. No winner in the
+sample ever closed 1% below entry on its own entry day. From day 1 the Early Dollar Stop, and
+then the Thesis Stop, take over.
+See [decisions/2026-08-20_early-loss-day0-tightening.md](decisions/2026-08-20_early-loss-day0-tightening.md).
+
+### Tier 1b — Early Dollar Stop (days 0–5)
+
+A flat **$500** cap on unrealised loss during the first six sessions, checked every 15
+minutes. Percentage stops are blind to position size — a 5% ATR stop on a $25K position is
+$1,250, far too much to risk on an entry that has not confirmed itself. This is the rule
+that covers day 1, between the Kill-switch expiring and the Thesis Stop arming on day 2.
+
+Set `EARLY_DOLLAR_STOP_AMOUNT=0` to disable.
 
 ### Tier 2 — Thesis Stop (days 2–5)
 
@@ -234,14 +254,14 @@ window the profit ladder is bypassed and the trail *widens* to 30%, while the EM
 and rotation exits are suppressed entirely.
 
 This is counter-intuitive and it is the point. The strategy's returns are outlier-dependent
-— historically the top-10 trades have accounted for the majority of total P/L. A ladder
-that tightens to 6.5% at +20% mathematically guarantees you clip your biggest winners at
-+20%. Power Hold exists to let a genuine leader run. The base trailing stop remains active
+— historically the top-10 trades have accounted for the majority of total P/L. A profit lock
+that clamps the trail to 1.5% at +6% would otherwise guarantee you clip your biggest winners
+at +6%. Power Hold exists to let a genuine leader run. The base trailing stop remains active
 throughout as the disaster backstop.
 
 ### Armed Exit — how the system sells
 
-Tiers 1 and 2 do not market-sell. They **arm** a 0.6% trailing stop with a 3.25-hour
+Tiers 1, 1b and 2 do not market-sell. They **arm** a 0.6% trailing stop with a 3.25-hour
 deadline.
 
 The reasoning: the moment a loss threshold is breached is frequently a local trough — a
@@ -257,7 +277,8 @@ worst print of the day.
 | Tier | Rule | Days | Evaluated | Fires as | Suppressed by |
 |---|---|---|---|---|---|
 | 0 | Dynamic trailing stop | all | continuous (IBKR) | broker trail | — (widened by power hold) |
-| 1 | Early Loss Kill-switch | 0–1 | every 15 min | armed exit | exit armed |
+| 1 | Early Loss Kill-switch | 0 | every 15 min | armed exit | exit armed |
+| 1b | Early Dollar Stop | 0–5 | every 15 min | armed exit | exit armed |
 | 2 | **Thesis Stop** | 2–5 | every 15 min | armed exit | power hold, exit armed |
 | 3 | EMA-21 breach | 7+ | EOD 15:45–16:00 | market | power hold |
 | 4 | Plateau exit | 7+ | EOD 15:45–16:00 | market | power hold |
@@ -365,6 +386,14 @@ docker compose up -d
 Dashboard at `http://localhost:8000`. Verify the gateway is connected and reporting the
 expected account before the next market open.
 
+Each open position expands into a **Position Journey** panel that states, without needing
+this document: which lifecycle phase the position is in (`D0 Kill-switch` → `D1 Dollar cap`
+→ `D2–5 Thesis` → `D6 Transition` → `D7+ Rotation`, with Power Hold and Exiting shown as
+overrides), what has already happened to it (entry, follow-through latch, day-3 verdict,
+high-water mark and give-back, profit lock, armed exits), and what happens next — the
+nearest price trigger and its level, the next phase change, and any pending scheduled
+event. Below it, the **Risk Rule Ladder** shows every rule's live state and trigger price.
+
 ```bash
 docker compose logs -f execution-agent
 ```
@@ -399,7 +428,7 @@ docker compose logs -f execution-agent
 | **Breakout verdict** | Day-3 PASS/FAIL assessment (close ≥ entry +1% on ≥ 75% of average volume). Governs how easily a position can later be rotated out |
 | **Buy zone** | Pivot to pivot +5%. Above it, `EXTENDED_ABOVE_PIVOT`; more than 2% below, `BELOW_PIVOT` |
 | **Cooling-off** | 7-day block on re-buying a name after it was sold |
-| **HWM** | High-water mark — the position's peak price. Anchors the trailing stop and the plateau clock |
+| **HWM** | High-water mark — the position's peak price. Anchors the trailing stop, the profit lock and the plateau clock |
 | **Pivot** | The high of the base; the breakout reference price |
 | **Power Hold** | +20% within 21 days grants 56 days of protection, widening the trail to 30% so a leader can run |
 | **RS** | Relative strength vs SPY over 12 weeks, percentile-ranked |

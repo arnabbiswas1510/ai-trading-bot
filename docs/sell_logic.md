@@ -389,8 +389,8 @@ While active:
 Widening a stop on a winner is counter-intuitive. The justification is the return
 distribution: historically the top-10 trades account for the majority of total P/L, and at
 4 slots on the growth universe, removing them turns the strategy unprofitable outright. A
-ladder tightening to 6.5% at +20% mathematically guarantees the biggest winners are clipped
-near +20%. Power Hold exists so a genuine market leader can complete its move.
+profit lock clamping the trail to 1.5% at +6% would otherwise guarantee the biggest winners
+are clipped near +6%. Power Hold exists so a genuine market leader can complete its move.
 
 Backtested effect of the 30% power-hold trail was large, monotonic in trail width, and
 consistent across both universes. See `decisions/2026-08-04_power-hold-trail-and-five-slots.md`.
