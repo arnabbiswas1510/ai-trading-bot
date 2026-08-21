@@ -22,6 +22,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        # Needed only by tests/test_supabase_backup.py. Deliberately not in
+        # requirements.txt — they would bloat both runtime images for code that
+        # only ever runs in the weekly backup workflow. Without them here, the
+        # Parquet tests skip silently and the backup goes unverified.
+        pip install pyarrow duckdb
 
     - name: Run Unit Tests
       run: |

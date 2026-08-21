@@ -1,0 +1,151 @@
+name: Weekly Supabase Backup
+
+# Full point-in-time snapshot of every Supabase table, written to flat files on
+# the production server.
+#
+# Supabase is the only durable home for trade_history, which every scheduled
+# parameter review in docs/tech_debt_and_requirements_tracker.md replays. Losing
+# it would make future exit-rule changes unjustifiable against anything but
+# opinion. Nothing else in this repo persists it.
+#
+# The export runs HERE, in the runner, not on the box. The DietPi host then needs
+# no Python, no pyarrow and no Supabase credentials — it only receives files.
+#
+# Sunday, after the weekly trigger-outcome backfill (12:00 UTC) has landed its
+# writes, so the snapshot includes that week's computed outcomes rather than
+# catching the table mid-update.
+
+on:
+  schedule:
+    - cron: '0 14 * * 0'   # Sundays 14:00 UTC — market closed, after the 12:00 backfill
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Fetch and report row counts without writing or shipping'
+        type: boolean
+        default: false
+      snapshot_date:
+        description: 'Override partition date (YYYY-MM-DD). Blank = today in New York.'
+        type: string
+        default: ''
+
+concurrency:
+  group: supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # pyarrow is deliberately NOT in requirements.txt. It is a ~40MB wheel
+          # needed only by this job, and adding it there would inflate both
+          # runtime Docker images for a weekly export they never run.
+          pip install pyarrow
+
+      - name: Export Supabase to Parquet
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        run: |
+          ARGS="--out-dir ./backup-staging"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "${{ inputs.snapshot_date }}" ]; then ARGS="$ARGS --snapshot-date ${{ inputs.snapshot_date }}"; fi
+          python supabase_backup.py $ARGS
+
+      - name: Show what will be shipped
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          find ./backup-staging -type f | sort
+          du -sh ./backup-staging
+
+      # rsync, not scp: the destination accumulates every past week, and scp
+      # would re-upload the entire archive each run. rsync ships only the new
+      # partition. No --delete, ever — the remote history is the backup.
+      #
+      # Done with plain rsync rather than a marketplace rsync action so that
+      # DEPLOY_KEY — the production SSH key that can reach the live trading host
+      # — is not handed to a third-party action this repo does not otherwise
+      # depend on. The only actions that see it remain the ones already in use.
+      - name: Ship to production server
+        if: ${{ inputs.dry_run != true }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Pin the host key instead of disabling host verification, so the
+          # backup cannot be silently rsynced to an impostor host.
+          ssh-keyscan -p 2222 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          rsync -avz \
+            -e "ssh -p 2222 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
+            ./backup-staging/ \
+            "$DEPLOY_USER@$DEPLOY_HOST:/home/dietpi/docker/ai-trading-bot/backups/"
+
+      - name: Remove the deploy key from the runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Verify the snapshot landed on the server
+        if: ${{ inputs.dry_run != true }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 2222
+          timeout: 60s
+          script: |
+            set -e
+            BACKUP_ROOT=/home/dietpi/docker/ai-trading-bot/backups
+
+            # A green rsync step only proves bytes were sent. Read the manifest
+            # back off the box to prove the snapshot is actually there and
+            # complete — this is the difference between "the job ran" and "the
+            # backup exists", and only the second one matters.
+            test -f "$BACKUP_ROOT/manifest/latest.json"
+
+            python3 - <<'PY'
+            import json, pathlib, sys
+
+            root = pathlib.Path("/home/dietpi/docker/ai-trading-bot/backups")
+            manifest = json.loads((root / "manifest" / "latest.json").read_text())
+            date = manifest["snapshot_date"]
+
+            missing = []
+            for table, entry in manifest["tables"].items():
+                if not entry.get("written"):
+                    continue
+                path = root / "parquet" / f"table_name={table}" / f"snapshot_date={date}" / "data.parquet"
+                if not path.exists() or path.stat().st_size != entry["parquet_bytes"]:
+                    missing.append(table)
+
+            if missing or manifest["failed"]:
+                print(f"❌ incomplete on server: missing={missing} failed={manifest['failed']}")
+                sys.exit(1)
+
+            print(f"✅ {date}: {manifest['total_rows']} rows verified on server")
+            PY
+
+            echo "=== Archive size ==="
+            du -sh "$BACKUP_ROOT"

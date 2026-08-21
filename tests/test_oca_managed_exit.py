@@ -16,10 +16,31 @@ import execution_agent
 NY = ZoneInfo("America/New_York")
 
 
+def _trading_days_ago(n: int) -> str:
+    """
+    A buy_date exactly `n` trading days before today, in New York.
+
+    Must be computed, never hard-coded. `monitor_portfolio_intraday` derives
+    days_held from the real clock, so a literal date silently changes meaning
+    every day and eventually drifts out of whatever rule window the test is
+    exercising. A hard-coded 2026-08-13 here passed on 2026-08-20 at 5 days held
+    and broke the next morning at 6, outside the Early Dollar Stop's 0-5 window
+    — and because daily_screener.yml runs the suite, that would have failed the
+    screener workflow every weekday.
+    """
+    today = datetime.datetime.now(ZoneInfo("America/New_York")).date()
+    day = today
+    while execution_agent.trading_days_between(day, today) < n:
+        day -= datetime.timedelta(days=1)
+    return f"{day.isoformat()}T16:15:18+00:00"
+
+
 def _pos(ticker="DELL", shares=46, buy_price=496.04, atr=7.6, **kw):
     p = {
         "ticker": ticker, "shares": shares, "buy_price": buy_price,
-        "buy_date": "2026-08-13T16:15:18+00:00", "buy_reason": "CANSLIM",
+        # 2 trading days held: inside the Early Dollar Stop window (0-5) and
+        # before the Day 7+ discretionary exits open.
+        "buy_date": _trading_days_ago(2), "buy_reason": "CANSLIM",
         "entry_atr_pct": atr, "stop_loss_pct": 0.12, "hwm_price": 499.23,
     }
     p.update(kw)

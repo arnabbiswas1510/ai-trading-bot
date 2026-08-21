@@ -23,6 +23,7 @@ from constant activity.
 - [Architecture](#architecture)
 - [Research Infrastructure](#research-infrastructure)
 - [Deployment](#deployment)
+- [Backups](#backups)
 - [Glossary](#glossary)
 
 ---
@@ -340,6 +341,7 @@ allowed to stop trailing-stop maintenance. Only the agent holds brokerage write 
 | Daily screener | `0 21 * * 1-5` | Fundamental → technical → AI scoring chain |
 | IBKR cash-flow sync | `0 6 * * 2-6` | Reconcile deposits/withdrawals via Flex Query |
 | Trigger outcome backfill | `0 12 * * 0` | Attach forward returns to archived triggers |
+| Supabase backup | `0 14 * * 0` | Full snapshot of every table to Parquet on the prod server |
 
 ---
 
@@ -454,6 +456,52 @@ docker compose logs -f execution-agent
 | `force_sell.py` | Liquidate a named position immediately |
 | `rotate_positions.py` | Interactive review of holdings against fresh triggers |
 | `managed_exit.py` | Run an armed exit manually |
+| `supabase_backup.py` | Export every Supabase table to Parquet (see [Backups](#backups)) |
+
+---
+
+## Backups
+
+Supabase holds all trading state, and `trade_history` is the only record of what the
+strategy did with real money — every scheduled parameter review replays it. It is backed
+up weekly.
+
+A GitHub Action (`weekly_supabase_backup.yml`, Sundays 14:00 UTC) exports all 12 tables and
+rsyncs them to `/home/dietpi/docker/ai-trading-bot/backups/` on the production server:
+
+```
+backups/
+  parquet/table_name=<table>/snapshot_date=<YYYY-MM-DD>/data.parquet
+  manifest/<YYYY-MM-DD>.json                                          <- counts + checksums
+```
+
+Each run writes a **complete snapshot into a new dated partition** and never overwrites an
+earlier one, so the archive grows incrementally while every week stays independently
+restorable. There is no row-level delta: the whole database is ~700 rows (~180KB/week), and
+`portfolio_positions` is mutated in place every 15 minutes, so an append-only delta would
+miss most of what changes.
+
+Parquet is the only format written — typed, compressed and verified by read-back. A CSV can
+be produced whenever one is wanted:
+
+```bash
+duckdb -c "COPY (SELECT * FROM 'parquet/table_name=trade_history/snapshot_date=2026-08-21/data.parquet') TO 'trade_history.csv' (HEADER)"
+```
+
+Query the archive with [DuckDB](https://duckdb.org) (one binary, no server, free, all
+platforms):
+
+```sql
+SELECT * FROM read_parquet('parquet/table_name=trade_history/**/*.parquet',
+                           hive_partitioning = true, union_by_name = true);
+```
+
+`union_by_name = true` is required — the schema has changed 30+ times, so older snapshots
+have fewer columns than newer ones. The partition key is `table_name`, not `table`, because
+`table` is a DuckDB reserved word.
+
+Full operator guide: **[docs/backups.md](docs/backups.md)**. Rationale:
+[decisions/2026-08-21_weekly-supabase-backup.md](decisions/2026-08-21_weekly-supabase-backup.md).
 
 ---
 
@@ -468,6 +516,7 @@ docker compose logs -f execution-agent
 | **Buy zone** | Pivot to pivot +5%. Above it, `EXTENDED_ABOVE_PIVOT`; more than 2% below, `BELOW_PIVOT` |
 | **Cooling-off** | 7-day block on re-buying a name after it was sold |
 | **Early Dollar Stop** | Cap on unrealised dollar loss during days 0–5, sized as `(equity / EFFECTIVE_POSITION_SLOTS) × 6%`. Identical for every position regardless of its own cost basis |
+| **Hive partitioning** | Encoding column values in directory names (`table_name=…/snapshot_date=…`) so a query engine reads them as real columns without them being stored in the files |
 | **HWM** | High-water mark — the position's peak price. Anchors the trailing stop, the profit lock and the plateau clock |
 | **Kill-switch** | Entry-day-only rule: a 1% reverse from entry arms an exit. A breakout that fails that fast has falsified its own premise |
 | **Pivot** | The high of the base; the breakout reference price |
@@ -490,6 +539,7 @@ docker compose logs -f execution-agent
 | [Sell Logic](docs/sell_logic.md) | Every exit rule in evaluation order |
 | [Configuration](docs/configuration.md) | Every environment variable and schema |
 | [IBKR TOTP Setup](docs/ibkr_totp_setup.md) | Headless gateway authentication |
+| [Backups](docs/backups.md) | Weekly Supabase export, archive layout, and querying it with SQL |
 | [Tech Debt & Requirements Tracker](docs/tech_debt_and_requirements_tracker.md) | Open follow-ups, requirement gaps, scheduled parameter reviews |
 | `decisions/` | ADRs — why each rule exists, including the ones that were rejected |
 

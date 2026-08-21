@@ -20,3 +20,10 @@
 
 # ── AI agent tooling ──────────────────────────────────────────────────────────
 graphifyy>=0.9.24
+
+# ── Backup export + local SQL over the archive ────────────────────────────────
+# Used by supabase_backup.py (Parquet writing) and tests/test_supabase_backup.py.
+# Kept out of requirements.txt so the runtime Docker images stay lean — neither
+# container ever runs the weekly export. See docs/backups.md.
+pyarrow>=15.0.0
+duckdb>=1.0.0
