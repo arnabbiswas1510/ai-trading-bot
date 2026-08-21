@@ -178,7 +178,7 @@ converges to even weighting after full turnover.
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `MAX_POSITIONS` | `5` | Concurrent positions; single source in `config.py` |
+| `MAX_POSITIONS` | `5` | Concurrent positions; single source in `config.py` for every module that buys. The Early Dollar Stop reads `EFFECTIVE_POSITION_SLOTS` instead — see `docs/configuration.md` |
 | `MIN_POSITION_SIZE` | `5000` | Cash floor below which no buy is attempted |
 | `PRICE_SAFETY_RESERVE` | `1000` | Withheld per order to absorb quote lag |
 | `TRIGGER_LOOKBACK_DAYS` | `3` | Trigger freshness window |

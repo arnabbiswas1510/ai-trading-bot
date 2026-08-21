@@ -241,8 +241,8 @@ post-breakout consolidation is not mistaken for failure.
 ### Tier 4 — Plateau exit (day 7+, EOD)
 
 No new high-water mark in 10 trading days → sell. This is a **capital velocity** rule, not
-a risk rule: a position going nowhere still occupies one of five slots. Dead money has an
-opportunity cost equal to the best trigger it is displacing.
+a risk rule: a position going nowhere still occupies one of the book's slots. Dead money has
+an opportunity cost equal to the best trigger it is displacing.
 
 ### Tier 5 — Rank & Replace (day 7+, EOD)
 
@@ -287,7 +287,7 @@ worst print of the day.
 |---|---|---|---|---|---|
 | 0 | Dynamic trailing stop | all | continuous (IBKR) | broker trail | — (widened by power hold) |
 | 1 | Early Loss Kill-switch | 0 | every 15 min | armed exit | exit armed |
-| 1b | Early Dollar Stop | 0–5 | every 15 min | armed exit | exit armed |
+| 1b | Early Dollar Stop | 0–5 | every 15 min | armed exit | exit armed, equity unreadable |
 | 2 | **Thesis Stop** | 2–5 | every 15 min | armed exit | power hold, exit armed |
 | 3 | EMA-21 breach | 7+ | EOD 15:45–16:00 | market | power hold |
 | 4 | Plateau exit | 7+ | EOD 15:45–16:00 | market | power hold |
@@ -370,6 +370,31 @@ archived trigger. Entry is measured at the **next session's open** — what the 
 actually have paid — not the trigger close, which would credit an overnight gap that was
 never captured.
 
+### Exit-parameter replay
+
+`research/exit_rule_replay.py` replays the bot's **own closed trades** on 5-minute bars
+against alternative exit parameters, reporting each candidate as a dollar delta versus the
+exit that actually happened. Every entry is real and every baseline is a real fill, so it
+carries no simulation-universe bias.
+
+```bash
+set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
+python3 research/exit_rule_replay.py           # headline comparison
+python3 research/exit_rule_replay.py --grid    # full parameter sweep
+```
+
+Two rules govern its use, both learned the hard way:
+
+- **Compare whole stacks, never single rules.** A rule measured in isolation is credited
+  with saves that a faster rule running alongside it would have reached first. Measuring
+  the day-0 kill-switch alone scored it +$3,027; the flat $500 dollar stop it ran next to
+  dragged the real stack to −$272.
+- **Check `n` before believing anything.** The current sample is 17 trades from one market
+  regime. Differences under ~$500, or carried by fewer than three trades, are noise — the
+  report prints per-trade deltas so this is visible rather than averaged away.
+
+This harness backs the scheduled exit-parameter reviews defined in `AGENTS.md`.
+
 ---
 
 ## Deployment
@@ -413,8 +438,13 @@ docker compose logs -f execution-agent
 - If both live (`U…`) and paper (`DU…`) accounts are visible, set `IBKR_ACCOUNT` explicitly
   — the agent refuses to guess.
 - All market-hours logic uses `America/New_York`. Never rely on the host clock.
-- Changing slot count is a `.env` edit plus a restart; `MAX_POSITIONS` is read from a single
-  source (`config.py`) by every module.
+- Changing slot count is a `.env` edit plus a restart — but on a fully-invested book it does
+  not take effect immediately: existing positions keep their original sizing and the book
+  only converges after full turnover. `MAX_POSITIONS` is read from a single source
+  (`config.py`) by every module that *buys*. The Early Dollar Stop deliberately reads a
+  separate `EFFECTIVE_POSITION_SLOTS` (`4`) instead, because it needs the slot count the
+  book is actually sized for, not the configured target — see
+  [decisions/2026-08-20_slot-derived-early-dollar-stop.md](decisions/2026-08-20_slot-derived-early-dollar-stop.md).
 
 ### Manual tools
 
@@ -437,10 +467,13 @@ docker compose logs -f execution-agent
 | **Breakout verdict** | Day-3 PASS/FAIL assessment (close ≥ entry +1% on ≥ 75% of average volume). Governs how easily a position can later be rotated out |
 | **Buy zone** | Pivot to pivot +5%. Above it, `EXTENDED_ABOVE_PIVOT`; more than 2% below, `BELOW_PIVOT` |
 | **Cooling-off** | 7-day block on re-buying a name after it was sold |
+| **Early Dollar Stop** | Cap on unrealised dollar loss during days 0–5, sized as `(equity / EFFECTIVE_POSITION_SLOTS) × 6%`. Identical for every position regardless of its own cost basis |
 | **HWM** | High-water mark — the position's peak price. Anchors the trailing stop, the profit lock and the plateau clock |
+| **Kill-switch** | Entry-day-only rule: a 1% reverse from entry arms an exit. A breakout that fails that fast has falsified its own premise |
 | **Pivot** | The high of the base; the breakout reference price |
 | **Power Hold** | +20% within 21 days grants 56 days of protection, widening the trail to 30% so a leader can run |
 | **RS** | Relative strength vs SPY over 12 weeks, percentile-ranked |
+| **Slot** | One position's share of capital. `MAX_POSITIONS` is the configured target; `EFFECTIVE_POSITION_SLOTS` is what the book is currently sized for, and they differ until a fully-invested book turns over |
 | **Thesis Stop** | Exit for a breakout that never *closed* above entry and is now > 1 × ATR underwater |
 | **Trailing stop** | Broker-side stop that ratchets up with price and never loosens |
 | **Volume surge** | Breakout-bar volume ≥ 1.50× the 50-day average — the evidence of institutional participation |
@@ -457,6 +490,7 @@ docker compose logs -f execution-agent
 | [Sell Logic](docs/sell_logic.md) | Every exit rule in evaluation order |
 | [Configuration](docs/configuration.md) | Every environment variable and schema |
 | [IBKR TOTP Setup](docs/ibkr_totp_setup.md) | Headless gateway authentication |
+| [Tech Debt & Requirements Tracker](docs/tech_debt_and_requirements_tracker.md) | Open follow-ups, requirement gaps, scheduled parameter reviews |
 | `decisions/` | ADRs — why each rule exists, including the ones that were rejected |
 
 ---

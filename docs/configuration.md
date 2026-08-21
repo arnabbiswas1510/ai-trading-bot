@@ -47,7 +47,9 @@ in practice 10–12%, scaled to the name's own volatility.
 
 Raising `MAX_POSITIONS` with a fully-invested book does **not** free capital. New slots fill
 only as existing positions exit, and the book carries uneven weights until it fully turns
-over.
+over. This is why the Early Dollar Stop sizes itself from `EFFECTIVE_POSITION_SLOTS` (`4`)
+rather than `MAX_POSITIONS` (`5`): it needs the slot count the book is *actually* sized for.
+Set the two equal once the portfolio has been rebuilt at the target count.
 
 ---
 
