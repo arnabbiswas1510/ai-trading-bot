@@ -291,11 +291,49 @@ catches the three places the routing table alone will miss:
 - **Code comments in unrelated functions** — a threshold is often quoted in the
   rationale for a *different* rule (e.g. the power-hold comments explaining why
   they bypass the profit ladder). These mislead the next reader of that code.
+- **`decisions/` ADRs** — see below. Do **not** filter these out of the grep.
+
+**Step 1b — hits inside `decisions/` are not exempt.**
+
+The instinct to skip them is wrong, and it is the specific mistake made on
+2026-08-20: the grep surfaced `decisions/2026-08-18_early-dollar-stop.md` and it
+was excluded with `grep -v decisions/…` on the reasoning that ADRs are immutable
+historical records.
+
+Half of that is right. An ADR's **body** *is* immutable — never rewrite the
+decision, the context or the numbers as if they had always said something else.
+That destroys the record of what was believed at the time, which is the only
+thing an ADR is for.
+
+But the **header is not history, it is a claim about the present.** `Status:
+Accepted` on a decision that has since been replaced is simply false, and it is
+false in the most damaging way available: the document reads perfectly, so
+nothing signals that it is wrong. A future reader — or a future session doing
+exactly this grep — will cite a superseded threshold in good faith.
+
+So when a hit lands in `decisions/`:
+
+| Do | Do not |
+|---|---|
+| Update the `Status:` field — `Superseded by <link>`, `Superseded in part by <link>`, or `Accepted — with one documented exception` | Edit the decision, context or rationale text |
+| Add a dated block quote at the top saying what is now false and what still holds | Delete or reword the original numbers |
+| Mark any measurement that is now known to be wrong with an explicit **do not cite**, and give the corrected figure | Silently leave a superseded benchmark quotable |
+
+Three distinct triggers, all of which count:
+
+1. **Supersession** — the change replaces a decision an ADR recorded.
+2. **Exception** — the change violates an invariant an ADR established. Defend it
+   in that ADR or retract the change; do not leave the contradiction unremarked.
+3. **Erratum** — the change proves a number a previous ADR published was wrong.
+   This one has no code footprint at all, so grep will not find it. It is caught
+   only by asking, after any measurement fix: *what did I previously publish
+   using this?*
 
 **Step 2 — the read-through.**
 
-Ask: *"If someone read only `README.md` and `docs/` after this change, would they
-be misled about how the bot now behaves?"* If yes, the docs update is not finished.
+Ask: *"If someone read only `README.md`, `docs/` and the `Status:` line of each
+ADR after this change, would they be misled about how the bot now behaves?"* If
+yes, the update is not finished.
 
 > ⚠️ Do not reason about which documents *ought* to mention the rule and stop
 > there. That reasoning is what produces stale docs: it fails precisely when a
