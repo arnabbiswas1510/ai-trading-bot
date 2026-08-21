@@ -72,3 +72,22 @@ This file is a persistent cross-session tracker for:
 | FU-001 | Re-run the winner-side HWM give-back grid search | The +6% / 1.5% lock was selected on 9 winners; the tighter +3% arm scored higher but regressed one trade | Once ~30 closed trades exist | Open |
 | FU-002 | Re-run the loser-side day-0 replay | The day-0-only window rests largely on one winner (CPAY) for its measured day-1 damage | Once ~30 closed trades exist | Open |
 | FU-003 | Day 1 is now covered only by the Early Dollar Stop | Removing the percentage kill-switch from day 1 leaves a wider gap before the Thesis Stop opens on day 2 | If day-1 losers begin exiting materially worse | Open |
+| FU-004 | **$500 Early Dollar Stop may be net harmful** | Standalone replay shows −$3,240 on winners (CPAY, DXCM) while its loser saves are already captured a day earlier by the day-0 kill-switch; drags the combined stack from +$3,426 to +$186. Contradicts `decisions/2026-08-18_early-dollar-stop.md` (+$2,936), which predates the kill-switch tightening. | First scheduled review, 2026-09-20 | Open |
+| FU-005 | Thesis Stop never fired in the 17-trade replay | `THESIS_STOP_ATR_MULT=1.0` over days 2–5 is effectively untested against real trade history | Once enough trades reach day 2+ underwater | Open |
+
+---
+
+## Scheduled Reviews
+
+Exit parameters are re-validated against real trade history on a fixed schedule —
+see the **Exit-Parameter Review** section of `AGENTS.md` for dates, the command
+(`research/exit_rule_replay.py`) and what each review must answer.
+
+| Due | Status |
+|---|---|
+| 2026-09-20 | ☐ not run |
+| 2026-10-20 | ☐ not run |
+| 2026-11-20 | ☐ not run |
+| 2026-12-20 | ☐ not run |
+| 2027-01-20 | ☐ not run |
+| 2027-02-20 | ☐ not run |

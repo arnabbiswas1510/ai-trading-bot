@@ -473,6 +473,97 @@ into one commit before pushing.
 
 ---
 
+## ⏰ SCHEDULED: Exit-Parameter Review Against Real Trade History
+
+> **At the start of any session on or after a due date below, tell me the review
+> is due before doing anything else.** Do not wait to be asked. If several dates
+> have passed, run the most recent one — they supersede each other.
+
+Every exit threshold currently shipped was tuned on **17 closed trades**. That is
+not enough to trust, and each of the ADRs behind them says so explicitly. These
+reviews exist to re-run the same measurement as real trades accumulate, so the
+parameters are corrected by evidence rather than left to ossify.
+
+### The command
+
+```bash
+set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
+python3 research/exit_rule_replay.py --insecure            # headline comparison
+python3 research/exit_rule_replay.py --insecure --grid     # full sweep
+```
+
+`research/exit_rule_replay.py` replays the bot's **own** closed trades on
+5-minute bars, reproducing the live mechanics (15-minute checks, `arm_exit()`
+0.6% trail, 3.25h deadline), and reports every result as a dollar delta against
+the exit that actually happened. Drop `--insecure` if the local TLS trust store
+is working.
+
+### Schedule
+
+| Due | Trades needed to be meaningful | Status |
+|---|---|---|
+| **2026-09-20** (+1 month) | ~22 | ☐ not run |
+| **2026-10-20** (+2 months) | ~28 | ☐ not run |
+| **2026-11-20** (+3 months) | ~35 | ☐ not run |
+| **2026-12-20** (+4 months) | ~42 | ☐ not run |
+| **2027-01-20** (+5 months) | ~48 | ☐ not run |
+| **2027-02-20** (+6 months) | ~55 | ☐ not run |
+
+Tick the box and record the date, trade count and headline result when a review
+is run. If the trade count has barely moved since the last review, say so and
+skip rather than re-reading noise — the dates are a prompt, not an obligation to
+change something.
+
+### What each review must answer
+
+1. **Has the sample grown enough to matter?** Below ~30 closed trades the
+   differences are noise. Report `n` first, every time.
+2. **Does the shipped configuration still win?** It is the `SHIPPED` row in the
+   output. If something now beats it by more than ~$500 *and* the improvement is
+   spread over 3+ trades, it is a real candidate.
+3. **Is any result carried by a single trade?** The per-trade deltas are printed
+   for exactly this reason. A configuration that wins on one outlier has not won.
+4. **Has anything started harming winners?** `winners_hurt` is the column that
+   matters most. Loss-cutting rules that clip winners destroy far more value than
+   they save — this is what sank the days-0-1 kill-switch window.
+
+### Parameters under review, and what to re-test
+
+| Parameter | Shipped value | Why it is provisional |
+|---|---|---|
+| `EARLY_LOSS_STOP_PCT` | `0.01` | 0.75% scored $70 better — inside noise. Either could be right. |
+| `EARLY_LOSS_STOP_MAX_DAY` | `0` | The day-1 damage rests largely on one winner (CPAY). |
+| `TRAIL_PROFIT_TIERS` | `+6% → 1.5%` | Arming at +3% scored higher but regressed one trade. |
+| `EARLY_DOLLAR_STOP_AMOUNT` | `500` | **See the open question below — this one is actively suspect.** |
+| `THESIS_STOP_ATR_MULT` | `1.0` | Never fired in the 17-trade replay; effectively untested. |
+
+### Open question for the first review (2026-09-20)
+
+The 2026-08-20 replay found the **$500 Early Dollar Stop may be net harmful**.
+Measured standalone against realised exits it costs **−$3,240 on winners** —
+cutting CPAY (−$1,873) and DXCM (−$1,367) — while every loser it catches (HWM,
+DELL, RSI) is already caught a day earlier and more cheaply by the day-0
+kill-switch. In the combined shipped stack it drags the net from +$3,426 down to
+**+$186**.
+
+This contradicts `decisions/2026-08-18_early-dollar-stop.md`, which measured
++$2,936. The likely reason is that the earlier simulation predates the day-0
+kill-switch tightening, so the dollar stop was being credited with saves that
+now happen sooner anyway.
+
+It was **not** changed on that evidence alone, because the rule had only just
+shipped and two winners is a thin basis for removing a loss cap. Re-run it first
+at the next review. If the pattern holds with more trades, the candidates are
+raising the cap, restricting it to days 1–2 where it is the only cover, or
+removing it and letting the thesis stop own days 2–5.
+
+> **Note on mechanism:** this is a *passive* reminder — it fires when a session
+> reads this file, not on a calendar. If you want it to fire regardless of
+> whether we are working, the repo's existing pattern is a scheduled GitHub
+> Actions workflow posting to Telegram; ask and I will add one.
+
+---
+
 ## 🔑 Local Credentials (never committed)
 
 Supabase and FMP credentials for this project live **outside the repository** at:
