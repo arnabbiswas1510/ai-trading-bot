@@ -534,8 +534,24 @@ change something.
 | `EARLY_LOSS_STOP_PCT` | `0.01` | 0.75% scored $70 better — inside noise. Either could be right. |
 | `EARLY_LOSS_STOP_MAX_DAY` | `0` | The day-1 damage rests largely on one winner (CPAY). |
 | `TRAIL_PROFIT_TIERS` | `+6% → 1.5%` | Arming at +3% scored higher but regressed one trade. |
-| `EARLY_DOLLAR_STOP_AMOUNT` | `500` | **See the open question below — this one is actively suspect.** |
+| `EARLY_DOLLAR_STOP_PCT` | `0.06` | The sample cannot distinguish 6% from any larger value — nothing reached that band without the kill-switch firing first. An upper bound, not a measured optimum. |
+| `EFFECTIVE_POSITION_SLOTS` | `4` | **Temporary.** Must become `MAX_POSITIONS` after the portfolio is reset at 5 slots — see below. |
 | `THESIS_STOP_ATR_MULT` | `1.0` | Never fired in the 17-trade replay; effectively untested. |
+
+### Pending action: retire `EFFECTIVE_POSITION_SLOTS`
+
+`config.MAX_POSITIONS` is `5`, but the portfolio is not yet sized for 5 slots:
+the open positions were each bought as a quarter of capital, so there is no cash
+left to fill a fifth and sizing will not converge on 5 until the book is
+liquidated and rebuilt. `EFFECTIVE_POSITION_SLOTS = 4` exists solely to keep the
+Early Dollar Stop's slot arithmetic honest in the meantime — dividing equity by 5
+today would make the stop 20% tighter than intended.
+
+**When the portfolio has been reset at 5 slots:** delete
+`EFFECTIVE_POSITION_SLOTS` from `execution_agent.py`, `.env.template` and
+`frontend/src/lib/positionRules.js`, and use `MAX_POSITIONS` in
+`early_dollar_stop_threshold()` and its frontend mirror. Tracked as FU-007 in
+`docs/tech_debt_and_requirements_tracker.md`.
 
 ### Open question for the first review (2026-09-20)
 
@@ -561,10 +577,18 @@ This contradicts `decisions/2026-08-18_early-dollar-stop.md`, which measured
 +$2,936. The earlier simulation predates the day-0 kill-switch tightening, so the
 dollar stop was being credited with saves that now happen sooner anyway.
 
-It was **not** changed on that evidence alone, because the rule had only just
-shipped and two winners is a thin basis for retuning a loss cap. Re-run it first
-at the next review. If the pattern holds with more trades, the leading candidate
-is raising `EARLY_DOLLAR_STOP_AMOUNT` to `1500` rather than removing the rule.
+**Acted on 2026-08-20.** The rule was not removed — the base trailing stop is
+peak-anchored at 8.25–10% and cannot help a position that never rose, so there is
+a real band where the dollar stop is the only cover. Instead the cap was made
+slot-derived: `(equity / EFFECTIVE_POSITION_SLOTS) × EARLY_DOLLAR_STOP_PCT`,
+which resolves to ≈$1,500 today and scales with the account. See
+`decisions/2026-08-20_slot-derived-early-dollar-stop.md`.
+
+**What the review must still answer:** whether 6% is right. The sample cannot
+distinguish it from any larger value, because nothing reached that band without
+the kill-switch firing first, and the winner damage that motivated the retune
+rests on two trades. Re-run the replay and check whether any loser now reaches
+the 6% band before the thesis stop does.
 
 > **Note on mechanism:** this is a *passive* reminder — it fires when a session
 > reads this file, not on a calendar. If you want it to fire regardless of

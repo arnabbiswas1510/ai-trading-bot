@@ -124,7 +124,8 @@ position, because no other stop is active while the OCA is placed. See
 |---|---|---|
 | `EARLY_LOSS_STOP_PCT` | `0.01` | Kill-switch threshold, entry day |
 | `EARLY_LOSS_STOP_MAX_DAY` | `0` | Last day the kill-switch may fire (0 = entry day only) |
-| `EARLY_DOLLAR_STOP_AMOUNT` | `500` | Max dollar loss per position on days 0–`EARLY_DOLLAR_STOP_MAX_DAY`; 0 to disable |
+| `EARLY_DOLLAR_STOP_PCT` | `0.06` | Early Dollar Stop cap, as a share of one position slot: `(equity / EFFECTIVE_POSITION_SLOTS) × this`. ≈$1,500 at current equity; 0 to disable |
+| `EFFECTIVE_POSITION_SLOTS` | `4` | Slots the portfolio is *actually* sized for. Deliberately not `MAX_POSITIONS` (`5`) — switch it after the portfolio is reset at 5 slots (FU-007) |
 | `EARLY_DOLLAR_STOP_MAX_DAY` | `5` | Last trading day (inclusive) the dollar stop is active |
 | `INTRADAY_MINIMISER_ENABLED` | `false` | **Superseded by the Thesis Stop** |
 | `INTRADAY_PULLBACK_PCT` | `0.02` | Only used if the minimiser is re-enabled |

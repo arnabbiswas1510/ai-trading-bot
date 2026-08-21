@@ -19,8 +19,11 @@ export const RULES_CONFIG = {
   ],
   EARLY_LOSS_STOP_PCT: 0.01,      // kill-switch, entry day only
   EARLY_LOSS_LAST_DAY: 0,
-  EARLY_DOLLAR_STOP_AMOUNT: 500,  // hard dollar cap on unrealised loss, days 0–5
+  EARLY_DOLLAR_STOP_PCT: 0.06,    // share of ONE position slot, days 0–5
   EARLY_DOLLAR_STOP_MAX_DAY: 5,
+  // Slots the portfolio is actually sized for today. Deliberately not
+  // MAX_POSITIONS (5) — see execution_agent.py EFFECTIVE_POSITION_SLOTS.
+  EFFECTIVE_POSITION_SLOTS: 4,
   THESIS_STOP_ATR_MULT: 1.0,
   THESIS_STOP_START_DAY: 2,
   THESIS_STOP_LAST_DAY: 5,
@@ -81,6 +84,24 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
 const pctAway = (price, level) => (level > 0 ? (price / level - 1) * 100 : null);
 const approxEq = (a, b) => a != null && b != null && Math.abs(a - b) < 1e-6;
 
+/**
+ * Dollar loss that arms the Early Dollar Stop — mirror of
+ * execution_agent.early_dollar_stop_threshold(). The cap is a share of one
+ * position slot rather than a flat dollar figure, so it tracks account growth
+ * and is identical across positions regardless of their own cost basis.
+ *
+ * Returns null when equity is unknown. Callers must render that as "unavailable"
+ * rather than 0, which would imply every position is already triggered.
+ */
+export function earlyDollarStopThreshold(equity) {
+  const C = RULES_CONFIG;
+  const eq = num(equity);
+  if (eq == null || eq <= 0 || C.EARLY_DOLLAR_STOP_PCT <= 0 || C.EFFECTIVE_POSITION_SLOTS <= 0) {
+    return null;
+  }
+  return Math.round((eq / C.EFFECTIVE_POSITION_SLOTS) * C.EARLY_DOLLAR_STOP_PCT * 100) / 100;
+}
+
 /** Which rung of the profit ratchet the position currently sits on. */
 export function trailLadderRung(gainPct, powerHold, effectivePct = null) {
   if (powerHold) return { pct: RULES_CONFIG.POWER_HOLD_TRAIL_PCT, label: 'Power Hold (ladder bypassed)', kind: 'power_hold' };
@@ -109,10 +130,14 @@ export function trailLadderRung(gainPct, powerHold, effectivePct = null) {
  * @param {number} calendarDaysHeld    calendar days since entry (Power Hold uses these)
  * @param {number} [openPositions]     how many slots are currently filled — Rank & Replace
  *                                     only runs with a full book. Omit to skip the gate.
+ * @param {number} [equity]            total account equity, used to derive the Early Dollar
+ *                                     Stop threshold. Omit and that rule reports as unknown
+ *                                     rather than guessing a dollar figure.
  * @returns {{phase: object, rules: array, headline: object}}
  */
-export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysHeld, openPositions) {
+export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysHeld, openPositions, equity = null) {
   const C = RULES_CONFIG;
+  const dollarCap = earlyDollarStopThreshold(equity);
   const buy = num(pos.buy_price) ?? 0;
   const price = num(pos.current_price) ?? buy;
   const hwm = num(pos.hwm_price) ?? buy;
@@ -214,28 +239,38 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
   }
 
   // ── 3b. Early Dollar Stop (days 0–EARLY_DOLLAR_STOP_MAX_DAY) ─────────────────
-  // Flat dollar cap on unrealised loss during the first 5 trading days.
-  // Complements the % kill-switch (day 0) and ATR-based thesis stop (days 2-5).
+  // Cap on unrealised dollar loss during the first 5 trading days, sized as a
+  // share of one position slot. Complements the % kill-switch (day 0) and the
+  // ATR-based thesis stop (days 2–5).
   {
-    const dollarCap  = C.EARLY_DOLLAR_STOP_AMOUNT;
     const maxDay     = C.EARLY_DOLLAR_STOP_MAX_DAY;
     const shares     = num(pos.shares) ?? 0;
     const posSize    = shares > 0 ? shares * buy : null;
     const dollarLoss = shares > 0 ? shares * (price - buy) : null; // negative when losing
-    const triggerPx  = (shares > 0 && dollarCap > 0) ? buy - dollarCap / shares : null;
+    const triggerPx  = (shares > 0 && dollarCap != null && dollarCap > 0) ? buy - dollarCap / shares : null;
     const away       = triggerPx != null ? pctAway(price, triggerPx) : null;
     const usedDollar = dollarLoss != null ? Math.max(0, -dollarLoss) : 0;
-    const capEquivPct = (posSize != null && posSize > 0) ? (dollarCap / posSize * 100) : null;
+    const capEquivPct = (posSize != null && posSize > 0 && dollarCap != null)
+      ? (dollarCap / posSize * 100) : null;
 
     let state, headline, detail;
-    const base = `Arms an exit if the unrealised dollar loss reaches $${dollarCap.toFixed(0)} at any point during days 0–${maxDay}. `
-               + (capEquivPct != null ? `On this $${posSize != null ? (posSize/1000).toFixed(1) : '?'}K position that is ≈ ${capEquivPct.toFixed(2)}%. ` : '')
-               + 'Fires arm_exit() (0.6% tight trail) rather than a market sell, so any bounce can be captured.';
+    const slotLabel = `${(C.EARLY_DOLLAR_STOP_PCT * 100).toFixed(0)}% of a 1/${C.EFFECTIVE_POSITION_SLOTS} equity slot`;
+    const base = (dollarCap != null
+        ? `Arms an exit if the unrealised dollar loss reaches $${dollarCap.toFixed(0)} at any point during days 0–${maxDay}. `
+          + `The cap is ${slotLabel}, so it scales with the account instead of going stale as equity grows, `
+          + `and every position gets the same dollar cap regardless of its own size — an oversized position is concentrated risk and should not get a wider allowance. `
+        : `Arms an exit if the unrealised dollar loss reaches ${slotLabel} at any point during days 0–${maxDay}. `)
+      + (capEquivPct != null ? `On this $${posSize != null ? (posSize/1000).toFixed(1) : '?'}K position that is ≈ ${capEquivPct.toFixed(2)}%. ` : '')
+      + 'Fires arm_exit() (0.6% tight trail) rather than a market sell, so any bounce can be captured.';
 
-    if (dollarCap <= 0) {
+    if (C.EARLY_DOLLAR_STOP_PCT <= 0) {
       state   = STATE.OFF;
-      headline = 'Disabled (EARLY_DOLLAR_STOP_AMOUNT = 0)';
+      headline = 'Disabled (EARLY_DOLLAR_STOP_PCT = 0)';
       detail   = base;
+    } else if (dollarCap == null) {
+      state   = STATE.OFF;
+      headline = 'Account equity unavailable — cap not resolved';
+      detail   = base + ' The agent skips this rule for any cycle in which it cannot read equity, rather than computing a $0 threshold.';
     } else if (daysHeld > maxDay) {
       state   = STATE.EXPIRED;
       headline = `Window closed after day ${maxDay}`;
@@ -252,7 +287,7 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
       state   = STATE.ACTIVE;
       headline = `$${usedDollar.toFixed(0)} / $${dollarCap.toFixed(0)} used`
                + (away != null ? ` · ${away.toFixed(1)}% of room` : '');
-      detail   = base + ' This is the primary early-exit for any position losing more than the daily floor before confirming itself.';
+      detail   = base + ' This is the catastrophic-loss backstop for days 1–5: it sits inside the base trailing stop, which is measured from the peak and is far too wide to help a position that never rose.';
     }
 
     const done = state === STATE.EXPIRED || state === STATE.OFF;
@@ -471,17 +506,21 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
   }
 
   // ── Phase (the compact headline pill) ───────────────────────────────────────
+  const capNote = dollarCap != null
+    ? `the $${dollarCap.toFixed(0)} dollar cap`
+    : 'the dollar cap';
+  const capNoteCap = capNote.charAt(0).toUpperCase() + capNote.slice(1);
   let phase;
   if (pos.exit_armed) {
     phase = { key: 'EXITING', label: 'Exiting', color: '#f43f5e', note: 'An armed exit is live at the broker.' };
   } else if (powerHold) {
     phase = { key: 'POWER_HOLD', label: `D${daysHeld} · Power Hold`, color: '#8b5cf6', note: 'Discretionary exits suppressed; a 30% disaster stop is the only backstop.' };
   } else if (daysHeld <= C.EARLY_LOSS_LAST_DAY) {
-    phase = { key: 'KILL_SWITCH', label: `D${daysHeld} · Kill-switch`, color: '#3b82f6', note: `Entry day: a ${(C.EARLY_LOSS_STOP_PCT * 100).toFixed(1)}% reverse arms an exit. $${C.EARLY_DOLLAR_STOP_AMOUNT} dollar cap also active.` };
+    phase = { key: 'KILL_SWITCH', label: `D${daysHeld} · Kill-switch`, color: '#3b82f6', note: `Entry day: a ${(C.EARLY_LOSS_STOP_PCT * 100).toFixed(1)}% reverse arms an exit. ${capNoteCap} is also active.` };
   } else if (daysHeld < C.THESIS_STOP_START_DAY) {
-    phase = { key: 'DOLLAR_ONLY', label: `D${daysHeld} · Dollar cap only`, color: '#0284c7', note: `Day 1: the Kill-switch has expired and the Thesis Stop has not armed — the $${C.EARLY_DOLLAR_STOP_AMOUNT} dollar cap and the trailing stop are the protection.` };
+    phase = { key: 'DOLLAR_ONLY', label: `D${daysHeld} · Dollar cap only`, color: '#0284c7', note: `Day 1: the Kill-switch has expired and the Thesis Stop has not armed — ${capNote} and the trailing stop are the protection.` };
   } else if (daysHeld <= C.THESIS_STOP_LAST_DAY) {
-    phase = { key: 'THESIS', label: `D${daysHeld} · Thesis window`, color: '#0ea5e9', note: `Days 2–5: Thesis Stop is the primary loss-cutter. $${C.EARLY_DOLLAR_STOP_AMOUNT} dollar cap still active.` };
+    phase = { key: 'THESIS', label: `D${daysHeld} · Thesis window`, color: '#0ea5e9', note: `Days 2–5: Thesis Stop is the primary loss-cutter. ${capNoteCap} is still active.` };
   } else if (daysHeld < C.EXIT_MA_MIN_DAYS) {
     phase = { key: 'TRANSITION', label: `D${daysHeld} · Transition`, color: '#64748b', note: 'Day 6: the loss rules have expired and the rotation rules have not yet armed — trailing stop only.' };
   } else {

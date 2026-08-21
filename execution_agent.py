@@ -355,35 +355,74 @@ EARLY_LOSS_STOP_MAX_DAY      = int(os.getenv("EARLY_LOSS_STOP_MAX_DAY",         
 # Day threshold when universal intraday pullback minimiser becomes active.
 INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2))
 
-# ── Hard dollar-loss stop for Days 0-5 ────────────────────────────────────────
-# A flat dollar cap on unrealized loss during the first EARLY_DOLLAR_STOP_MAX_DAY
-# trading days. Percentage-based stops are blind to position-size differences; a
-# 5% ATR stop on a $25K position is $1,250 — far too much to risk on a new entry
-# that hasn't confirmed itself.
+# ── Early dollar-loss stop for Days 0-5 ───────────────────────────────────────
+# Caps the unrealized dollar loss on a position that has not yet confirmed
+# itself, during the first EARLY_DOLLAR_STOP_MAX_DAY trading days.
 #
-# Simulation against 19 closed trades (2026-07-09 → 2026-08-18):
-#   Total early losses (days 0-5): $6,205 across 8 trades
-#   $500 stop: saves $2,936 on 5 trades (RSI +$890, HWM +$963, APH +$555,
-#              OII +$270, FROG +$258) — best savings/winner-risk ratio
-#   $600 stop: saves $2,436 (no winners at risk but saves less)
-#   $400 stop: saves $3,698 but 5 winners flagged as potentially at risk
+# The cap is a share of ONE POSITION SLOT, not a fixed dollar figure:
+#     threshold = (equity / EFFECTIVE_POSITION_SLOTS) x EARLY_DOLLAR_STOP_PCT
 #
-# SUPERSEDED — UNDER REVIEW (FU-004, next review 2026-09-20). The numbers above
-# were measured before the kill-switch was tightened to 1.0% on Day 0. With that
-# rule running alongside, every loser the dollar stop catches is already caught a
-# day earlier, so its only remaining effect on the 2026-08-20 17-trade replay is
-# cutting two eventual winners: CPAY -$1,873 and DXCM -$1,367. All-in stack net:
-#   1.0% Day 0 + $500  + 1xATR (shipped):  -$272
-#   1.0% Day 0 + $1500 + 1xATR:          +$3,027
-#   1.0% Day 0 + 1xATR (no dollar stop): +$3,027
-# Raising EARLY_DOLLAR_STOP_AMOUNT to 1500 is strictly dominant over 500 in that
-# sample. Not changed yet: two winners is a thin basis for retuning a loss cap.
+# WHY SLOT-DERIVED RATHER THAN FLAT (changed 2026-08-20)
+# The rule shipped as a flat $500. Because positions are sized as
+# available_cash / remaining_slots, they cluster tightly around one slot's worth
+# of capital — the 21 closed trades ran $20,025 to $48,189 with a $24,415 median
+# — so a flat dollar figure is a percentage in disguise, and an unstable one:
+#   - on the $48,189 OII position, $500 was 1.0% — firing on ordinary noise
+#   - on the $20,025 PTGX position, $500 was 2.5%
+# Same rule, different aggression, decided by nothing more principled than how
+# much cash happened to be free that morning. Worse, a flat figure silently
+# tightens as the account grows: $500 is 2.0% of a $25K slot today and 1.0% of a
+# $50K slot later, with no code change and no signal that the rule got twice as
+# aggressive. Deriving it from equity fixes both.
+#
+# WHY NOT SIMPLY A PERCENTAGE OF THE POSITION'S OWN COST BASIS
+# Because that hands an oversized position a proportionally wider allowance. OII
+# was booked at roughly double the median; a cost-basis percentage would let it
+# lose twice as many dollars as everything else, when concentrated risk is
+# exactly what wants cutting sooner. Slot-derived gives every position the same
+# absolute dollar cap.
+#
+# CALIBRATION
+# 6% of a slot reproduces ~$1,500 on the current ~$25K slot. See the review note
+# below for why $1,500 rather than the original $500.
+EARLY_DOLLAR_STOP_PCT        = float(os.getenv("EARLY_DOLLAR_STOP_PCT",       0.06))
+EARLY_DOLLAR_STOP_MAX_DAY    = int(os.getenv("EARLY_DOLLAR_STOP_MAX_DAY",       5))
+
+# Slots the portfolio is ACTUALLY sized for right now — deliberately NOT
+# MAX_POSITIONS. config.MAX_POSITIONS is 5, but that is aspirational: the four
+# open positions were each bought as a quarter of capital, so there is no cash
+# left to fill a fifth slot and sizing will not converge on 5 until the portfolio
+# is liquidated and rebuilt. Dividing equity by 5 today would understate the real
+# slot size by 20% and make this stop 20% tighter than intended.
+#
+# ⚠️ REPLACE WITH MAX_POSITIONS once the portfolio has been reset at 5 slots.
+# Tracked as FU-007 in docs/tech_debt_and_requirements_tracker.md and noted in
+# the AGENTS.md review schedule.
+EFFECTIVE_POSITION_SLOTS     = int(os.getenv("EFFECTIVE_POSITION_SLOTS",         4))
+#
+# SIZING REVIEW — FU-004, next review 2026-09-20.
+# The original $500 was measured before the kill-switch was tightened to 1.0% on
+# Day 0. With that rule running alongside, every loser the dollar stop catches is
+# already caught a day earlier, so at $500 its only remaining effect on the
+# 2026-08-20 17-trade replay was cutting two eventual winners: CPAY -$1,873 and
+# DXCM -$1,367. All-in stack net:
+#   1.0% Day 0 + $500  + 1xATR (previous):  -$272
+#   1.0% Day 0 + $1500 + 1xATR:           +$3,027
+#   1.0% Day 0 + 1xATR (no dollar stop):  +$3,027
+# $1,500 and "removed" score identically because at $1,500 the rule never fires
+# in that sample. $1,500 is preferred over removal because it retains a
+# catastrophic-loss backstop for a gap-down on days 1-5, which no other rule
+# covers: the base trailing stop is 8.25-10% measured from PEAK, so this sits
+# INSIDE it on every live position and is not redundant.
+#
+# Caveat carried into the review: the sample cannot distinguish 6% from any
+# larger value, because nothing reached that band without the Day 0 kill-switch
+# having already fired. 6% is an upper bound justified by the trail sitting
+# above it, not a measured optimum.
 #
 # The rule does NOT replace the IBKR GTC trailing stop; it is checked on the
 # 15-minute monitoring cycle and fires an armed exit (0.6% tight trail) so a
 # bounce can be captured. See arm_exit().
-EARLY_DOLLAR_STOP_AMOUNT     = float(os.getenv("EARLY_DOLLAR_STOP_AMOUNT",    500.0))
-EARLY_DOLLAR_STOP_MAX_DAY    = int(os.getenv("EARLY_DOLLAR_STOP_MAX_DAY",       5))
 
 # ── Thesis Stop (ATR-normalised failure-to-advance exit) ──────────────────────
 # A proper breakout works almost immediately; failure to advance IS the sell
@@ -829,6 +868,58 @@ def get_margin_loan(ib: IB, account: str = None) -> float:
     except Exception as e:
         print(f"⚠️ get_margin_loan(): could not fetch TotalCashValue: {e}")
     return 0.0
+
+
+def get_net_liquidation(ib: IB, account: str = None) -> float:
+    """Return total account equity (cash + position market value) in USD.
+
+    Reads IBKR's ``NetLiquidation`` tag, filtered to the target account the same
+    way get_own_cash() does, so a second sub-account under the same login cannot
+    inflate the figure.
+
+    Used to size the Early Dollar Stop as a share of equity rather than a fixed
+    dollar amount, so the cap tracks account growth instead of silently becoming
+    a tighter percentage every time the account gets larger.
+
+    Returns:
+        float: equity in USD, or 0.0 if the tag is missing or the query fails.
+               Callers MUST treat 0.0 as "unknown" and skip the rule rather than
+               computing a zero-dollar threshold, which would exit everything.
+    """
+    try:
+        target_account = account or get_ibkr_account(ib)
+        for av in ib.accountValues():
+            if not _matches_account(av, target_account):
+                continue
+            if av.tag == "NetLiquidation" and av.currency == "USD":
+                value = float(av.value)
+                return round(value, 2) if value > 0 else 0.0
+        print(f"⚠️ get_net_liquidation(): NetLiquidation tag not found for {target_account}.")
+    except Exception as e:
+        notifier.notify_exception("get_net_liquidation() — execution_agent.py", e)
+        print(f"❌ Error querying net liquidation from IBKR: {e}")
+    return 0.0
+
+
+def early_dollar_stop_threshold(equity: float) -> float:
+    """Dollar loss that arms the Early Dollar Stop, derived from slot size.
+
+    The cap is a share of one position slot, not a fixed dollar figure:
+
+        threshold = (equity / EFFECTIVE_POSITION_SLOTS) x EARLY_DOLLAR_STOP_PCT
+
+    Every position gets the SAME threshold regardless of its own cost basis.
+    That is deliberate and is the difference between this and an ordinary
+    percentage stop: an oversized position (OII was booked at $48K against a
+    ~$24K median) represents concentrated risk and should be cut at the same
+    absolute dollar loss as a normally-sized one, not given a proportionally
+    wider allowance.
+
+    Returns 0.0 when equity is unknown, which disables the rule for that cycle.
+    """
+    if equity <= 0 or EARLY_DOLLAR_STOP_PCT <= 0 or EFFECTIVE_POSITION_SLOTS <= 0:
+        return 0.0
+    return round((equity / EFFECTIVE_POSITION_SLOTS) * EARLY_DOLLAR_STOP_PCT, 2)
 
 
 def get_available_cash(ib: IB) -> float:
@@ -3168,6 +3259,21 @@ def monitor_portfolio_intraday(ib: IB):
     # orders for the ticker — which would wipe out the OCA. Skip them entirely;
     # process_exit_requests() governs these positions.
     oca_managed = get_oca_managed_tickers(client)
+
+    # Early Dollar Stop threshold is derived from account equity, so it is
+    # resolved ONCE per cycle rather than per position: the value is identical
+    # for every holding and each lookup is an IBKR round-trip. A 0.0 result means
+    # equity could not be read, which disables the rule for this cycle (see
+    # early_dollar_stop_threshold()) rather than computing a $0 threshold that
+    # would arm an exit on every position.
+    early_dollar_stop_amount = early_dollar_stop_threshold(get_net_liquidation(ib))
+    if early_dollar_stop_amount > 0:
+        print(f"   Early Dollar Stop this cycle: ${early_dollar_stop_amount:,.0f} "
+              f"({EARLY_DOLLAR_STOP_PCT * 100:.0f}% of a "
+              f"1/{EFFECTIVE_POSITION_SLOTS} slot)")
+    elif EARLY_DOLLAR_STOP_PCT > 0:
+        print("   ⚠️ Early Dollar Stop skipped this cycle: account equity unavailable.")
+
     active_positions = []
     for pos in positions:
         ticker     = pos["ticker"]
@@ -3351,22 +3457,25 @@ def monitor_portfolio_intraday(ib: IB):
                 )
                 print(f"   ⚠️ {ticker}: trail update failed: {_tighten_err}")
 
-        # ── Hard dollar-loss stop for Days 0-EARLY_DOLLAR_STOP_MAX_DAY ────────────
-        # Caps the maximum dollar loss on any new position before it has confirmed
-        # itself. Percentage-based stops are blind to position size; this provides
-        # a uniform dollar floor regardless of share price or ATR-derived trail.
+        # ── Early Dollar Stop for Days 0-EARLY_DOLLAR_STOP_MAX_DAY ───────────────
+        # Caps the dollar loss on any new position before it has confirmed
+        # itself. The threshold is a share of one position slot (resolved once
+        # per cycle above), so it scales with account equity and is identical
+        # across positions regardless of their individual cost basis.
         # Checked on the 15-minute monitoring cycle and fires arm_exit() so a
         # bounce can still be captured rather than selling at the worst tick.
-        if (EARLY_DOLLAR_STOP_AMOUNT > 0
+        if (early_dollar_stop_amount > 0
                 and days_held <= EARLY_DOLLAR_STOP_MAX_DAY
                 and not power_held
                 and not pos.get("exit_armed")):
             unrealized_dollar_loss = shares * (current_price - buy_price)
-            if unrealized_dollar_loss <= -EARLY_DOLLAR_STOP_AMOUNT:
+            if unrealized_dollar_loss <= -early_dollar_stop_amount:
                 reason = (
                     f"Early Dollar Stop — Day {days_held}: "
                     f"unrealized loss ${abs(unrealized_dollar_loss):,.0f} "
-                    f">= ${EARLY_DOLLAR_STOP_AMOUNT:,.0f} threshold "
+                    f">= ${early_dollar_stop_amount:,.0f} threshold "
+                    f"({EARLY_DOLLAR_STOP_PCT * 100:.0f}% of a "
+                    f"1/{EFFECTIVE_POSITION_SLOTS} slot) "
                     f"({unrealized_pct:.2f}% on ${shares * buy_price:,.0f} position)"
                 )
                 print(f"🚨 {ticker}: Early Dollar Stop triggered — arming exit — {reason}")

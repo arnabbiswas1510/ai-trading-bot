@@ -162,37 +162,62 @@ See `decisions/2026-08-20_early-loss-day0-tightening.md` for why.
 ## 2b. Early Dollar Stop — days 0–5
 
 ```
-shares × (current_price − buy_price) ≤ −EARLY_DOLLAR_STOP_AMOUNT    # default $500
+threshold = (account_equity / EFFECTIVE_POSITION_SLOTS) × EARLY_DOLLAR_STOP_PCT
+shares × (current_price − buy_price) ≤ −threshold
 ```
 
-A flat dollar cap on unrealized loss during the first `EARLY_DOLLAR_STOP_MAX_DAY` trading
-days (default 5). Percentage-based stops are blind to position size; this provides a uniform
-floor regardless of ATR or share price.
+A cap on unrealized dollar loss during the first `EARLY_DOLLAR_STOP_MAX_DAY` trading days
+(default 5), sized as a **share of one position slot** rather than a flat dollar figure.
+At `EARLY_DOLLAR_STOP_PCT = 0.06` and `EFFECTIVE_POSITION_SLOTS = 4`, a $100K account
+gives a **$1,500** cap.
+
+Every position gets the *same* dollar cap regardless of its own cost basis. That is the
+point of the rule and the reason it is not simply a percentage of the position: an
+oversized holding is concentrated risk and should be cut at the same absolute loss as a
+normally-sized one, not given a proportionally wider allowance.
+
+The threshold is resolved **once per monitoring cycle** from IBKR `NetLiquidation`. If
+equity cannot be read, the rule is **skipped for that cycle** — never treated as a $0
+threshold, which would arm an exit on every open position.
+
+`EFFECTIVE_POSITION_SLOTS` is deliberately `4`, not `MAX_POSITIONS` (`5`). The open
+positions were each sized as a quarter of capital, so sizing will not actually converge on
+5 slots until the portfolio is liquidated and rebuilt; dividing by 5 today would make the
+stop 20% tighter than intended. It must be switched to `MAX_POSITIONS` after that reset —
+tracked as FU-007.
 
 Checked on the 15-minute monitoring cycle. Arms the exit (0.6% tight trail via `arm_exit()`)
 rather than immediately market-selling, so a bounce can still be captured.
 
-**Simulation result (19 trades, 2026-07-09 → 2026-08-18):**
+### Why the cap is ~$1,500 and not $500
 
-| Threshold | Total saved | Trades helped |
-|---|---|---|
-| $400 | $3,698 | 6 trades (5 winners at risk) |
-| **$500** | **$2,936** | **5 trades (2 winners at risk)** |
-| $600 | $2,436 | 5 trades (0 winners at risk) |
-| $750 | $1,686 | 5 trades (0 winners at risk) |
+The rule shipped as a flat $500. A full-stack replay of the 17 closed trades measured, all-in
+against the realised exits:
 
-> ⚠️ **These numbers are superseded and the $500 default is under review.** They
-> measured the rule in isolation, before the kill-switch was tightened to 1% on
-> day 0. With the current kill-switch running alongside it, every loser the
-> dollar stop catches is already caught a day earlier, so its only remaining
-> effect on the 2026-08-20 replay is cutting two eventual winners: CPAY
-> (−$1,873) and DXCM (−$1,367). Removing it, or raising the cap to $1,500,
-> scores **+$3,027** all-in versus **−$272** for the shipped stack. No change has
-> been made yet — see FU-004 in
-> `docs/tech_debt_and_requirements_tracker.md` and the 2026-09-20 review.
+| Stack | Net |
+|---|---|
+| Previous: 2.0% days 0–1 + $500 + 1×ATR | −$1,603 |
+| 1.0% day 0 + $500 + 1×ATR | −$272 |
+| **1.0% day 0 + ~$1,500 + 1×ATR** | **+$3,027** |
+| 1.0% day 0 + 1×ATR (rule removed) | +$3,027 |
 
-$500 is the default. Set `EARLY_DOLLAR_STOP_AMOUNT=0` to disable.
-See `decisions/2026-08-18_early-dollar-stop.md`.
+At $500 every loser the rule caught was already caught a day earlier by the day-0
+kill-switch, leaving only winner damage: CPAY −$1,873 and DXCM −$1,367, both of which
+recovered and closed profitably.
+
+The rule is kept rather than removed because the only other cover on days 1–5 is the base
+trailing stop, which is measured from the **peak** and runs 8.25–10%. A $1,500 cap is
+5.4–7.8% of a current position, so it sits strictly inside that trail — there is a real band
+where it is the only rule acting, and on a position that never rises a peak-anchored trail
+cannot help at all.
+
+Caveat: the sample cannot distinguish 6% from any larger value, because nothing reached that
+band without the kill-switch firing first. 6% is an upper bound justified by the trail
+sitting above it, not a measured optimum. Under review as FU-004 (2026-09-20).
+
+Set `EARLY_DOLLAR_STOP_PCT=0` to disable.
+See `decisions/2026-08-20_slot-derived-early-dollar-stop.md` for why, and
+`decisions/2026-08-18_early-dollar-stop.md` for the rule's original introduction.
 
 **Overlap with the Thesis Stop (rule 6).** On days 2–5 a losing position can satisfy both
 rules at once. The dollar stop is evaluated first and pre-empts the thesis stop, so the exit

@@ -405,11 +405,20 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
 # ── Candidate sets ────────────────────────────────────────────────────────────
 
 def shipped_config() -> ExitConfig:
-    """What the agent runs today. Every other result is relative to this."""
+    """What the agent runs today. Every other result is relative to this.
+
+    The live dollar stop is no longer a flat amount: it resolves to
+    (equity / EFFECTIVE_POSITION_SLOTS) x EARLY_DOLLAR_STOP_PCT, i.e.
+    (equity / 4) x 6%. At the ~$100K equity these trades were placed under that
+    is $1,500, which is what is modelled here. If equity has moved materially
+    since, recompute this before quoting the result — a stale figure here makes
+    every "vs shipped" comparison wrong.
+    See decisions/2026-08-20_slot-derived-early-dollar-stop.md.
+    """
     return ExitConfig(
-        label="SHIPPED (1.0% day 0 + $500 dollar stop + 1xATR thesis)",
+        label="SHIPPED (1.0% day 0 + $1500 slot-derived dollar stop + 1xATR thesis)",
         pct=1.0, pct_last_day=0,
-        dollar=500.0, dollar_last_day=5,
+        dollar=1500.0, dollar_last_day=5,
         atr_mult=1.0, atr_start_day=2, atr_last_day=5,
     )
 
@@ -422,21 +431,21 @@ def headline_configs() -> list[ExitConfig]:
         # rule in isolation, which overstates any rule whose saves are also
         # reachable by a faster rule running alongside it. Only these rows answer
         # "what would the agent as a whole have done".
-        ExitConfig("PREV STACK (2.0% days 0-1 + $500 + 1xATR)",
+        ExitConfig("PREV STACK (2.0% days 0-1 + flat $500 + 1xATR)",
                    pct=2.0, pct_last_day=1,
                    dollar=500.0, dollar_last_day=5,
                    atr_mult=1.0, atr_start_day=2, atr_last_day=5),
         ExitConfig("STACK minus dollar stop (1.0% day 0 + 1xATR)",
                    pct=1.0, pct_last_day=0,
                    atr_mult=1.0, atr_start_day=2, atr_last_day=5),
-        ExitConfig("STACK minus thesis stop (1.0% day 0 + $500)",
+        ExitConfig("STACK minus thesis stop (1.0% day 0 + $1500)",
                    pct=1.0, pct_last_day=0,
-                   dollar=500.0, dollar_last_day=5),
-        ExitConfig("STACK, dollar stop raised to $1500",
+                   dollar=1500.0, dollar_last_day=5),
+        ExitConfig("SUPERSEDED STACK, flat $500 dollar stop",
                    pct=1.0, pct_last_day=0,
-                   dollar=1500.0, dollar_last_day=5,
+                   dollar=500.0, dollar_last_day=5,
                    atr_mult=1.0, atr_start_day=2, atr_last_day=5),
-        ExitConfig("STACK, dollar stop raised to $1000",
+        ExitConfig("STACK, dollar stop at $1000",
                    pct=1.0, pct_last_day=0,
                    dollar=1000.0, dollar_last_day=5,
                    atr_mult=1.0, atr_start_day=2, atr_last_day=5),

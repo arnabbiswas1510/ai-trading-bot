@@ -282,18 +282,18 @@ function getStatusBadge(pos, days) {
  * DB column goes stale between cycles. We recompute here for the same reason —
  * showing a stale day count would mis-state which window a position is in.
  */
-function rulesFor(pos, openPositions) {
+function rulesFor(pos, openPositions, equity) {
   const now = new Date();
   const tdHeld = tradingDaysBetween(pos.buy_date, now);
   const sinceHwm = pos.days_since_hwm != null
     ? pos.days_since_hwm
     : tradingDaysBetween(pos.hwm_date || pos.buy_date, now);
-  return evaluatePositionRules(pos, tdHeld, sinceHwm, daysHeld(pos.buy_date), openPositions);
+  return evaluatePositionRules(pos, tdHeld, sinceHwm, daysHeld(pos.buy_date), openPositions, equity);
 }
 
 /** Compact lifecycle cell: phase pill + one dot per rule, with a full tooltip. */
-function LifecycleCell({ pos, openPositions }) {
-  const evald = rulesFor(pos, openPositions);
+function LifecycleCell({ pos, openPositions, equity }) {
+  const evald = rulesFor(pos, openPositions, equity);
   const { phase, rules } = evald;
   const now = new Date();
   const sinceHwm = pos.days_since_hwm != null
@@ -380,13 +380,13 @@ function LifecycleCell({ pos, openPositions }) {
  * All content comes from buildLifecycle() in positionRules.js, so it can never
  * contradict the Risk Rule Ladder below it.
  */
-function PositionJourney({ pos, openPositions }) {
+function PositionJourney({ pos, openPositions, equity }) {
   const now = new Date();
   const tdHeld = tradingDaysBetween(pos.buy_date, now);
   const sinceHwm = pos.days_since_hwm != null
     ? pos.days_since_hwm
     : tradingDaysBetween(pos.hwm_date || pos.buy_date, now);
-  const evald = rulesFor(pos, openPositions);
+  const evald = rulesFor(pos, openPositions, equity);
   const { past, track, next, phase, offTrack } = buildLifecycle(pos, evald, tdHeld, sinceHwm);
 
   const toneColor = { good: '#10b981', bad: '#f43f5e', neutral: 'var(--text-secondary)' };
@@ -491,8 +491,8 @@ function PositionJourney({ pos, openPositions }) {
 }
 
 /** Full-width risk ladder shown inside the expanded row. */
-function RiskLadder({ pos, formatCurrency, openPositions }) {
-  const { phase, rules } = rulesFor(pos, openPositions);
+function RiskLadder({ pos, formatCurrency, openPositions, equity }) {
+  const { phase, rules } = rulesFor(pos, openPositions, equity);
   const [legendOpen, setLegendOpen] = useState(false);
   const price = pos.current_price || pos.buy_price;
 
@@ -621,7 +621,7 @@ function RiskLadder({ pos, formatCurrency, openPositions }) {
 }
 
 // ── Position Intelligence Panel (expandable) ─────────────────────────────────
-function ExitConditionsPanel({ pos, formatCurrency, openPositions }) {
+function ExitConditionsPanel({ pos, formatCurrency, openPositions, equity }) {
   const days = daysHeld(pos.buy_date);
   const hwmPrice  = pos.hwm_price || pos.buy_price;  // hwm_price: running peak IBKR tracks
   const stopLossPct = pos.stop_loss_pct || STOP_LOSS_PCT;
@@ -664,10 +664,10 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions }) {
         <div style={panelStyle}>
 
           {/* ── Position Journey — phase, history and what comes next ──────── */}
-          <PositionJourney pos={pos} openPositions={openPositions} />
+          <PositionJourney pos={pos} openPositions={openPositions} equity={equity} />
 
           {/* ── Risk Rule Ladder — every applicable tier and its live state ─── */}
-          <RiskLadder pos={pos} formatCurrency={formatCurrency} openPositions={openPositions} />
+          <RiskLadder pos={pos} formatCurrency={formatCurrency} openPositions={openPositions} equity={equity} />
 
           {/* ── Holding Info ─────────────────────────── */}
           <div style={cardStyle('147,197,253')}>
@@ -1497,7 +1497,7 @@ export default function DashboardView({ data, marketData, trades }) {
                           </div>
                         </td>
                         {/* Lifecycle / risk tiers */}
-                        <LifecycleCell pos={pos} openPositions={positions.length} />
+                        <LifecycleCell pos={pos} openPositions={positions.length} equity={summary.portfolio_value} />
                         <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                           {pos.pnl >= 0 ? '+' : ''}{formatCurrency(pos.pnl)}
                         </td>
@@ -1507,7 +1507,7 @@ export default function DashboardView({ data, marketData, trades }) {
 
                       </tr>
                       {isOpen && (
-                        <ExitConditionsPanel pos={pos} formatCurrency={formatCurrency} openPositions={positions.length} />
+                        <ExitConditionsPanel pos={pos} formatCurrency={formatCurrency} openPositions={positions.length} equity={summary.portfolio_value} />
                       )}
                     </React.Fragment>
                   );

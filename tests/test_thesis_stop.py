@@ -33,9 +33,10 @@ BD_DAY7 = "2026-06-08T12:00:00+00:00"
 
 # 20 shares @ $100 = a $2,000 position, so the 5% drawdowns these tests use are
 # ~$100 of unrealized loss. That keeps them clear of the Early Dollar Stop's
-# $500 cap, which evaluates first and would otherwise arm the exit before the
-# Thesis Stop is ever reached. See TestDollarStopTakesPrecedence for the
-# deliberate ordering when both rules qualify.
+# slot-derived cap ($1,500 at the $100K equity _make_ib mocks by default), which
+# evaluates first and would otherwise arm the exit before the Thesis Stop is
+# ever reached. See TestDollarStopTakesPrecedence for the deliberate ordering
+# when both rules qualify.
 def _make_pos(ticker="AAPL", buy_price=100.0, buy_date=BD_DAY4, shares=20,
               entry_atr_pct=3.0, closed_above_entry=False,
               highest_unrealized_pct=0.0, hwm_price=None,
@@ -57,7 +58,14 @@ def _make_pos(ticker="AAPL", buy_price=100.0, buy_date=BD_DAY4, shares=20,
     return pos
 
 
-def _make_ib(positions):
+def _make_ib(positions, equity=25_000.0 * 4):
+    """Mock IBKR connection.
+
+    `equity` defaults to 4 slots x $25K so that the slot-derived Early Dollar
+    Stop resolves to 6% of a $25K slot = $1,500 — matching the live calibration.
+    get_net_liquidation() reads the NetLiquidation tag filtered by account, so
+    the mock must expose accountValues() or the rule silently disables itself.
+    """
     ib = MagicMock()
     items = []
     for pos in positions:
@@ -70,6 +78,14 @@ def _make_ib(positions):
     ib.portfolio.return_value = items
     ib.reqPositions.return_value = None
     ib.openOrders.return_value = []
+    account = "DU1234567"
+    ib.managedAccounts.return_value = [account]
+    equity_av = MagicMock()
+    equity_av.tag = "NetLiquidation"
+    equity_av.currency = "USD"
+    equity_av.value = str(equity)
+    equity_av.account = account
+    ib.accountValues.return_value = [equity_av]
     return ib
 
 
@@ -116,23 +132,58 @@ class TestDollarStopTakesPrecedence:
     """
 
     def test_dollar_stop_wins_when_both_rules_qualify(self):
-        # 200 sh @ $100 -> $20,000 position. A drop to $95 is -$1,000, which
-        # clears the $500 cap, and the position also satisfies the Thesis Stop
+        # Equity 4 x $25K -> the slot-derived cap is 6% of a $25K slot = $1,500.
+        # 200 sh @ $100 -> $20,000 position. A drop to $92 is -$1,600, which
+        # clears that cap, and the position also satisfies the Thesis Stop
         # (day 4, never closed above entry, beyond 1x ATR).
         pos = _make_pos(buy_date=BD_DAY4, shares=200, entry_atr_pct=3.0,
                         closed_above_entry=False)
-        _, mock_arm = _run(_make_ib([pos]), _make_sb([pos]), 95.0)
+        _, mock_arm = _run(_make_ib([pos]), _make_sb([pos]), 92.0)
         mock_arm.assert_called_once()
         assert "Early Dollar Stop" in mock_arm.call_args.args[5]
 
     def test_thesis_stop_still_fires_when_loss_is_under_the_cap(self):
-        # Same setup, but 20 sh -> -$100 of loss, under the $500 cap, so the
+        # Same setup, but 20 sh -> -$100 of loss, under the $1,500 cap, so the
         # Thesis Stop is reached.
         pos = _make_pos(buy_date=BD_DAY4, shares=20, entry_atr_pct=3.0,
                         closed_above_entry=False)
         _, mock_arm = _run(_make_ib([pos]), _make_sb([pos]), 95.0)
         mock_arm.assert_called_once()
         assert "Thesis Stop" in mock_arm.call_args.args[5]
+
+    def test_cap_scales_with_account_equity(self):
+        """The cap is a share of a slot, not a fixed dollar figure.
+
+        Same position and same price. At 4 x $25K equity the cap is $1,500 and a
+        -$1,000 loss is under it, so the Thesis Stop owns the exit. Halve equity
+        and the cap falls to $750, so the Dollar Stop pre-empts it. This is the
+        behaviour a flat EARLY_DOLLAR_STOP_AMOUNT could not express.
+        """
+        pos = _make_pos(buy_date=BD_DAY4, shares=200, entry_atr_pct=3.0,
+                        closed_above_entry=False)
+        _, arm_big = _run(_make_ib([pos], equity=100_000.0), _make_sb([pos]), 95.0)
+        assert "Thesis Stop" in arm_big.call_args.args[5]
+
+        pos = _make_pos(buy_date=BD_DAY4, shares=200, entry_atr_pct=3.0,
+                        closed_above_entry=False)
+        _, arm_small = _run(_make_ib([pos], equity=50_000.0), _make_sb([pos]), 95.0)
+        assert "Early Dollar Stop" in arm_small.call_args.args[5]
+
+    def test_rule_is_skipped_when_equity_is_unreadable(self):
+        """Fail safe: an unknown equity must disable the rule, not zero it.
+
+        A 0.0 threshold would read as "every position has already breached the
+        cap" and arm an exit on the entire book on any cycle where the IBKR
+        account query failed.
+        """
+        ib = _make_ib([_make_pos(buy_date=BD_DAY4, shares=200, entry_atr_pct=3.0,
+                                 closed_above_entry=False)])
+        ib.accountValues.return_value = []
+        pos = _make_pos(buy_date=BD_DAY4, shares=200, entry_atr_pct=3.0,
+                        closed_above_entry=False)
+        _, mock_arm = _run(ib, _make_sb([pos]), 92.0)
+        mock_arm.assert_called_once()
+        assert "Early Dollar Stop" not in mock_arm.call_args.args[5]
 
 
 class TestThesisStopFires:

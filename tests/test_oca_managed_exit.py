@@ -204,12 +204,28 @@ class TestManagedTickers:
 
 # ── monitor_portfolio_intraday interaction ───────────────────────────────────
 
+def _with_equity(ib, equity=80_000.0):
+    """Give a mock IB an account with readable NetLiquidation.
+
+    The Early Dollar Stop threshold is derived from equity ((equity / 4) x 6%),
+    so a mock without accountValues() disables the rule entirely and any test
+    asserting the rule fired will fail for the wrong reason. $80K -> a $1,200
+    cap, which the -$1,262 DELL position below clears.
+    """
+    account = "DU1234567"
+    ib.managedAccounts.return_value = [account]
+    av = MagicMock()
+    av.tag, av.currency, av.value, av.account = "NetLiquidation", "USD", str(equity), account
+    ib.accountValues.return_value = [av]
+    return ib
+
+
 class TestLadderSuspension:
     def test_oca_managed_position_is_skipped_by_the_automated_ladder(self):
         pos = _pos()
         sb = MagicMock()
         sb.table.return_value.select.return_value.execute.return_value.data = [pos]
-        ib = MagicMock()
+        ib = _with_equity(MagicMock())
         ib.openTrades.return_value = []
 
         with patch("execution_agent.supabase", sb), \
@@ -231,7 +247,7 @@ class TestLadderSuspension:
         pos = _pos()
         sb = MagicMock()
         sb.table.return_value.select.return_value.execute.return_value.data = [pos]
-        ib = MagicMock()
+        ib = _with_equity(MagicMock())
         ib.openTrades.return_value = []
 
         with patch("execution_agent.supabase", sb), \

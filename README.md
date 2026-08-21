@@ -190,12 +190,21 @@ See [decisions/2026-08-20_early-loss-day0-tightening.md](decisions/2026-08-20_ea
 
 ### Tier 1b — Early Dollar Stop (days 0–5)
 
-A flat **$500** cap on unrealised loss during the first six sessions, checked every 15
-minutes. Percentage stops are blind to position size — a 5% ATR stop on a $25K position is
-$1,250, far too much to risk on an entry that has not confirmed itself. This is the rule
-that covers day 1, between the Kill-switch expiring and the Thesis Stop arming on day 2.
+A cap on unrealised loss during the first six sessions, checked every 15 minutes. The cap is
+a **share of one position slot** — `(equity / 4) × 6%`, roughly **$1,500** at current equity
+— not a flat dollar figure, so it scales with the account instead of silently tightening as
+equity grows. Every position gets the same dollar cap regardless of its own size, because an
+oversized holding is concentrated risk and should not get a wider allowance.
 
-Set `EARLY_DOLLAR_STOP_AMOUNT=0` to disable.
+This is the rule that covers day 1, between the Kill-switch expiring and the Thesis Stop
+arming on day 2. It sits inside the base trailing stop, which is measured from the peak and
+so cannot help a position that never rose.
+
+If account equity cannot be read on a given cycle, the rule is skipped for that cycle rather
+than firing on a $0 threshold.
+
+Set `EARLY_DOLLAR_STOP_PCT=0` to disable. See
+[decisions/2026-08-20_slot-derived-early-dollar-stop.md](decisions/2026-08-20_slot-derived-early-dollar-stop.md).
 
 ### Tier 2 — Thesis Stop (days 2–5)
 
