@@ -138,11 +138,14 @@ The window is deliberately **the entry day only**. A 5-minute replay of all 17 c
 trades, reproducing the live mechanics exactly (15-minute checks, `arm_exit()` 0.6% trail,
 3.25-hour deadline), measured against the realised exits:
 
-| Threshold | Window | Loser savings | Winner impact | Net |
+| Threshold | Window | Losers (net) | Winner impact | Net |
 |---|---|---|---|---|
-| 2.0% | days 0–1 | +$2,348 | −$1,873 (1 winner) | +$475 |
-| 1.0% | days 0–1 | +$3,637 | −$2,345 (3 winners) | +$1,292 |
-| **1.0%** | **day 0** | **+$3,426** | **$0 (0 winners)** | **+$3,426** |
+| 2.0% | days 0–1 | +$1,697 | −$1,873 (1 winner) | −$176 |
+| 1.0% | days 0–1 | +$3,238 | −$2,345 (3 winners) | +$893 |
+| **1.0%** | **day 0** | **+$3,027** | **$0 (0 winners)** | **+$3,027** |
+
+All figures are all-in: the loser column nets off the two losers the rule makes
+slightly worse (TTWO −$209, SGHC −$190) against the three it rescues.
 
 Extending the window past the entry day is what causes the damage — CPAY alone cost
 −$1,873 — while catching nothing on the losers that day 0 had not already caught. No
@@ -178,8 +181,18 @@ rather than immediately market-selling, so a bounce can still be captured.
 | $600 | $2,436 | 5 trades (0 winners at risk) |
 | $750 | $1,686 | 5 trades (0 winners at risk) |
 
-$500 is the default — best savings/risk ratio in the historical sample.
-Set `EARLY_DOLLAR_STOP_AMOUNT=0` to disable. See `decisions/2026-08-18_early-dollar-stop.md`.
+> ⚠️ **These numbers are superseded and the $500 default is under review.** They
+> measured the rule in isolation, before the kill-switch was tightened to 1% on
+> day 0. With the current kill-switch running alongside it, every loser the
+> dollar stop catches is already caught a day earlier, so its only remaining
+> effect on the 2026-08-20 replay is cutting two eventual winners: CPAY
+> (−$1,873) and DXCM (−$1,367). Removing it, or raising the cap to $1,500,
+> scores **+$3,027** all-in versus **−$272** for the shipped stack. No change has
+> been made yet — see FU-004 in
+> `docs/tech_debt_and_requirements_tracker.md` and the 2026-09-20 review.
+
+$500 is the default. Set `EARLY_DOLLAR_STOP_AMOUNT=0` to disable.
+See `decisions/2026-08-18_early-dollar-stop.md`.
 
 **Overlap with the Thesis Stop (rule 6).** On days 2–5 a losing position can satisfy both
 rules at once. The dollar stop is evaluated first and pre-empts the thesis stop, so the exit

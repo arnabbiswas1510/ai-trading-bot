@@ -61,6 +61,14 @@ flat dollar stop, ATR-normalised thesis stop, and stacked combinations — each 
 | **1.0%, day 0 only** | **+$3,426** | **$0** | **+$3,426** |
 | 0.75%, day 0 only | +$3,496 | $0 | +$3,496 |
 
+> **Correction (2026-08-20, same day):** the figures in this table were produced by an
+> aggregation in `research/exit_rule_replay.py` that summed only *positive* deltas on
+> losing trades, silently dropping losers a configuration made worse. Corrected all-in
+> figures: 2.0% days 0–1 = **−$176**; 1.0% days 0–1 = **+$893**; **1.0% day 0 = +$3,027**;
+> 0.75% day 0 = +$3,097. The ranking and therefore this decision are unchanged — every
+> configuration was inflated by roughly the same $400 of TTWO/SGHC regressions — but the
+> absolute numbers below are overstated. The harness has been fixed.
+
 Day 1 is where the harm comes from. CPAY — a **winner** — was cut for −$1,873 by the
 previous days-0–1 window, which is most of what that rule earned on the losers. At a 1%
 threshold the day-1 extension damages three winners for −$2,345.
@@ -97,8 +105,11 @@ The mechanism — `arm_exit()` with a 0.6% trail and a 3.25-hour deadline — is
 the day threshold is now an env var rather than a literal, so the window can be retuned
 without a code edit.
 
-Net effect on the historical sample: **+$3,426 versus the realised exits, +$2,951 versus
-the previous configuration**, with zero winners harmed.
+Net effect on the historical sample: **+$3,027 versus the realised exits** (all-in,
+corrected), with zero winners harmed. Measured as a whole stack — kill-switch plus the
+existing dollar and thesis stops — the same change moves the agent from **−$1,603 to
+−$272**, an improvement of **+$1,331**. The gap between +$3,027 and −$272 is the $500
+dollar stop, which is now under review as FU-004.
 
 ## Consequences
 

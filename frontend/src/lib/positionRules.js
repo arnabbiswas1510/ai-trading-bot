@@ -208,7 +208,7 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
             + 'A breakout that reverses that fast has already falsified its premise, and the 10–12% '
             + 'trailing stop is far too wide to be useful this early.\n'
             + 'The window is deliberately the entry day only: a 5-minute replay of all 17 closed trades showed '
-            + 'extending it to day 1 cut winners (CPAY alone −$1,873) and turned a +$3,426 net gain into +$1,292. '
+            + 'extending it to day 1 cut winners (CPAY alone −$1,873) and turned a +$3,027 net gain into +$893. '
             + 'From day 1 the Early Dollar Stop and then the Thesis Stop take over.',
     });
   }

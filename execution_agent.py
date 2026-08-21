@@ -341,9 +341,9 @@ INTRADAY_PULLBACK_PCT        = float(os.getenv("INTRADAY_PULLBACK_PCT",        0
 # replay of all 17 closed trades that reproduced the live mechanics exactly
 # (15-minute checks, arm_exit() 0.6% trail, 3.25h deadline). Deltas vs the
 # realised exits:
-#     2.0%, Day 0-1 (previous): losers +$2,348, winners -$1,873, NET   +$475
-#     1.0%, Day 0-1:            losers +$3,637, winners -$2,345, NET +$1,292
-#     1.0%, Day 0 only:         losers +$3,426, winners      $0, NET +$3,426
+#     2.0%, Day 0-1 (previous): losers +$1,697, winners -$1,873, NET   -$176
+#     1.0%, Day 0-1:            losers +$3,238, winners -$2,345, NET   +$893
+#     1.0%, Day 0 only:         losers +$3,027, winners      $0, NET +$3,027
 # Day 1 is what does the damage: extending the window past the entry day cost
 # CPAY -$1,873 on its own. No winner in the sample ever closed 1% below entry on
 # its entry day, so the two populations separate cleanly on Day 0 and the
@@ -367,6 +367,17 @@ INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2
 #              OII +$270, FROG +$258) — best savings/winner-risk ratio
 #   $600 stop: saves $2,436 (no winners at risk but saves less)
 #   $400 stop: saves $3,698 but 5 winners flagged as potentially at risk
+#
+# SUPERSEDED — UNDER REVIEW (FU-004, next review 2026-09-20). The numbers above
+# were measured before the kill-switch was tightened to 1.0% on Day 0. With that
+# rule running alongside, every loser the dollar stop catches is already caught a
+# day earlier, so its only remaining effect on the 2026-08-20 17-trade replay is
+# cutting two eventual winners: CPAY -$1,873 and DXCM -$1,367. All-in stack net:
+#   1.0% Day 0 + $500  + 1xATR (shipped):  -$272
+#   1.0% Day 0 + $1500 + 1xATR:          +$3,027
+#   1.0% Day 0 + 1xATR (no dollar stop): +$3,027
+# Raising EARLY_DOLLAR_STOP_AMOUNT to 1500 is strictly dominant over 500 in that
+# sample. Not changed yet: two winners is a thin basis for retuning a loss cap.
 #
 # The rule does NOT replace the IBKR GTC trailing stop; it is checked on the
 # 15-minute monitoring cycle and fires an armed exit (0.6% tight trail) so a

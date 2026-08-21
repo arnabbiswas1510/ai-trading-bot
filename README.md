@@ -183,7 +183,7 @@ reverses was not a breakout.
 
 The window is deliberately **the entry day only**. A 5-minute replay of all 17 closed trades
 found that extending it to day 1 cut winners (CPAY alone −$1,873) while catching nothing the
-entry day had not already caught — turning a +$3,426 net gain into +$1,292. No winner in the
+entry day had not already caught — turning a +$3,027 net gain into +$893. No winner in the
 sample ever closed 1% below entry on its own entry day. From day 1 the Early Dollar Stop, and
 then the Thesis Stop, take over.
 See [decisions/2026-08-20_early-loss-day0-tightening.md](decisions/2026-08-20_early-loss-day0-tightening.md).

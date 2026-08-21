@@ -350,8 +350,17 @@ def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
 
 
 def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
-    """Aggregate one configuration into a comparable result."""
-    loser_saved = winner_delta = 0.0
+    """Aggregate one configuration into a comparable result.
+
+    `net` is the ALL-IN sum of every per-trade delta — including losers the
+    configuration made worse. An earlier version summed only `loser_saved +
+    winner_delta`, silently dropping negative deltas on losing trades. That
+    flattered every aggressive configuration (the shipped stack scored +$186
+    when its true all-in figure is -$272) because tightening a loss rule most
+    often makes some losers slightly worse while making a few much better.
+    Do not reintroduce a `net` that ignores a sign.
+    """
+    loser_saved = loser_cost = winner_delta = 0.0
     losers_helped = losers_hurt = winners_hurt = 0
     per_trade = []
 
@@ -371,6 +380,7 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
                 loser_saved += delta
                 losers_helped += 1
             elif delta < 0:
+                loser_cost += delta
                 losers_hurt += 1
         else:
             winner_delta += delta
@@ -381,8 +391,10 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
         "label": cfg.label,
         "config": cfg.describe(),
         "loser_saved": round(loser_saved, 2),
+        "loser_cost": round(loser_cost, 2),
+        "loser_net": round(loser_saved + loser_cost, 2),
         "winner_delta": round(winner_delta, 2),
-        "net": round(loser_saved + winner_delta, 2),
+        "net": round(loser_saved + loser_cost + winner_delta, 2),
         "losers_helped": losers_helped,
         "losers_hurt": losers_hurt,
         "winners_hurt": winners_hurt,
@@ -406,6 +418,28 @@ def headline_configs() -> list[ExitConfig]:
     """The comparisons that decided the shipped parameters, plus neighbours."""
     return [
         shipped_config(),
+        # Like-for-like FULL-STACK comparisons. Single-rule rows below measure a
+        # rule in isolation, which overstates any rule whose saves are also
+        # reachable by a faster rule running alongside it. Only these rows answer
+        # "what would the agent as a whole have done".
+        ExitConfig("PREV STACK (2.0% days 0-1 + $500 + 1xATR)",
+                   pct=2.0, pct_last_day=1,
+                   dollar=500.0, dollar_last_day=5,
+                   atr_mult=1.0, atr_start_day=2, atr_last_day=5),
+        ExitConfig("STACK minus dollar stop (1.0% day 0 + 1xATR)",
+                   pct=1.0, pct_last_day=0,
+                   atr_mult=1.0, atr_start_day=2, atr_last_day=5),
+        ExitConfig("STACK minus thesis stop (1.0% day 0 + $500)",
+                   pct=1.0, pct_last_day=0,
+                   dollar=500.0, dollar_last_day=5),
+        ExitConfig("STACK, dollar stop raised to $1500",
+                   pct=1.0, pct_last_day=0,
+                   dollar=1500.0, dollar_last_day=5,
+                   atr_mult=1.0, atr_start_day=2, atr_last_day=5),
+        ExitConfig("STACK, dollar stop raised to $1000",
+                   pct=1.0, pct_last_day=0,
+                   dollar=1000.0, dollar_last_day=5,
+                   atr_mult=1.0, atr_start_day=2, atr_last_day=5),
         ExitConfig("Kill-switch only: 1.0% day 0", pct=1.0, pct_last_day=0),
         ExitConfig("Kill-switch only: 0.75% day 0", pct=0.75, pct_last_day=0),
         ExitConfig("Kill-switch only: 1.5% day 0", pct=1.5, pct_last_day=0),
@@ -458,7 +492,8 @@ def report(results: list[dict], trades: list[Trade], top: int | None = None) -> 
     print("All figures are deltas against the exits that ACTUALLY happened.")
     print("A positive net means the configuration would have made more money.")
     print()
-    header = f"{'configuration':<52}{'losers':>10}{'winners':>10}{'NET':>11}{'harmed':>8}"
+    header = (f"{'configuration':<52}{'losers':>10}{'winners':>10}"
+              f"{'NET':>11}{'harmed':>8}")
     print(header)
     print("-" * len(header))
 
@@ -468,7 +503,7 @@ def report(results: list[dict], trades: list[Trade], top: int | None = None) -> 
     for res in ordered:
         harmed = res["losers_hurt"] + res["winners_hurt"]
         print(f"{res['label'][:51]:<52}"
-              f"{res['loser_saved']:>10,.0f}"
+              f"{res['loser_net']:>10,.0f}"
               f"{res['winner_delta']:>10,.0f}"
               f"{res['net']:>11,.0f}"
               f"{harmed:>8}")

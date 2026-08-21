@@ -374,7 +374,7 @@ class TestEarlyLossKillSwitch:
     def test_does_not_fire_on_day1(self):
         """
         The window is Day 0 only. A 5-minute replay of all 17 closed trades showed
-        extending it to Day 1 turned a +$3,426 net gain into +$1,292, because Day 1
+        extending it to Day 1 turned a +$3,027 net gain into +$893, because Day 1
         triggers hit winners (CPAY alone cost -$1,873) while adding nothing on the
         losers that Day 0 had not already caught.
         See decisions/2026-08-20_early-loss-day0-tightening.md.

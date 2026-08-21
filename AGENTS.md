@@ -539,23 +539,32 @@ change something.
 
 ### Open question for the first review (2026-09-20)
 
-The 2026-08-20 replay found the **$500 Early Dollar Stop may be net harmful**.
-Measured standalone against realised exits it costs **−$3,240 on winners** —
-cutting CPAY (−$1,873) and DXCM (−$1,367) — while every loser it catches (HWM,
-DELL, RSI) is already caught a day earlier and more cheaply by the day-0
-kill-switch. In the combined shipped stack it drags the net from +$3,426 down to
-**+$186**.
+The 2026-08-20 replay found the **$500 Early Dollar Stop is net harmful as
+configured**. Measured standalone against realised exits it costs **−$3,240 on
+winners** — cutting CPAY (−$1,873) and DXCM (−$1,367) — while every loser it
+catches (HWM, DELL, RSI) is already caught a day earlier and more cheaply by the
+day-0 kill-switch. Like-for-like, all-in, across whole stacks:
+
+| Stack | All-in net vs realised |
+|---|---|
+| Previous (2.0% days 0–1 + $500 + 1×ATR) | −$1,603 |
+| **Shipped (1.0% day 0 + $500 + 1×ATR)** | **−$272** |
+| Shipped with the dollar stop raised to $1,500 | +$3,027 |
+| Shipped with the dollar stop removed | +$3,027 |
+
+So the day-0 tightening was a real improvement (+$1,331 at stack level), and the
+dollar stop is what keeps the stack negative. Raising the cap to $1,500 is
+strictly dominant over $500 in this sample: identical loser outcomes, zero winner
+damage, and a catastrophic-loss backstop still in place.
 
 This contradicts `decisions/2026-08-18_early-dollar-stop.md`, which measured
-+$2,936. The likely reason is that the earlier simulation predates the day-0
-kill-switch tightening, so the dollar stop was being credited with saves that
-now happen sooner anyway.
++$2,936. The earlier simulation predates the day-0 kill-switch tightening, so the
+dollar stop was being credited with saves that now happen sooner anyway.
 
 It was **not** changed on that evidence alone, because the rule had only just
-shipped and two winners is a thin basis for removing a loss cap. Re-run it first
-at the next review. If the pattern holds with more trades, the candidates are
-raising the cap, restricting it to days 1–2 where it is the only cover, or
-removing it and letting the thesis stop own days 2–5.
+shipped and two winners is a thin basis for retuning a loss cap. Re-run it first
+at the next review. If the pattern holds with more trades, the leading candidate
+is raising `EARLY_DOLLAR_STOP_AMOUNT` to `1500` rather than removing the rule.
 
 > **Note on mechanism:** this is a *passive* reminder — it fires when a session
 > reads this file, not on a calendar. If you want it to fire regardless of
