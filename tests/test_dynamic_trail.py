@@ -3,17 +3,17 @@ test_dynamic_trail.py - Tests for _compute_dynamic_trail_pct() and the
 dynamic trailing stop tightening system.
 
 Critical invariants:
-  - Profit lever: arms at >=6% gain and tightens the trail to 1.5% from HWM
+  - Profit lever: arms at >=5% gain and tightens the trail to 1.5% from HWM
   - Time lever:   DISABLED by default (time held is not a sell signal)
   - When the time lever is enabled, the tighter of the two levers wins
   - One-way only: never loosens a stop (returns None if already tight enough)
   - Returns None when no change warranted (no IBKR order churn)
 
-The current ladder is deliberately aggressive: once a trade is up +6%, the bot
+The current ladder is deliberately aggressive: once a trade is up +5%, the bot
 stops treating it as a nascent leader and instead banks the first leg with a
 1.5% give-back cap from the high-water mark. This was chosen after live-trade
 review showed repeated round-trips from peak back into mediocre exits.
-See decisions/2026-08-20_hwm-profit-lock-first-leg.md
+See decisions/2026-08-22_hwm-profit-lock-arm-5pct.md
 """
 
 import sys
@@ -29,12 +29,12 @@ from execution_agent import _compute_dynamic_trail_pct
 
 class TestProfitLever:
 
-    def test_no_change_below_6pct_gain(self):
-        result = _compute_dynamic_trail_pct(unrealized_pct=5.9, calendar_days=0, current_pct=0.07)
+    def test_no_change_below_5pct_gain(self):
+        result = _compute_dynamic_trail_pct(unrealized_pct=4.9, calendar_days=0, current_pct=0.07)
         assert result is None
 
-    def test_tightens_at_6pct_gain(self):
-        result = _compute_dynamic_trail_pct(unrealized_pct=6.0, calendar_days=0, current_pct=0.07)
+    def test_tightens_at_5pct_gain(self):
+        result = _compute_dynamic_trail_pct(unrealized_pct=5.0, calendar_days=0, current_pct=0.07)
         assert result == pytest.approx(0.015)
 
     def test_larger_winner_keeps_same_profit_lock(self):
@@ -47,10 +47,10 @@ class TestProfitLever:
 
     def test_modest_gain_does_not_tighten_inside_base_stop(self):
         """
-        The profit-lock must wait for the full +6% gain threshold. A merely green
+        The profit-lock must wait for the full +5% gain threshold. A merely green
         position is still allowed the base stop.
         """
-        result = _compute_dynamic_trail_pct(unrealized_pct=5.2, calendar_days=12, current_pct=0.07)
+        result = _compute_dynamic_trail_pct(unrealized_pct=4.2, calendar_days=12, current_pct=0.07)
         assert result is None
 
 
@@ -87,13 +87,13 @@ class TestTimeLeverOptIn:
         assert result == pytest.approx(0.05)
 
     def test_tighter_of_two_levers_wins_when_enabled(self):
-        """+6% (profit->1.5%) vs 30 days (time->3.5%) - profit is tighter."""
+        """+5% (profit->1.5%) vs 30 days (time->3.5%) - profit is tighter."""
         with patch.object(execution_agent, "TRAIL_TIME_TIERS", self.LEGACY):
-            result = _compute_dynamic_trail_pct(unrealized_pct=6.0, calendar_days=30, current_pct=0.07)
+            result = _compute_dynamic_trail_pct(unrealized_pct=5.0, calendar_days=30, current_pct=0.07)
         assert result == pytest.approx(0.015)
 
     def test_profit_lever_wins_when_tighter_than_time(self):
-        """Any winner beyond +6% keeps the 1.5% cap even when time tightening exists."""
+        """Any winner beyond +5% keeps the 1.5% cap even when time tightening exists."""
         with patch.object(execution_agent, "TRAIL_TIME_TIERS", self.LEGACY):
             result = _compute_dynamic_trail_pct(unrealized_pct=50.0, calendar_days=8, current_pct=0.07)
         assert result == pytest.approx(0.015)
@@ -111,7 +111,7 @@ class TestOneWayOnly:
         assert result is None
 
     def test_crossing_the_arm_threshold_tightens_from_base_stop(self):
-        result = _compute_dynamic_trail_pct(unrealized_pct=6.0, calendar_days=5, current_pct=0.07)
+        result = _compute_dynamic_trail_pct(unrealized_pct=5.0, calendar_days=5, current_pct=0.07)
         assert result == pytest.approx(0.015)
 
     def test_never_loosens_a_manually_tightened_stop(self):

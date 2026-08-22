@@ -1,7 +1,12 @@
 # HWM profit-lock after the first leg
 
 - **Date:** 2026-08-20
-- **Status:** Accepted
+- **Status:** Superseded in part by `decisions/2026-08-22_hwm-profit-lock-arm-5pct.md`
+
+> **2026-08-22 update.** This ADR remains the historical rationale for introducing
+> the first-leg HWM profit-lock mechanism and the 1.5% give-back cap. The arm
+> threshold has been retuned from +6% to +5% after a newer 5-minute replay on a
+> larger closed-trade sample. Do not cite +6% as the current shipped threshold.
 
 ## Context
 

@@ -74,6 +74,7 @@ def test_smart_polling_fast_fill(mock_get_live_price, mock_get_supabase_client, 
     
     with patch('execution_agent.get_own_cash', return_value=100000.0), \
          patch('execution_agent.get_margin_loan', return_value=0.0), \
+         patch('execution_agent.is_market_bullish', return_value=True), \
          patch('execution_agent.fetch_ibkr_delayed_price', return_value=(0.0, '')):
         execution_agent.run_market_open_buys(mock_ib)
         assert mock_ib.sleep.call_count == 3
@@ -99,6 +100,7 @@ def test_smart_polling_timeout(mock_get_live_price, mock_get_supabase_client, mo
     
     with patch('execution_agent.get_own_cash', return_value=100000.0), \
          patch('execution_agent.get_margin_loan', return_value=0.0), \
+         patch('execution_agent.is_market_bullish', return_value=True), \
          patch('execution_agent.fetch_ibkr_delayed_price', return_value=(0.0, '')):
         execution_agent.run_market_open_buys(mock_ib)
         # 60 calls in loop + 1 call (sleep 2) in cancel block

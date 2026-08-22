@@ -1258,6 +1258,26 @@ export default function DashboardView({ data, marketData, trades }) {
               <strong style={{ marginLeft: '0.5rem', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 {marketData.status}
               </strong>
+              {/* The descriptive status above answers "how does the market look?".
+                  This answers "will the bot actually buy?" — a different question
+                  with a different rule. Showing only the first misled the operator
+                  whenever the two disagreed. */}
+              {marketData.execution_gate && (
+                <div
+                  data-market-gate
+                  title={marketData.execution_gate.reason}
+                  style={{
+                    marginTop: '0.25rem', fontSize: '0.78rem',
+                    color: marketData.execution_gate.bullish ? '#10b981' : '#f43f5e'
+                  }}
+                >
+                  Buy Gate:{' '}
+                  <strong>
+                    {marketData.execution_gate.bullish ? 'OPEN — new buys allowed' : 'CLOSED — standing down'}
+                  </strong>
+                  <span style={{ color: 'var(--text-muted)' }}> · {marketData.execution_gate.reason}</span>
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>

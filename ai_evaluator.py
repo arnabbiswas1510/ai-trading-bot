@@ -39,6 +39,8 @@ _GRADE_BOUNDARIES = [(70, "A", 15), (55, "B", 5), (50, "C", 0)]
 # attention window.
 AI_BATCH_SIZE   = int(os.environ.get("AI_BATCH_SIZE", 8))
 AI_BATCH_RETRIES = int(os.environ.get("AI_BATCH_RETRIES", 1))
+HISTORY_LEARNING_MAX_TRADES = int(os.environ.get("HISTORY_LEARNING_MAX_TRADES", 3))
+HISTORY_LEARNING_MAX_PENALTY = int(os.environ.get("HISTORY_LEARNING_MAX_PENALTY", 12))
 
 
 def ai_grade_and_bonus(rating: int) -> tuple[str, int]:
@@ -47,6 +49,66 @@ def ai_grade_and_bonus(rating: int) -> tuple[str, int]:
         if rating >= threshold:
             return grade, bonus
     return "D", 0   # veto — execution agent will skip this ticker
+
+
+def build_trade_history_index(history_rows: list[dict]) -> dict[str, list[float]]:
+    """
+    Build ticker -> recent percent_return list (most recent first).
+
+    This powers a lightweight closed-loop penalty: tickers with repeated recent
+    losses are down-weighted even before parameter-level breakout learnings
+    become dense enough to drive Phase 2.
+    """
+    out: dict[str, list[float]] = {}
+    for row in history_rows or []:
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if not ticker:
+            continue
+        try:
+            pr = float(row.get("percent_return"))
+        except (TypeError, ValueError):
+            continue
+        out.setdefault(ticker, []).append(pr)
+    return out
+
+
+def compute_trade_history_penalty(ticker: str, history_index: dict[str, list[float]]) -> tuple[int, str | None]:
+    """
+    Closed-loop penalty from this ticker's own recent realised outcomes.
+
+    Rules (capped by HISTORY_LEARNING_MAX_PENALTY):
+      - last two trades both losers: +6
+      - else two-or-more losers in lookback: +4
+      - negative average return in lookback: +min(6, round(abs(avg_loss_pct)))
+      - any drawdown worse than -5%: +2
+    """
+    recent = (history_index.get((ticker or "").strip().upper()) or [])[:max(1, HISTORY_LEARNING_MAX_TRADES)]
+    if len(recent) < 2:
+        return 0, None
+
+    losers = [r for r in recent if r < 0]
+    if not losers:
+        return 0, None
+
+    penalty = 0
+    if recent[0] < 0 and recent[1] < 0:
+        penalty += 6
+    elif len(losers) >= 2:
+        penalty += 4
+
+    avg_ret = sum(recent) / len(recent)
+    if avg_ret < 0:
+        penalty += min(6, int(round(abs(avg_ret))))
+    if min(recent) <= -5.0:
+        penalty += 2
+
+    penalty = min(HISTORY_LEARNING_MAX_PENALTY, penalty)
+    if penalty <= 0:
+        return 0, None
+
+    reason = (f"recent {len(recent)} trade(s): "
+              f"{len(losers)} loser(s), avg {avg_ret:+.2f}%")
+    return penalty, reason
 
 # compute_liquidity_score, compute_rs_score, compute_final_score
 # are imported from scoring.py (no external dependencies — safe in CI tests).
@@ -320,6 +382,8 @@ def main():
 
     history = fetch_trade_history()
 
+    history_index = build_trade_history_index(history)
+
     # Fetch fundamentals from watchlist
     tickers = [t["ticker"] for t in triggers]
     fundamentals = fetch_watchlist_data(tickers)
@@ -425,15 +489,29 @@ def main():
               f"sent={sentiment_score} rs={rs_score} atr={atr_pct}% est={est_days}d -> final={final_score} ({grade}) [{trigger_type}]")
         print(f"     Rationale: {rationale}")
 
+        failure_penalty = int(t.get("failure_penalty") or 0)
+        history_penalty, history_reason = compute_trade_history_penalty(ticker, history_index)
+        total_penalty = failure_penalty + history_penalty
+        adjusted_score = max(0, final_score - total_penalty)
+
+        penalty_reason_parts = []
+        if t.get("penalty_reason"):
+            penalty_reason_parts.append(str(t.get("penalty_reason")))
+        if history_reason:
+            penalty_reason_parts.append(f"history_penalty={history_penalty} ({history_reason})")
+
         fields = {
             "ai_rating":          ai_score,
             "ai_grade":           grade,
             "final_score":        final_score,
+            "adjusted_score":     adjusted_score,
             "technical_score":    technical_score,
             "liquidity_score":    liq_score,
             "sentiment_score":    sentiment_score,
             "rs_score":           rs_score,
             "score_rationale":    rationale,
+            "failure_penalty":    failure_penalty,
+            "penalty_reason":     " | ".join(penalty_reason_parts) if penalty_reason_parts else None,
             # swing-trade velocity fields (written by screener, confirmed here for display)
             "atr_pct":            atr_pct,
             "est_days_to_target": est_days,
@@ -457,4 +535,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

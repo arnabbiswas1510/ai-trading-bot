@@ -5,6 +5,13 @@
 - **Supersedes parts of:** `2026-08-04_backtest-noise-floor-and-slot-count.md`
 - **Challenges:** `2026-08-04_plateau-exit-capital-velocity.md`
 
+> **Note, 2026-08-22.** Follow-up item 1 below refers to "the SPY > SMA-200 market
+> filter" as a live buy condition. The *gap* it describes is still open, but the
+> live filter is no longer that rule: it is now a multi-index gate (every ticker in
+> `MARKET_DIRECTION_TICKERS` more than 1% above its SMA-200, at least one SMA-200
+> non-falling, fail-closed). Closing that fidelity gap now means reproducing the
+> new rule. See `decisions/2026-08-22_market-direction-gate-spy-qqq.md`.
+
 ## Context
 
 `2026-08-04_backtest-noise-floor-and-slot-count.md` concluded the harness had a

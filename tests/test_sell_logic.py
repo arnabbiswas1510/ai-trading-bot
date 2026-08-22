@@ -482,6 +482,7 @@ class TestBuyBracketNoLimitAtBuyTime:
              patch("execution_agent.get_live_price", return_value=100.0), \
              patch("execution_agent.get_own_cash", return_value=10000.0), \
              patch("execution_agent.get_margin_loan", return_value=0.0), \
+             patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.MAX_POSITIONS", 1):
             execution_agent.run_market_open_buys(ib)
 

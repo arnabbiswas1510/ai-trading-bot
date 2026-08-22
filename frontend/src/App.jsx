@@ -186,67 +186,81 @@ export default function App() {
         
         <ul className="nav-menu">
           <li>
-            <div 
+            <button
+              type="button"
               className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
               onClick={() => setCurrentView('dashboard')}
+              aria-current={currentView === 'dashboard' ? 'page' : undefined}
             >
               <LayoutDashboard />
               <span>Dashboard</span>
-            </div>
+            </button>
           </li>
           <li>
-            <div 
+            <button
+              type="button"
               className={`nav-item ${currentView === 'screener' ? 'active' : ''}`}
               onClick={() => setCurrentView('screener')}
+              aria-current={currentView === 'screener' ? 'page' : undefined}
             >
               <Search />
               <span>Screener</span>
-            </div>
+            </button>
           </li>
           <li>
-            <div 
+            <button
+              type="button"
               className={`nav-item ${currentView === 'breakouts' ? 'active' : ''}`}
               onClick={() => setCurrentView('breakouts')}
+              aria-current={currentView === 'breakouts' ? 'page' : undefined}
             >
               <Activity />
               <span>Breakouts</span>
-            </div>
+            </button>
           </li>
           <li>
-            <div 
+            <button
+              type="button"
               className={`nav-item ${currentView === 'history' ? 'active' : ''}`}
               onClick={() => setCurrentView('history')}
+              aria-current={currentView === 'history' ? 'page' : undefined}
             >
               <History />
               <span>Trade History</span>
-            </div>
+            </button>
           </li>
           <li>
-            <div 
+            <button
+              type="button"
               className={`nav-item ${currentView === 'performance' ? 'active' : ''}`}
               onClick={() => setCurrentView('performance')}
+              aria-current={currentView === 'performance' ? 'page' : undefined}
             >
               <LineChart />
               <span>Performance</span>
-            </div>
+            </button>
           </li>
           <li>
-            <div 
+            <button
+              type="button"
               className={`nav-item ${currentView === 'backtester' ? 'active' : ''}`}
               onClick={() => setCurrentView('backtester')}
+              aria-current={currentView === 'backtester' ? 'page' : undefined}
             >
               <BarChart2 />
               <span>Backtester</span>
-            </div>
+            </button>
           </li>
           <li>
-            <div 
+            <button
+              type="button"
               className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
               onClick={() => setCurrentView('settings')}
+              aria-current={currentView === 'settings' ? 'page' : undefined}
             >
               <SettingsIcon />
               <span>Settings</span>
-            </div>
+            </button>
           </li>
         </ul>
 

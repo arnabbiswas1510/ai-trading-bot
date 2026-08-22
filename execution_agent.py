@@ -180,7 +180,7 @@ ATR_STOP_MAX_PCT         = float(os.getenv("ATR_STOP_MAX_PCT", 0.12))
 # rules reacted. On the 20 closed trades available on 2026-08-20, the 9 winners
 # gave back $8,071 from their high-water marks before exit (avg $897, median
 # 4.03% below the peak at sale). A simple HWM profit-lock beat the current exits:
-# arm once the trade is up +6%, then cap give-back to 1.5% from the peak.
+# arm once the trade is up +5%, then cap give-back to 1.5% from the peak.
 #
 # This is intentionally aggressive. The rule is not trying to protect +20% to
 # +50% leaders; it is trying to stop 4-9% winners from decaying into 0-4% exits.
@@ -190,8 +190,8 @@ ATR_STOP_MAX_PCT         = float(os.getenv("ATR_STOP_MAX_PCT", 0.12))
 #
 # Entries are (threshold, trail_pct), listed highest-threshold-first.
 TRAIL_PROFIT_TIERS: list[tuple[float, float]] = [
-    ( 6.0, 0.015),   # ≥ 6% gain  → 1.5% trail from HWM
-    ( 0.0, None),    # < 6%       → no change (base STOP_LOSS_PCT applies)
+    ( 5.0, 0.015),   # ≥ 5% gain  → 1.5% trail from HWM
+    ( 0.0, None),    # < 5%       → no change (base STOP_LOSS_PCT applies)
 ]
 # Lever 2 (time): DISABLED BY DEFAULT.
 #
@@ -555,7 +555,7 @@ POWER_HOLD_DURATION_DAYS  = int(os.getenv("POWER_HOLD_DURATION_DAYS", 56))  # 8 
 # *100% of those still exited on the trailing stop*, making it inert.
 #
 # The current HWM profit lock makes this worse, not better: it clamps to 1.5% from
-# the peak at only +6% gain, so by the time a position reaches +20% it is already
+# the peak at only +5% gain, so by the time a position reaches +20% it is already
 # on the tightest rung. Bypassing the ladder while power-held is therefore load-
 # bearing — see decisions/2026-08-20_hwm-profit-lock-first-leg.md.
 #
@@ -568,9 +568,21 @@ POWER_HOLD_DURATION_DAYS  = int(os.getenv("POWER_HOLD_DURATION_DAYS", 56))  # 8 
 # disaster backstop, since the upside rests on very few trades.
 POWER_HOLD_TRAIL_PCT      = float(os.getenv("POWER_HOLD_TRAIL_PCT", 0.30))
 
+# ── CANSLIM "M" — market direction gate ───────────────────────────────────────
+# Both benchmarks must close above their SMA-200 by MARKET_DIRECTION_BUFFER_PCT,
+# and at least one SMA-200 must be non-falling over MARKET_DIRECTION_SLOPE_DAYS.
+# Grid-tested over 4,940 sessions (2007-2026): this configuration sits out 67.8%
+# of the worst-5% forward-20d windows vs 59.3% for the old bare SPY>SMA200 rule.
+# A 50>200 requirement and an "either index" (OR) combination were both tested
+# and rejected — see decisions/2026-08-22_market-direction-gate-spy-qqq.md.
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
-MARKET_DIRECTION_TICKER         = os.getenv("MARKET_DIRECTION_TICKER", "SPY")
+MARKET_DIRECTION_TICKERS        = [t.strip().upper() for t in
+                                   os.getenv("MARKET_DIRECTION_TICKERS", "SPY,QQQ").split(",")
+                                   if t.strip()]
+MARKET_DIRECTION_BUFFER_PCT     = float(os.getenv("MARKET_DIRECTION_BUFFER_PCT", 0.01))
+MARKET_DIRECTION_SLOPE_DAYS     = max(1, int(os.getenv("MARKET_DIRECTION_SLOPE_DAYS", 20)))
+MARKET_DIRECTION_MAX_STALE_DAYS = int(os.getenv("MARKET_DIRECTION_MAX_STALE_DAYS", 5))
 
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(
@@ -2090,6 +2102,15 @@ def reconcile_with_ibkr(ib: IB):
                 # Then try to insert to trade_history
                 client.table("trade_history").insert(trade_log).execute()
                 print(f"        ✅ Logged to history. PnL: ${profit_loss:+.2f} ({percent_return:+.2f}%)")
+                _write_breakout_learning_row(
+                    client=client,
+                    ticker=ticker,
+                    buy_date=datetime.datetime.fromisoformat(str(buy_date).replace("Z", "+00:00")),
+                    reason=sell_reason,
+                    pos_row=pos,
+                    market_regime="neutral",
+                    percent_return=percent_return,
+                )
                 notifier.notify_manual_close(
                     ticker=ticker, shares=shares, buy_price=buy_price,
                     sell_price=sell_price, sell_price_source=sell_price_source,
@@ -2157,34 +2178,104 @@ def reconcile_with_ibkr(ib: IB):
         print(f"   🔄 Reconciliation complete — {changes} correction(s) applied.")
 
 
-def is_market_bullish() -> bool:
+def _fetch_market_closes(ticker: str) -> list[tuple[str, float]]:
+    """Sorted (date, close) daily history for `ticker`, oldest first.
+
+    Returns an empty list on any transport, status or payload problem so that
+    every failure mode reaches the caller identically and is treated as bearish.
     """
-    CANSLIM 'M' (Market Direction) filter.
-    Returns True  if MARKET_DIRECTION_TICKER (SPY) is above its SMA{window} — bull market.
-    Returns False if below — bear market: idle slots hold pure cash.
-    Fails open (returns True) to avoid unintended cash locks if the API is unavailable.
+    to_date   = datetime.datetime.now(ZoneInfo('America/New_York')).date()
+    from_date = to_date - datetime.timedelta(
+        days=int((MARKET_DIRECTION_SMA_WINDOW + MARKET_DIRECTION_SLOPE_DAYS) * 1.6) + 60)
+    url = ("https://financialmodelingprep.com/stable/historical-price-eod/full"
+           f"?symbol={ticker}&from={from_date}&to={to_date}&apikey={FMP_API_KEY}")
+    r = fmp_session.get(url, timeout=10)
+    if r.status_code != 200:
+        print(f"⚠️ Market direction: HTTP {r.status_code} for {ticker}.")
+        return []
+    data = r.json()
+    if not isinstance(data, list):
+        print(f"⚠️ Market direction: unexpected payload for {ticker}.")
+        return []
+    rows = []
+    for d in data:
+        try:
+            close = float(d["close"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if close > 0 and d.get("date"):
+            rows.append((str(d["date"])[:10], close))
+    rows.sort(key=lambda x: x[0])
+    return rows
+
+
+def _index_is_bullish(ticker: str) -> tuple[bool, bool] | None:
+    """Per-index verdict as ``(above_sma, slope_ok)``, or None if data is unusable.
+
+    Bullish requires the latest close to sit more than MARKET_DIRECTION_BUFFER_PCT
+    above the SMA-200. The buffer is deliberately asymmetric-free: the same
+    threshold governs entry and exit, so the gate is a simple line with a
+    dead-band rather than a hysteresis loop.
+    """
+    rows = _fetch_market_closes(ticker)
+    needed = MARKET_DIRECTION_SMA_WINDOW + MARKET_DIRECTION_SLOPE_DAYS
+    if len(rows) < needed:
+        print(f"⚠️ Market direction: only {len(rows)} sessions for {ticker}, "
+              f"need {needed}.")
+        return None
+
+    last_date = datetime.date.fromisoformat(rows[-1][0])
+    today_ny  = datetime.datetime.now(ZoneInfo('America/New_York')).date()
+    if (today_ny - last_date).days > MARKET_DIRECTION_MAX_STALE_DAYS:
+        print(f"⚠️ Market direction: {ticker} data stale (last {last_date}).")
+        return None
+
+    closes = [c for _, c in rows]
+    w = MARKET_DIRECTION_SMA_WINDOW
+    sma_now  = sum(closes[-w:]) / w
+    sma_then = sum(closes[-w - MARKET_DIRECTION_SLOPE_DAYS:
+                          -MARKET_DIRECTION_SLOPE_DAYS]) / w
+    latest   = closes[-1]
+
+    above = latest > sma_now * (1 + MARKET_DIRECTION_BUFFER_PCT)
+    slope_ok = sma_then > 0 and (sma_now - sma_then) / sma_then >= 0
+    print(f"📊 {ticker}: ${latest:.2f} vs SMA{w} ${sma_now:.2f} "
+          f"(+{MARKET_DIRECTION_BUFFER_PCT * 100:.1f}% buffer) "
+          f"{'above' if above else 'below'}, "
+          f"SMA{w} slope {MARKET_DIRECTION_SLOPE_DAYS}d "
+          f"{'flat/up' if slope_ok else 'down'}")
+    return bool(above), bool(slope_ok)
+
+
+def is_market_bullish() -> bool:
+    """CANSLIM 'M' (Market Direction) filter — fail-closed.
+
+    Bullish requires **every** benchmark in MARKET_DIRECTION_TICKERS to close
+    above its SMA-200 by MARKET_DIRECTION_BUFFER_PCT, and **at least one** of
+    those SMA-200s to be non-falling over MARKET_DIRECTION_SLOPE_DAYS.
+
+    Every failure mode — HTTP error, malformed payload, insufficient history,
+    stale data, unhandled exception — returns False. Standing down costs a day
+    of opportunity; buying into an undiagnosed bear market costs capital.
+    MARKET_DIRECTION_FILTER_ENABLED=false is the only bypass.
     """
     if not MARKET_DIRECTION_FILTER_ENABLED:
         return True
+    if not MARKET_DIRECTION_TICKERS:
+        print("⚠️ Market direction: no benchmarks configured → BEAR (fail-closed).")
+        return False
     try:
-        to_date   = datetime.datetime.now(ZoneInfo('America/New_York')).date()
-        from_date = to_date - datetime.timedelta(days=MARKET_DIRECTION_SMA_WINDOW + 100)
-        url = ("https://financialmodelingprep.com/stable/historical-price-eod/full"
-               f"?symbol={MARKET_DIRECTION_TICKER}&from={from_date}&to={to_date}"
-               f"&apikey={FMP_API_KEY}")
-        r = fmp_session.get(url, timeout=10)
-        if r.status_code != 200:
-            return True
-        data = r.json()
-        if not isinstance(data, list) or len(data) < MARKET_DIRECTION_SMA_WINDOW:
-            print(f"⚠️ Not enough history for {MARKET_DIRECTION_TICKER} SMA{MARKET_DIRECTION_SMA_WINDOW}. Defaulting to BULL.")
-            return True
-        closes  = [float(d["close"]) for d in sorted(data, key=lambda x: x["date"])]
-        latest  = closes[-1]
-        sma     = sum(closes[-MARKET_DIRECTION_SMA_WINDOW:]) / MARKET_DIRECTION_SMA_WINDOW
-        bullish = latest > sma
-        print(f"📊 Market direction [{MARKET_DIRECTION_TICKER}]: "
-              f"${latest:.2f} vs SMA{MARKET_DIRECTION_SMA_WINDOW} ${sma:.2f} "
+        above_all, slope_any = True, False
+        for ticker in MARKET_DIRECTION_TICKERS:
+            verdict = _index_is_bullish(ticker)
+            if verdict is None:
+                print(f"⚠️ Market direction: {ticker} unusable → BEAR (fail-closed).")
+                return False
+            above, slope_ok = verdict
+            above_all = above_all and above
+            slope_any = slope_any or slope_ok
+        bullish = above_all and slope_any
+        print(f"📊 Market direction [{'+'.join(MARKET_DIRECTION_TICKERS)}]: "
               f"→ {'BULL ↑' if bullish else 'BEAR ↓'}")
         return bullish
     except Exception as e:
@@ -2310,7 +2401,8 @@ def run_market_open_buys(ib: IB):
 
     # ── Market direction hard gate (fail-closed on data errors) ─────────────────
     if MARKET_DIRECTION_FILTER_ENABLED and not is_market_bullish():
-        print("📊 Market bearish (SPY < SMA-200 or data unavailable). Standing down from new buys.")
+        print("📊 Market bearish (benchmark below SMA-200 buffer, falling SMA-200, "
+              "or data unavailable). Standing down from new buys.")
         return
 
     
@@ -3410,7 +3502,7 @@ def monitor_portfolio_intraday(ib: IB):
                   f"{POWER_HOLD_DURATION_DAYS}) — discretionary exits suppressed.")
 
         # While power-held the profit ladder is bypassed entirely: the HWM profit
-        # lock would otherwise clamp the trail to 1.5% from the peak from +6% gain
+        # lock would otherwise clamp the trail to 1.5% from the peak from +5% gain
         # onward, long before the +20% that arms this rule, which made the rule
         # inert (every armed position still exited on the trail). Widen to
         # POWER_HOLD_TRAIL_PCT so the leader can actually run.
@@ -3927,6 +4019,96 @@ def monitor_portfolio_intraday(ib: IB):
                         break
 
 
+def _infer_exit_type(reason: str) -> str:
+    """Classify an exit reason into the breakout_learnings exit_type bucket."""
+    r_lower = str(reason or "").lower()
+    if "rank & replace" in r_lower or "rank and replace" in r_lower:
+        return "rank_replace"
+    if "time-stop" in r_lower or ("mandatory" in r_lower and "time" in r_lower):
+        return "time_stop"
+    if "break-even" in r_lower or "hwm break" in r_lower:
+        return "break_even"
+    if "ema" in r_lower or "moving average" in r_lower:
+        return "ma_exit"
+    if "hard stop" in r_lower:
+        return "hard_stop"
+    if "stop" in r_lower:
+        return "stop_loss"
+    if "rotation" in r_lower or "param" in r_lower or "drift" in r_lower:
+        return "rotation"
+    return "manual"
+
+
+def _build_failed_params_snapshot(pos_row: dict | None, percent_return: float) -> dict:
+    """
+    Build a failure-parameter snapshot for breakout_learnings.
+
+    Preferred source is `param_drift` (if present and parseable). If absent, use
+    entry-time trigger parameters so the learning loop remains populated for exits
+    reconciled from broker-managed stops.
+    """
+    import json as _json
+
+    if not pos_row:
+        return {}
+
+    raw = pos_row.get("param_drift")
+    if isinstance(raw, dict) and raw:
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = _json.loads(raw)
+            if isinstance(parsed, dict) and parsed:
+                return parsed
+        except Exception:
+            pass
+
+    failed = percent_return < 0
+    trigger_type = str(pos_row.get("entry_trigger_type") or "BREAKOUT").upper()
+    snapshot = {
+        "_meta": {"trigger_type": trigger_type, "source": "entry_snapshot"},
+    }
+    for key, source_key in (
+        ("volume_surge", "entry_volume_surge"),
+        ("rs_score", "entry_rs_score"),
+        ("technical_score", "entry_technical_score"),
+        ("pivot_distance_pct", "entry_pivot_distance_pct"),
+    ):
+        val = pos_row.get(source_key)
+        if val is None:
+            continue
+        snapshot[key] = {"entry": val, "failed": failed}
+    return snapshot
+
+
+def _write_breakout_learning_row(client: Client, ticker: str, buy_date, reason: str,
+                                 pos_row: dict | None, market_regime: str,
+                                 percent_return: float) -> None:
+    """Persist a single breakout_learnings row. Non-fatal by design."""
+    try:
+        if not pos_row:
+            return
+        buy_dt_d = buy_date.date() if hasattr(buy_date, "date") else buy_date
+        days_held = trading_days_between(
+            buy_dt_d, datetime.datetime.now(ZoneInfo("America/New_York")).date()
+        )
+        client.table("breakout_learnings").insert({
+            "ticker":            ticker,
+            "buy_date":          buy_dt_d.isoformat(),
+            "exit_date":         datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
+            "exit_type":         _infer_exit_type(reason),
+            "entry_final_score": pos_row.get("entry_final_score"),
+            "failed_params":     _build_failed_params_snapshot(pos_row, percent_return),
+            "lesson_text":       pos_row.get("analysis_reason") or reason,
+            "market_regime":     market_regime,
+            "days_held":         days_held,
+            "pnl_pct":           percent_return,
+        }).execute()
+        print(f"   📚 {ticker}: breakout_learnings row written (pnl={percent_return:+.1f}%)")
+    except Exception as _le:
+        print(f"   ⚠️ Could not write breakout_learnings for {ticker}: {_le}")
+
+
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float,
                  buy_date, buy_reason: str, current_price: float, reason: str,
                  pos_row: dict | None = None,
@@ -4004,45 +4186,15 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         client.table("trade_history").insert(trade_log).execute()
 
         # ── Write to breakout_learnings for future screener feedback ─────────────
-        import json as _json2
-        try:
-            if pos_row:
-                buy_dt_d   = buy_date.date() if hasattr(buy_date, "date") else buy_date
-                days_held  = trading_days_between(buy_dt_d, datetime.datetime.now(ZoneInfo("America/New_York")).date())
-                # Determine exit type from reason string — explicit checks first,
-                # generic catch-all last so new exit types don't silently become 'manual'.
-                r_lower = reason.lower()
-                if "rank & replace" in r_lower or "rank and replace" in r_lower:
-                    exit_type = "rank_replace"
-                elif "time-stop" in r_lower or "mandatory" in r_lower and "time" in r_lower:
-                    exit_type = "time_stop"
-                elif "break-even" in r_lower or "hwm break" in r_lower:
-                    exit_type = "break_even"
-                elif "ema" in r_lower or "moving average" in r_lower:
-                    exit_type = "ma_exit"
-                elif "hard stop" in r_lower:
-                    exit_type = "hard_stop"
-                elif "stop" in r_lower:
-                    exit_type = "stop_loss"
-                elif "rotation" in r_lower or "param" in r_lower or "drift" in r_lower:
-                    exit_type = "rotation"
-                else:
-                    exit_type = "manual"
-                client.table("breakout_learnings").insert({
-                    "ticker":            ticker,
-                    "buy_date":          buy_dt_d.isoformat(),
-                    "exit_date":         datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat(),
-                    "exit_type":         exit_type,
-                    "entry_final_score": pos_row.get("entry_final_score"),
-                    "failed_params":     _json2.loads(pos_row.get("param_drift") or "{}"),
-                    "lesson_text":       pos_row.get("analysis_reason"),
-                    "market_regime":     market_regime,
-                    "days_held":         days_held,
-                    "pnl_pct":           percent_return,
-                }).execute()
-                print(f"   📚 {ticker}: breakout_learnings row written (exit_type={exit_type}, pnl={percent_return:+.1f}%)")
-        except Exception as _le:
-            print(f"   ⚠️ Could not write breakout_learnings for {ticker}: {_le}")
+        _write_breakout_learning_row(
+            client=client,
+            ticker=ticker,
+            buy_date=buy_date,
+            reason=reason,
+            pos_row=pos_row,
+            market_regime=market_regime,
+            percent_return=percent_return,
+        )
 
         print(f"✅ Closed Position: Sold {shares} shares of {ticker} at ${fill_price:.2f}.")
         print(f"   PnL: ${profit_loss} ({percent_return}%) | Reason: {reason}")

@@ -316,6 +316,10 @@ class TestDecisionsWiredIntoBuyLoop:
                             lambda: client)
         monkeypatch.setattr(execution_agent, "get_margin_loan", lambda ib: 0.0)
         monkeypatch.setattr(execution_agent, "get_own_cash", lambda ib: 100_000.0)
+        # The CANSLIM "M" gate is fail-closed and would otherwise stand the buy
+        # loop down before any decision row is written. It is exercised for real
+        # in tests/test_market_direction.py.
+        monkeypatch.setattr(execution_agent, "is_market_bullish", lambda: True)
 
         execution_agent.run_market_open_buys(MagicMock())
         return calls

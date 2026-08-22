@@ -122,8 +122,10 @@ pivot, and extension above SMA-50. This is one of five components later combined
 | Sentiment | 10% |
 | RS vs SPY | 10% |
 
-A **failure penalty** may be applied from `breakout_learnings`, which records parameter
-combinations that have previously failed.
+A **failure penalty** is applied from `breakout_learnings` once enough rows exist
+(`LEARNING_MIN_ROWS`). Separately, `ai_evaluator.py` applies a ticker-level
+history penalty from recent `trade_history` outcomes. The buy loop uses
+`adjusted_score` (not raw `final_score`) when either penalty is active.
 
 `ATR%` and `est_days_to_target` are computed here and persisted. `entry_atr_pct` is later
 copied onto the position at fill and becomes the scaling factor for the

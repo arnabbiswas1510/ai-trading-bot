@@ -1,7 +1,18 @@
 # Decision: Backtester Accuracy Rewrite
 
 **Date:** 2026-07-23
-**Status:** Implemented (sizing corrected 2026-07-24)
+**Status:** Implemented (sizing corrected 2026-07-24) — **one claim below is now false, see erratum**
+
+> **Erratum, 2026-08-22.** The "Market filter" line below states that the
+> backtester's SPY `close > EMA-21` filter *"matches live"*. That is no longer
+> true and **must not be cited**. The live gate is now a multi-index rule —
+> every benchmark in `MARKET_DIRECTION_TICKERS` (SPY, QQQ) more than 1% above its
+> SMA-200, with at least one non-falling SMA-200 — and it fails closed. See
+> `decisions/2026-08-22_market-direction-gate-spy-qqq.md`.
+>
+> The backtester itself is unchanged and still uses SPY `close > EMA-21`, so
+> backtest results now model a **more permissive** market filter than the live bot
+> applies. Tracked as tech debt; every other decision in this ADR still holds.
 
 ## Problem
 

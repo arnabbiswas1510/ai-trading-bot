@@ -65,12 +65,20 @@ Set the two equal once the portfolio has been rebuilt at the target count.
 | `MIN_TRIGGER_SCORE` | `60` | Score floor, `BREAKOUT` |
 | `MIN_PRE_BREAKOUT_SCORE` | `65` | Score floor, `PRE_BREAKOUT` |
 | `MIN_RELAXED_TRIGGER_SCORE` | `58` | Score floor, `PRE_BREAKOUT_RELAXED` |
-| `MARKET_DIRECTION_FILTER_ENABLED` | `true` | Suspend buys when SPY < SMA-200 |
+| `MARKET_DIRECTION_FILTER_ENABLED` | `true` | Master switch for the CANSLIM "M" buy gate. `false` is the only bypass |
+| `MARKET_DIRECTION_TICKERS` | `SPY,QQQ` | Comma-separated benchmarks. **Every** one must clear the buffer for a bull verdict. Replaces the singular `MARKET_DIRECTION_TICKER`, which is no longer read |
 | `MARKET_DIRECTION_SMA_WINDOW` | `200` | Regime lookback |
-| `MARKET_DIRECTION_TICKER` | `SPY` | Regime benchmark |
+| `MARKET_DIRECTION_BUFFER_PCT` | `0.01` | Dead-band: price must exceed `SMA-200 × (1 + buffer)`. Prevents regime flapping on marginal crosses |
+| `MARKET_DIRECTION_SLOPE_DAYS` | `20` | Sessions used for the SMA-200 slope test. **At least one** benchmark's SMA-200 must be non-falling |
+| `MARKET_DIRECTION_MAX_STALE_DAYS` | `5` | Price data older than this is unusable → bearish |
 
-The market filter gates **buying only** — it never forces an exit — and fails closed on
-missing data.
+The market filter gates **buying only** — it never forces an exit — and fails **closed** on
+every error path: HTTP failure, malformed payload, insufficient history, stale data,
+unhandled exception, or an empty benchmark list all yield bearish.
+See `decisions/2026-08-22_market-direction-gate-spy-qqq.md`.
+
+`backend/screener.py::get_market_direction()` (dashboard) reads the same three tuning
+variables so its `execution_gate` field cannot drift from the agent's verdict.
 
 ---
 
@@ -184,10 +192,10 @@ almost any other.
 | `BREAKOUT_VERDICT_MIN_GAIN` | `0.01` | Day-3 PASS gain requirement |
 | `BREAKOUT_VERDICT_MIN_VOL_PCT` | `0.75` | Day-3 PASS volume requirement |
 
-Profit tiers are code constants (`TRAIL_PROFIT_TIERS`): +6% → 1.5%.
+Profit tiers are code constants (`TRAIL_PROFIT_TIERS`): +5% → 1.5%.
 
 This is a deliberate first-leg profit lock rather than a late-stage winner ladder. See
-`decisions/2026-08-20_hwm-profit-lock-first-leg.md` for why.
+`decisions/2026-08-22_hwm-profit-lock-arm-5pct.md` for why.
 
 ---
 
@@ -224,6 +232,8 @@ Hard-coded floors: price > $15, 30-day average volume > 250,000, market cap > $3
 | `RELAXED_PRE_BREAKOUT_VOL_MAX` | `1.10` | Quota-fill variant |
 | `RELAXED_PRE_BREAKOUT_UPTREND_MIN` | `2` | Quota-fill variant |
 | `RELAXED_RS_MIN_GATE` | `50` | Quota-fill variant |
+| `LEARNING_MIN_ROWS` | `3` | Minimum `breakout_learnings` rows before Phase-2 penalty activates |
+| `LEARNING_LOOKBACK_DAYS` | `90` | Recency window for failure-penalty learnings |
 
 ---
 
@@ -233,6 +243,8 @@ Hard-coded floors: price > $15, 30-day average volume > 250,000, market cap > $3
 |---|---|---|
 | `AI_BATCH_SIZE` | `8` | Triggers per prompt — small batches avoid lost-in-the-middle degradation |
 | `AI_BATCH_RETRIES` | `1` | Retries for tickers missing from a response |
+| `HISTORY_LEARNING_MAX_TRADES` | `3` | Recent closed trades per ticker used for history-based penalty |
+| `HISTORY_LEARNING_MAX_PENALTY` | `12` | Cap for history-based adjusted-score penalty |
 | `PRE_BREAKOUT_SCORE_BOOST` | `0` | Optional additive boost for coil setups |
 
 ---

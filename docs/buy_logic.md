@@ -28,7 +28,7 @@ Checked once, before any candidate is considered.
 |---|---|---|---|
 | 0a | Schema integrity | A column a live risk rule depends on is missing | **Zero buys.** Monitoring and exits continue normally |
 | 0b | Margin loan | `margin_loan > 0` | **Zero buys.** The system never trades on borrowed money |
-| 0c | Market direction | SPY < SMA-200 | Stand down from new buys; existing positions unaffected |
+| 0c | Market direction | Any benchmark (SPY, QQQ) not >1% above its SMA-200, or every SMA-200 falling | Stand down from new buys; existing positions unaffected |
 | 0d | Trigger freshness | `triggered_at` within `TRIGGER_LOOKBACK_DAYS` (3) | Stale signals discarded — covers weekends and holidays |
 | 0e | Capacity | `len(holdings) ≥ MAX_POSITIONS` | All candidates recorded as `SLOTS_FULL` |
 
@@ -74,7 +74,7 @@ code, which is what makes the buy model auditable after the fact.
 | 2 | Cooling-off | Sold within `COOLING_OFF_DAYS` (7) | `COOLING_OFF` |
 | 3 | AI veto | `ai_grade == "D"` (conviction < 50) | `AI_VETO` |
 | 4 | Score present | `final_score` / `adjusted_score` is NULL | `NO_AI_SCORE` |
-| 5 | Score floor | Below the trigger-type minimum | `SCORE_FLOOR` |
+| 5 | Score floor | Below the trigger-type minimum (`adjusted_score` when present) | `SCORE_FLOOR` |
 | 6 | Capacity (in-loop) | Slots filled by an earlier buy this cycle | `SLOTS_FULL` |
 | 7 | Cash floor | `available_cash < MIN_POSITION_SIZE` ($5,000) | `INSUFFICIENT_CASH` |
 | 8 | Volume surge | **`BREAKOUT` only:** `volume_surge < MIN_VOL_SURGE_GATE` (0.75×) | `SCORE_FLOOR` |
@@ -190,8 +190,12 @@ converges to even weighting after full turnover.
 | `MIN_TRIGGER_SCORE` | `60` | Floor for `BREAKOUT` |
 | `MIN_PRE_BREAKOUT_SCORE` | `65` | Floor for `PRE_BREAKOUT` |
 | `MIN_RELAXED_TRIGGER_SCORE` | `58` | Floor for `PRE_BREAKOUT_RELAXED` |
-| `MARKET_DIRECTION_FILTER_ENABLED` | `true` | SPY vs SMA-200 buy gate |
+| `MARKET_DIRECTION_FILTER_ENABLED` | `true` | Master switch for the CANSLIM "M" buy gate |
+| `MARKET_DIRECTION_TICKERS` | `SPY,QQQ` | Benchmarks; **every** one must clear the buffer |
 | `MARKET_DIRECTION_SMA_WINDOW` | `200` | Regime lookback |
+| `MARKET_DIRECTION_BUFFER_PCT` | `0.01` | Dead-band above the SMA-200 |
+| `MARKET_DIRECTION_SLOPE_DAYS` | `20` | Slope lookback; **at least one** SMA-200 must be non-falling |
+| `MARKET_DIRECTION_MAX_STALE_DAYS` | `5` | Older price data is treated as unusable → bearish |
 
 ---
 

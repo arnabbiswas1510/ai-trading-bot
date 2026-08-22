@@ -571,10 +571,13 @@ change something.
 |---|---|---|
 | `EARLY_LOSS_STOP_PCT` | `0.01` | 0.75% scored $70 better — inside noise. Either could be right. |
 | `EARLY_LOSS_STOP_MAX_DAY` | `0` | The day-1 damage rests largely on one winner (CPAY). |
-| `TRAIL_PROFIT_TIERS` | `+6% → 1.5%` | Arming at +3% scored higher but regressed one trade. |
+| `TRAIL_PROFIT_TIERS` | `+5% → 1.5%` | 2026-08-22 replay on 17 trades outperformed +6% by +$1,385 with no harmed trades; still under review due to sample size. |
 | `EARLY_DOLLAR_STOP_PCT` | `0.06` | The sample cannot distinguish 6% from any larger value — nothing reached that band without the kill-switch firing first. An upper bound, not a measured optimum. |
 | `EFFECTIVE_POSITION_SLOTS` | `4` | **Temporary.** Must become `MAX_POSITIONS` after the portfolio is reset at 5 slots — see below. |
 | `THESIS_STOP_ATR_MULT` | `1.0` | Never fired in the 17-trade replay; effectively untested. |
+| `MARKET_DIRECTION_TICKERS` | `SPY,QQQ` | Chosen on a 4,940-session **index** grid. The trade-history replay could not discriminate — all 21 closed trades fall in one six-week window where every config says BULL. |
+| `MARKET_DIRECTION_BUFFER_PCT` | `0.01` | Same caveat. 1% and 2% scored within noise of each other on index data. |
+| `MARKET_DIRECTION_SLOPE_DAYS` | `20` | Same caveat. Note the gate's mean-return edge is **negative outside 2008** — it is justified as drawdown insurance, not as a return enhancer. |
 
 ### Pending action: retire `EFFECTIVE_POSITION_SLOTS`
 

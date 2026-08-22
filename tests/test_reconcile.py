@@ -57,6 +57,8 @@ class TestReconcileCase1:
         supabase.table("portfolio_positions").delete.assert_called()
         # Insert to trade_history
         supabase.table("trade_history").insert.assert_called()
+        # Closed-loop learning row should also be written
+        supabase.table("breakout_learnings").insert.assert_called()
 
     def test_case1_uses_fmp_price_when_no_execution(self):
         """Case 1 fallback: uses FMP live price when reqExecutions() has no SLD fill."""

@@ -53,6 +53,30 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Position Journey card",     string: "Position Journey" },
   { feature: "Journey history column",    string: "What has happened" },
   { feature: "Journey next column",       string: "What happens next" },
+  // Market direction buy-gate banner (added 2026-08-22) — the dashboard must
+  // show whether buys are actually permitted, not just the descriptive status.
+  { feature: "Market buy-gate banner",    string: "data-market-gate" },
+  { feature: "Buy gate label",            string: "Buy Gate:" },
+];
+
+// -- Source-level structural guards --------------------------------------------
+// Some regressions have no fingerprint string because the fix was structural.
+// These are checked against source, not the bundle.
+const SOURCE_GUARDS = [
+  {
+    feature: "Sidebar nav items are <button>, not <div> (iOS tap fix, 2026-08-22)",
+    file: "../src/App.jsx",
+    // A clickable <div> has no activation behaviour, so iOS Safari does not
+    // dispatch a synthetic click reliably — the left nav appeared frozen on iOS
+    // while working on Android. Reverting to <div onClick> reintroduces that.
+    forbid: /<div[^>]*className=\{`nav-item/,
+    require: /<button[\s\S]{0,120}className=\{`nav-item/,
+  },
+  {
+    feature: "Sidebar uses dvh fallback for iOS toolbar (2026-08-22)",
+    file: "../src/index.css",
+    require: /height:\s*100dvh/,
+  },
 ];
 
 // -- Load all JS bundle files --------------------------------------------------
@@ -91,6 +115,35 @@ for (const { feature, string } of FEATURE_FINGERPRINTS) {
 
 console.log(`\n    ${passed} passed / ${failed} failed\n`);
 
+// -- Source guards -------------------------------------------------------------
+const SRC_ROOT = resolve(new URL(".", import.meta.url).pathname, ".");
+for (const guard of SOURCE_GUARDS) {
+  let src;
+  try {
+    src = readFileSync(resolve(SRC_ROOT, guard.file), "utf-8");
+  } catch (err) {
+    console.error(`  x  ${guard.feature} — cannot read ${guard.file}: ${err.message}`);
+    failures.push({ feature: guard.feature, string: guard.file });
+    failed++;
+    continue;
+  }
+  if (guard.forbid && guard.forbid.test(src)) {
+    console.error(`  x  ${guard.feature} — forbidden pattern present: ${guard.forbid}`);
+    failures.push({ feature: guard.feature, string: String(guard.forbid) });
+    failed++;
+    continue;
+  }
+  if (guard.require && !guard.require.test(src)) {
+    console.error(`  x  ${guard.feature} — required pattern missing: ${guard.require}`);
+    failures.push({ feature: guard.feature, string: String(guard.require) });
+    failed++;
+    continue;
+  }
+  console.log(`  ok ${guard.feature}`);
+  passed++;
+}
+
+console.log(`\n    total: ${passed} passed / ${failed} failed\n`);
 if (failed > 0) {
   console.error("????????????????????????????????????????????????????????????");
   console.error("?  BUILD REJECTED — missing features in compiled bundle:");

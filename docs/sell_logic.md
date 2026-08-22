@@ -104,14 +104,14 @@ own volatility explains?*
 
 | Unrealised gain | Trail |
 |---|---|
-| < +6% | initial (10–12%) |
-| ≥ +6% | 1.5% |
+| < +5% | initial (10–12%) |
+| ≥ +5% | 1.5% |
 
 This is an explicit **first-leg profit lock**. Once a trade proves it can reach a modest gain,
 the bot stops giving it 10-12% of room from the peak and instead treats any 1.5% give-back as
 evidence that the breakout has stalled.
 
-See `decisions/2026-08-20_hwm-profit-lock-first-leg.md` for why.
+See `decisions/2026-08-22_hwm-profit-lock-arm-5pct.md` for why.
 
 Time-based tightening (`TRAIL_TIME_TIERS_ENABLED`) exists but is **off by default**.
 
@@ -427,8 +427,8 @@ While active:
 Widening a stop on a winner is counter-intuitive. The justification is the return
 distribution: historically the top-10 trades account for the majority of total P/L, and at
 4 slots on the growth universe, removing them turns the strategy unprofitable outright. A
-profit lock clamping the trail to 1.5% at +6% would otherwise guarantee the biggest winners
-are clipped near +6%. Power Hold exists so a genuine market leader can complete its move.
+profit lock clamping the trail to 1.5% at +5% would otherwise guarantee the biggest winners
+are clipped near +5%. Power Hold exists so a genuine market leader can complete its move.
 
 Backtested effect of the 30% power-hold trail was large, monotonic in trail width, and
 consistent across both universes. See `decisions/2026-08-04_power-hold-trail-and-five-slots.md`.
@@ -483,11 +483,30 @@ tracking is lost.
 
 ## Market direction filter
 
-`is_market_bullish()` compares SPY to its 200-day SMA at market open.
+`is_market_bullish()` evaluates the CANSLIM "M" gate at market open against
+`MARKET_DIRECTION_TICKERS` (default `SPY,QQQ`).
+
+The market is **bullish** only when:
+
+- **every** benchmark closes more than `MARKET_DIRECTION_BUFFER_PCT` (1%) above its
+  SMA-200, **and**
+- **at least one** of those SMA-200s is non-falling over `MARKET_DIRECTION_SLOPE_DAYS`
+  (20) sessions.
 
 **It gates buying only. It never forces an exit.** A bear signal stands the system down from
-new positions; existing holdings continue to be managed by the rules above. It fails closed —
-if price data is unavailable, the market is treated as bearish.
+new positions; existing holdings continue to be managed by the rules above.
+
+**It fails closed.** An HTTP error, a malformed payload, fewer than
+`SMA_WINDOW + SLOPE_DAYS` sessions of history, data older than
+`MARKET_DIRECTION_MAX_STALE_DAYS`, an unhandled exception, or an empty benchmark list
+all yield *bearish*. `MARKET_DIRECTION_FILTER_ENABLED=false` is the only bypass.
+
+The gate is drawdown insurance, not a return enhancer: over 2007–2026 it sits out
+67.8% of the worst-5% forward-20-day windows (vs 59.3% for the previous bare
+SPY > SMA-200 rule) while permitting 66.9% of sessions. Its mean-return edge is
+negative outside 2008. A `50-DMA > 200-DMA` requirement and an "either index"
+combination were both grid-tested and rejected.
+See `decisions/2026-08-22_market-direction-gate-spy-qqq.md` for why.
 
 ---
 

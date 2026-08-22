@@ -1,13 +1,28 @@
 import pandas as pd
 import numpy as np
 import datetime
+import os
 from database import get_watchlist
 from fmp_client import FMPClient
+
+# Mirrors of the execution agent's CANSLIM "M" gate constants. These are read
+# from the same env vars so the dashboard and the agent cannot drift apart.
+# Source of truth: execution_agent.py — see docs/configuration.md.
+MARKET_DIRECTION_SMA_WINDOW = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
+MARKET_DIRECTION_BUFFER_PCT = float(os.getenv("MARKET_DIRECTION_BUFFER_PCT", 0.01))
+MARKET_DIRECTION_SLOPE_DAYS = max(1, int(os.getenv("MARKET_DIRECTION_SLOPE_DAYS", 20)))
 
 def get_market_direction():
     """
     Analyzes ^GSPC (S&P 500) and ^IXIC (Nasdaq Composite) to determine general market health (M) using FMP.
     Returns a dict with status, moving averages, and current prices.
+
+    The ``status``/``score`` fields are the dashboard's own descriptive read of the
+    market and are unchanged. The ``execution_gate`` field additionally reports the
+    verdict the execution agent would reach using its own rule (close above SMA-200
+    by a 1% buffer on *both* indices, plus a non-falling SMA-200 on at least one),
+    so the dashboard can never silently contradict whether buys are actually
+    permitted. See decisions/2026-08-22_market-direction-gate-spy-qqq.md.
     """
     fmp = FMPClient()
     if not fmp.is_configured():
@@ -15,18 +30,24 @@ def get_market_direction():
             "status": "FMP API Key Not Configured",
             "score": 0.0,
             "details": ["Please configure your FMP API Key in Settings to run the screener."],
-            "indices": {}
+            "indices": {},
+            "execution_gate": {"bullish": False,
+                               "reason": "FMP API key not configured (fail-closed)"}
         }
 
     indices = {"S&P 500": "^GSPC", "Nasdaq": "^IXIC"}
     status_summary = []
     total_score = 15
     market_status = "Confirmed Uptrend"
-    
+
     index_data = {}
-    
+    gate_above_all = True
+    gate_slope_any = False
+    gate_usable = True
+
     end_dt = datetime.datetime.now()
-    start_dt = end_dt - datetime.timedelta(days=365)
+    # 600 calendar days ≈ 410 sessions — enough for SMA-200 plus a 20-session slope.
+    start_dt = end_dt - datetime.timedelta(days=600)
     start_str = start_dt.strftime("%Y-%m-%d")
     end_str = end_dt.strftime("%Y-%m-%d")
 
@@ -35,31 +56,50 @@ def get_market_direction():
             df = fmp.get_historical_prices(symbol, start_str, end_str)
             if df.empty:
                 # Try fallback index symbol names if needed (e.g. without ^ for some feeds, but FMP standard is ^GSPC)
+                gate_usable = False
                 continue
-                
+
             close = float(df['Close'].iloc[-1])
             sma50 = float(df['Close'].rolling(50).mean().iloc[-1])
-            sma200 = float(df['Close'].rolling(200).mean().iloc[-1])
-            
+            sma200_series = df['Close'].rolling(MARKET_DIRECTION_SMA_WINDOW).mean()
+            sma200 = float(sma200_series.iloc[-1])
+
             above_50 = close > sma50
             above_200 = close > sma200
             sma50_above_200 = sma50 > sma200
-            
+
+            above_buffer = close > sma200 * (1 + MARKET_DIRECTION_BUFFER_PCT)
+            slope_ok = False
+            if len(sma200_series) > MARKET_DIRECTION_SLOPE_DAYS:
+                prior = sma200_series.iloc[-1 - MARKET_DIRECTION_SLOPE_DAYS]
+                if pd.notna(prior) and float(prior) > 0:
+                    slope_ok = (sma200 - float(prior)) >= 0
+                else:
+                    gate_usable = False
+            else:
+                gate_usable = False
+
+            gate_above_all = gate_above_all and above_buffer
+            gate_slope_any = gate_slope_any or slope_ok
+
             index_data[name] = {
                 "price": round(close, 2),
                 "sma50": round(sma50, 2),
                 "sma200": round(sma200, 2),
                 "above_50": above_50,
                 "above_200": above_200,
-                "golden_cross": sma50_above_200
+                "golden_cross": sma50_above_200,
+                "above_200_buffer": above_buffer,
+                "sma200_slope_ok": slope_ok
             }
-            
+
             if not above_200:
                 status_summary.append(f"{name} is below 200-day SMA")
             elif not above_50:
                 status_summary.append(f"{name} is below 50-day SMA but above 200-day SMA")
         except Exception as e:
             print(f"Error fetching market direction for {symbol} from FMP: {e}")
+            gate_usable = False
             
     num_indices = len(index_data)
     if num_indices > 0:
@@ -80,12 +120,31 @@ def get_market_direction():
         market_status = "Uptrend Under Pressure"
         total_score = 5
         status_summary.append("Indices data temporarily unavailable. Defaulting to Uptrend Under Pressure.")
-            
+
+    # The execution agent's gate is fail-closed: any index it cannot evaluate is
+    # treated as bearish, so the dashboard must report the same.
+    if not gate_usable or num_indices < len(indices):
+        gate = {"bullish": False,
+                "reason": "Index data incomplete or unavailable (fail-closed)"}
+    elif not gate_above_all:
+        gate = {"bullish": False,
+                "reason": (f"At least one index is not more than "
+                           f"{MARKET_DIRECTION_BUFFER_PCT * 100:.1f}% above its SMA-"
+                           f"{MARKET_DIRECTION_SMA_WINDOW}")}
+    elif not gate_slope_any:
+        gate = {"bullish": False,
+                "reason": (f"Every index SMA-{MARKET_DIRECTION_SMA_WINDOW} is falling "
+                           f"over {MARKET_DIRECTION_SLOPE_DAYS} sessions")}
+    else:
+        gate = {"bullish": True, "reason": "All benchmarks above buffer with a "
+                                           "non-falling SMA-200"}
+
     return {
         "status": market_status,
         "score": total_score,
         "details": status_summary if status_summary else ["All indices in strong uptrend"],
-        "indices": index_data
+        "indices": index_data,
+        "execution_gate": gate
     }
 
 def calculate_rs_scores(watchlist, historical_data):

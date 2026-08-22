@@ -136,3 +136,29 @@ class TestPromptCompleteness:
         assert "- TK00:" in prompt
         assert "- TK03:" in prompt
         assert "- TK04:" not in prompt
+
+
+class TestTradeHistoryLearning:
+
+    def test_build_trade_history_index_groups_and_orders(self):
+        rows = [
+            {"ticker": "NVDA", "percent_return": -3.2},
+            {"ticker": "nvda", "percent_return": 2.1},
+            {"ticker": "AAPL", "percent_return": -1.0},
+        ]
+        idx = ai_evaluator.build_trade_history_index(rows)
+        assert idx["NVDA"] == [-3.2, 2.1]
+        assert idx["AAPL"] == [-1.0]
+
+    def test_history_penalty_applies_on_repeated_recent_losses(self):
+        idx = {"TSLA": [-4.5, -2.0, 1.0]}
+        penalty, reason = ai_evaluator.compute_trade_history_penalty("TSLA", idx)
+        assert penalty > 0
+        assert reason is not None
+        assert "loser" in reason
+
+    def test_history_penalty_is_zero_without_recent_loss_pattern(self):
+        idx = {"MSFT": [1.2, 0.8, 2.4]}
+        penalty, reason = ai_evaluator.compute_trade_history_penalty("MSFT", idx)
+        assert penalty == 0
+        assert reason is None

@@ -41,7 +41,7 @@ their price structure signals accumulation, and exit fast when that signal fails
 | **S** | Supply and demand | Volume ≥ 1.50× the 50-day average on the breakout bar |
 | **L** | Leader, not laggard | 12-week relative strength vs SPY, ≥ 50th percentile |
 | **I** | Institutional sponsorship | $300M market-cap floor, 250K average daily volume |
-| **M** | Market direction | Buys suspended when SPY closes below its 200-day SMA |
+| **M** | Market direction | Buys suspended unless **both** SPY and QQQ close >1% above their 200-day SMA with at least one 200-DMA non-falling; fails closed on any data error |
 
 The revenue-growth filter deserves note: EPS growth alone can be manufactured through
 cost-cutting and buybacks. Requiring **top-line growth alongside it** distinguishes a
@@ -166,13 +166,14 @@ It **ratchets one way only**, tightening as unrealised gain builds. There is a s
 
 | Unrealised gain | Trail tightens to |
 |---|---|
-| ≥ +6% | 1.5% from the high-water mark |
+| ≥ +5% | 1.5% from the high-water mark |
 
 This is the **HWM profit lock**. It replaced a 20/30/50% → 6.5/6.0/5.0% ladder that was far
 too loose to matter: across nine closed winners, $8,071 of open profit was given back from
-peak before the exit actually fired. Arming at +6% and capping give-back at 1.5% recovers
-+$4,375 of that on the same trades without worsening a single one.
-See [decisions/2026-08-20_hwm-profit-lock-first-leg.md](decisions/2026-08-20_hwm-profit-lock-first-leg.md).
+peak before the exit actually fired. A later replay on 5-minute bars over 17 closed trades
+improved net further by arming at +5% instead of +6% (+$4,720.53 vs +$3,335.40, same 1.5%
+trail), so +5% is now shipped.
+See [decisions/2026-08-22_hwm-profit-lock-arm-5pct.md](decisions/2026-08-22_hwm-profit-lock-arm-5pct.md).
 
 Because it lives at the broker, this is the one protection that survives the bot being
 offline. Treat it as the disaster backstop, not the primary exit.
@@ -265,8 +266,8 @@ and rotation exits are suppressed entirely.
 
 This is counter-intuitive and it is the point. The strategy's returns are outlier-dependent
 — historically the top-10 trades have accounted for the majority of total P/L. A profit lock
-that clamps the trail to 1.5% at +6% would otherwise guarantee you clip your biggest winners
-at +6%. Power Hold exists to let a genuine leader run. The base trailing stop remains active
+that clamps the trail to 1.5% at +5% would otherwise guarantee you clip your biggest winners
+at +5%. Power Hold exists to let a genuine leader run. The base trailing stop remains active
 throughout as the disaster backstop.
 
 ### Armed Exit — how the system sells

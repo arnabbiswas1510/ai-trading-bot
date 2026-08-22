@@ -15,7 +15,7 @@ export const RULES_CONFIG = {
   STOP_LOSS_PCT: 0.10,            // base trailing stop floor
   ATR_STOP_MAX_PCT: 0.12,         // cap on the ATR-derived stop
   TRAIL_PROFIT_TIERS: [           // (min unrealised gain %, trail %) — tightening only
-    [6.0, 0.015],
+    [5.0, 0.015],
   ],
   EARLY_LOSS_STOP_PCT: 0.01,      // kill-switch, entry day only
   EARLY_LOSS_LAST_DAY: 0,

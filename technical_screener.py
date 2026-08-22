@@ -57,6 +57,8 @@ RELAXED_PRE_BREAKOUT_PROXIMITY  = float(os.environ.get("RELAXED_PRE_BREAKOUT_PRO
 RELAXED_PRE_BREAKOUT_VOL_MAX    = float(os.environ.get("RELAXED_PRE_BREAKOUT_VOL_MAX", 1.10))
 RELAXED_PRE_BREAKOUT_UPTREND_MIN = int(os.environ.get("RELAXED_PRE_BREAKOUT_UPTREND_MIN", 2))
 RELAXED_RS_MIN_GATE             = int(os.environ.get("RELAXED_RS_MIN_GATE", 50))
+LEARNING_MIN_ROWS               = int(os.environ.get("LEARNING_MIN_ROWS", 3))
+LEARNING_LOOKBACK_DAYS          = int(os.environ.get("LEARNING_LOOKBACK_DAYS", 90))
 
 
 def compute_quality_score(volume_surge_ratio: float, pivot_dist_pct: float,
@@ -453,7 +455,7 @@ def write_triggers_to_supabase(triggers):
             )
 
         # ── Phase 2: Failure penalty from breakout_learnings ─────────────────
-        # Activate only when >= 10 learning rows exist (sufficient signal).
+        # Activate only when enough learning rows exist (LEARNING_MIN_ROWS).
         # Each trigger gets adjusted_score = final_score - failure_penalty.
         try:
             learning_count_res = client.table("breakout_learnings").select("id", count="exact").execute()
@@ -461,14 +463,14 @@ def write_triggers_to_supabase(triggers):
         except Exception:
             learning_count = 0
 
-        if learning_count >= 10:
+        if learning_count >= LEARNING_MIN_ROWS:
             print(f"📚 Phase 2 active: {learning_count} breakout learnings — computing failure penalties...")
-            cutoff_90d = (datetime.datetime.now(datetime.timezone.utc).date()
-                          - datetime.timedelta(days=90)).isoformat()
+            cutoff = (datetime.datetime.now(datetime.timezone.utc).date()
+                      - datetime.timedelta(days=LEARNING_LOOKBACK_DAYS)).isoformat()
             try:
                 learnings_res = client.table("breakout_learnings") \
                     .select("exit_date, failed_params, pnl_pct") \
-                    .gte("exit_date", cutoff_90d) \
+                    .gte("exit_date", cutoff) \
                     .lt("pnl_pct", 0) \
                     .execute()
                 learnings = learnings_res.data or []
@@ -478,13 +480,14 @@ def write_triggers_to_supabase(triggers):
 
             for t in triggers:
                 penalty, reason = _compute_failure_penalty(t, learnings)
-                t["adjusted_score"]  = max(0, int(t.get("final_score") or 0) - penalty)
+                base_score = int(t.get("final_score") or t.get("technical_score") or t.get("quality_score") or 0)
+                t["adjusted_score"]  = max(0, base_score - penalty)
                 t["failure_penalty"] = penalty
                 t["penalty_reason"]  = reason
                 if penalty > 0:
                     print(f"  ⚠️ {t['ticker']}: penalty −{penalty}pts → adjusted={t['adjusted_score']} ({reason})")
         else:
-            print(f"📚 Phase 2 inactive ({learning_count}/10 learnings). Using final_score as-is.")
+            print(f"📚 Phase 2 inactive ({learning_count}/{LEARNING_MIN_ROWS} learnings). Using final_score as-is.")
             for t in triggers:
                 t["adjusted_score"]  = t.get("final_score")
                 t["failure_penalty"] = 0
@@ -520,7 +523,7 @@ def _compute_failure_penalty(trigger: dict, learnings: list) -> tuple[int, str]:
     Time decay weights:
         exit_date in last 30 days:  3× weight
         exit_date in last 30–90d:   2× weight
-        (learnings older than 90d are not fetched — see write_triggers_to_supabase)
+        (older rows are filtered by LEARNING_LOOKBACK_DAYS upstream)
 
     Penalty = weighted_match_count × 2 pts, capped at 20 pts.
 
@@ -542,8 +545,15 @@ def _compute_failure_penalty(trigger: dict, learnings: list) -> tuple[int, str]:
         "pivot_distance_pct":("pivot_distance_pct",  2),
     }
 
+    trigger_type = str(trigger.get("trigger_type") or "BREAKOUT")
+
     for learning in learnings:
         failed_params = learning.get("failed_params") or {}
+        if isinstance(failed_params, dict):
+            meta = failed_params.get("_meta") or {}
+            learned_type = str(meta.get("trigger_type") or "").upper()
+            if learned_type and learned_type != trigger_type.upper():
+                continue
         exit_date     = str(learning.get("exit_date") or "")
         weight        = 3.0 if exit_date >= cutoff_30d else 2.0   # 30d=3x, 30-90d=2x
 
