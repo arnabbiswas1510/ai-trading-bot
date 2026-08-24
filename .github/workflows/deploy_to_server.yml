@@ -20,7 +20,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: pom
           key: ${{ secrets.DEPLOY_KEY }}
           port: 2222
           source: "docker-compose.yml"
@@ -30,7 +30,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: pom
           key: ${{ secrets.DEPLOY_KEY }}
           port: 2222
           timeout: 120s

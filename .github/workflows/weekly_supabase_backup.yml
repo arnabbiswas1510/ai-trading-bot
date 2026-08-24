@@ -85,7 +85,7 @@ jobs:
         if: ${{ inputs.dry_run != true }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_USER: pom
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
           set -euo pipefail
@@ -111,7 +111,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: pom
           key: ${{ secrets.DEPLOY_KEY }}
           port: 2222
           timeout: 60s
