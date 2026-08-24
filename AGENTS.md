@@ -121,10 +121,11 @@ The application uses a decoupled cloud screening and local execution environment
 1. **Cloud Screener (GitHub Actions + Supabase)**:
    * Weekend fundamental scans and daily technical breakout scans run on GitHub Actions.
    * Scans write results directly to a Supabase cloud database (`watchlist` and `daily_triggers` tables).
-2. **Local Self-Hosted Execution (DietPi Docker)**:
+2. **Local Self-Hosted Execution (DietPi Docker at `192.168.1.2`)**:
+   * **Host Server**: Production DietPi host at `192.168.1.2` (SSH port 2222).
    * **`ib-gateway`**: Headless Interactive Brokers Gateway container (`ghcr.io/gnzsnz/ib-gateway`) managing the live brokerage connection (port 4000).
    * **`execution-agent`**: Python daemon (`execution_agent.py`) checking daily triggers, placing live orders at market open, and monitoring positions every 15 minutes.
-   * **`trading-bot`**: FastAPI backend and React dashboard served at `http://localhost:8000`.
+   * **`trading-bot`**: FastAPI backend and React dashboard served at `http://localhost:8000` (or `http://192.168.1.2:8000`).
 3. **Database Sync Split**:
    * **Supabase (Cloud)**: Stores active watchlists, daily breakout triggers, open portfolio positions (`portfolio_positions`), and trade history (`trade_history`).
    * **SQLite (Local `trading_bot.db`)**: User settings only (initial balance, stop-loss %, FMP API keys) — avoids polluting the cloud DB.

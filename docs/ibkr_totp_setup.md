@@ -62,7 +62,7 @@ windows when IBKR forces a disconnect.
 ### Step 7: Add secret to server .env
 SSH into your server and add the TOTP secret:
 ```bash
-ssh root@192.168.1.50
+ssh root@192.168.1.2
 nano /home/dietpi/docker/trading/.env
 ```
 
@@ -83,7 +83,7 @@ The agent will:
 
 ### Step 9: Restart the gateway
 ```bash
-ssh root@192.168.1.50
+ssh root@192.168.1.2
 cd /home/dietpi/docker/trading
 git pull origin main
 docker compose stop ib-gateway execution-agent
@@ -150,4 +150,4 @@ If both show normal operation, the TOTP automation is working end-to-end.
 
 **"Login dialog timeout" in gateway logs:**
 - IBKR may be showing an unexpected popup (new account notice, etc.)
-- Check VNC at `192.168.1.50:5900` (VNC viewer, password from .env) to see the gateway screen
+- Check VNC at `192.168.1.2:5900` (VNC viewer, password from .env) to see the gateway screen
