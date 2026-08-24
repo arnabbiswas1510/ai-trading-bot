@@ -94,3 +94,57 @@ def compute_final_score(technical_score: int, liquidity_score: int,
         rs_score         * 0.10
     )
     return int(round(min(max(raw, 0), 100)))
+
+
+# ── Volatility fit against the real exit ladder ──────────────────────────────
+# The bot has NO profit target. It arms a profit lock at +5% and then trails
+# 1.5% below the high-water mark, and its entry stop is 2.5 x ATR CLAMPED to a
+# 10%-12% band. Two consequences drive everything below:
+#
+#   1. The threshold that matters is +5%, not +25%. `5 / atr_pct` is under 7
+#      sessions for any candidate above ~0.7%/day ATR, so "days to the lock"
+#      is non-binding for almost every name the screener surfaces. Velocity is
+#      therefore NOT a differentiator and must not be scored as one.
+#   2. Because the stop CAPS at 12%, room measured in the stock's own daily
+#      range SHRINKS as ATR rises. Past ~4.8%/day a position holds under 2.5
+#      ATR of room and is routinely gapped out inside 1-2 sessions.
+#
+# See decisions/2026-08-24_ai-evaluator-volatility-fit.md for the measurement.
+ATR_STOP_CAP_PCT   = 4.8   # above this, 2.5 x ATR exceeds the 12% stop clamp
+ATR_COMFORT_LOW    = 1.5   # below this, the +5% lock may not arrive before day 7
+PROFIT_LOCK_PCT    = 5.0   # the threshold est_days_to_target measures
+
+
+def est_days_to_lock(atr_pct):
+    """Trading days to reach the +5% profit lock at the average ATR pace.
+
+    Returns the 999 sentinel ("not reachable in a swing window") when ATR is
+    unknown or non-positive, matching the screener's default.
+    """
+    try:
+        atr = float(atr_pct)
+    except (TypeError, ValueError):
+        return 999
+    if atr <= 0:
+        return 999
+    return int(round(PROFIT_LOCK_PCT / atr))
+
+
+def volatility_fit(atr_pct):
+    """Classify a candidate's ATR against the stop ladder it will actually trade.
+
+    Returns (emoji, label, tone) where tone is one of 'good' | 'warn' | 'bad' |
+    'unknown'. Single source of truth for the screener, the AI prompt and the
+    Telegram digest; frontend/src/lib/volatilityFit.js mirrors it for the UI.
+    """
+    try:
+        atr = float(atr_pct or 0)
+    except (TypeError, ValueError):
+        atr = 0.0
+    if atr <= 0:
+        return ("\u2753", "Unknown volatility", "unknown")
+    if atr > ATR_STOP_CAP_PCT:
+        return ("\u26a0\ufe0f", f"Too volatile \u2014 under 2.5 ATR of room inside the 12% stop cap", "bad")
+    if atr >= ATR_COMFORT_LOW:
+        return ("\u2705", "Good volatility fit", "good")
+    return ("\u26a0\ufe0f", "Quiet \u2014 may not reach the +5% lock before day-7 rotation", "warn")

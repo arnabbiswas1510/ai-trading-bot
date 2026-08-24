@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import useSortableTable from '../hooks/useSortableTable';
-import { History, TrendingUp, TrendingDown, Award, Calendar, AlertCircle, ShieldAlert, Sparkles, Activity } from 'lucide-react';
+import { History, TrendingUp, TrendingDown, Award, Calendar, AlertCircle, ShieldAlert, Sparkles, Activity, ChevronRight, ChevronDown } from 'lucide-react';
+import ExitDetailPanel from './ExitDetailPanel';
+import { classifyExit, toneToBadgeClass } from '../lib/exitDetails';
 
 export default function TradesView({ trades }) {
   const { items: sortedTrades, requestSort, getSortIcon } = useSortableTable(trades, 'sell_date', 'desc');
+  const [expandedTrade, setExpandedTrade] = useState(null);
+  const toggleTrade = (id) => setExpandedTrade((prev) => (prev === id ? null : id));
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   };
@@ -25,59 +29,6 @@ export default function TradesView({ trades }) {
     } catch (e) {
       return dateStr;
     }
-  };
-
-  const getCleanExitReason = (raw, pctReturn) => {
-    if (!raw) return 'Manual Close';
-    const lower = raw.toLowerCase();
-    
-    if (lower.includes('ema-21') || lower.includes('exit ma')) {
-      return 'EMA-21 Exit';
-    }
-    if (lower.includes('stale rotation')) {
-      return 'Stale Rotation';
-    }
-    if (lower.includes('force sell') || lower.includes('user request')) {
-      return 'Manual Force Sell';
-    }
-    if (lower.includes('manual close')) {
-      return 'Manual Close';
-    }
-    if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
-      if (pctReturn >= 24.0) {
-        return 'Profit Target (+25%)';
-      } else {
-        return 'Stop Loss (-7%)';
-      }
-    }
-    
-    return raw;
-  };
-
-  const getDetailedExitTooltip = (raw, pctReturn) => {
-    if (!raw) return `Manual close at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
-    const lower = raw.toLowerCase();
-    
-    if (lower.includes('ema-21') || lower.includes('exit ma')) {
-      return raw;
-    }
-    if (lower.includes('stale rotation')) {
-      return raw;
-    }
-    if (lower.includes('force sell') || lower.includes('user request')) {
-      return `Manual Force Sell executed at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
-    }
-    if (lower.includes('manual close')) {
-      return `Manual Close on IBKR reconciled at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
-    }
-    if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
-      if (pctReturn >= 24.0) {
-        return `Profit Target Filled (+25.0% target) with final return of +${pctReturn.toFixed(2)}%`;
-      } else {
-        return `Trailing Stop Loss Triggered (-7.0% stop) with final return of ${pctReturn.toFixed(2)}%`;
-      }
-    }
-    return `${raw} (${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}%)`;
   };
 
   // Stats from full trade history (history view)
@@ -150,6 +101,7 @@ export default function TradesView({ trades }) {
                 <table>
                   <thead>
                     <tr>
+                      <th style={{ width: '1rem', paddingRight: 0 }} aria-label="Expand" />
                       <th onClick={() => requestSort('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIcon('ticker')}</th>
                       <th onClick={() => requestSort('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIcon('shares')}</th>
                       <th onClick={() => requestSort('buy_price')} style={{ cursor: 'pointer' }}>Buy Price / Date{getSortIcon('buy_price')}</th>
@@ -164,42 +116,63 @@ export default function TradesView({ trades }) {
                     {sortedTrades.map((trade) => {
                       const buyDateStr = formatDateTime(trade.buy_date);
                       const sellDateStr = formatDateTime(trade.sell_date);
-                      const cleanExitReason = getCleanExitReason(trade.exit_reason, trade.percent_return);
-                      const detailedExitTooltip = getDetailedExitTooltip(trade.exit_reason, trade.percent_return);
-                      
+                      const exit = classifyExit(trade.exit_reason);
+                      const isOpen = expandedTrade === trade.id;
+
                       return (
-                        <tr key={trade.id}>
-                          <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '1.05rem' }}>
-                            {trade.ticker}
-                          </td>
-                          <td>{trade.shares}</td>
-                          <td>
-                            <div style={{ fontWeight: 500 }}>{formatCurrency(trade.buy_price)}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.15rem' }}>
-                              <Calendar size={10} /> {buyDateStr}
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 500 }}>{formatCurrency(trade.sell_price)}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.15rem' }}>
-                              <Calendar size={10} /> {sellDateStr}
-                            </div>
-                          </td>
-                          <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
-                            {trade.profit_loss >= 0 ? '+' : ''}{formatCurrency(trade.profit_loss)}
-                          </td>
-                          <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
-                            {trade.percent_return.toFixed(2)}%
-                          </td>
-                          <td>
-                            <span 
-                              className={`badge ${cleanExitReason.includes('Profit Target') ? 'badge-success' : cleanExitReason.includes('Stop Loss') ? 'badge-danger' : 'badge-warning'}`}
-                              title={detailedExitTooltip}
-                            >
-                              {cleanExitReason}
-                            </span>
-                          </td>
-                        </tr>
+                        <React.Fragment key={trade.id}>
+                          <tr
+                            onClick={() => toggleTrade(trade.id)}
+                            className={isOpen ? 'row-expanded' : ''}
+                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                            title="Click for the full exit breakdown"
+                          >
+                            <td style={{ color: 'var(--text-muted)', paddingRight: 0 }}>
+                              {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </td>
+                            <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '1.05rem' }}>
+                              {trade.ticker}
+                            </td>
+                            <td>{trade.shares}</td>
+                            <td>
+                              <div style={{ fontWeight: 500 }}>{formatCurrency(trade.buy_price)}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.15rem' }}>
+                                <Calendar size={10} /> {buyDateStr}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 500 }}>{formatCurrency(trade.sell_price)}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.15rem' }}>
+                                <Calendar size={10} /> {sellDateStr}
+                              </div>
+                            </td>
+                            <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                              {trade.profit_loss >= 0 ? '+' : ''}{formatCurrency(trade.profit_loss)}
+                            </td>
+                            <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                              {trade.percent_return.toFixed(2)}%
+                            </td>
+                            <td>
+                              <span
+                                className={`badge ${toneToBadgeClass(exit.tone, trade.profit_loss)}`}
+                                title={`Sold by ${exit.executor.label} — click the row for the full breakdown`}
+                              >
+                                {exit.label}
+                              </span>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                via {exit.executor.label}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {isOpen && (
+                            <tr>
+                              <td colSpan={8} style={{ padding: 0 }}>
+                                <ExitDetailPanel trade={trade} />
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>

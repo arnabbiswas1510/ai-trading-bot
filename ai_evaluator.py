@@ -5,7 +5,8 @@ from supabase import create_client, Client
 from openai import OpenAI
 import datetime
 from zoneinfo import ZoneInfo
-from scoring import compute_liquidity_score, compute_rs_score, compute_final_score
+from scoring import (compute_liquidity_score, compute_rs_score, compute_final_score,
+                     volatility_fit)
 
 # Initialize Supabase
 raw_supabase_url = os.environ.get("SUPABASE_URL")
@@ -204,12 +205,8 @@ def _format_trigger_block(t: dict, fundamentals: dict, news_by_ticker: dict) -> 
 
     atr_pct  = t.get("atr_pct") or 0.0
     est_days = t.get("est_days_to_target") or 999
-    swing_label = (
-        "🚀 Fast mover" if 0 < est_days <= 15 else
-        "✅ Swing-compatible" if est_days <= 30 else
-        "⚠️ Slow mover" if est_days <= 60 else
-        "❌ Long-term only"
-    )
+    _fit_emoji, _fit_text, _fit_tone = volatility_fit(atr_pct)
+    swing_label = f"{_fit_emoji} {_fit_text}"
 
     # The `volume_surge` column is overloaded by the screener. On BREAKOUT rows
     # it is today's volume / 50d avg, where higher confirms institutional
@@ -231,7 +228,7 @@ def _format_trigger_block(t: dict, fundamentals: dict, news_by_ticker: dict) -> 
         f"  Price=${price}, AvgDailyVol={avg_vol:,}, CompanySize={size}, RS_vs_SPY={rs}/100\n"
         f"  SetupType={trig_type}\n"
         f"{vol_line}, DistFromPivot={t.get('pivot_distance_pct')}%\n"
-        f"  ATR={atr_pct}%/day, EstDaysTo25%={est_days} [{swing_label}]\n"
+        f"  ATR={atr_pct}%/day, DaysToLock={est_days} [{swing_label}]\n"
         f"  Q-EPS={f_data.get('q_eps_growth','N/A')}%, A-EPS={f_data.get('a_eps_growth','N/A')}%,"
         f" RevGrowth={f_data.get('revenue_growth','N/A')}%, ROE={f_data.get('roe','N/A')}%\n"
         f"  Analyst={f_data.get('analyst_rating','N/A')}\n"
@@ -249,24 +246,43 @@ def build_prompt(batch: list[dict], fundamentals: dict, news_by_ticker: dict,
 
     ticker_list = ", ".join(tickers)
     return f"""You are an expert AI trading system specializing in CANSLIM swing trading.
-Your investor has a SWING TRADER horizon of 2-6 weeks (10-30 trading days).
-They need stocks that can move +25% within that window before hitting a -7% trailing stop.
-Long-term stories that take months to play out are NOT suitable — the capital must be
-deployed and returned within weeks, not quarters.
+
+Your investor runs an AUTOMATED swing system that exits on a trailing stop. There is
+NO profit target — nothing is ever sold for hitting a price. The mechanics that decide
+every outcome are:
+
+  - ENTRY STOP: 2.5 x ATR, clamped to a 10%-12% band. Note the CAP: above ~4.8%/day
+    ATR the stop stops widening, so the most volatile names get the LEAST room
+    measured in their own daily range.
+  - PROFIT LOCK: once the position is +5% up, the stop tightens to 1.5% below the
+    high-water mark. Most winners are closed at or near that lock.
+  - ROTATION: positions that stall are rotated out from day 7.
+  - Typical hold is 5-15 trading days. Realised winners are usually +3% to +8%.
+
+So the question is NOT "can this run 25%?" — the system would never hold for it.
+The question is "will this move up promptly and KEEP the gain, without first taking
+a 10-12% shakeout?"
 
 {history_text}
 
 {breakouts_text}
 
-SCORING RULES (non-negotiable — swing trade horizon is the primary filter):
+SCORING RULES (non-negotiable):
 
-1. Rating (1-100): Probability the stock hits +25% WITHIN 2-6 WEEKS before -7% stop loss.
+1. Rating (1-100): Probability the stock is ~5% UP AND HOLDING within ~10 trading
+   days, WITHOUT first drawing down 10-12% from entry.
 
-   SWING-TRADE VELOCITY (most important factor):
-   - EstDaysTo25% <= 15 (ATR >= 1.7%/day): ideal, boost rating +10-15 pts
-   - EstDaysTo25% 16-30 (ATR 0.8-1.7%/day): acceptable swing horizon
-   - EstDaysTo25% 31-60 (ATR 0.4-0.8%/day): marginal — reduce rating 15 pts
-   - EstDaysTo25% > 60 (ATR < 0.4%/day): NOT a swing trade — cap rating at 35
+   VOLATILITY FIT — this is a BAND, not "faster is better". Do NOT reward raw
+   speed: the +5% profit lock is reachable within a few days by essentially any
+   candidate above ~1%/day ATR, so velocity does not separate winners from losers.
+   What separates them is whether the stop has room to breathe.
+   - ATR > 4.8%/day: reduce rating by 20 pts. The stop is capped at 12%, so these
+     names have under 2.5 ATR of room and are routinely gapped out inside 1-2
+     sessions for the full stop loss.
+   - ATR 1.5-3.5%/day: the sweet spot — enough range to reach the lock promptly
+     while retaining 3-5 ATR of stop room. No adjustment.
+   - ATR < 1.0%/day: reduce rating by 10 pts — may not reach the +5% lock before
+     the day-7 stall rotation opens.
 
    MANDATORY QUALITY PENALTIES (apply first — these are hard disqualifiers):
    - CONFIRMED BREAKOUTS ONLY (SetupType=BREAKOUT), judged on VolSurge:
@@ -278,7 +294,7 @@ SCORING RULES (non-negotiable — swing trade horizon is the primary filter):
    - Stock is > 3% below its 52-week pivot/high (DistFromPivot < -3%): reduce rating by 20 pts (speculative pre-breakout positioning, not a confirmed CAN SLIM entry)
    - Negative ROE: reduce rating by 15 pts (company is unprofitable — violates CAN SLIM fundamentals; the 'E' requires earnings)
    - Analyst consensus = "Sell": reduce rating by 20 pts (institutional consensus is actively bearish)
-   - Float > 1 billion shares: reduce rating by 20 pts (giant institutional stocks rarely move +25% in 2-6 weeks; they are index components, not growth leaders)
+   - Float > 1 billion shares: reduce rating by 20 pts (giant institutional stocks rarely produce a clean multi-day breakout thrust; they are index components, not growth leaders)
 
    MANDATORY LIQUIDITY PENALTIES:
    - Stock price under $15: cap rating at 45 (gap risk, no institutional interest)
@@ -296,8 +312,9 @@ SCORING RULES (non-negotiable — swing trade horizon is the primary filter):
    1-39   = negative (lawsuit, downgrade, guidance cut, regulatory risk)
 
 3. Rationale: 2-3 sentences from a swing trader's perspective.
-   MUST address: (a) whether it can reach 25% within 2-6 weeks based on ATR,
-   (b) the key risk to the thesis, (c) what would make this a conviction trade.
+   MUST address: (a) whether the stock can clear +5% and HOLD it given its ATR
+   and the 10%-12% entry stop, (b) the key risk to the thesis, (c) what would
+   make this a conviction trade.
    Be specific — avoid generic statements.
 
 COMPLETENESS REQUIREMENT (critical):

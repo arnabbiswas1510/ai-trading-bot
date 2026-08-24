@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import useSortableTable from '../hooks/useSortableTable';
+import ExitDetailPanel from './ExitDetailPanel';
+import { classifyExit, toneToBadgeClass } from '../lib/exitDetails';
+import { estDaysToLock, PROFIT_LOCK_PCT } from '../lib/volatilityFit';
 import {
   evaluatePositionRules,
   rulesTooltip,
@@ -166,107 +169,6 @@ function activeProfitLockTier(pos) {
   return RULES_CONFIG.TRAIL_PROFIT_TIERS.find(([, pct]) => pct != null && Math.abs(effPct - pct) < 1e-6) || null;
 }
 
-function getCleanExitReason(raw, pctReturn) {
-  if (!raw) return 'Manual Close';
-  const lower = raw.toLowerCase();
-
-  if (lower.includes('rank & replace') || lower.includes('rank and replace')) {
-    return 'Rank & Replace';
-  }
-  if (lower.includes('time-stop') || (lower.includes('mandatory') && lower.includes('time'))) {
-    return 'Day 7 Time-Stop';
-  }
-  if (lower.includes('break-even') || lower.includes('hwm break')) {
-    return 'Break-Even Stop';
-  }
-  if (lower.includes('floor break') || lower.includes('floor_break') || lower.includes('consolidation floor')) {
-    return 'Floor Break';
-  }
-  if (lower.includes('tier 3') || lower.includes('hard time-stop')) {
-    return 'Tier 3 Time-Stop';
-  }
-  if (lower.includes('tier 2') || lower.includes('score upgrade')) {
-    return 'Tier 2 Score Upgrade';
-  }
-  if (lower.includes('tier 1') || lower.includes('rs decay')) {
-    return 'Tier 1 RS Decay';
-  }
-  if (lower.includes('ema-21') || lower.includes('exit ma') || lower.includes('moving average')) {
-    return 'EMA-21 Exit';
-  }
-  if (lower.includes('stale rotation') || lower.includes('plateau rotation') || lower.includes('plateau exit')) {
-    return 'Plateau Exit';
-  }
-  if (lower.includes('early dollar stop') || lower.includes('dollar stop')) {
-    return 'Early Dollar Stop';
-  }
-  if (lower.includes('thesis stop')) {
-    return 'Thesis Stop';
-  }
-  if (lower.includes('early loss kill-switch') || lower.includes('kill-switch') || lower.includes('kill_switch')) {
-    return 'Early Loss Kill-switch';
-  }
-  if (lower.includes('intraday loss minimiser') || lower.includes('intraday minimiser')) {
-    return 'Intraday Minimiser';
-  }
-  if (lower.includes('force sell') || lower.includes('user request')) {
-    return 'Manual Force Sell';
-  }
-  if (lower.includes('manual close')) {
-    return 'Manual Close';
-  }
-  // GTC trailing stop fired at IBKR — the raw reason from the agent is
-  // "Trailing stop (IBKR GTC TRAIL order)" — catch it cleanly here.
-  if (lower.includes('trailing stop') || lower.includes('trail order')) {
-    return pctReturn >= 24.0 ? 'Profit Target (+25%)' : 'Trailing Stop';
-  }
-  // Legacy: reconciliation note written by older agent versions
-  if (lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
-    return pctReturn >= 24.0 ? 'Profit Target (+25%)' : 'Trailing Stop';
-  }
-
-  return raw;
-}
-
-function getDetailedExitTooltip(raw, pctReturn) {
-  if (!raw) return `Manual close at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
-  const lower = raw.toLowerCase();
-  
-  if (lower.includes('ema-21') || lower.includes('exit ma')) {
-    return raw;
-  }
-  if (lower.includes('stale rotation') || lower.includes('plateau')) {
-    return raw;
-  }
-  if (lower.includes('thesis stop')) {
-    return raw;
-  }
-  if (lower.includes('early dollar stop') || lower.includes('dollar stop')) {
-    return raw;
-  }
-  if (lower.includes('early loss kill-switch') || lower.includes('kill-switch')) {
-    return raw;
-  }
-  if (lower.includes('intraday loss minimiser') || lower.includes('intraday minimiser')) {
-    return raw;
-  }
-  if (lower.includes('force sell') || lower.includes('user request')) {
-    return `Manual Force Sell executed at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
-  }
-  if (lower.includes('manual close')) {
-    return `Manual Close on IBKR reconciled at ${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}% return`;
-  }
-  // GTC trailing stop — return the raw reason (includes the stop %) plus the final return.
-  if (lower.includes('trailing stop') || lower.includes('trail order')
-      || lower.includes('order filled') || lower.includes('reconciled') || lower.includes('trail triggered')) {
-    if (pctReturn >= 24.0) {
-      return `Profit Target Filled (+25.0% target) with final return of +${pctReturn.toFixed(2)}%`;
-    } else {
-      return `${raw}\nFinal return: ${pctReturn.toFixed(2)}%`;
-    }
-  }
-  return `${raw} (${pctReturn >= 0 ? '+' : ''}${pctReturn.toFixed(2)}%)`;
-}
 
 // Derive the most urgent status badge for the compact column
 function getStatusBadge(pos, days) {
@@ -900,11 +802,21 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions, equity }) {
                     const buyPx       = pos.buy_price || 0;
                     const currPx      = pos.current_price || buyPx;
                     const actualPct   = buyPx > 0 ? ((currPx / buyPx) - 1) * 100 : 0;
-                    const expectedPct = estDays > 0 ? (25.0 * daysHeld / estDays) : null;
-                    const deficit     = expectedPct != null ? expectedPct - actualPct : null;
                     const atrPct      = pos.entry_atr_pct;
-                    const remPct      = 25.0 - actualPct;
-                    const daysToTarget = atrPct > 0 ? Math.ceil(remPct / atrPct) : null;
+                    // Pace is measured against the +5% PROFIT LOCK — the only
+                    // upside threshold the bot actually acts on. It never holds
+                    // for a fixed target. Derive the horizon from entry ATR
+                    // rather than the stored entry_est_days_target: rows written
+                    // before 2026-08-24 recorded days-to-+25% under the old
+                    // semantics and would understate the pace ~5x.
+                    const lockDays    = atrPct > 0 ? estDaysToLock(atrPct)
+                                      : (estDays > 0 ? estDays : null);
+                    const expectedPct = lockDays > 0
+                      ? Math.min(PROFIT_LOCK_PCT, PROFIT_LOCK_PCT * daysHeld / lockDays)
+                      : null;
+                    const deficit     = expectedPct != null ? expectedPct - actualPct : null;
+                    const remPct      = PROFIT_LOCK_PCT - actualPct;
+                    const daysToTarget = (atrPct > 0 && remPct > 0) ? Math.ceil(remPct / atrPct) : null;
                     return (
                       <div style={{
                         marginTop: '0.75rem', padding: '0.6rem 0.75rem',
@@ -918,7 +830,7 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions, equity }) {
                           <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: '0.45rem' }}>
                             Expected at day {daysHeld}:
                             <strong style={{ color: tierInfo.text, marginLeft: '0.25rem' }}>+{expectedPct.toFixed(1)}%</strong>
-                            {' '}toward +25% goal — actual:
+                            {' '}toward the +5% profit lock — actual:
                             <strong style={{ color: actualPct >= 0 ? '#10b981' : '#f43f5e', marginLeft: '0.25rem' }}>
                               {actualPct >= 0 ? '+' : ''}{actualPct.toFixed(1)}%
                             </strong>
@@ -934,7 +846,7 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions, equity }) {
                             At ATR {atrPct.toFixed(2)}%/day → est.
                             <strong style={{ color: 'var(--text-secondary)', marginLeft: '0.2rem' }}>
                               {daysToTarget}d
-                            </strong>{' '}more to reach +25%.
+                            </strong>{' '}more to reach the +5% lock.
                           </div>
                         )}
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
@@ -1069,7 +981,7 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions, equity }) {
                   )}
                   {pos.entry_est_days_target != null && (
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Est.&nbsp;+25%&nbsp;<b style={{ color: 'var(--text-secondary)' }}>~{pos.entry_est_days_target}d</b>
+                      Est.&nbsp;+5%&nbsp;lock&nbsp;<b style={{ color: 'var(--text-secondary)' }}>~{pos.entry_atr_pct > 0 ? estDaysToLock(pos.entry_atr_pct) : pos.entry_est_days_target}d</b>
                     </span>
                   )}
                 </div>
@@ -1158,6 +1070,8 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions, equity }) {
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function DashboardView({ data, marketData, trades }) {
   const [expandedRow, setExpandedRow] = useState(null);
+  const [expandedTrade, setExpandedTrade] = useState(null);
+  const toggleTrade = (id) => setExpandedTrade((prev) => (prev === id ? null : id));
   const [buildVersion, setBuildVersion] = useState(null);
 
   useEffect(() => {
@@ -1554,6 +1468,7 @@ export default function DashboardView({ data, marketData, trades }) {
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: '1rem', paddingRight: 0 }} aria-label="Expand" />
                   <th onClick={() => requestSortTrades('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIconTrades('ticker')}</th>
                   <th onClick={() => requestSortTrades('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIconTrades('shares')}</th>
                   <th onClick={() => requestSortTrades('buy_price')} style={{ cursor: 'pointer' }}>Buy Price{getSortIconTrades('buy_price')}</th>
@@ -1566,8 +1481,20 @@ export default function DashboardView({ data, marketData, trades }) {
                 </tr>
               </thead>
               <tbody>
-                {sortedTrades.map((trade) => (
-                  <tr key={trade.id}>
+                {sortedTrades.map((trade) => {
+                  const exit = classifyExit(trade.exit_reason);
+                  const isOpen = expandedTrade === trade.id;
+                  return (
+                  <React.Fragment key={trade.id}>
+                  <tr
+                    onClick={() => toggleTrade(trade.id)}
+                    className={isOpen ? 'row-expanded' : ''}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title="Click for the full exit breakdown"
+                  >
+                    <td style={{ color: 'var(--text-muted)', paddingRight: 0 }}>
+                      {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </td>
                     <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{trade.ticker}</td>
                     <td>{trade.shares}</td>
                     <td>{formatCurrency(trade.buy_price)}</td>
@@ -1576,7 +1503,7 @@ export default function DashboardView({ data, marketData, trades }) {
                       {formatDate(trade.buy_date)}
                     </td>
                     <td 
-                      style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'help' }}
+                      style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}
                       title={trade.buy_date && trade.sell_date ? `Held For: ${Math.floor((new Date(trade.sell_date) - new Date(trade.buy_date)) / (1000 * 60 * 60 * 24))} Days` : ''}
                     >
                       {formatDate(trade.sell_date)}
@@ -1588,21 +1515,28 @@ export default function DashboardView({ data, marketData, trades }) {
                       {trade.percent_return.toFixed(2)}%
                     </td>
                     <td>
-                      {(() => {
-                        const cleanExitReason = getCleanExitReason(trade.exit_reason, trade.percent_return);
-                        const detailedExitTooltip = getDetailedExitTooltip(trade.exit_reason, trade.percent_return);
-                        return (
-                          <span 
-                            className={`badge ${cleanExitReason.includes('Profit Target') ? 'badge-success' : cleanExitReason.includes('Stop Loss') ? 'badge-danger' : 'badge-warning'}`}
-                            title={detailedExitTooltip}
-                          >
-                            {cleanExitReason}
-                          </span>
-                        );
-                      })()}
+                      <span
+                        className={`badge ${toneToBadgeClass(exit.tone, trade.profit_loss)}`}
+                        title={`Sold by ${exit.executor.label} — click the row for the full breakdown`}
+                      >
+                        {exit.label}
+                      </span>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                        via {exit.executor.label}
+                      </div>
                     </td>
                   </tr>
-                ))}
+
+                  {isOpen && (
+                    <tr>
+                      <td colSpan={10} style={{ padding: 0 }}>
+                        <ExitDetailPanel trade={trade} />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -611,6 +611,72 @@ Two behaviours worth knowing:
 
 ---
 
+## Dashboard: the exit detail panel
+
+Every closed trade on both the **Dashboard** and **Trade History** screens expands
+to a full breakdown of how it was closed. Click the row.
+
+The panel answers four things the Exit Reason badge alone cannot:
+
+- **Who executed the exit.** Three attributions, and the difference is
+  operationally significant:
+  - **Bot (execution agent)** — the agent evaluated a rule and submitted the order.
+  - **IBKR (resting order)** — a GTC order filled at the broker without the agent
+    being involved; it found out at the next reconcile.
+  - **Manual / human** — closed in TWS or by force-sell, bypassing the rule set.
+- **Trade economics** — shares, both fills, move per share, cost basis, proceeds,
+  realised P&L and return, all derived from the stored fills.
+- **What the firing rule recorded** — the numbers the rule itself wrote at the
+  time. A trailing stop shows the trail in force, the high-water mark and the date
+  it was set, the implied trigger price, the hold day and the peak excursion. The
+  Intraday Loss Minimiser shows the intraday high, the sale price and the pullback.
+  Rank & Replace shows both scores and the ticker rotated into.
+- **What was never recorded**, listed by name.
+
+### Nothing is inferred from the outcome
+
+Exit labels are derived from the stored reason string only. They are never
+inferred from the return percentage. This matters because the previous
+implementation did exactly that: any reconciled exit was labelled a +25% profit
+target above +24% and a −7% stop below it — so PTGX, which closed at −2.77% on a
+broker trailing stop, was displayed as "Stop Loss (−7%)". Neither number is real.
+The bot has **no fixed profit target**, and the stop is the dynamic 8.25–10% trail
+that tightens to 1.5% after the +5% lock, not a flat 7%.
+See `decisions/2026-08-23_exit-detail-panel.md` for why.
+
+`frontend/src/lib/exitDetails.js` is the single classifier for both screens.
+`classifyExit()` takes only the reason string, so it is structurally incapable of
+seeing the P&L. The build fails if it regains a second parameter or if either view
+reintroduces a local copy.
+
+### "Not recorded" means the data is gone, not hidden
+
+The 10 trades closed before 2026-08-23 by a broker trailing stop carry only the
+bare label `Trailing stop (IBKR GTC TRAIL order)`. Their trail, high-water mark
+and trigger price were on the `portfolio_positions` row that reconcile deleted,
+and are unrecoverable. The panel names them as missing rather than leaving a gap
+that reads as a zero.
+
+From 2026-08-23 the agent captures that risk state at reconcile time and appends
+it to the reason, so newer broker exits are fully explained:
+
+```
+Trailing stop (IBKR GTC TRAIL order) — trail 10.00%, HWM $52.02 set 2026-08-21,
+implied trigger $46.82, day 2 of hold, peak +4.30%
+```
+
+The trigger price is labelled **implied** because it is reconstructed from the
+trail and the last peak the agent observed, not read back from the broker. If the
+peak moved between the final 15-minute check and the fill, it is approximate.
+
+> **Format contract.** The agent writes this suffix in `_exit_context_suffix()`
+> (`execution_agent.py`) and the dashboard parses it in `extractReasonFacts()`.
+> The two are pinned from both sides — `tests/test_exit_context.py` and
+> `frontend/scripts/test-exit-details.mjs` — so a drift in the agent's format
+> fails a test instead of silently degrading the panel back to "not recorded".
+
+---
+
 ## Manual tools
 
 | Script | Purpose | Agent must be stopped? | Speed |

@@ -398,7 +398,7 @@ export default function ScreenerView({ results, onRunScan, loading, onBuyStock }
               </form>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
                 <HelpCircle size={12} />
-                Bought at live market close. Virtual stop-loss (7%) & profit target (25%) will be set automatically.
+                Bought at live market close. A trailing stop is placed automatically and tightens as the position ages and gains. There is no fixed profit target.
               </p>
             </div>
           </>

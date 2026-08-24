@@ -1744,6 +1744,81 @@ def handle_mock_sell(ticker: str, price: float, reason: str):
         print(f"❌ Database error during mock sale execution: {e}")
         sys.exit(1)
 
+def _exit_context_suffix(pos: dict, sell_price: float) -> str:
+    """
+    Build a human- and machine-readable summary of the risk state a position was
+    in at the moment it was closed.
+
+    Broker-side exits are discovered after the fact: the GTC trailing order fires
+    at IBKR without consulting the agent, so the only record written used to be
+    the bare label "Trailing stop (IBKR GTC TRAIL order)". That is true but
+    useless for review — it does not say what trail was in force, what peak the
+    trail was anchored to, how long the position had been held, or how far it had
+    run before it turned. All of those live on the `portfolio_positions` row,
+    which is deleted moments later, so they are lost permanently unless captured
+    here.
+
+    Returns an empty string when the row carries nothing worth recording, so a
+    sparse position never produces a reason string full of dangling em-dashes.
+    """
+    parts: list[str] = []
+
+    hwm = pos.get("hwm_price")
+    trail_pct = pos.get("stop_loss_pct")
+
+    try:
+        hwm = float(hwm) if hwm is not None else None
+    except (TypeError, ValueError):
+        hwm = None
+    try:
+        trail_pct = float(trail_pct) if trail_pct is not None else None
+    except (TypeError, ValueError):
+        trail_pct = None
+
+    if trail_pct is not None:
+        parts.append(f"trail {trail_pct * 100:.2f}%")
+
+    if hwm is not None and hwm > 0:
+        hwm_date = pos.get("hwm_date")
+        parts.append(f"HWM ${hwm:.2f}" + (f" set {hwm_date}" if hwm_date else ""))
+        if trail_pct is not None:
+            # The price the resting order would have been sitting at. Labelled
+            # "implied" because the agent never observed the broker's actual
+            # trigger — it is reconstructed from the trail and the peak we know.
+            parts.append(f"implied trigger ${hwm * (1 - trail_pct):.2f}")
+
+    days_held = pos.get("days_held")
+    if days_held is not None:
+        parts.append(f"day {days_held} of hold")
+
+    peak_pct = pos.get("highest_unrealized_pct")
+    if peak_pct is not None:
+        try:
+            parts.append(f"peak {float(peak_pct):+.2f}%")
+        except (TypeError, ValueError):
+            pass
+
+    if pos.get("exit_armed"):
+        armed_price = pos.get("exit_armed_price")
+        armed_bits = "armed"
+        if armed_price:
+            try:
+                armed_bits += f" at ${float(armed_price):.2f}"
+            except (TypeError, ValueError):
+                pass
+        armed_reason = pos.get("exit_armed_reason")
+        if armed_reason:
+            armed_bits += f" ({armed_reason})"
+        parts.append(armed_bits)
+
+    if pos.get("power_hold"):
+        parts.append("power hold active")
+
+    if not parts:
+        return ""
+    return " — " + ", ".join(parts)
+
+
 def reconcile_with_ibkr(ib: IB):
     """
     Full bidirectional reconciliation between IBKR actual positions and Supabase ledger.
@@ -1968,7 +2043,18 @@ def reconcile_with_ibkr(ib: IB):
                     / total_qty
                 ) if total_qty > 0 else 0.0
                 exec_ids   = ", ".join(f["exec_id"] for f in sb_fills)
-                sell_date_fill = sb_fills[0]["fill_time"][:10]   # earliest fill
+                # Full timestamp, not just the date. `ibkr_fills.fill_time` is
+                # written from `fill.execution.time.isoformat()` (a tz-aware UTC
+                # instant), so the precision is already there — truncating it
+                # with [:10] threw it away and stamped every exit at midnight.
+                # Midnight is EARLIER than the entry for any position bought and
+                # closed the same session, which made same-day exits compute a
+                # negative holding period.
+                #
+                # The LAST fill is used, not the first: this row records a
+                # *closed* position, and it is not closed until the final share
+                # is sold. `sb_fills` is ordered fill_time ascending by the query.
+                sell_date_fill = sb_fills[-1]["fill_time"]
                 sell_price_source = (
                     f"ibkr_fills (persistent DB, {len(sb_fills)} fill(s), "
                     f"execIds: {exec_ids})"
@@ -1995,7 +2081,10 @@ def reconcile_with_ibkr(ib: IB):
                     ) if total_qty > 0 else 0.0
                     exec_ids   = ", ".join(f.execution.execId for f in sell_fills)
                     sell_fills_sorted = sorted(sell_fills, key=lambda f: f.execution.time)
-                    sell_date_fill    = sell_fills_sorted[0].execution.time.date().isoformat()
+                    # Keep the time: `execution.time` is a tz-aware UTC instant,
+                    # and .date() discarded it. See the Tier 1 note above — the
+                    # last fill is the moment the position actually closed.
+                    sell_date_fill    = sell_fills_sorted[-1].execution.time.isoformat()
                     sell_price_source = (
                         f"reqExecutions session cache weighted avg "
                         f"({len(sell_fills)} fill(s), execIds: {exec_ids})"
@@ -2074,10 +2163,22 @@ def reconcile_with_ibkr(ib: IB):
         percent_return = round(((sell_price / buy_price) - 1.0) * 100.0, 2)
 
         # ── FIX (Bug 4): correct sell_reason based on whether a fill was found ─
+        #
+        # Record the exit CONTEXT, not just the exit label. The bare string
+        # "Trailing stop (IBKR GTC TRAIL order)" is all that used to be written
+        # here, which left the dashboard unable to answer the first question an
+        # operator asks about a stopped-out trade: what was the trail, and what
+        # peak was it anchored to? Every one of those numbers is sitting on the
+        # `pos` row we are about to delete, so discarding them was gratuitous —
+        # once the row is gone they are unrecoverable.
+        #
+        # These are appended to the free-text reason rather than added as new
+        # columns so that no schema migration is required and the existing
+        # `trade_history` shape is untouched; the dashboard parses them back out.
         if has_sld_fill:
-            sell_reason = "Trailing stop (IBKR GTC TRAIL order)"
+            sell_reason = "Trailing stop (IBKR GTC TRAIL order)" + _exit_context_suffix(pos, sell_price)
         else:
-            sell_reason = "Manual close in IBKR (reconciled) — PRICE_UNCERTAIN"
+            sell_reason = "Manual close in IBKR (reconciled) — PRICE_UNCERTAIN" + _exit_context_suffix(pos, sell_price)
 
         # ── FIX (Bug 3): write explicit sell_date from fill timestamp ─────────
         trade_log = {

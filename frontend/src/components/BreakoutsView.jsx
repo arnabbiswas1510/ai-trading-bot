@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import useSortableTable from '../hooks/useSortableTable';
 import { Activity, AlertCircle, Calendar, Zap, TrendingUp, History, ShieldAlert, Sparkles, TrendingDown, ChevronDown, ChevronRight, BarChart2, Brain, Droplets, Gauge, Clock } from 'lucide-react';
+import { volatilityFit } from '../lib/volatilityFit';
 
 // Stable sort-key function — must be module-level so reference is identical
 // across renders (required for getSortIcon's === comparison to light up the arrow).
@@ -45,16 +46,15 @@ function BreakoutDetailPanel({ b, colSpan }) {
 
   const estDays  = b.est_days_to_target;
   const atrPct   = b.atr_pct;
-  const swingLabel = estDays == null ? '—'
-    : estDays <= 15  ? '🚀 Fast mover (< 15 days)'
-    : estDays <= 30  ? '✅ Swing-compatible (≤ 30 days)'
-    : estDays <= 60  ? '⚠️ Slow mover (≤ 60 days)'
-    : '❌ Long-term only (> 60 days)';
-  const swingColor = estDays == null ? 'var(--text-muted)'
-    : estDays <= 15  ? '#10b981'
-    : estDays <= 30  ? '#3b82f6'
-    : estDays <= 60  ? '#f59e0b'
-    : '#f43f5e';
+  // Volatility fit is judged on ATR against the real stop ladder, NOT on speed:
+  // see frontend/src/lib/volatilityFit.js.
+  const fit        = volatilityFit(atrPct);
+  const swingLabel = fit.emoji === '❓' ? '—' : `${fit.emoji} ${fit.label}`;
+  const swingColor = fit.color;
+  const fitRgb     = fit.tone === 'good' ? '16,185,129'
+    : fit.tone === 'bad' ? '244,63,94'
+    : fit.tone === 'warn' ? '245,158,11'
+    : '148,163,184';
 
   const techScore = b.technical_score;
   const liqScore  = b.liquidity_score;
@@ -135,8 +135,8 @@ function BreakoutDetailPanel({ b, colSpan }) {
             flexWrap: 'wrap',
             alignItems: 'center',
             padding: '0.6rem 0.9rem',
-            background: `rgba(${estDays <= 30 ? '59,130,246' : '245,158,11'}, 0.06)`,
-            border: `1px solid rgba(${estDays <= 30 ? '59,130,246' : '245,158,11'}, 0.18)`,
+            background: `rgba(${fitRgb}, 0.06)`,
+            border: `1px solid rgba(${fitRgb}, 0.18)`,
             borderRadius: '8px',
             marginBottom: b.score_rationale ? '0.75rem' : 0,
           }}>
@@ -149,7 +149,7 @@ function BreakoutDetailPanel({ b, colSpan }) {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <Clock size={14} color="var(--text-muted)" />
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700 }}>Est. days to +25%</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700 }}>Est. days to +5% lock</span>
               <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
                 {estDays != null ? estDays : '—'}
               </span>

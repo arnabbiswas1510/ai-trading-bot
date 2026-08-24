@@ -398,7 +398,21 @@ def fetch_trade_confirms_for_ticker(ticker: str) -> dict | None:
             return None
         total_qty  = sum(f["shares"] for f in fills)
         wavg_price = sum(f["shares"] * f["price"] for f in fills) / total_qty
-        sell_date  = sorted(fills, key=lambda f: f["fill_time"])[0]["fill_time"][:10]
+        # DELIBERATELY date-only, unlike the two live-fill paths in
+        # execution_agent.reconcile_with_ibkr(), which now store the full
+        # timestamp.
+        #
+        # Flex `dateTime` ("YYYYMMDD;HHMMSS") carries no timezone and is parsed
+        # naive at _parse_trade_confirms(); IBKR renders it in the timezone
+        # configured on the Flex query, which is not necessarily UTC. Writing a
+        # naive local time into a `timestamptz` column makes Postgres read it as
+        # UTC, which would silently shift every Flex-sourced exit by the account's
+        # UTC offset — several hours of invented precision.
+        #
+        # The date is the largest unit that is unambiguously correct, so that is
+        # what is stored. The dashboard detects the midnight stamp and reports
+        # "only the date was recorded" rather than implying a known fill time.
+        sell_date  = sorted(fills, key=lambda f: f["fill_time"])[-1]["fill_time"][:10]
         exec_ids   = ", ".join(f.get("exec_id", "?") for f in fills)
         source     = f"Flex TradeConfirm weighted avg ({len(fills)} fill(s), execIds: {exec_ids})"
         print(f"[flex_query_sync] {ticker}: {len(fills)} fill(s) → weighted avg ${wavg_price:.4f} on {sell_date}")

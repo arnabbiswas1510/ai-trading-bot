@@ -26,6 +26,7 @@ import html
 import time
 import requests
 from datetime import datetime
+from scoring import volatility_fit
 from zoneinfo import ZoneInfo
 
 TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
@@ -133,19 +134,14 @@ class TelegramNotifier:
             ttype      = t.get("trigger_type", "BREAKOUT")
 
             grade_emoji = {"A": "🟢", "B": "🟡", "C": "🟠", "D": "🔴"}.get(grade, "⚪")
-            swing_emoji = (
-                "🚀" if 0 < est_days <= 15 else
-                "✅" if est_days <= 30 else
-                "⚠️" if est_days <= 60 else
-                "❌"
-            )
+            swing_emoji = volatility_fit(atr_pct)[0]
             type_badge = "⏳ <i>Pre-Breakout +10</i>" if ttype == "PRE_BREAKOUT" else "🔥 <i>Breakout</i>"
 
             msg += (
                 f"{grade_emoji} <b>{ticker}</b>  ${price}  →  "
                 f"<b>Score: {final}</b> ({grade})  {type_badge}\n"
                 f"  Tech:{tech} | Liq:{liq} | AI:{ai_s} | Sent:{sent} | RS:{rs}\n"
-                f"  {swing_emoji} ATR: {atr_pct}%/day  →  Est. {est_days} days to +25%\n"
+                f"  {swing_emoji} ATR: {atr_pct}%/day  →  Est. {est_days} days to the +5% lock\n"
             )
             if rationale:
                 msg += f"  📝 <b>Rating Reason:</b> <i>{rationale}</i>\n"

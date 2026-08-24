@@ -5,7 +5,7 @@ import pandas as pd
 from supabase import create_client, Client
 from telegram_notifier import TelegramNotifier
 from zoneinfo import ZoneInfo
-from scoring import compute_rs_score   # pure function — no external deps
+from scoring import compute_rs_score, est_days_to_lock   # pure functions — no external deps
 import trigger_audit
 
 # Sourced safely from environment variables
@@ -283,10 +283,13 @@ def check_technical_breakout(ticker, *, volume_surge_min: float | None = None,
                 return None
             today_ny = datetime.datetime.now(ZoneInfo("America/New_York")).date().strftime("%Y-%m-%d")
 
-            # ── ATR-14 (swing-trade velocity) ────────────────────────────────
+            # ── ATR-14 (volatility fit) ──────────────────────────────────────
             # True Range = max(H-L, |H-prevC|, |L-prevC|)
             # ATR% = 14-day avg ATR as % of current price
-            # est_days_to_target = trading days to reach 25% at avg ATR pace
+            # est_days_to_target = trading days to the +5% PROFIT LOCK at avg ATR
+            # pace. It used to measure a +25% target the bot never trades — the
+            # bot has no profit target at all. See
+            # decisions/2026-08-24_ai-evaluator-volatility-fit.md.
             # Zero extra API calls — high/low/close already in df.
             atr_pct            = 0.0
             est_days_to_target = 999   # sentinel = "unreachable within swing horizon"
@@ -303,7 +306,7 @@ def check_technical_breakout(ticker, *, volume_surge_min: float | None = None,
                 if current_close > 0 and atr_14 == atr_14:   # NaN guard
                     atr_pct = round((atr_14 / current_close) * 100.0, 2)
                     if atr_pct > 0:
-                        est_days_to_target = int(round(25.0 / atr_pct))
+                        est_days_to_target = est_days_to_lock(atr_pct)
             except Exception:
                 pass   # stay at defaults on any error
 
@@ -319,7 +322,7 @@ def check_technical_breakout(ticker, *, volume_surge_min: float | None = None,
                 "avg_volume_50":       int(avg_vol_50) if avg_vol_50 == avg_vol_50 else 0,
                 "rs_score":            rs,
                 "atr_pct":             atr_pct,           # daily ATR as % of price
-                "est_days_to_target":  est_days_to_target, # trading days to +25% at ATR pace
+                "est_days_to_target":  est_days_to_target, # trading days to the +5% lock at ATR pace
                 "triggered_at":        today_ny,
                 "trigger_type":        "BREAKOUT",
             }
@@ -682,7 +685,7 @@ if __name__ == "__main__":
                         if current_close > 0 and atr_14 == atr_14:
                             atr_pct = round((atr_14 / current_close) * 100.0, 2)
                             if atr_pct > 0:
-                                est_days_to_target = int(round(25.0 / atr_pct))
+                                est_days_to_target = est_days_to_lock(atr_pct)
                     except Exception:
                         pass
 

@@ -431,6 +431,15 @@ high-water mark and give-back, profit lock, armed exits), and what happens next 
 nearest price trigger and its level, the next phase change, and any pending scheduled
 event. Below it, the **Risk Rule Ladder** shows every rule's live state and trigger price.
 
+Each **closed** trade expands too, on both the Dashboard and Trade History screens, into an
+**exit detail panel**: who actually executed the exit (the agent, a resting IBKR order, or a
+human), the trade economics, and the numbers the firing rule recorded — for a trailing stop
+that is the trail in force, the high-water mark it was anchored to and the implied trigger
+price. Anything the record does not contain is listed by name as *not recorded* rather than
+left blank. Exit labels are read from the stored reason and are never inferred from the
+return: the bot has no fixed profit target and no flat 7% stop, so it never claims one.
+See `docs/sell_logic.md` and `decisions/2026-08-23_exit-detail-panel.md`.
+
 ```bash
 docker compose logs -f execution-agent
 ```

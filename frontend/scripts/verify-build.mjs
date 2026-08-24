@@ -57,12 +57,36 @@ const FEATURE_FINGERPRINTS = [
   // show whether buys are actually permitted, not just the descriptive status.
   { feature: "Market buy-gate banner",    string: "data-market-gate" },
   { feature: "Buy gate label",            string: "Buy Gate:" },
+  // Exit detail panel (added 2026-08-23) — the exit reason column is only a
+  // label; the breakdown behind it is what makes an exit auditable.
+  { feature: "Exit detail panel",         string: "data-exit-detail" },
+  { feature: "Exit executor attribution", string: "Sold by " },
+  { feature: "Exit unrecorded disclosure", string: "Not recorded for this exit" },
+  { feature: "Exit verbatim reason",      string: "Exit reason as stored" },
 ];
 
 // -- Source-level structural guards --------------------------------------------
 // Some regressions have no fingerprint string because the fix was structural.
 // These are checked against source, not the bundle.
 const SOURCE_GUARDS = [
+  {
+    feature: "Volatility fit is a band, not a speed ramp (ADR 2026-08-24)",
+    file: "../src/lib/volatilityFit.js",
+    // The AI rubric used to rank on EstDaysTo25% = 25/ATR, a monotonic rescaling
+    // of ATR that made it an unbounded preference for volatility. Measured at
+    // -9.5pp CAGR over 2,315 offline signals with a clean dose-response.
+    // The cap is anchored to the 12% entry-stop clamp: above 4.8%/day a position
+    // holds under 2.5 ATR of room. Changing these must go through the ADR.
+    require: [/ATR_STOP_CAP_PCT = 4\.8/, /PROFIT_LOCK_PCT = 5\.0/],
+    // A +25% target does not exist anywhere in the bot.
+    forbid: /25\s*\/\s*atr|25\.0\s*\*/i,
+  },
+  {
+    feature: "Dashboard pace measures the +5% lock, not a phantom +25% goal",
+    file: "../src/components/DashboardView.jsx",
+    require: [/estDaysToLock/, /PROFIT_LOCK_PCT/],
+    forbid: /toward \+25% goal|more to reach \+25%|Est\.&nbsp;\+25%/,
+  },
   {
     feature: "Sidebar nav items are <button>, not <div> (iOS tap fix, 2026-08-22)",
     file: "../src/App.jsx",
@@ -76,6 +100,41 @@ const SOURCE_GUARDS = [
     feature: "Sidebar uses dvh fallback for iOS toolbar (2026-08-22)",
     file: "../src/index.css",
     require: /height:\s*100dvh/,
+  },
+  {
+    feature: "Exit reasons are not fabricated from return % (2026-08-23)",
+    file: "../src/lib/exitDetails.js",
+    // The root cause of the old bug was that classification took the return
+    // percentage as an argument and branched on it: any reconciled exit was
+    // labelled a +25% profit target above +24% and a -7% stop below it. Both
+    // numbers were false — the fixed profit target was removed from the bot
+    // entirely, and the stop is a dynamic 8.25-10% trail that tightens to 1.5%
+    // after the +5% lock — so a trade that closed at -2.77% was shown to the
+    // operator as a -7% stop loss.
+    //
+    // Guarding the invariant rather than the strings: pinning classifyExit to a
+    // single reason-string parameter means the classifier structurally cannot
+    // see the P&L, so it cannot invent a rule from it. (deriveTradeMath does
+    // legitimately read profit_loss — that is arithmetic on the fill, not
+    // classification, which is exactly the distinction that was missing before.)
+    // Prose in the two view components may still quote the old labels when
+    // explaining the fix, which is why this check is structural and lives here.
+    forbid: /pctReturn/,
+    require: /export function classifyExit\(rawReason\)/,
+  },
+  {
+    feature: "Exit classification is not duplicated per view (2026-08-23)",
+    file: "../src/components/DashboardView.jsx",
+    // DashboardView and TradesView each carried their own getCleanExitReason
+    // and the two silently drifted apart. Both must import the shared module.
+    forbid: /function getCleanExitReason/,
+    require: /from '\.\.\/lib\/exitDetails'/,
+  },
+  {
+    feature: "Trade History uses the shared exit classifier (2026-08-23)",
+    file: "../src/components/TradesView.jsx",
+    forbid: /getCleanExitReason\s*=\s*\(/,
+    require: /from '\.\.\/lib\/exitDetails'/,
   },
 ];
 
@@ -133,11 +192,16 @@ for (const guard of SOURCE_GUARDS) {
     failed++;
     continue;
   }
-  if (guard.require && !guard.require.test(src)) {
-    console.error(`  x  ${guard.feature} — required pattern missing: ${guard.require}`);
-    failures.push({ feature: guard.feature, string: String(guard.require) });
-    failed++;
-    continue;
+  if (guard.require) {
+    // `require` accepts a single regex or an array of regexes that must all match.
+    const required = Array.isArray(guard.require) ? guard.require : [guard.require];
+    const missing = required.find((re) => !re.test(src));
+    if (missing) {
+      console.error(`  x  ${guard.feature} — required pattern missing: ${missing}`);
+      failures.push({ feature: guard.feature, string: String(missing) });
+      failed++;
+      continue;
+    }
   }
   console.log(`  ok ${guard.feature}`);
   passed++;

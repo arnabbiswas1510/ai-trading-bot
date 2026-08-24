@@ -132,6 +132,60 @@ copied onto the position at fill and becomes the scaling factor for the
 [Thesis Stop](sell_logic.md#3-thesis-stop--days-25) — a trigger written without it forces
 that rule onto a generic 3.0% fallback.
 
+### Volatility fit (how ATR is scored)
+
+`est_days_to_target` is the estimated trading days to reach the **+5% profit
+lock** at the average ATR pace — `round(5 / ATR%)`, via `est_days_to_lock()` in
+`scoring.py`. The +5% arming threshold is the only upside level the bot acts on;
+there is no profit target.
+
+ATR is scored as a **band, not a ramp**. `volatility_fit()` in `scoring.py` is
+the single source of truth, mirrored for the UI in
+`frontend/src/lib/volatilityFit.js`:
+
+| Entry ATR%/day | Verdict | Effect on the AI rating |
+|---|---|---|
+| > **4.8%** | Too volatile | **-20 pts** |
+| 1.5% – 4.8% | Good fit | none |
+| < 1.5% | Quiet | -10 pts |
+
+4.8%/day is where `2.5 x ATR` exceeds the **12% clamp** on the entry stop
+([Entry Stop](sell_logic.md)). Above it a position holds under 2.5 ATR of room
+and is routinely gapped out within one or two sessions for the full stop loss.
+
+#### Why not O'Neil's 20-25% profit target?
+
+CAN SLIM advocates taking profits at 20-25%, and the *stocks* do reach it: 22% of
+breakout signals trade +25% before an 8% stop (p90 max gain +38.9%). But the
+median winner takes **59 sessions**, and with only `MAX_POSITIONS` slots each
+such hold occupies a quarter of the book for ~3 months. Measured on the same
+signals, a +25%-target exit returns **+4.7% CAGR against the shipped ladder's
++35.2%** — not because expectancy is worse (it is marginally better, +1.53% vs
++1.33% per trade) but because turnover collapses from 295 trades to 45.
+
+This is **not** an argument that O'Neil is wrong, and the slot count is not the
+culprit — he recommends 4-5 positions too. His concentration is inseparable from
+market timing and from taking few entries at proper pivots. When those are
+restored (`research/oneil_full_system_bt.py`) on the screener-passing universe,
+the target *wins*: **+69.9% vs +42.5%**, with per-trade expectancy +9.94% vs
++1.99%.
+
+That result is **not actionable**, because it appears only in the
+survivorship-biased today-snapshot universe; on the unbiased broad universe the
+target loses at every filter level (P ≤ 1%). The standing rule is that a result
+must hold in both universes. The accurate statement is therefore: *the 25%
+target fails on this bot's current entry quality; its viability at O'Neil's entry
+quality is unresolved.* Tracked as FU-014.
+
+One clean finding from the same test: refusing to enter when SPY is below its
+50-day MA lifts the **shipped** ladder from +35.2% to **+46.6%** CAGR on the
+unbiased universe — evidence for keeping the market-direction gate strict.
+
+Raw speed is deliberately **not** rewarded. `5 / ATR%` is under 7 sessions for
+any candidate above ~0.75%/day, so time-to-lock does not separate winners from
+losers; ranking on it measured **-9.5pp CAGR** against a neutral ranking.
+See `decisions/2026-08-24_ai-evaluator-volatility-fit.md` for why.
+
 ---
 
 ## Trigger archive
