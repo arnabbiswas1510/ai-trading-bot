@@ -13,6 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose.yml to production server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 2222
+          source: "docker-compose.yml"
+          target: "/home/pom/docker/ai-trading-bot"
+
       - name: Deploy new images to server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -22,13 +35,10 @@ jobs:
           port: 2222
           timeout: 120s
           script: |
+            mkdir -p /home/pom/docker/ai-trading-bot
             cd /home/pom/docker/ai-trading-bot
 
-            echo "=== Pulling latest repository code ==="
-            git fetch --all
-            git reset --hard origin/main
-
-            echo "=== Pulling latest images ==="
+            echo "=== Pulling latest images from GHCR ==="
             docker compose pull execution-agent trading-bot
 
             echo "=== Removing old container instances to prevent name conflicts ==="
@@ -40,8 +50,6 @@ jobs:
             docker compose up -d execution-agent trading-bot > /dev/null 2>&1
 
             echo "=== Pruning log files older than 7 days ==="
-            # Belt-and-suspenders: TeeLogger purges on startup too, but this
-            # guarantees cleanup even if the container crashed before that ran.
             find /home/pom/docker/ai-trading-bot/logs \
               -maxdepth 1 \
               -name "execution_*.log" \
@@ -56,11 +64,7 @@ jobs:
             docker inspect can-slim-trading-bot --format 'can-slim-trading-bot: {{.State.Status}} (restarts: {{.RestartCount}})'
 
             echo "=== Verifying the dashboard actually serves the deployed commit ==="
-            # Guards against the class of failure where the image is rebuilt and
-            # pulled correctly but the container serves a different bundle (e.g.
-            # a host bind mount shadowing /app/frontend/dist). Without this the
-            # deploy reports success while the UI silently stays on old code.
-            EXPECTED=$(git rev-parse HEAD)
+            EXPECTED="${{ github.event.workflow_run.head_sha || github.sha }}"
             SERVED=""
             for i in $(seq 1 12); do
               SERVED=$(curl -fsS -m 5 http://localhost:8000/api/version 2>/dev/null \
@@ -72,9 +76,7 @@ jobs:
             if [ -z "$SERVED" ]; then
               echo "WARNING: /api/version did not respond; could not verify the served build."
             elif [ "$SERVED" != "$EXPECTED" ]; then
-              echo "ERROR: dashboard is serving $SERVED but the repo is at $EXPECTED."
-              echo "The container did not pick up the new build. Check for a bind mount"
-              echo "shadowing /app/frontend/dist, or a failed image pull."
+              echo "ERROR: dashboard is serving $SERVED but expected $EXPECTED."
               exit 1
             else
               echo "OK: dashboard is serving $SERVED"
