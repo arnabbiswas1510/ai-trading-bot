@@ -100,7 +100,7 @@ jobs:
           rsync -avz \
             -e "ssh -p 2222 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
             ./backup-staging/ \
-            "$DEPLOY_USER@$DEPLOY_HOST:/home/dietpi/docker/ai-trading-bot/backups/"
+            "$DEPLOY_USER@$DEPLOY_HOST:/home/pom/docker/ai-trading-bot/backups/"
 
       - name: Remove the deploy key from the runner
         if: always()
@@ -117,7 +117,7 @@ jobs:
           timeout: 60s
           script: |
             set -e
-            BACKUP_ROOT=/home/dietpi/docker/ai-trading-bot/backups
+            BACKUP_ROOT=/home/pom/docker/ai-trading-bot/backups
 
             # A green rsync step only proves bytes were sent. Read the manifest
             # back off the box to prove the snapshot is actually there and
@@ -128,7 +128,7 @@ jobs:
             python3 - <<'PY'
             import json, pathlib, sys
 
-            root = pathlib.Path("/home/dietpi/docker/ai-trading-bot/backups")
+            root = pathlib.Path("/home/pom/docker/ai-trading-bot/backups")
             manifest = json.loads((root / "manifest" / "latest.json").read_text())
             date = manifest["snapshot_date"]
 

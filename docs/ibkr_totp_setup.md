@@ -63,7 +63,7 @@ windows when IBKR forces a disconnect.
 SSH into your server and add the TOTP secret:
 ```bash
 ssh root@192.168.1.2
-nano /home/dietpi/docker/trading/.env
+nano /home/pom/docker/trading/.env
 ```
 
 Add this line (replace with your actual Base32 secret):
@@ -84,7 +84,7 @@ The agent will:
 ### Step 9: Restart the gateway
 ```bash
 ssh root@192.168.1.2
-cd /home/dietpi/docker/trading
+cd /home/pom/docker/trading
 git pull origin main
 docker compose stop ib-gateway execution-agent
 docker compose up -d ib-gateway

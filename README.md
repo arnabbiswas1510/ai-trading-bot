@@ -468,7 +468,7 @@ strategy did with real money — every scheduled parameter review replays it. It
 up weekly.
 
 A GitHub Action (`weekly_supabase_backup.yml`, Sundays 14:00 UTC) exports all 12 tables and
-rsyncs them to `/home/dietpi/docker/ai-trading-bot/backups/` on the production server:
+rsyncs them to `/home/pom/docker/ai-trading-bot/backups/` on the production server:
 
 ```
 backups/

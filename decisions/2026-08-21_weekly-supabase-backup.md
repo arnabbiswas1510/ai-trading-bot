@@ -24,7 +24,7 @@ containers are disposable.
 
 A GitHub Actions workflow (`weekly_supabase_backup.yml`, Sundays 14:00 UTC)
 exports all 12 Supabase tables and rsyncs them to
-`/home/dietpi/docker/ai-trading-bot/backups/` on the production server.
+`/home/pom/docker/ai-trading-bot/backups/` on the production server.
 
 ```
 backups/

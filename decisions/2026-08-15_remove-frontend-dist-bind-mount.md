@@ -26,7 +26,7 @@ Every layer of the pipeline reported success:
 
 ```yaml
 volumes:
-  - /home/dietpi/docker/ai-trading-bot/frontend/dist:/app/frontend/dist  # hot-swap built UI
+  - /home/pom/docker/ai-trading-bot/frontend/dist:/app/frontend/dist  # hot-swap built UI
 ```
 
 The bind mount shadows `/app/frontend/dist`. Whatever the image contains is

@@ -9,7 +9,7 @@ outside the normal market-open window:
 
 Or via docker run (while agent is stopped):
     docker run --rm --network ai-trading-bot_trading_bridge \\
-      --env-file /home/dietpi/docker/ai-trading-bot/.env \\
+      --env-file /home/pom/docker/ai-trading-bot/.env \\
       ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest \\
       python3 /app/force_buy.py
 

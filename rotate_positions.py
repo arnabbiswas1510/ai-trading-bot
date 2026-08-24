@@ -22,7 +22,7 @@ IMPORTANT — cash account requirement:
   Recommended way to run:
       docker compose stop execution-agent
       docker run --rm --network ai-trading-bot_trading_bridge \\
-        --env-file /home/dietpi/docker/ai-trading-bot/.env \\
+        --env-file /home/pom/docker/ai-trading-bot/.env \\
         -v /tmp/rotate_positions.py:/app/rotate_positions.py \\
         ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest \\
         python3 /app/rotate_positions.py [TICKER1 TICKER2 ...]

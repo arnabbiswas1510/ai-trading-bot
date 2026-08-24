@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "AI Trading Bot",
+			"path": "."
+		},
+		{
+			"name": "AI Health Coach",
+			"path": "../ai-health-coach"
+		}
+	],
+	"settings": {}
+}

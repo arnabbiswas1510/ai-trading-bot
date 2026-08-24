@@ -357,7 +357,7 @@ async def approve_rotation(ticker: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Supabase check failed: {e}")
 
-    COMPOSE_DIR = "/home/dietpi/docker/ai-trading-bot"
+    COMPOSE_DIR = "/home/pom/docker/ai-trading-bot"
     stdout_log, stderr_log = "", ""
 
     try:

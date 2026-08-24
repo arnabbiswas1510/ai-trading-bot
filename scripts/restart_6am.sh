@@ -4,7 +4,7 @@
 # Restarts containers, waits 45s for 2FA TOTP login, and runs health verification.
 # Fires Telegram success/failure notification automatically.
 
-PROJECT_DIR="/home/dietpi/docker/ai-trading-bot"
+PROJECT_DIR="/home/pom/docker/ai-trading-bot"
 cd "$PROJECT_DIR" || exit 1
 
 LOG_FILE="$PROJECT_DIR/logs/cron_restart.log"

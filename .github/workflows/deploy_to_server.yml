@@ -22,7 +22,7 @@ jobs:
           port: 2222
           timeout: 120s
           script: |
-            cd /home/dietpi/docker/ai-trading-bot
+            cd /home/pom/docker/ai-trading-bot
 
             echo "=== Pulling latest repository code ==="
             git fetch --all
@@ -42,7 +42,7 @@ jobs:
             echo "=== Pruning log files older than 7 days ==="
             # Belt-and-suspenders: TeeLogger purges on startup too, but this
             # guarantees cleanup even if the container crashed before that ran.
-            find /home/dietpi/docker/ai-trading-bot/logs \
+            find /home/pom/docker/ai-trading-bot/logs \
               -maxdepth 1 \
               -name "execution_*.log" \
               -mtime +7 \

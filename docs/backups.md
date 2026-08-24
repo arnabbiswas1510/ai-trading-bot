@@ -16,7 +16,7 @@ way.
 | Workflow | `.github/workflows/weekly_supabase_backup.yml` |
 | Schedule | Sundays, 14:00 UTC |
 | Script | `supabase_backup.py` |
-| Destination | `/home/dietpi/docker/ai-trading-bot/backups/` on the prod server |
+| Destination | `/home/pom/docker/ai-trading-bot/backups/` on the prod server |
 | Size | ~180KB per week (700 rows across 12 tables) |
 
 The export runs in the GitHub Actions runner and is rsynced to the server, so
