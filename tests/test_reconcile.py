@@ -227,7 +227,7 @@ class TestIBKRValuationSync:
         item.marketValue    = 11125.0
         item.unrealizedPNL  = 1125.0
 
-        execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+        execution_agent._IBKR_VALUATION_WARNING_SHOWN = False
         _reconcile(ib, supabase)
 
         writes = self._valuation_writes(supabase)
@@ -252,7 +252,7 @@ class TestIBKRValuationSync:
         item.marketValue   = 10_998.0      # deliberately != 100 * 110
         item.unrealizedPNL = 998.0
 
-        execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+        execution_agent._IBKR_VALUATION_WARNING_SHOWN = False
         _reconcile(ib, supabase)
 
         writes = self._valuation_writes(supabase)
@@ -271,7 +271,7 @@ class TestIBKRValuationSync:
         item.position    = 100
         item.marketPrice = 0.0        # no live mark available
 
-        execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+        execution_agent._IBKR_VALUATION_WARNING_SHOWN = False
         _reconcile(ib, supabase)
 
         assert self._valuation_writes(supabase) == []
@@ -286,12 +286,58 @@ class TestIBKRValuationSync:
         supabase.table("portfolio_positions").update.side_effect = \
             Exception("PGRST204: column current_price does not exist")
 
-        execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+        execution_agent._IBKR_VALUATION_WARNING_SHOWN = False
         try:
             _reconcile(ib, supabase)     # must not raise
         finally:
             supabase.table("portfolio_positions").update.side_effect = None
-            execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+            execution_agent._IBKR_VALUATION_WARNING_SHOWN = False
+
+    def test_write_resumes_after_migration_without_a_restart(self):
+        """
+        Applying the migration must take effect on a *running* agent.
+
+        The failure this guards against shipped once: PGRST204 latched a module
+        global that was never reset, so the first rejected cycle disabled the
+        write for the whole process. Operators applied the migration, saw the
+        dashboard still reporting cost basis, and had no way to know a container
+        restart was required. A degraded state that cannot recover on its own is
+        not graceful degradation.
+        """
+        pos = make_position("AAPL", shares=100, buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.0)
+        item = ib.portfolio.return_value[0]
+        item.position      = 100
+        item.marketPrice   = 111.25
+        item.marketValue   = 11125.0
+        item.unrealizedPNL = 1125.0
+
+        execution_agent._IBKR_VALUATION_WARNING_SHOWN = False
+        update_mock = supabase.table("portfolio_positions").update
+        try:
+            # Cycle 1: columns absent. The write is attempted and rejected.
+            update_mock.side_effect = \
+                Exception("PGRST204: column current_price does not exist")
+            _reconcile(ib, supabase)
+
+            # Cycle 2: operator applies the migration; the process is untouched.
+            # Measure this cycle in isolation -- call_args_list records attempts,
+            # including the one that raised above.
+            update_mock.reset_mock()
+            update_mock.side_effect = None
+            _reconcile(ib, supabase)
+
+            writes = self._valuation_writes(supabase)
+            assert len(writes) == 1, (
+                "valuation write must resume on the next cycle without a restart; "
+                f"got {writes}"
+            )
+            assert writes[0]["current_price"] == 111.25
+            assert writes[0]["ibkr_synced_at"]
+        finally:
+            update_mock.side_effect = None
+            execution_agent._IBKR_VALUATION_WARNING_SHOWN = False
 
 
 class TestReconcileCase4:

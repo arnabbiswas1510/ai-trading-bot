@@ -1863,9 +1863,17 @@ def _exit_context_suffix(pos: dict, sell_price: float) -> str:
     return " — " + ", ".join(parts)
 
 
-# Set once when Supabase rejects the IBKR valuation columns, so the warning is
+# Set when Supabase rejects the IBKR valuation columns, purely so the warning is
 # printed a single time per process instead of on every 15-minute cycle.
-_IBKR_VALUATION_COLUMNS_MISSING = False
+#
+# This deliberately does NOT gate the write itself. It used to: the flag short-
+# circuited _sync_ibkr_position_values() for the rest of the process lifetime,
+# which meant applying the migration had no effect on a running agent and the
+# dashboard kept showing cost basis until someone restarted the container --
+# with nothing anywhere saying so. Graceful degradation has to be able to
+# un-degrade. The retry costs one rejected request per cycle while the columns
+# are genuinely absent, which is the right price for self-healing.
+_IBKR_VALUATION_WARNING_SHOWN = False
 
 
 def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
@@ -1883,14 +1891,13 @@ def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
     indefinitely when the ushmds data farm is down.
 
     Degrades gracefully when migrations/add_ibkr_position_values.sql has not been
-    applied: PGRST204 disables the write for the rest of the process rather than
-    failing reconciliation.
+    applied: PGRST204 abandons this cycle rather than failing reconciliation, but
+    the next cycle retries, so applying the migration takes effect without a
+    restart.
 
     Returns the number of positions whose valuation was written.
     """
-    global _IBKR_VALUATION_COLUMNS_MISSING
-    if _IBKR_VALUATION_COLUMNS_MISSING:
-        return 0
+    global _IBKR_VALUATION_WARNING_SHOWN
 
     synced_at = datetime.datetime.now(ZoneInfo("America/New_York")).isoformat()
     written = 0
@@ -1916,14 +1923,24 @@ def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
         except Exception as e:
             msg = str(e)
             if "PGRST204" in msg or "column" in msg.lower():
-                _IBKR_VALUATION_COLUMNS_MISSING = True
-                print("   ⚠️  IBKR valuation columns missing — run "
-                      "migrations/add_ibkr_position_values.sql. Dashboard will show "
-                      "cost basis until then.")
+                # Abandon this cycle -- every ticker would fail identically -- but
+                # do not latch. The next reconcile retries, so the migration can
+                # be applied to a running agent.
+                if not _IBKR_VALUATION_WARNING_SHOWN:
+                    _IBKR_VALUATION_WARNING_SHOWN = True
+                    print("   ⚠️  IBKR valuation columns missing — run "
+                          "migrations/add_ibkr_position_values.sql. Dashboard will show "
+                          "cost basis until then. Retrying each cycle; no restart needed "
+                          "once applied.")
                 return written
             print(f"   ⚠️  Could not write IBKR valuation for {ticker}: {e}")
 
     if written:
+        if _IBKR_VALUATION_WARNING_SHOWN:
+            # Recovered: say so, otherwise the only trace in the log is a stale
+            # warning that now reads as if it were still true.
+            _IBKR_VALUATION_WARNING_SHOWN = False
+            print("   ✅ IBKR valuation columns are now present — resuming valuation sync.")
         print(f"   💵 Synced IBKR valuation for {written} position(s).")
     return written
 

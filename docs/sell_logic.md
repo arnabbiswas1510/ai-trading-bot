@@ -44,6 +44,13 @@ Values stay `NULL` until the agent's next reconcile cycle after the migration.
 There is no back-fill, deliberately — seeding them with `buy_price` would make a
 never-synced position look identical to one IBKR has marked flat.
 
+**No container restart is needed.** The agent re-attempts the write every cycle,
+so applying the migration to a running agent takes effect on its own. Note that
+`reconcile_with_ibkr()` only runs while the market is open (09:30–16:00 ET,
+weekdays) — a migration applied in the evening or at a weekend will not populate
+anything until the next session opens. That wait is normal and is not a failure.
+See `decisions/2026-09-03_ibkr-sourced-position-values.md` for why.
+
 ---
 
 ## Day counting

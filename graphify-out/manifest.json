@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1788555970.6717494,
-    "ast_hash": "449dbb6b57e26c2e09eb60735770406c",
+    "mtime": 1788559775.4648554,
+    "ast_hash": "d4e9b384e362da4d31b8e9292e7f7b7b",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/TradesView.jsx": {
-    "mtime": 1787604374.73285,
-    "ast_hash": "7db079608d1fd318e48299fed0dc7f2a",
+    "mtime": 1788558649.5085604,
+    "ast_hash": "e4638a00248347c6424248633dd3b0b3",
     "semantic_hash": ""
   },
   "frontend/src/hooks/useSortableTable.js": {
@@ -315,8 +315,8 @@
     "semantic_hash": ""
   },
   "tests/test_reconcile.py": {
-    "mtime": 1788479772.4891975,
-    "ast_hash": "91a801cf6c2cf4e763e08de99d49df2e",
+    "mtime": 1788559761.347123,
+    "ast_hash": "a2cd308a1d7cbbde40965ff2415d4d05",
     "semantic_hash": ""
   },
   "tests/test_score_components.py": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788558460.965172,
-    "ast_hash": "3f23a324b425a6529043336571823b5c",
+    "mtime": 1788559806.8314395,
+    "ast_hash": "f04f43d3f7bff75f1809200390526831",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -1025,8 +1025,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-03_ibkr-sourced-position-values.md": {
-    "mtime": 1788481929.752516,
-    "ast_hash": "f20a45a364201f843eb13ddc26042600",
+    "mtime": 1788559816.5493197,
+    "ast_hash": "dedf3755392b97767177cbfc93d07018",
     "semantic_hash": ""
   },
   "tests/test_position_price.py": {

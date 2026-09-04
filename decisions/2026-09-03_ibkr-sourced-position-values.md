@@ -1,7 +1,25 @@
 # Source dashboard position values from IBKR, not FMP
 
 - **Date:** 2026-09-03
-- **Status:** Accepted
+- **Status:** Accepted — with one implementation defect since corrected
+
+> **Erratum, 2026-09-04.** The degradation described under *Negative / accepted*
+> below, and Follow-up step 2, were **not delivered as written**. `PGRST204` set
+> a module-level flag that was never reset, so the first rejected cycle disabled
+> the valuation write for the entire process lifetime. Applying the migration to
+> a running agent therefore did **nothing** — the dashboard kept reporting cost
+> basis until the container was restarted, and no message anywhere said so.
+>
+> Fixed 2026-09-04: the flag now suppresses only the repeated log line, not the
+> write, so the next cycle retries and the migration takes effect without a
+> restart. Read "warns once per process" below as applying to the *warning* only.
+>
+> Separately, Follow-up step 2 is correct but incomplete: `reconcile_with_ibkr()`
+> runs only while the market is open (09:30–16:00 ET, weekdays), so "the next
+> agent cycle" can be the next trading session rather than the next 15 minutes.
+>
+> The decision itself — value positions from IBKR rather than FMP — stands
+> unchanged.
 
 ## Context
 
