@@ -19,7 +19,7 @@ parameter requires a code change.**
 | Variable | Required | Notes |
 |---|---|---|
 | `SUPABASE_URL` / `SUPABASE_KEY` | yes | Cloud state store |
-| `FMP_API_KEY` | yes | Price and fundamental data |
+| `FMP_API_KEY` | yes | Fundamental data, screening/research prices, and the **fallback** live price for held positions when IBKR has no mark (exit logic and dashboard price positions from IBKR first — see `decisions/2026-09-04_ibkr-first-live-pricing.md`) |
 | `OPENAI_API_KEY` | yes | Trigger evaluation; without it every trigger is rejected `NO_AI_SCORE` |
 | `IBKR_LIVE_USER` / `IBKR_LIVE_PASS` / `IBKR_TOTP_SECRET` | yes | Gateway login — see [IBKR TOTP setup](ibkr_totp_setup.md) |
 | `IBKR_ACCOUNT` | conditional | **Required if both live (`U…`) and paper (`DU…`) accounts are visible.** The agent refuses to guess |
@@ -47,9 +47,11 @@ in practice 10–12%, scaled to the name's own volatility.
 
 Raising `MAX_POSITIONS` with a fully-invested book does **not** free capital. New slots fill
 only as existing positions exit, and the book carries uneven weights until it fully turns
-over. This is why the Early Dollar Stop sizes itself from `EFFECTIVE_POSITION_SLOTS` (`4`)
-rather than `MAX_POSITIONS` (`5`): it needs the slot count the book is *actually* sized for.
-Set the two equal once the portfolio has been rebuilt at the target count.
+over.
+
+No exit rule derives a threshold from the slot count any more. `EFFECTIVE_POSITION_SLOTS`
+existed solely for the Early Dollar Stop's arithmetic and was deleted with it (FU-007 is
+closed as a result) — see `docs/retired_code.md`.
 
 ---
 
@@ -84,18 +86,34 @@ variables so its `execution_gate` field cannot drift from the agent's verdict.
 
 ## Exits
 
-### Thesis Stop
+### The Prove-It Stop
+
+The single loss-cutting rule. One question decides everything: has the position ever CLOSED
+above what we paid? See `docs/sell_logic.md` for the full behaviour and
+`decisions/2026-09-04_prove-it-stop.md` for the evidence.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `THESIS_STOP_ENABLED` | `true` | Master switch |
-| `THESIS_STOP_ATR_MULT` | `1.0` | Threshold in units of entry ATR |
-| `THESIS_STOP_START_DAY` | `2` | First eligible trading day |
-| `THESIS_STOP_LAST_DAY` | `5` | Last eligible trading day |
-| `THESIS_STOP_ATR_FALLBACK` | `3.0` | Used when `entry_atr_pct` is missing |
+| `PROVE_IT_ENABLED` | `true` | Master switch |
+| `PROVE_IT_P1_DAY0_PCT` | `0.01` | Phase 1 band below entry on the entry day |
+| `PROVE_IT_P1_LATER_PCT` | `0.03` | Phase 1 band below entry from day 1 onward |
+| `PROVE_IT_P1_DAY0_LAST_DAY` | `0` | Last day the tighter Phase 1 band applies |
+| `PROVE_IT_P2_ARM_GAIN_PCT` | `0.02` | Peak gain that arms the Phase 2 give-back floor |
+| `PROVE_IT_P2_FLOOR_PCT` | `-0.01` | Floor relative to entry; **negative = below entry** |
+| `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | How far *wider* the Phase 1 resting IBKR order sits |
 
-Lowering `THESIS_STOP_ATR_MULT` cuts sooner and more often; 0.75 was tested and produced a
-wider confidence interval than 1.0.
+Two of these are counter-intuitive and were measured, not guessed:
+
+- **`PROVE_IT_P1_LATER_PCT` is wider than `PROVE_IT_P1_DAY0_PCT`.** Holding the tight day-0
+  band through day 1 costs roughly $1,500–2,000 in clipped winners across the 30-trade
+  sample. Day 0 is the only day on which the failing and working populations separate.
+- **`PROVE_IT_P2_FLOOR_PCT` must stay negative.** An exact-breakeven floor flushes any
+  position that pokes green and immediately retests entry, forfeiting +$1,189 on CPAY alone.
+
+`PROVE_IT_BACKSTOP_SLACK_PCT` keeps the resting broker order *behind* the bot-side armed
+exit in Phase 1. Reducing it to 0 lets the broker fire first, which loses the ~$600 the
+armed exit is worth across the sample. In Phase 2 the resting order is the floor, so the
+slack does not apply.
 
 ### Armed exit
 
@@ -119,7 +137,7 @@ Drives `process_exit_requests()` — the queue-driven OCA exit fed by
 | `OCA_EXIT_UPPER_ATR_FRACTION` | `0.50` | Upper leg as a fraction of `entry_atr_pct` above the placement price when `limit_mode='ATR_AUTO'` (the default). Larger than the trail fraction so the optimistic leg always sits further out than the protective one |
 | `OCA_EXIT_MIN_UPPER_PCT` | `0.0075` | Lower clamp — keeps a quiet stock's target outside the bid/ask spread |
 | `OCA_EXIT_MAX_UPPER_PCT` | `0.050` | Upper clamp — keeps a volatile stock's target reachable by a realistic bounce |
-| `SMART_EXIT_FOR_RULES` | `true` | Route the discretionary Day 7+ rules (EMA-21 breach, plateau, intraday minimiser) through the Smart OCA queue instead of selling at market. Deliberately does **not** apply to the Day 0–6 loss cutters, Rank & Replace, or the backstops — see `docs/sell_logic.md` and `decisions/2026-08-19_smart-exit-for-discretionary-rules.md`. Set `false` to restore market selling |
+| `SMART_EXIT_FOR_RULES` | `true` | Retained switch. No automated rule uses the Smart OCA queue any more — the three discretionary Day 7+ rules that did are retired. The queue remains fully supported for manual requests via `request_exit.py`. Deliberately does **not** apply to the Prove-It Stop, Rank & Replace, or the backstops — see `docs/sell_logic.md` |
 | `OCA_EXIT_DEFAULT_ATR_PCT` | `3.0` | Used when the position has no ATR on record |
 | `OCA_EXIT_DEFAULT_FLOOR_PCT` | `0.05` | Hard floor below the placement price when the request sets none. **Not optional in effect** — the automated ladder is suspended for managed tickers, so this is the protection |
 | `OCA_EXIT_DEFAULT_EXPIRY_DAYS` | `3` | Trading days before an unfilled OCA is closed at market |
@@ -128,42 +146,24 @@ Raising `OCA_EXIT_DEFAULT_FLOOR_PCT` widens the worst case on every managed
 position, because no other stop is active while the OCA is placed. See
 `decisions/2026-08-18_smart-oca-managed-exit.md`.
 
-### Early loss and the superseded minimiser
+### Retired exit variables
+
+`EARLY_LOSS_STOP_*`, `EARLY_DOLLAR_STOP_*`, `EFFECTIVE_POSITION_SLOTS`, `THESIS_STOP_*`,
+`EXIT_MA_*`, `INTRADAY_*`, `STALE_EXIT_ENABLED` and `TRAIL_TIME_TIERS_*` **no longer exist**.
+Setting them has no effect. The rules they configured are all folded into the Prove-It Stop
+or into the staleness discount below. See `docs/retired_code.md` for each rule's code
+footprint and the conditions under which it would be restored.
+
+### Staleness and rotation
+
+Staleness no longer sells to cash. It discounts the Rank & Replace margin to
+`RANK_REPLACE_FAIL_THRESHOLD`, so a position that has stopped advancing is released when
+somewhere better to put the money exists — not merely because it stopped moving.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `EARLY_LOSS_STOP_PCT` | `0.01` | Kill-switch threshold, entry day |
-| `EARLY_LOSS_STOP_MAX_DAY` | `0` | Last day the kill-switch may fire (0 = entry day only) |
-| `EARLY_DOLLAR_STOP_PCT` | `0.06` | Early Dollar Stop cap, as a share of one position slot: `(equity / EFFECTIVE_POSITION_SLOTS) × this`. ≈$1,500 at current equity; 0 to disable |
-| `EFFECTIVE_POSITION_SLOTS` | `4` | Slots the portfolio is *actually* sized for. Deliberately not `MAX_POSITIONS` (`5`) — switch it after the portfolio is reset at 5 slots (FU-007) |
-| `EARLY_DOLLAR_STOP_MAX_DAY` | `5` | Last trading day (inclusive) the dollar stop is active |
-| `INTRADAY_MINIMISER_ENABLED` | `false` | **Superseded by the Thesis Stop** |
-| `INTRADAY_PULLBACK_PCT` | `0.02` | Only used if the minimiser is re-enabled |
-| `INTRADAY_MINIMISER_START_DAY` | `2` | Only used if the minimiser is re-enabled |
-
-Re-enabling the minimiser is not recommended: it fired on positions that had rallied back to
-break-even — i.e. positions that were working — and roughly halved expectancy.
-
-### Moving-average exit
-
-| Variable | Default | Effect |
-|---|---|---|
-| `EXIT_MA_TRIGGER_ENABLED` | `true` | Master switch |
-| `EXIT_MA_TYPE` | `EMA` | `EMA` or `SMA` |
-| `EXIT_MA_WINDOW` | `21` | Period |
-| `EXIT_MA_BUFFER_PCT` | `0.01` | Breach tolerance below the MA |
-| `EXIT_MA_EOD_ONLY` | `true` | Restrict to 15:45–16:00 ET |
-
-Setting `EXIT_MA_EOD_ONLY=false` allows an intraday wick to force a sale the close would not
-have justified.
-
-### Plateau and rotation
-
-| Variable | Default | Effect |
-|---|---|---|
-| `STALE_EXIT_ENABLED` | `true` | Master switch |
-| `STALE_EXIT_DAYS` | `10` | Trading days without a new HWM |
-| `STALE_EXIT_MIN_DAYS_HELD` | `7` | Earliest eligible day |
+| `STALE_EXIT_DAYS` | `10` | Trading days without a new HWM before a position counts as stale |
+| `STALE_EXIT_MIN_DAYS_HELD` | `7` | Earliest day a position may count as stale |
 | `RANK_REPLACE_THRESHOLD` | `15` | Rotation margin, verdict `PASS` |
 | `RANK_REPLACE_FAIL_THRESHOLD` | `5` | Rotation margin, verdict `FAIL` |
 | `MOMENTUM_HEALTH_RS_WEIGHT` | `0.40` | Mₜ weight — relative strength |
@@ -175,20 +175,24 @@ have justified.
 | Variable | Default | Effect |
 |---|---|---|
 | `POWER_HOLD_ENABLED` | `true` | Master switch |
-| `POWER_HOLD_GAIN_PCT` | `20.0` | Gain required to arm |
+| `POWER_HOLD_GAIN_PCT` | `10.0` | Gain required to arm |
 | `POWER_HOLD_TRIGGER_DAYS` | `21` | Arming window (**calendar** days) |
 | `POWER_HOLD_DURATION_DAYS` | `56` | Protection length (**calendar** days) |
 | `POWER_HOLD_TRAIL_PCT` | `0.30` | Trail while power-held |
 
-Disabling Power Hold re-imposes the profit ladder on winners, which caps them near +20%. The
+Disabling Power Hold re-imposes the profit ladder on winners, which caps them near +5%. The
 strategy's returns are outlier-dependent; this switch has more effect on total return than
 almost any other.
+
+`POWER_HOLD_GAIN_PCT` was lowered from `20.0` to `10.0` alongside the Prove-It Stop: at 20%
+the rule was unreachable, because the realised trade distribution contains no +20% runners.
+The 10% figure is **unvalidated** — no trade in the 30-trade replay reached +10% within 21
+days — and is entered into the scheduled review in `AGENTS.md`.
 
 ### Trailing-stop ladder
 
 | Variable | Default | Effect |
 |---|---|---|
-| `TRAIL_TIME_TIERS_ENABLED` | `false` | Age-based tightening (off) |
 | `BREAKOUT_VERDICT_MIN_GAIN` | `0.01` | Day-3 PASS gain requirement |
 | `BREAKOUT_VERDICT_MIN_VOL_PCT` | `0.75` | Day-3 PASS volume requirement |
 
@@ -196,6 +200,10 @@ Profit tiers are code constants (`TRAIL_PROFIT_TIERS`): +5% → 1.5%.
 
 This is a deliberate first-leg profit lock rather than a late-stage winner ladder. See
 `decisions/2026-08-22_hwm-profit-lock-arm-5pct.md` for why.
+
+The ladder has a second input: the Prove-It Stop feeds it a percentage that pins the resting
+broker order onto the current Prove-It level. Because the ladder only ever tightens, that
+turns a percentage trail into a fixed price floor.
 
 ---
 
@@ -286,7 +294,7 @@ Used by `managed_exit.py` for manual liquidation.
 |---|---|
 | `watchlist` | Current fundamental survivors. **Truncated and rewritten daily** |
 | `daily_triggers` | Today's technical triggers, enriched with scores. **Truncated daily** |
-| `portfolio_positions` | Open positions and all exit-rule state |
+| `portfolio_positions` | Open positions and all exit-rule state. Also carries IBKR's own valuation (`current_price`, `market_value`, `unrealized_pnl`, `ibkr_synced_at`) written by `reconcile_with_ibkr()` — these are broker marks, never FMP quotes (`migrations/add_ibkr_position_values.sql`) |
 | `account_balances` | IBKR cash and equity snapshots |
 | `exit_requests` | Smart OCA managed-exit queue. Outlives the position it refers to, so it doubles as the exit audit trail (`migrations/add_exit_requests.sql`) |
 
@@ -308,8 +316,15 @@ Key `portfolio_positions` columns driving exits: `hwm_price`, `hwm_date`, `stop_
 
 Apply the SQL in `migrations/` before first run. Several rules degrade gracefully but
 **operate below design strength** until their migration is applied — most notably
-`add_closed_above_entry.sql`, without which the Thesis Stop uses a conservative fallback and
-fires less often than intended.
+`add_closed_above_entry.sql`, without which the Prove-It Stop cannot tell a proven breakout
+from an unproven one. It fails safe by treating almost every position as *proven*, which
+effectively disables Phase 1 — the tight entry-anchored band that is the whole point of the
+rule. `schema_guard.py` warns loudly about this.
+
+Until `add_ibkr_position_values.sql` is applied, the dashboard renders every open
+position at **cost basis** labelled `Cost basis — not synced`, because the columns
+holding IBKR's marks do not yet exist. Trading behaviour is unaffected — no exit
+rule reads them.
 
 ---
 

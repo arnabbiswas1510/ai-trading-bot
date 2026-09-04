@@ -193,21 +193,9 @@ TRAIL_PROFIT_TIERS: list[tuple[float, float]] = [
     ( 5.0, 0.015),   # ≥ 5% gain  → 1.5% trail from HWM
     ( 0.0, None),    # < 5%       → no change (base STOP_LOSS_PCT applies)
 ]
-# Lever 2 (time): DISABLED BY DEFAULT.
-#
-# Tightening the stop purely because time has passed (6% at day 8 down to 3.5% at
-# day 30) penalises a position for still working. On the broad 2,314-entry
-# breakout backtest, disabling it is part of the wide-ladder configuration that
-# lifts expectancy from +0.51% to +0.59% and payoff from 1.44 to 1.58.
-# Set TRAIL_TIME_TIERS_ENABLED=true to restore the legacy behaviour.
-TRAIL_TIME_TIERS_ENABLED = os.getenv("TRAIL_TIME_TIERS_ENABLED", "false").lower() == "true"
-TRAIL_TIME_TIERS: list[tuple[int, float]] = [
-    (30, 0.035),     # > 30 cal days → 3.5% trail
-    (22, 0.040),     # > 22 cal days → 4.0% trail
-    (15, 0.050),     # > 15 cal days → 5.0% trail
-    ( 8, 0.060),     # >  8 cal days → 6.0% trail
-    ( 0, None),      # ≤  7 cal days → no change
-] if TRAIL_TIME_TIERS_ENABLED else []
+# The time lever that used to sit here (TRAIL_TIME_TIERS) is retired — see
+# docs/retired_code.md. Tightening a stop purely because time has passed
+# penalises a position for still working.
 # Trading days a stock is ineligible for re-entry after being sold. At 1 day a
 # stock that just hit its trailing stop was buyable the next morning while still
 # technically broken. 4-slot portfolio sim, CAGR (full / worst period):
@@ -249,12 +237,9 @@ MIN_RELAXED_TRIGGER_SCORE = int(os.getenv("MIN_RELAXED_TRIGGER_SCORE", 58))
 # price and actual fill price. $1,000 covers ~4% movement on a $25K position.
 PRICE_SAFETY_RESERVE     = float(os.getenv("PRICE_SAFETY_RESERVE", 1000.0))
 
-# ── Moving Average Exit parameters ────────────────────────────────────────────
-EXIT_MA_TRIGGER_ENABLED  = os.getenv("EXIT_MA_TRIGGER_ENABLED", "true").lower() == "true"
-EXIT_MA_TYPE             = os.getenv("EXIT_MA_TYPE", "EMA")
-EXIT_MA_WINDOW           = int(os.getenv("EXIT_MA_WINDOW", 21))
-EXIT_MA_BUFFER_PCT       = float(os.getenv("EXIT_MA_BUFFER_PCT", 0.01))
-EXIT_MA_EOD_ONLY         = os.getenv("EXIT_MA_EOD_ONLY", "true").lower() == "true"
+# The EMA-21 exit that used to be configured here is retired — see
+# docs/retired_code.md. Prove-It Phase 2 is tighter than a 1% undercut of a
+# 21-day average at every gain level, so it could never fire first.
 
 # ── Momentum Health Score (Mₜ) — live conviction for held positions ────────────
 # Computed EOD from live RS, volume ratio, and real sentiment (FMP news + GPT).
@@ -269,12 +254,18 @@ RANK_REPLACE_THRESHOLD      = int(os.getenv("RANK_REPLACE_THRESHOLD", 15))
 # the breakout already failed to confirm, so less evidence is needed to replace it.
 RANK_REPLACE_FAIL_THRESHOLD = int(os.getenv("RANK_REPLACE_FAIL_THRESHOLD", 5))
 
-# ── Plateau (stale) exit ──────────────────────────────────────────────────────
-# Sell a position that has gone this many TRADING days without making a new high
-# water mark. Capital is finite (MAX_POSITIONS slots) so a position that has
+# ── Staleness (feeds Rank & Replace) ──────────────────────────────────────────
+# A position that has gone this many TRADING days without making a new high
+# water mark counts as STALE. Capital is finite (MAX_POSITIONS slots) so a position that has
 # stopped advancing costs the return the slot could earn elsewhere, even while
-# it sits comfortably above its trailing stop and above EMA-21 and therefore
-# trips no other exit.
+# it sits comfortably above its trailing stop and therefore trips no other exit.
+#
+# Staleness no longer sells to cash on its own — the Plateau Exit it used to
+# drive is retired (docs/retired_code.md). With the Prove-It give-back floor in
+# place, holding dead money is nearly free, so staleness now only DISCOUNTS the
+# Rank & Replace margin to RANK_REPLACE_FAIL_THRESHOLD. The slot is released
+# when somewhere better to put the money actually exists, not merely because
+# this position stopped moving.
 #
 # Judged on portfolio CAGR with the 4-slot constraint, NOT per-trade expectancy.
 # Per trade a plateau exit looks harmful (+1.01% -> +0.87% expectancy) because it
@@ -297,174 +288,99 @@ RANK_REPLACE_FAIL_THRESHOLD = int(os.getenv("RANK_REPLACE_FAIL_THRESHOLD", 5))
 #
 # Gated to Day 7+ so it can never fire during the breakout consolidation phase,
 # and suppressed by the 8-week power-hold rule.
-STALE_EXIT_ENABLED          = os.getenv("STALE_EXIT_ENABLED", "true").lower() == "true"
+#
+# NO LONGER A STANDALONE EXIT (2026-09-04). Selling a stalled position to CASH
+# is the wrong destination: the premise "a stalled position blocks a fresh
+# breakout" is only true when a fresh breakout actually exists, and with the
+# Prove-It give-back floor holding dead money costs almost nothing. The
+# staleness signal now discounts the Rank & Replace swap threshold instead, so
+# it can only act when there is somewhere better to put the money.
+# See docs/retired_code.md and decisions/2026-09-04_prove-it-stop.md.
 STALE_EXIT_DAYS             = int(os.getenv("STALE_EXIT_DAYS", 10))
 STALE_EXIT_MIN_DAYS_HELD    = int(os.getenv("STALE_EXIT_MIN_DAYS_HELD", 7))
 
-# ── Breakout Verdict + Intraday Loss Minimiser ─────────────────────────────────
+# ── Breakout Verdict ──────────────────────────────────────────────────────────
 # Day 3 EOD verdict: position must close >= +1% above entry AND have Day 3 volume
-# >= 75% of 20-day average. Failure activates the Intraday Loss Minimiser (Day 4+).
+# >= 75% of 20-day average. The verdict is now purely an input to Rank & Replace,
+# which rotates FAIL positions on a smaller score gap than PASS ones. It no
+# longer arms any exit of its own (the Intraday Loss Minimiser it used to feed is
+# retired — see docs/retired_code.md).
 BREAKOUT_VERDICT_MIN_GAIN    = float(os.getenv("BREAKOUT_VERDICT_MIN_GAIN",    0.01))  # 1% above entry
 BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0.75)) # 75% of 20d avg
-# ── Intraday Loss Minimiser ──────────────────────────────────────────────────
-# DISABLED BY DEFAULT — this was the single most damaging exit in the system.
-#
-# It sells on a pullback from the rolling high once that high is near or above
-# entry, which systematically converts developing winners into small losses. On
-# real breakout entries generated by technical_screener's own logic it roughly
-# halves expectancy, consistently across two independent universes:
-#     broad unselected universe (2,314 entries):  min ON +0.59%  ->  OFF +1.01%
-#                                                 payoff  1.58   ->       2.09
-#     screener-passing names      (598 entries):  min ON +0.18%  ->  OFF +0.60%
-#                                                 payoff  1.30   ->       1.80
-# It also suppresses the right tail the strategy depends on: trades realising
-# +20% rise from 0.8% to 3.2% of entries when it is off.
-#
-# The trailing stop remains in place, so disabling this does not remove downside
-# protection — it removes a second, much tighter exit layered on top of it.
-# Set INTRADAY_MINIMISER_ENABLED=true to restore.
-INTRADAY_MINIMISER_ENABLED   = os.getenv("INTRADAY_MINIMISER_ENABLED", "false").lower() == "true"
-# Pullback threshold used when the minimiser IS enabled. The original 0.005
-# (0.5%) was spread/tick noise — a $250 stock wiggling $1.25 tripped it. A
-# 5-minute replay of the 13 real closed trades swings from -$1,923 at 0.5% to
-# +$3,418 at 2%, with every value in 2-5% beating 0.5% by more than $4,000.
-INTRADAY_PULLBACK_PCT        = float(os.getenv("INTRADAY_PULLBACK_PCT",        0.02))  # 2.0%
-# Early damage-control kill-switch for fresh entries (entry day only).
-#
-# Briefly raised to 0.07 on the theory that 2% sits inside the band a legitimate
-# breakout undercuts. The replay contradicted this (-$2,454 over the sample) and
-# the reasoning was wrong: this trigger does not sell, it ARMS a 0.6% trailing
-# exit (see arm_exit()) which rides any bounce back up. A tight trigger is
-# therefore cheap, and loosening it just converts small losses into large ones.
-#
-# Narrowed to 1.0% on Day 0 only (was 2.0% across Days 0-1) after a 5-minute
-# replay of all 17 closed trades that reproduced the live mechanics exactly
-# (15-minute checks, arm_exit() 0.6% trail, 3.25h deadline). Deltas vs the
-# realised exits:
-#     2.0%, Day 0-1 (previous): losers +$1,697, winners -$1,873, NET   -$176
-#     1.0%, Day 0-1:            losers +$3,238, winners -$2,345, NET   +$893
-#     1.0%, Day 0 only:         losers +$3,027, winners      $0, NET +$3,027
-# Day 1 is what does the damage: extending the window past the entry day cost
-# CPAY -$1,873 on its own. No winner in the sample ever closed 1% below entry on
-# its entry day, so the two populations separate cleanly on Day 0 and the
-# tightened threshold costs the winners nothing.
-# See decisions/2026-08-20_early-loss-day0-tightening.md.
-EARLY_LOSS_STOP_PCT          = float(os.getenv("EARLY_LOSS_STOP_PCT",          0.01))  # 1.0%
-# Last day the kill-switch may fire. 0 = entry day only.
-EARLY_LOSS_STOP_MAX_DAY      = int(os.getenv("EARLY_LOSS_STOP_MAX_DAY",           0))
-# Day threshold when universal intraday pullback minimiser becomes active.
-INTRADAY_MINIMISER_START_DAY = int(os.getenv("INTRADAY_MINIMISER_START_DAY",   2))
 
-# ── Early dollar-loss stop for Days 0-5 ───────────────────────────────────────
-# Caps the unrealized dollar loss on a position that has not yet confirmed
-# itself, during the first EARLY_DOLLAR_STOP_MAX_DAY trading days.
+# ── The Prove-It Stop ─────────────────────────────────────────────────────────
+# ONE question governs every loss-cutting exit: has this position ever CLOSED
+# above the price we paid?
 #
-# The cap is a share of ONE POSITION SLOT, not a fixed dollar figure:
-#     threshold = (equity / EFFECTIVE_POSITION_SLOTS) x EARLY_DOLLAR_STOP_PCT
+#   PHASE 1 — unproven. The breakout has not confirmed. Anchor to ENTRY.
+#             Day 0:  1.0% below entry   (a breakout that fails on day one is
+#                                         wrong immediately and cheaply)
+#             Day 1+: 3.0% below entry   (a confirmed-but-slow name needs room
+#                                         to shake out before it works)
 #
-# WHY SLOT-DERIVED RATHER THAN FLAT (changed 2026-08-20)
-# The rule shipped as a flat $500. Because positions are sized as
-# available_cash / remaining_slots, they cluster tightly around one slot's worth
-# of capital — the 21 closed trades ran $20,025 to $48,189 with a $24,415 median
-# — so a flat dollar figure is a percentage in disguise, and an unstable one:
-#   - on the $48,189 OII position, $500 was 1.0% — firing on ordinary noise
-#   - on the $20,025 PTGX position, $500 was 2.5%
-# Same rule, different aggression, decided by nothing more principled than how
-# much cash happened to be free that morning. Worse, a flat figure silently
-# tightens as the account grows: $500 is 2.0% of a $25K slot today and 1.0% of a
-# $50K slot later, with no code change and no signal that the rule got twice as
-# aggressive. Deriving it from equity fixes both.
+#   PHASE 2 — proven. It closed above entry, so it earned patience. Anchor to
+#             the PEAK.
+#             peak gain >= 2.0%: floor at 1.0% BELOW entry — a trade that went
+#                                green is never allowed to become a real loss
+#             gain      >= 5.0%: 1.5% trail from the high water mark
+#                                (TRAIL_PROFIT_TIERS, unchanged)
 #
-# WHY NOT SIMPLY A PERCENTAGE OF THE POSITION'S OWN COST BASIS
-# Because that hands an oversized position a proportionally wider allowance. OII
-# was booked at roughly double the median; a cost-basis percentage would let it
-# lose twice as many dollars as everything else, when concentrated risk is
-# exactly what wants cutting sooner. Slot-derived gives every position the same
-# absolute dollar cap.
+# WHY THIS REPLACES FIVE RULES
+# The kill-switch, Thesis Stop, Early Dollar Stop, EMA-21 exit and Plateau exit
+# were five different answers to two questions this asks once. Each carried its
+# own window, its own anchor and its own threshold, and they raced each other:
+# the Thesis Stop and Early Dollar Stop never fired ONCE in 30 closed trades
+# because the kill-switch always got there first — but the kill-switch stopped
+# looking after day 0, which is precisely how NBIX (-$2,261), DELL (-$1,283),
+# RSI (-$1,390) and HWM (-$1,463) were allowed to run.
 #
-# CALIBRATION
-# 6% of a slot reproduces ~$1,500 on the current ~$25K slot. See the review note
-# below for why $1,500 rather than the original $500.
-EARLY_DOLLAR_STOP_PCT        = float(os.getenv("EARLY_DOLLAR_STOP_PCT",       0.06))
-EARLY_DOLLAR_STOP_MAX_DAY    = int(os.getenv("EARLY_DOLLAR_STOP_MAX_DAY",       5))
-
-# Slots the portfolio is ACTUALLY sized for right now — deliberately NOT
-# MAX_POSITIONS. config.MAX_POSITIONS is 5, but that is aspirational: the four
-# open positions were each bought as a quarter of capital, so there is no cash
-# left to fill a fifth slot and sizing will not converge on 5 until the portfolio
-# is liquidated and rebuilt. Dividing equity by 5 today would understate the real
-# slot size by 20% and make this stop 20% tighter than intended.
+# EVIDENCE (5-minute replay of all 30 closed trades, reproducing live mechanics:
+# 15-minute checks, arm_exit() 0.6% trail, 3.25h deadline)
+#     what actually happened      -$6,548
+#     rules shipped before this   -$4,069
+#     Prove-It                    +$5,410   <- zero winners cut short
+# Worst single loss falls from -$2,002 to -$1,140, and the -$1,140 is APH, an
+# overnight gap that no stop of any kind can prevent. Every intraday bleed is
+# cut small: NBIX -$2,261 -> -$230, CDNA -$1,539 -> +$256, RSI -$1,390 -> -$197.
 #
-# ⚠️ REPLACE WITH MAX_POSITIONS once the portfolio has been reset at 5 slots.
-# Tracked as FU-007 in docs/tech_debt_and_requirements_tracker.md and noted in
-# the AGENTS.md review schedule.
-EFFECTIVE_POSITION_SLOTS     = int(os.getenv("EFFECTIVE_POSITION_SLOTS",         4))
+# WHY PHASE 1 WIDENS AFTER DAY 0 RATHER THAN TIGHTENING
+# Counter-intuitive but measured. Holding the tight 1.0% band through day 1 costs
+# roughly $1,500-2,000 in winner damage: CPAY closed -2.24% on day 1 and low
+# -2.88%, then ran to +8.95%. Day 0 is the only day on which the failing and
+# working populations separate cleanly.
 #
-# SIZING REVIEW — FU-004, next review 2026-09-20.
-# The original $500 was measured before the kill-switch was tightened to 1.0% on
-# Day 0. With that rule running alongside, every loser the dollar stop catches is
-# already caught a day earlier, so at $500 its only remaining effect on the
-# 2026-08-20 17-trade replay was cutting two eventual winners: CPAY -$1,873 and
-# DXCM -$1,367. All-in stack net:
-#   1.0% Day 0 + $500  + 1xATR (previous):  -$272
-#   1.0% Day 0 + $1500 + 1xATR:           +$3,027
-#   1.0% Day 0 + 1xATR (no dollar stop):  +$3,027
-# $1,500 and "removed" score identically because at $1,500 the rule never fires
-# in that sample. $1,500 is preferred over removal because it retains a
-# catastrophic-loss backstop for a gap-down on days 1-5, which no other rule
-# covers: the base trailing stop is 8.25-10% measured from PEAK, so this sits
-# INSIDE it on every live position and is not redundant.
+# WHY THE PHASE 2 FLOOR SITS 1% BELOW ENTRY, NOT AT IT
+# An exact-breakeven floor flushes any position that pokes green and immediately
+# retests entry. CPAY did exactly that on day 4 (high +3.60%, low -0.41%) and an
+# at-entry floor sold it for $0, forfeiting +$1,189. One percent of slack is the
+# difference between the floor protecting winners and clipping them: it turns
+# CPAY into +$1,907 while still catching FRO and CDNA.
 #
-# Caveat carried into the review: the sample cannot distinguish 6% from any
-# larger value, because nothing reached that band without the Day 0 kill-switch
-# having already fired. 6% is an upper bound justified by the trail sitting
-# above it, not a measured optimum.
+# See decisions/2026-09-04_prove-it-stop.md.
+PROVE_IT_ENABLED           = os.getenv("PROVE_IT_ENABLED", "true").lower() == "true"
+# Phase 1 — entry-anchored, applied while the position is unproven.
+PROVE_IT_P1_DAY0_PCT       = float(os.getenv("PROVE_IT_P1_DAY0_PCT",       0.01))  # 1.0%
+PROVE_IT_P1_LATER_PCT      = float(os.getenv("PROVE_IT_P1_LATER_PCT",      0.03))  # 3.0%
+PROVE_IT_P1_DAY0_LAST_DAY  = int(os.getenv("PROVE_IT_P1_DAY0_LAST_DAY",       0))
+# Phase 2 — peak gain that arms the give-back floor, and where the floor sits
+# relative to entry (negative = below entry).
+PROVE_IT_P2_ARM_GAIN_PCT   = float(os.getenv("PROVE_IT_P2_ARM_GAIN_PCT",   0.02))  # +2.0%
+PROVE_IT_P2_FLOOR_PCT      = float(os.getenv("PROVE_IT_P2_FLOOR_PCT",     -0.01))  # -1.0%
+# How far BELOW the Phase 1 trigger the resting IBKR stop is parked.
 #
-# The rule does NOT replace the IBKR GTC trailing stop; it is checked on the
-# 15-minute monitoring cycle and fires an armed exit (0.6% tight trail) so a
-# bounce can be captured. See arm_exit().
-
-# ── Thesis Stop (ATR-normalised failure-to-advance exit) ──────────────────────
-# A proper breakout works almost immediately; failure to advance IS the sell
-# signal. This exits breakouts that never worked, while they are still cheap.
+# Phase 1 is enforced by the bot: on the 15-minute cycle it arms a tight 0.6%
+# trailing exit (arm_exit()) rather than selling at what is often a local trough.
+# The replay shows that armed exit beats an immediate market sell by roughly
+# $600 across the sample, so the bot must get first refusal.
 #
-# It is NOT a revival of the Intraday Loss Minimiser. That rule required
-# `today_high >= entry * 0.995` — it only fired on positions that had rallied
-# back to or above entry, i.e. positions that were WORKING, which is why it
-# halved expectancy. The thesis stop targets the opposite population: breakouts
-# that have never closed above entry at all.
-#
-# The threshold is volatility-normalised. A fixed percentage is meaningless
-# across names: DXCM has a 4.04%/day ATR, so a 2% stop is half a normal day's
-# range and would fire on noise, whereas 2% is a real signal in a 1% ATR name.
-# Being 1x ATR below entry with no follow-through is thesis failure in any name.
-#
-# Backtested with a paired stationary-block bootstrap (2000 reps) against the
-# shipped config, on entries generated by the screener's own breakout logic.
-# Figures CORRECTED 2026-08-17 — the originals came from a harness that anchored
-# the armed exit's trail to the trigger bar's HIGH, a price that printed before
-# the stop was placed (see decisions/2026-08-17_armed-exit-backtest-lookahead.md):
-#     screener-passing names: dCAGR +10.3, 90% CI [-1.2, +23.4], P(better) 92%
-#     broad unselected:       dCAGR  -9.4, 90% CI [-25.1,  +7.0], P(better) 15%
-#     average loss still improves in BOTH: -5.60 -> -4.96 and -4.43 -> -4.14
-# NEITHER universe is significant — both CIs cross zero. The rule is kept on its
-# point estimate on the traded universe plus the loss-side improvement, but it is
-# plausible rather than demonstrated. The previously claimed "arm_exit() beats a
-# market sell in BOTH universes" does NOT survive the correction: corrected, it
-# wins on PASS (+37.4 vs +35.7) and straddles/loses on BROAD (+14.2 conservative
-# / +17.6 optimistic vs +15.9).
-THESIS_STOP_ENABLED    = os.getenv("THESIS_STOP_ENABLED", "true").lower() == "true"
-THESIS_STOP_ATR_MULT   = float(os.getenv("THESIS_STOP_ATR_MULT",  1.0))
-THESIS_STOP_START_DAY  = int(os.getenv("THESIS_STOP_START_DAY",   2))
-# After this many days the Day-7 rules (EMA-21, stale, rank-and-replace) take
-# over, so the thesis window is bounded rather than open-ended.
-THESIS_STOP_LAST_DAY   = int(os.getenv("THESIS_STOP_LAST_DAY",    5))
-# Fallback ATR% when a position has no entry_atr_pct recorded (older rows).
-THESIS_STOP_ATR_FALLBACK = float(os.getenv("THESIS_STOP_ATR_FALLBACK", 3.0))
+# But the bot only looks every 15 minutes and cannot act at all when it is down
+# or the market gaps. So a GTC order rests at the broker one slack-width below
+# the same level: wide enough that it never front-runs the armed exit, tight
+# enough to cap an overnight gap. Belt and braces, in that order.
+PROVE_IT_BACKSTOP_SLACK_PCT = float(os.getenv("PROVE_IT_BACKSTOP_SLACK_PCT", 0.01))
 
 # ── Armed Trailing Exit (Day 0-6 loss-cutting) ─────────────────────────────────
-# When a Day 0-6 sell signal fires (Early Loss Kill-switch or Intraday Loss
-# Minimiser), we do NOT sell instantly at the trigger price — that price is
+# When the Prove-It Stop fires, we do NOT sell instantly at the trigger price — that price is
 # often a local trough. Instead we "arm" the exit: place a tight IBKR native
 # trailing stop that rides any bounce toward the best price reached since the
 # trigger, while a hard deadline forces a market sell if it hasn't already
@@ -514,11 +430,10 @@ OCA_EXIT_MAX_UPPER_PCT    = float(os.getenv("OCA_EXIT_MAX_UPPER_PCT",    0.050))
 OCA_EXIT_DEFAULT_FLOOR_PCT = float(os.getenv("OCA_EXIT_DEFAULT_FLOOR_PCT", 0.05))  # 5% below placement
 OCA_EXIT_DEFAULT_EXPIRY_DAYS = int(os.getenv("OCA_EXIT_DEFAULT_EXPIRY_DAYS", 3))
 
-# Route the *discretionary* Day 7+ exits (EMA-21 breach, plateau, intraday
-# minimiser after the consolidation window) through the Smart OCA queue instead
-# of selling at market on whichever 15-minute tick happened to notice.
+# Route the *discretionary* Day 7+ exits through the Smart OCA queue instead of
+# selling at market on whichever 15-minute tick happened to notice.
 #
-# Scoped to Day 7+ non-urgent rules ON PURPOSE. The Day 0-6 loss cutters
+# Scoped to Day 7+ non-urgent rules ON PURPOSE. The Prove-It Stop
 # (kill-switch, dollar stop, thesis stop) keep arm_exit(): a placed OCA
 # suspends the automated ladder for up to OCA_EXIT_DEFAULT_EXPIRY_DAYS, which
 # is exactly the wrong trade for a position that is actively failing.
@@ -532,38 +447,51 @@ SMART_EXIT_FOR_RULES = os.getenv("SMART_EXIT_FOR_RULES", "true").lower() == "tru
 #
 # This is the mechanism that would let a position become the outsized winner
 # CAN SLIM expectancy depends on. While a position is in its power-hold window we
-# suppress the DISCRETIONARY exits (EMA-21 exit, Rank & Replace, Intraday Loss
-# Minimiser) AND widen the trailing stop to POWER_HOLD_TRAIL_PCT (see below). The
-# trailing stop is never removed — it remains the disaster backstop, so this
-# bounds opportunity cost, never risk.
+# suppress the DISCRETIONARY exits (Prove-It Stop, Rank & Replace) AND widen the
+# trailing stop to POWER_HOLD_TRAIL_PCT (see below). The trailing stop is never
+# removed — it remains the disaster backstop, so this bounds opportunity cost,
+# never risk.
 #
-# NOTE: this rule never fired in the replay of the 13 real closed trades because
-# none of them reached +20% — but that population fails the current screener. On
-# real breakout entries in screener-passing names, 46% reach +20% MFE within 60
-# days, so the rule is expected to bind regularly going forward.
+# TRIGGER LOWERED 20% -> 10% (2026-09-04). At +20% the rule was unreachable in
+# practice: it never armed once across 30 closed trades, because it never armed
+# once across ANY closed trade. The realised winner distribution tops out well
+# below the level the rule was calibrated for — the +20%-in-3-weeks leader it was
+# built to protect is a population this screener has not yet produced.
+#
+# A rule that cannot fire protects nothing. 10% sits inside the observed
+# distribution (MPC +6.4%, LPG +7.0%, CPAY +9.0% peak) without being trivially
+# easy to reach, so it can begin to bind on the genuinely strong names while
+# still requiring roughly double the peak of a typical winner.
+#
+# ⚠️ UNVALIDATED. This threshold has no replay behind it — the 30-trade sample
+# contains no position that reached +10% within 21 days, so the change is a
+# judgement call about reachability, not a measured optimum. It is the first
+# thing to re-examine at the next exit-parameter review.
 POWER_HOLD_ENABLED        = os.getenv("POWER_HOLD_ENABLED", "true").lower() == "true"
-POWER_HOLD_GAIN_PCT       = float(os.getenv("POWER_HOLD_GAIN_PCT", 20.0))
+POWER_HOLD_GAIN_PCT       = float(os.getenv("POWER_HOLD_GAIN_PCT", 10.0))
 POWER_HOLD_TRIGGER_DAYS   = int(os.getenv("POWER_HOLD_TRIGGER_DAYS", 21))   # 3 weeks
 POWER_HOLD_DURATION_DAYS  = int(os.getenv("POWER_HOLD_DURATION_DAYS", 56))  # 8 weeks
 # Trail width applied WHILE a position is power-held, replacing the profit ladder.
 #
 # Without this the rule was self-defeating: TRAIL_PROFIT_TIERS tightens the trail
-# well below the +20% gain that arms the power hold — under the ladder in force at
-# the time, to 6.5% at exactly +20% — so the ladder strangled the leaders the rule
-# exists to protect. Instrumenting the
+# well below the gain that arms the power hold — under the ladder in force at the
+# time, to 6.5% at the then-current +20% trigger — so the ladder strangled the
+# leaders the rule exists to protect. Instrumenting the
 # backtest showed the rule armed on 9% (growth) / 6% (broad) of trades and then
 # *100% of those still exited on the trailing stop*, making it inert.
 #
 # The current HWM profit lock makes this worse, not better: it clamps to 1.5% from
-# the peak at only +5% gain, so by the time a position reaches +20% it is already
-# on the tightest rung. Bypassing the ladder while power-held is therefore load-
-# bearing — see decisions/2026-08-20_hwm-profit-lock-first-leg.md.
+# the peak at only +5% gain, so by the time a position reaches POWER_HOLD_GAIN_PCT
+# it is already on the tightest rung. Bypassing the ladder while power-held is
+# therefore load-bearing — see decisions/2026-08-20_hwm-profit-lock-first-leg.md.
 #
 # Widening the trail while power-held recovers the intended behaviour. The effect
 # is large, monotonic in the trail width, and consistent across both universes
 # (growth +27.0% -> +66.3% CAGR, broad +27.4% -> +44.5% at 0.30). Crucially it
-# does NOT increase risk: the rule only arms after a position is already +20% up,
+# does NOT increase risk: the rule only arms after a position is already well up,
 # so the worst trade is unchanged at -10% and max drawdown is flat (17.6% / 14.5%).
+# NOTE: those figures were measured with the +20% trigger. The move to +10% widens
+# the trail on a weaker class of position and is NOT covered by that backtest.
 # 0.30 is chosen over removing the stop entirely (+76.6% / +48.8%) to retain a
 # disaster backstop, since the upside rests on very few trades.
 POWER_HOLD_TRAIL_PCT      = float(os.getenv("POWER_HOLD_TRAIL_PCT", 0.30))
@@ -730,6 +658,66 @@ def get_live_price(ticker: str) -> float:
         print(f"❌ Error fetching price for {ticker} from FMP: {e}")
     return 0.0
 
+
+def build_ibkr_price_map(ib: IB) -> dict:
+    """Return {symbol: PortfolioItem} for the current account's open positions.
+
+    Reads ib.portfolio(), which is a NON-BLOCKING read of the in-memory account
+    update stream — deliberately NOT ib.reqTickers(), which blocks indefinitely
+    when the ushmds data farm is down. Safe to call once per monitoring cycle and
+    pass into get_position_price() so every position is priced from a single
+    consistent broker snapshot.
+    """
+    try:
+        return {p.contract.symbol: p for p in ib.portfolio()}
+    except Exception as e:
+        print(f"   ⚠️ Could not read IBKR portfolio for pricing: {e}")
+        return {}
+
+
+def get_position_price(ib: IB, ticker: str, ib_map: dict | None = None) -> tuple:
+    """IBKR-first live price for an OPEN position, with FMP fallback.
+
+    Live trades are executed against IBKR, so exit rules and account valuation
+    must be decided on IBKR's own mark — the same PortfolioItem.marketPrice the
+    dashboard and reconcile_with_ibkr() already use. Pricing exits off a second
+    source (FMP) is what caused fill-vs-decision mismatches in the past.
+
+    FMP is retained ONLY as a fallback for when IBKR has no usable mark (data
+    farm down, or the position has not yet appeared in the account-update
+    stream). This is safe because the IBKR read here is ib.portfolio() — a
+    non-blocking in-memory lookup — never the blocking ib.reqTickers() path.
+
+    Args:
+        ib:      connected IB handle.
+        ticker:  symbol to price.
+        ib_map:  optional precomputed {symbol: PortfolioItem} from
+                 build_ibkr_price_map(ib); built on demand when omitted.
+
+    Returns:
+        (price: float, source: str) where source is 'ibkr' or 'fmp'.
+        price is 0.0 only when BOTH sources fail.
+    """
+    if ib_map is None:
+        ib_map = build_ibkr_price_map(ib)
+
+    item = ib_map.get(ticker)
+    if item is not None:
+        mp = getattr(item, "marketPrice", None)
+        try:
+            mp = float(mp) if mp is not None else 0.0
+        except (TypeError, ValueError):
+            mp = 0.0
+        # NaN-safe: NaN != NaN.
+        if mp == mp and mp > 0:
+            return mp, "ibkr"
+
+    fmp_price = get_live_price(ticker)
+    if fmp_price > 0:
+        print(f"   ↩️ {ticker}: IBKR mark unavailable — FMP fallback ${fmp_price:.2f}")
+    return fmp_price, "fmp"
+
+
 def fetch_historical_closes_with_dates(ticker: str, window: int) -> list:
     """Fetch historical daily close prices and dates from FMP (oldest first)."""
     # Fetch window * 4 + 20 calendar days to guarantee sufficient trading days
@@ -772,29 +760,6 @@ def calculate_ema(closes: list, window: int) -> float | None:
     for price in closes[window:]:
         ema = (price * alpha) + (ema * (1 - alpha))
     return ema
-
-def get_ma_value(ticker: str, current_price: float, ma_type: str, window: int) -> float | None:
-    """Calculate moving average value, appending current_price if today's EOD bar isn't finalized."""
-    hist = fetch_historical_closes_with_dates(ticker, window)
-    if not hist:
-        print(f"⚠️ No history found for {ticker}; cannot calculate {ma_type}-{window}.")
-        return None
-        
-    history_dates = [h["date"] for h in hist]
-    closes = [float(h["close"]) for h in hist]
-    
-    # Resolve today's date in New York time
-    tz = ZoneInfo("America/New_York")
-    today_ny = datetime.datetime.now(tz).date().strftime("%Y-%m-%d")
-    
-    # If the latest date in FMP history is before today, append current_price to represent today's close
-    if history_dates and history_dates[-1] < today_ny:
-        closes.append(current_price)
-        
-    if ma_type.upper() == "SMA":
-        return calculate_sma(closes, window)
-    else:
-        return calculate_ema(closes, window)
 
 def _matches_account(obj, target_account: str | None) -> bool:
     """Return True if obj belongs to target_account, or if obj has no account string set (e.g. test mocks)."""
@@ -911,27 +876,6 @@ def get_net_liquidation(ib: IB, account: str = None) -> float:
         notifier.notify_exception("get_net_liquidation() — execution_agent.py", e)
         print(f"❌ Error querying net liquidation from IBKR: {e}")
     return 0.0
-
-
-def early_dollar_stop_threshold(equity: float) -> float:
-    """Dollar loss that arms the Early Dollar Stop, derived from slot size.
-
-    The cap is a share of one position slot, not a fixed dollar figure:
-
-        threshold = (equity / EFFECTIVE_POSITION_SLOTS) x EARLY_DOLLAR_STOP_PCT
-
-    Every position gets the SAME threshold regardless of its own cost basis.
-    That is deliberate and is the difference between this and an ordinary
-    percentage stop: an oversized position (OII was booked at $48K against a
-    ~$24K median) represents concentrated risk and should be cut at the same
-    absolute dollar loss as a normally-sized one, not given a proportionally
-    wider allowance.
-
-    Returns 0.0 when equity is unknown, which disables the rule for that cycle.
-    """
-    if equity <= 0 or EARLY_DOLLAR_STOP_PCT <= 0 or EFFECTIVE_POSITION_SLOTS <= 0:
-        return 0.0
-    return round((equity / EFFECTIVE_POSITION_SLOTS) * EARLY_DOLLAR_STOP_PCT, 2)
 
 
 def get_available_cash(ib: IB) -> float:
@@ -1362,7 +1306,7 @@ def process_exit_requests(ib: IB) -> None:
                 continue
 
             shares = int(pos["shares"])
-            current_price = get_live_price(ticker)
+            current_price, _ = get_position_price(ib, ticker)
             if current_price <= 0:
                 print(f"   ⚠️ {ticker}: no price this cycle — deferring exit request #{rid}.")
                 continue
@@ -1543,8 +1487,8 @@ def get_oca_managed_tickers(client: Client) -> set:
     """
     Tickers whose exit is currently owned by a Smart OCA request.
 
-    The automated ladder (thesis stop, dollar stop, intraday minimiser, EMA
-    exit) must not act on these. Those rules call execute_sell()/arm_exit(),
+    The automated ladder (the Prove-It Stop and Rank & Replace) must not act on
+    these. Those rules call execute_sell()/arm_exit(),
     both of which cancel every open SELL order for the ticker — which would
     silently destroy the OCA the user explicitly asked for. The OCA plus its
     floor and expiry backstops fully govern the position instead.
@@ -1569,22 +1513,129 @@ def get_oca_managed_tickers(client: Client) -> set:
         return set()
 
 
+def prove_it_is_proven(pos: dict, highest_unrealized_pct: float = 0.0) -> bool:
+    """
+    Has this position ever CLOSED above the price we paid?
+
+    This single question selects the Prove-It phase, so it is the most
+    load-bearing predicate in the exit ladder. `closed_above_entry` is latched
+    True by the EOD block the first time a close prints above entry and is never
+    cleared afterwards — a breakout confirms only once.
+
+    Fails SAFE. A missing column (migration not yet applied) reads as None, which
+    must never be treated as "unproven": that would apply the tight Phase 1 band
+    to a working position. When the latch is unavailable, every available sign
+    that the position has traded above entry counts as proof, which is
+    deliberately more generous than the close-based latch it stands in for.
+    """
+    latch = pos.get("closed_above_entry")
+    if latch is not None:
+        return bool(latch)
+    try:
+        buy_price = float(pos.get("buy_price") or 0)
+    except (TypeError, ValueError):
+        return True
+    if buy_price <= 0:
+        return True
+    return (
+        highest_unrealized_pct > 0
+        or float(pos.get("hwm_price") or 0) > buy_price
+        or float(pos.get("intraday_high_today") or 0) > buy_price
+    )
+
+
+def prove_it_p1_threshold_pct(days_held: int) -> float:
+    """
+    Phase 1 band for a given day of the hold, as a positive fraction below entry.
+
+    Widens after the entry day rather than tightening. A breakout that fails on
+    day 0 is wrong immediately; from day 1 the failing and working populations
+    overlap, and holding the tight band through day 1 costs far more in clipped
+    winners than it saves in cut losers.
+    """
+    if days_held <= PROVE_IT_P1_DAY0_LAST_DAY:
+        return PROVE_IT_P1_DAY0_PCT
+    return PROVE_IT_P1_LATER_PCT
+
+
+def prove_it_stop_level(pos: dict, buy_price: float, days_held: int,
+                        highest_unrealized_pct: float) -> tuple[float | None, str]:
+    """
+    The price at which this position should be protected right now, and which
+    phase produced it.
+
+    Phase 1 (unproven) anchors to ENTRY: the breakout has not confirmed, so the
+    only meaningful reference is what we paid. Phase 2 (proven) anchors to the
+    give-back floor once the peak gain has armed it: the trade went green, so it
+    is never allowed to become a real loss. Above +5% the profit ladder in
+    TRAIL_PROFIT_TIERS takes over and is tighter than either.
+
+    Returns (None, phase) when no Prove-It level applies — an unarmed Phase 2
+    position is governed by the base trailing stop alone.
+    """
+    if not PROVE_IT_ENABLED or buy_price <= 0:
+        return None, "disabled"
+    if prove_it_is_proven(pos, highest_unrealized_pct):
+        if highest_unrealized_pct < PROVE_IT_P2_ARM_GAIN_PCT * 100.0:
+            return None, "phase2-unarmed"
+        return buy_price * (1.0 + PROVE_IT_P2_FLOOR_PCT), "phase2"
+    return buy_price * (1.0 - prove_it_p1_threshold_pct(days_held)), "phase1"
+
+
+def prove_it_trail_pct(level: float | None, current_price: float,
+                       phase: str) -> float | None:
+    """
+    Trailing % that parks the resting IBKR stop on `level`.
+
+    IBKR's trailingPercent is measured from the high water mark, and the anchor
+    RESETS whenever the order is cancelled and re-placed — which is exactly what
+    the tightening block does. So the percentage must be solved against the
+    CURRENT price, not a historical peak, or the stop lands somewhere nobody
+    intended.
+
+    In Phase 1 the resting order is a backstop behind the bot's armed exit, so it
+    sits PROVE_IT_BACKSTOP_SLACK_PCT wider and must never fire first. In Phase 2
+    the resting order IS the mechanism, so it sits exactly on the floor.
+    """
+    if level is None or current_price <= 0:
+        return None
+    if phase == "phase1":
+        level = level * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
+    if level >= current_price:
+        # Already at or through the level. Nothing sane to place; the bot-side
+        # exit is what acts here.
+        return None
+    return round(1.0 - (level / current_price), 4)
+
+
 def _compute_dynamic_trail_pct(
     unrealized_pct: float,
     calendar_days: int,
     current_pct: float,
+    prove_it_pct: float | None = None,
 ) -> float | None:
     """
     Returns a tighter trailing stop % if the position has crossed a new tier,
     otherwise returns None (no change needed).
 
     Two independent levers — the tighter of the two always wins:
-      Lever 1 (profit): unrealized gain % -> TRAIL_PROFIT_TIERS
-      Lever 2 (time):   calendar days held -> TRAIL_TIME_TIERS
+      Lever 1 (profit):   unrealized gain % -> TRAIL_PROFIT_TIERS
+      Lever 2 (Prove-It): the trail % that pins the resting IBKR stop at the
+                          current Prove-It level (see prove_it_trail_pct())
+
+    `calendar_days` is retained for signature stability and for callers that
+    still report it; the time lever it fed (TRAIL_TIME_TIERS) is retired — see
+    docs/retired_code.md.
 
     One-way only: result is always strictly less than current_pct.
     Never loosens a stop (a position at 5% trail stays at 5% even if it
     briefly dips below a profit tier threshold).
+
+    That one-way rule is what turns the Prove-It lever into a FIXED floor rather
+    than a trail. As price rises, the % needed to keep the stop at the floor
+    grows, is looser than what is already placed, and is therefore rejected —
+    so the stop stays put. As price falls back toward the floor the required %
+    shrinks, is tighter, and is applied — pinning the stop exactly on the floor.
     """
     # Profit lever: find highest threshold the gain has crossed
     profit_trail: float | None = None
@@ -1593,14 +1644,7 @@ def _compute_dynamic_trail_pct(
             profit_trail = pct
             break
 
-    # Time lever: find highest day threshold crossed
-    time_trail: float | None = None
-    for threshold, pct in TRAIL_TIME_TIERS:
-        if calendar_days >= threshold:
-            time_trail = pct
-            break
-
-    candidates = [p for p in (profit_trail, time_trail) if p is not None]
+    candidates = [p for p in (profit_trail, prove_it_pct) if p is not None]
     if not candidates:
         return None
 
@@ -1819,6 +1863,71 @@ def _exit_context_suffix(pos: dict, sell_price: float) -> str:
     return " — " + ", ".join(parts)
 
 
+# Set once when Supabase rejects the IBKR valuation columns, so the warning is
+# printed a single time per process instead of on every 15-minute cycle.
+_IBKR_VALUATION_COLUMNS_MISSING = False
+
+
+def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
+    """
+    Persist IBKR's own valuation of each open position onto portfolio_positions.
+
+    The read-only web container has no brokerage access, so without these columns
+    the dashboard had to value positions as shares (Supabase) x price (FMP quote).
+    That never matched the broker, and it added a live third-party price to an
+    IBKR cash balance refreshed only once per agent cycle — mixing two vintages
+    of data in one total.
+
+    Values come from ib.portfolio() PortfolioItem objects, which read the account
+    update stream. This deliberately does NOT use ib.reqTickers(), which blocks
+    indefinitely when the ushmds data farm is down.
+
+    Degrades gracefully when migrations/add_ibkr_position_values.sql has not been
+    applied: PGRST204 disables the write for the rest of the process rather than
+    failing reconciliation.
+
+    Returns the number of positions whose valuation was written.
+    """
+    global _IBKR_VALUATION_COLUMNS_MISSING
+    if _IBKR_VALUATION_COLUMNS_MISSING:
+        return 0
+
+    synced_at = datetime.datetime.now(ZoneInfo("America/New_York")).isoformat()
+    written = 0
+
+    for ticker in tickers:
+        item = ib_map.get(ticker)
+        # The positions() fallback path yields Position objects, which carry no
+        # valuation. Skip them rather than writing a price derived from our own
+        # cost basis — a stale broker mark is recoverable, a fabricated one is not.
+        market_price = getattr(item, "marketPrice", None)
+        if market_price is None or float(market_price) <= 0:
+            continue
+
+        payload = {
+            "current_price":  round(float(market_price), 4),
+            "market_value":   round(float(getattr(item, "marketValue", 0) or 0), 2),
+            "unrealized_pnl": round(float(getattr(item, "unrealizedPNL", 0) or 0), 2),
+            "ibkr_synced_at": synced_at,
+        }
+        try:
+            client.table("portfolio_positions").update(payload).eq("ticker", ticker).execute()
+            written += 1
+        except Exception as e:
+            msg = str(e)
+            if "PGRST204" in msg or "column" in msg.lower():
+                _IBKR_VALUATION_COLUMNS_MISSING = True
+                print("   ⚠️  IBKR valuation columns missing — run "
+                      "migrations/add_ibkr_position_values.sql. Dashboard will show "
+                      "cost basis until then.")
+                return written
+            print(f"   ⚠️  Could not write IBKR valuation for {ticker}: {e}")
+
+    if written:
+        print(f"   💵 Synced IBKR valuation for {written} position(s).")
+    return written
+
+
 def reconcile_with_ibkr(ib: IB):
     """
     Full bidirectional reconciliation between IBKR actual positions and Supabase ledger.
@@ -1855,21 +1964,17 @@ def reconcile_with_ibkr(ib: IB):
             "ticker,shares,buy_price"
         ).execute().data or []
 
-        # Use FMP API for position prices — avoids IBKR reqTickers() which blocks
-        # indefinitely when the ushmds data farm is down. FMP is always available
-        # and is already used throughout the rest of the agent.
+        # Position value for the account rollup uses IBKR's own mark first
+        # (PortfolioItem.marketPrice) so account_balances agrees with both the
+        # dashboard and the exit logic. FMP is only a per-ticker fallback, and
+        # cost basis is the final fallback. get_position_price() reads the
+        # non-blocking ib.portfolio() cache — never the blocking reqTickers().
+        ib_price_map = build_ibkr_price_map(ib)
         pos_value = 0.0
         for p in db_pos:
-            price = float(p["buy_price"])   # fallback: cost basis
-            try:
-                fmp_url = f"https://financialmodelingprep.com/api/v3/quote-short/{p['ticker']}?apikey={FMP_API_KEY}"
-                r = requests.get(fmp_url, timeout=5)
-                if r.ok and r.json():
-                    fmp_price = float(r.json()[0].get("price", 0))
-                    if fmp_price > 0:
-                        price = fmp_price
-            except Exception:
-                pass   # keep cost-basis fallback
+            price, src = get_position_price(ib, p["ticker"], ib_price_map)
+            if price <= 0:
+                price = float(p["buy_price"])   # final fallback: cost basis
             pos_value += int(p["shares"]) * price
 
         net_liq = cash_balance + pos_value
@@ -2272,6 +2377,11 @@ def reconcile_with_ibkr(ib: IB):
             except Exception as e:
                 notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
                 print(f"        ❌ DB error updating shares for {ticker}: {e}")
+
+    # ── Persist IBKR's own valuation for every position we agree exists ──────
+    # Written after the share-count correction above so market_value is stored
+    # alongside a share count IBKR has already confirmed.
+    _sync_ibkr_position_values(client, ib_map, ib_tickers & supabase_tickers)
 
     if changes == 0:
         print("   ✅ Supabase and IBKR are in sync. No changes needed.")
@@ -3453,19 +3563,12 @@ def monitor_portfolio_intraday(ib: IB):
     # process_exit_requests() governs these positions.
     oca_managed = get_oca_managed_tickers(client)
 
-    # Early Dollar Stop threshold is derived from account equity, so it is
-    # resolved ONCE per cycle rather than per position: the value is identical
-    # for every holding and each lookup is an IBKR round-trip. A 0.0 result means
-    # equity could not be read, which disables the rule for this cycle (see
-    # early_dollar_stop_threshold()) rather than computing a $0 threshold that
-    # would arm an exit on every position.
-    early_dollar_stop_amount = early_dollar_stop_threshold(get_net_liquidation(ib))
-    if early_dollar_stop_amount > 0:
-        print(f"   Early Dollar Stop this cycle: ${early_dollar_stop_amount:,.0f} "
-              f"({EARLY_DOLLAR_STOP_PCT * 100:.0f}% of a "
-              f"1/{EFFECTIVE_POSITION_SLOTS} slot)")
-    elif EARLY_DOLLAR_STOP_PCT > 0:
-        print("   ⚠️ Early Dollar Stop skipped this cycle: account equity unavailable.")
+    # Single consistent IBKR price snapshot for this cycle. Every position is
+    # priced from PortfolioItem.marketPrice (the broker's own mark we trade
+    # against) via get_position_price(); FMP is only a per-ticker fallback when
+    # a mark is missing. Read once here — ib.portfolio() is a non-blocking
+    # in-memory lookup, so this does not risk the reqTickers() stall.
+    ib_price_map = build_ibkr_price_map(ib)
 
     active_positions = []
     for pos in positions:
@@ -3482,9 +3585,11 @@ def monitor_portfolio_intraday(ib: IB):
         # Calculate trading days held
         days_held = trading_days_between(buy_date_d, today_ny)
 
-        # Use FMP live price for monitoring. This is reliable, mockable in tests,
-        # and avoids IBKR reqTickers() blocking when the data farm is down.
-        current_price = get_live_price(ticker)
+        # IBKR-first price: use the broker's own mark (PortfolioItem.marketPrice)
+        # that we actually fill against, so exit decisions and fills agree. Falls
+        # back to FMP only when IBKR has no usable mark for this ticker. The map
+        # was built once above from the non-blocking ib.portfolio() cache.
+        current_price, price_source = get_position_price(ib, ticker, ib_price_map)
         if current_price <= 0:
             print(f"   ⚠️ Could not fetch price for {ticker} — skipping this cycle.")
             active_positions.append(pos)
@@ -3498,7 +3603,7 @@ def monitor_portfolio_intraday(ib: IB):
             active_positions.append(pos)
             continue
 
-        print(f"   Monitoring {ticker}: Current: ${current_price:.2f} | Entry: ${buy_price:.2f} "
+        print(f"   Monitoring {ticker}: Current: ${current_price:.2f} ({price_source}) | Entry: ${buy_price:.2f} "
               f"| Held: {days_held}d | IBKR Trail: {pos_stop_loss_pct*100:.2f}%")
 
         # ── Armed Trailing Exit deadline check ───────────────────────────────────
@@ -3525,20 +3630,6 @@ def monitor_portfolio_intraday(ib: IB):
                       f"({pos.get('exit_armed_reason')}) — awaiting trail or deadline.")
                 active_positions.append(pos)
             continue
-
-        # ── Day 0 hard loser kill-switch ────────────────────────────────────────
-        if days_held <= EARLY_LOSS_STOP_MAX_DAY:
-            early_stop_level = buy_price * (1 - EARLY_LOSS_STOP_PCT)
-            if current_price <= early_stop_level:
-                reason = (
-                    f"Early Loss Kill-switch — Day {days_held}, "
-                    f"price {((current_price / buy_price) - 1.0) * 100:.2f}% "
-                    f"<= -{EARLY_LOSS_STOP_PCT * 100:.1f}% threshold"
-                )
-                print(f"🚨 {ticker}: Early Loss Kill-switch triggered — arming exit — {reason}")
-                arm_exit(ib, client, ticker, shares, current_price, reason, now_ny)
-                active_positions.append(pos)
-                continue
 
         # ── Calculate current unrealized percentage ──
         unrealized_pct = round(((current_price / buy_price) - 1.0) * 100.0, 4)
@@ -3602,9 +3693,48 @@ def monitor_portfolio_intraday(ib: IB):
             print(f"   🏆 {ticker}: power-hold active (day {calendar_days} of "
                   f"{POWER_HOLD_DURATION_DAYS}) — discretionary exits suppressed.")
 
+        # ── The Prove-It Stop ────────────────────────────────────────────────────
+        # Resolve the level this position is protected at right now, then act on
+        # it two ways: the bot arms a tight trailing exit if price is already
+        # through the level, and the resting IBKR order is pinned to it below.
+        #
+        # Suppressed while power-held, which widens the trail deliberately. There
+        # is no real conflict — power-hold requires a large peak gain, so such a
+        # position is always proven and far above the Phase 2 floor.
+        prove_it_level, prove_it_phase = (None, "power-hold") if power_held else \
+            prove_it_stop_level(pos, buy_price, days_held, highest_unrealized_pct)
+
+        if (prove_it_level is not None
+                and current_price <= prove_it_level
+                and not pos.get("exit_armed")):
+            if prove_it_phase == "phase1":
+                band_pct = prove_it_p1_threshold_pct(days_held) * 100.0
+                reason = (
+                    f"Prove-It Stop (Phase 1 — unproven) — Day {days_held}, "
+                    f"never closed above entry and price "
+                    f"{unrealized_pct:.2f}% <= -{band_pct:.1f}% of entry "
+                    f"(${prove_it_level:.2f})"
+                )
+            else:
+                reason = (
+                    f"Prove-It Stop (Phase 2 — give-back floor) — Day {days_held}, "
+                    f"peak +{highest_unrealized_pct:.2f}% gave back to "
+                    f"{unrealized_pct:.2f}%, at or below the "
+                    f"{PROVE_IT_P2_FLOOR_PCT * 100:+.1f}% floor "
+                    f"(${prove_it_level:.2f}). A green trade does not become a loss."
+                )
+            print(f"🚨 {ticker}: Prove-It Stop triggered — arming exit — {reason}")
+            arm_exit(ib, client, ticker, shares, current_price, reason, now_ny)
+            notifier.notify_prove_it_stop(
+                ticker, buy_price, current_price, days_held,
+                prove_it_phase, prove_it_level, highest_unrealized_pct,
+            )
+            active_positions.append(pos)
+            continue
+
         # While power-held the profit ladder is bypassed entirely: the HWM profit
         # lock would otherwise clamp the trail to 1.5% from the peak from +5% gain
-        # onward, long before the +20% that arms this rule, which made the rule
+        # onward, long before the POWER_HOLD_GAIN_PCT that arms this rule, which made the rule
         # inert (every armed position still exited on the trail). Widen to
         # POWER_HOLD_TRAIL_PCT so the leader can actually run.
         if power_held:
@@ -3615,7 +3745,10 @@ def monitor_portfolio_intraday(ib: IB):
             )
         else:
             new_trail_pct = _compute_dynamic_trail_pct(
-                unrealized_pct, calendar_days, pos_stop_loss_pct
+                unrealized_pct, calendar_days, pos_stop_loss_pct,
+                prove_it_pct=prove_it_trail_pct(
+                    prove_it_level, current_price, prove_it_phase
+                ),
             )
         if new_trail_pct is not None:
             prev_trail_pct = pos_stop_loss_pct
@@ -3650,134 +3783,6 @@ def monitor_portfolio_intraday(ib: IB):
                 )
                 print(f"   ⚠️ {ticker}: trail update failed: {_tighten_err}")
 
-        # ── Early Dollar Stop for Days 0-EARLY_DOLLAR_STOP_MAX_DAY ───────────────
-        # Caps the dollar loss on any new position before it has confirmed
-        # itself. The threshold is a share of one position slot (resolved once
-        # per cycle above), so it scales with account equity and is identical
-        # across positions regardless of their individual cost basis.
-        # Checked on the 15-minute monitoring cycle and fires arm_exit() so a
-        # bounce can still be captured rather than selling at the worst tick.
-        if (early_dollar_stop_amount > 0
-                and days_held <= EARLY_DOLLAR_STOP_MAX_DAY
-                and not power_held
-                and not pos.get("exit_armed")):
-            unrealized_dollar_loss = shares * (current_price - buy_price)
-            if unrealized_dollar_loss <= -early_dollar_stop_amount:
-                reason = (
-                    f"Early Dollar Stop — Day {days_held}: "
-                    f"unrealized loss ${abs(unrealized_dollar_loss):,.0f} "
-                    f">= ${early_dollar_stop_amount:,.0f} threshold "
-                    f"({EARLY_DOLLAR_STOP_PCT * 100:.0f}% of a "
-                    f"1/{EFFECTIVE_POSITION_SLOTS} slot) "
-                    f"({unrealized_pct:.2f}% on ${shares * buy_price:,.0f} position)"
-                )
-                print(f"🚨 {ticker}: Early Dollar Stop triggered — arming exit — {reason}")
-                arm_exit(ib, client, ticker, shares, current_price, reason, now_ny)
-                active_positions.append(pos)
-                continue
-
-        # ── Thesis Stop (ATR-normalised failure-to-advance) ──────────────────────
-        # A proper breakout works almost immediately. If the position has never
-        # closed above entry and is now more than THESIS_STOP_ATR_MULT x ATR below
-        # it, the breakout thesis is dead — exit while the loss is still small
-        # rather than waiting for the disaster stop.
-        #
-        # Distinct from the Intraday Loss Minimiser, which required the high to be
-        # AT OR ABOVE entry and therefore cut positions that were working. The
-        # `closed_above_entry` gate below is what confines this rule to breakouts
-        # that never followed through.
-        if (THESIS_STOP_ENABLED and not power_held
-                and not pos.get("exit_armed")
-                and THESIS_STOP_START_DAY <= days_held <= THESIS_STOP_LAST_DAY):
-            # Fail SAFE if the migration hasn't run yet: a missing column reads
-            # as None, which must not be treated as "never followed through".
-            # Fall back to every available signal that the position has traded
-            # above entry, so a working position is never cut. This fallback is
-            # deliberately more conservative than the latch it stands in for
-            # (which tracks CLOSES): an intraday poke above entry is enough to
-            # suppress the rule until the migration is applied.
-            _latch = pos.get("closed_above_entry")
-            if _latch is None:
-                _latch = (
-                    highest_unrealized_pct > 0
-                    or float(pos.get("hwm_price") or 0) > buy_price
-                    or float(pos.get("intraday_high_today") or 0) > buy_price
-                )
-            if not _latch:
-                entry_atr = float(pos.get("entry_atr_pct") or 0) or THESIS_STOP_ATR_FALLBACK
-                thesis_threshold_pct = -THESIS_STOP_ATR_MULT * entry_atr
-                if unrealized_pct <= thesis_threshold_pct:
-                    reason = (
-                        f"Thesis Stop — Day {days_held}: no close above entry and "
-                        f"{unrealized_pct:.2f}% <= {thesis_threshold_pct:.2f}% "
-                        f"({THESIS_STOP_ATR_MULT:.2f}x ATR of {entry_atr:.2f}%/day). "
-                        f"Breakout never confirmed."
-                    )
-                    print(f"🚨 {ticker}: Thesis Stop triggered — arming exit — {reason}")
-                    # Armed rather than a market sell: the trigger price is often
-                    # a local trough. NOTE: the claim that this beat an immediate
-                    # sell in BOTH universes was a backtest artifact — corrected,
-                    # it wins on the screener-passing universe and straddles the
-                    # market sell on the broad one, so it is unproven rather than
-                    # proven. See decisions/2026-08-17_armed-exit-backtest-lookahead.md.
-                    arm_exit(ib, client, ticker, shares, current_price, reason, now_ny)
-                    notifier.notify_thesis_stop(
-                        ticker, buy_price, current_price, days_held,
-                        entry_atr, thesis_threshold_pct, THESIS_STOP_ATR_MULT,
-                    )
-                    active_positions.append(pos)
-                    continue
-
-        # ── Intraday Loss Minimiser (Day 2+, universal) ──────────────────────────
-        # For all positions from Day 2 onward, sell on the first 0.5% pullback
-        # from today's intraday high — provided that high is within 0.5% of entry
-        # price (near breakeven or above), preserving any intraday gain.
-        if INTRADAY_MINIMISER_ENABLED and days_held >= INTRADAY_MINIMISER_START_DAY and not power_held:
-            prev_high  = float(pos.get("intraday_high_today") or 0)
-            today_high = max(prev_high, current_price)
-
-            if today_high > prev_high:
-                try:
-                    client.table("portfolio_positions").update(
-                        {"intraday_high_today": today_high}
-                    ).eq("ticker", ticker).execute()
-                    pos["intraday_high_today"] = today_high
-                except Exception as _ihe:
-                    print(f"   ⚠️ Could not update intraday_high_today for {ticker}: {_ihe}")
-
-            pullback_level = today_high * (1 - INTRADAY_PULLBACK_PCT)
-            near_entry     = today_high >= buy_price * 0.995  # high is within 0.5% of or above entry
-            pulled_back    = current_price <= pullback_level
-
-            if near_entry and pulled_back:
-                reason = (
-                    f"Intraday Loss Minimiser — Day {days_held} universal rule, "
-                    f"selling on {INTRADAY_PULLBACK_PCT*100:.1f}% pullback from "
-                    f"intraday high ${today_high:.2f} (current ${current_price:.2f})"
-                )
-                if days_held < 7:
-                    # Day 0-6: arm a tight trailing exit instead of an instant
-                    # sell at this (possibly local-trough) price — see arm_exit().
-                    print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser triggered — arming exit — {reason}")
-                    arm_exit(ib, client, ticker, shares, current_price, reason, now_ny)
-                    active_positions.append(pos)
-                else:
-                    print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser firing — {reason}")
-                    if not (SMART_EXIT_FOR_RULES
-                            and enqueue_smart_exit(client, ticker, reason, "auto:intraday_minimiser")):
-                        execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
-                continue
-
-            # Hard fallback remains scoped to FAIL verdict positions.
-            if days_held >= 7 and pos.get("breakout_verdict") == "FAIL":
-                reason = f"Intraday Loss Minimiser fallback — no qualifying intraday rally by Day 7 ({days_held}d)"
-                print(f"\U0001f6a8 {ticker}: Intraday Loss Minimiser fallback sell (Day 7)")
-                if not (SMART_EXIT_FOR_RULES
-                        and enqueue_smart_exit(client, ticker, reason, "auto:intraday_minimiser_fallback")):
-                    execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
-                continue
-
-
         # ── Self-healing: ensure trailing stop exists for this position ─────────
         # GTC trailing stops survive IBKR gateway restarts, but may be absent for
         # positions opened before this feature or after a full account reset.
@@ -3803,64 +3808,6 @@ def monitor_portfolio_intraday(ib: IB):
 
         # Trailing stop is fully managed by IBKR. reconcile_with_ibkr() (Case 1)
         # detects when it fires and archives the position to trade_history.
-
-        # ── Moving Average Exit Check (Only Day 7+) ──────────────────────────────
-        if EXIT_MA_TRIGGER_ENABLED and days_held >= 7 and not power_held:
-            is_ma_window = True
-            if EXIT_MA_EOD_ONLY:
-                now_ny = datetime.datetime.now(tz)
-                # Check if we are between 3:45 PM and 4:00 PM ET
-                is_ma_window = (now_ny.hour == 15 and now_ny.minute >= 45)
-
-            if is_ma_window:
-                ma_val = get_ma_value(ticker, current_price, EXIT_MA_TYPE, EXIT_MA_WINDOW)
-                if ma_val is not None:
-                    threshold = ma_val * (1 - EXIT_MA_BUFFER_PCT)
-                    if current_price < threshold:
-                        reason = (
-                            f"{EXIT_MA_TYPE}-{EXIT_MA_WINDOW} Exit — Price ${current_price:.2f} "
-                            f"below MA ${ma_val:.2f} with {EXIT_MA_BUFFER_PCT*100:.1f}% buffer (${threshold:.2f})"
-                        )
-                        print(f"🚨 {ticker} breached Moving Average exit! {reason}")
-                        if not (SMART_EXIT_FOR_RULES
-                                and enqueue_smart_exit(client, ticker, reason, "auto:ema21")):
-                            execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
-                        continue
-
-        # ── Plateau (Stale) Exit — Day 7+, EOD only ──────────────────────────────
-        # Free the slot when a position has stopped making progress. Unlike the
-        # trailing stop (which reacts to a DROP) and the MA exit (which reacts to
-        # a BREAKDOWN), this reacts to going NOWHERE — a position can sit above
-        # both for weeks while earning nothing and blocking a fresh breakout.
-        #
-        # Uses hwm_date, which already ratchets in the block above, and counts
-        # TRADING days so a long weekend doesn't advance the stall counter.
-        if (STALE_EXIT_ENABLED
-                and days_held >= STALE_EXIT_MIN_DAYS_HELD
-                and not power_held
-                and (datetime.datetime.now(tz).hour == 15
-                     and datetime.datetime.now(tz).minute >= 45)):
-            try:
-                _hwm_raw = pos.get("hwm_date")
-                if _hwm_raw:
-                    _hwm_date = datetime.date.fromisoformat(str(_hwm_raw)[:10])
-                    _stale_days = trading_days_between(_hwm_date, datetime.datetime.now(tz).date())
-                    if _stale_days >= STALE_EXIT_DAYS:
-                        _hwm_px = float(pos.get("hwm_price") or buy_price)
-                        reason = (
-                            f"Plateau Exit — no new high in {_stale_days} trading days "
-                            f"(HWM ${_hwm_px:.2f} on {_hwm_date.isoformat()}, "
-                            f"current ${current_price:.2f}). Rotating capital to a fresh breakout."
-                        )
-                        print(f"🔄 {ticker} has plateaued — {reason}")
-                        if not (SMART_EXIT_FOR_RULES
-                                and enqueue_smart_exit(client, ticker, reason, "auto:plateau")):
-                            execute_sell(ib, client, ticker, shares, buy_price, buy_date,
-                                         buy_reason, current_price, reason)
-                        continue
-            except Exception as _stale_err:
-                notifier.notify_exception("monitor_portfolio_intraday() plateau exit", _stale_err)
-                print(f"   ⚠️ Plateau exit check failed for {ticker}: {_stale_err}")
 
         # Position remained active
         active_positions.append(pos)
@@ -3955,7 +3902,7 @@ def monitor_portfolio_intraday(ib: IB):
             # PASS: close >= entry×1.01 AND Day 3 volume >= 75% of 20-day avg
             # FAIL: either condition not met → activates Intraday Loss Minimiser
             if days_held_m == 3 and pos.get("breakout_verdict") is None:
-                current_price_m = get_live_price(ticker_m)
+                current_price_m, _ = get_position_price(ib, ticker_m)
                 buy_price_m     = float(pos["buy_price"])
                 price_pass      = current_price_m > buy_price_m * (1 + BREAKOUT_VERDICT_MIN_GAIN)
 
@@ -3996,16 +3943,18 @@ def monitor_portfolio_intraday(ib: IB):
                     )
 
             try:
-                # ── Follow-through latch for the Thesis Stop ─────────────────
-                # Latches True the first time the position CLOSES above entry.
-                # The thesis stop only fires while this is False, which is what
-                # confines it to breakouts that never followed through (unlike
-                # the old Intraday Loss Minimiser, which cut working positions).
+                # ── Follow-through latch: the Prove-It phase discriminator ───
+                # Latches True the first time the position CLOSES above entry,
+                # and is never cleared — a breakout confirms only once.
+                # Phase 1 applies only while this is False, which is what
+                # confines the entry-anchored band to breakouts that never
+                # followed through (unlike the old Intraday Loss Minimiser,
+                # which cut working positions).
                 # Once True it is never cleared — a breakout confirms only once.
                 closed_above = bool(pos.get("closed_above_entry"))
                 if not closed_above:
                     try:
-                        eod_price = get_live_price(ticker_m)
+                        eod_price, _ = get_position_price(ib, ticker_m)
                         if eod_price and eod_price > float(pos["buy_price"]):
                             closed_above = True
                             print(f"   ✅ {ticker_m}: closed above entry — thesis stop disarmed.")
@@ -4072,6 +4021,32 @@ def monitor_portfolio_intraday(ib: IB):
                 swap_threshold = (RANK_REPLACE_THRESHOLD if verdict_rr == "PASS"
                                   else RANK_REPLACE_FAIL_THRESHOLD)
 
+                # ── Staleness discount (absorbs the retired Plateau Exit) ─────
+                # A position that has not made a new high in STALE_EXIT_DAYS
+                # trading days has stopped working. That used to trigger a sale
+                # to CASH, which was the wrong destination — it gave up the
+                # position's optionality whether or not anything better existed.
+                #
+                # The signal is real, so it is kept; only its consequence
+                # changes. Staleness now lowers the bar for ROTATION, so a
+                # stalled name is abandoned readily when a genuinely better
+                # breakout has appeared and held indefinitely when none has.
+                # See docs/retired_code.md.
+                stale_days_rr = 0
+                if days_held_rr >= STALE_EXIT_MIN_DAYS_HELD:
+                    try:
+                        _hwm_raw_rr = pos.get("hwm_date")
+                        if _hwm_raw_rr:
+                            stale_days_rr = trading_days_between(
+                                datetime.date.fromisoformat(str(_hwm_raw_rr)[:10]),
+                                today_eod,
+                            )
+                    except Exception as _stale_err:
+                        print(f"   ⚠️ Could not evaluate staleness for {ticker_m}: {_stale_err}")
+                is_stale_rr = stale_days_rr >= STALE_EXIT_DAYS
+                if is_stale_rr:
+                    swap_threshold = min(swap_threshold, RANK_REPLACE_FAIL_THRESHOLD)
+
                 # Never rotate out of a position protected by the 8-week hold rule:
                 # a recent 20%-in-3-weeks leader is exactly what we want to keep.
                 _rr_cal_days = (today_eod - datetime.datetime.fromisoformat(
@@ -4088,9 +4063,11 @@ def monitor_portfolio_intraday(ib: IB):
 
                 if best_trigger_score > comparator_score + swap_threshold:
                     mt_label = f"M\u209c={comparator_score:.1f}" if mt is not None else f"entry={comparator_score}"
+                    stale_label = (f", stale {stale_days_rr}d — swap bar lowered to "
+                                   f"{swap_threshold}pts" if is_stale_rr else "")
                     reason = (
                         f"Rank & Replace Swap (Day 7+) — replaced with superior breakout {best_ticker} "
-                        f"(New trigger: {best_trigger_score} vs held {mt_label})"
+                        f"(New trigger: {best_trigger_score} vs held {mt_label}{stale_label})"
                     )
                     print(f"\U0001f504 Rank & Replace: {ticker_m} ({mt_label}) \u2192 {best_ticker} ({best_trigger_score})")
 
@@ -4098,7 +4075,7 @@ def monitor_portfolio_intraday(ib: IB):
                     buy_price_rr = float(pos["buy_price"])
                     buy_date_rr  = datetime.datetime.fromisoformat(pos["buy_date"].replace('Z', '+00:00'))
                     buy_reason_rr = pos.get("buy_reason", "Unknown")
-                    current_price_rr = get_live_price(ticker_m)
+                    current_price_rr, _ = get_position_price(ib, ticker_m)
 
                     # Deliberately a MARKET sell, not a Smart OCA exit, even
                     # though this is the least urgent rule in the ladder.

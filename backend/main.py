@@ -220,32 +220,53 @@ def get_portfolio():
             fmp_name = None
             try:
                 if fmp.is_configured():
-                    # Get current price
+                    # NOTE: this quote is fetched for the company NAME ONLY.
+                    # The price field is deliberately ignored — position values
+                    # come from IBKR via portfolio_positions.current_price, which
+                    # reconcile_with_ibkr() writes from PortfolioItem.marketPrice.
+                    # Mixing a live FMP quote into a broker-sourced total is the
+                    # exact defect migrations/add_ibkr_position_values.sql removes.
                     quote = fmp.get_quote(ticker)
-                    if quote and "price" in quote:
-                        current_price = float(quote['price'])
-                        db.update_position_price(ticker, current_price)
-                        pos['current_price'] = current_price
-                    # The quote payload already carries the company name, so this
-                    # costs no extra request.
                     if quote:
                         fmp_name = (quote.get("name") or "").strip() or None
             except Exception as ex:
-                print(f"Could not update live price for {ticker}: {ex}")
-                
-            # Fall back to buy_price when FMP hasn't refreshed yet (e.g. positions just bought)
-            # This prevents a 500 crash and shows 0% PnL until the next price cycle.
-            display_price = pos['current_price'] or pos['buy_price']
-            value = pos['shares'] * display_price
+                print(f"Could not fetch company name for {ticker}: {ex}")
+
+            # IBKR's mark, or cost basis when the agent has never synced this
+            # position. Never a third-party quote — a stale broker price is
+            # recoverable and is labelled as such in the UI via ibkr_synced_at;
+            # a fresh-looking price the broker never agreed with is not.
+            ibkr_price   = pos.get('current_price')
+            ibkr_synced  = pos.get('ibkr_synced_at')
+            price_is_ibkr = ibkr_price is not None and ibkr_synced is not None
+
+            display_price = float(ibkr_price) if price_is_ibkr else float(pos['buy_price'])
+
+            # Prefer IBKR's own market_value: it is the authority on both share
+            # count and price, so recomputing shares x price would reintroduce
+            # the drift these columns exist to eliminate.
+            stored_value = pos.get('market_value')
+            if price_is_ibkr and stored_value is not None:
+                value = float(stored_value)
+            else:
+                value = pos['shares'] * display_price
             portfolio_value += value
-            
-            pnl = value - (pos['shares'] * pos['buy_price'])
+
+            stored_pnl = pos.get('unrealized_pnl')
+            if price_is_ibkr and stored_pnl is not None:
+                pnl = float(stored_pnl)
+            else:
+                pnl = value - (pos['shares'] * pos['buy_price'])
             pnl_pct = (display_price / pos['buy_price'] - 1.0) * 100.0
-            
+
             pos['current_price'] = display_price   # ensure it's never None in response
             pos['value'] = round(value, 2)
             pos['pnl'] = round(pnl, 2)
             pos['pnl_pct'] = round(pnl_pct, 2)
+            # Lets the dashboard say "as of 15:47" or flag a never-synced
+            # position instead of implying the cost basis is a live price.
+            pos['price_source']   = 'IBKR' if price_is_ibkr else 'COST_BASIS'
+            pos['ibkr_synced_at'] = ibkr_synced
             # Attach company name. The watchlist only holds the current screener
             # snapshot, so a ticker that has since dropped off it (SWK, CPAY) has
             # no row there even though the position is still open — which is why

@@ -35,7 +35,7 @@ Checked once, before any candidate is considered.
 ### Schema integrity block
 
 `schema_guard.py` probes the columns each live risk rule reads. If
-`portfolio_positions.closed_above_entry` (Thesis Stop), `hwm_rs_score` or
+`portfolio_positions.closed_above_entry` (the Prove-It Stop's phase discriminator), `hwm_rs_score` or
 `highest_rs_score` (Rule 1, RS Decay) is absent, the agent **refuses to open new
 positions** while continuing to monitor and exit existing ones.
 
@@ -168,7 +168,7 @@ converges to even weighting after full turnover.
 4. A GTC `TRAIL` order is registered at
    `max(STOP_LOSS_PCT, min(ATR_STOP_MAX_PCT, 2.5 × entry_atr_pct))`.
 5. `entry_atr_pct`, `hwm_price`, `hwm_date` and entry-conviction fields are persisted.
-   `entry_atr_pct` is what later parameterises the [Thesis Stop](sell_logic.md#3-thesis-stop--days-25) —
+   `entry_atr_pct` is what later parameterises the [base trailing stop's ATR band](sell_logic.md#1-dynamic-trailing-stop-ibkr-managed) —
    if it is not captured at entry, that rule falls back to a generic 3.0%.
 6. A Telegram notification is dispatched.
 
@@ -178,7 +178,7 @@ converges to even weighting after full turnover.
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `MAX_POSITIONS` | `5` | Concurrent positions; single source in `config.py` for every module that buys. The Early Dollar Stop reads `EFFECTIVE_POSITION_SLOTS` instead — see `docs/configuration.md` |
+| `MAX_POSITIONS` | `5` | Concurrent positions; single source in `config.py` for every module that buys. No exit rule derives a threshold from the slot count |
 | `MIN_POSITION_SIZE` | `5000` | Cash floor below which no buy is attempted |
 | `PRICE_SAFETY_RESERVE` | `1000` | Withheld per order to absorb quote lag |
 | `TRIGGER_LOOKBACK_DAYS` | `3` | Trigger freshness window |

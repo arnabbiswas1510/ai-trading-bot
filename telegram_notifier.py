@@ -245,38 +245,44 @@ class TelegramNotifier:
         )
         self._send(msg)
 
-    def notify_thesis_stop(
+    def notify_prove_it_stop(
         self,
         ticker: str,
         buy_price: float,
         current_price: float,
         days_held: int,
-        entry_atr_pct: float,
-        threshold_pct: float,
-        atr_mult: float = 1.0,
+        phase: str,
+        level: float,
+        peak_pct: float = 0.0,
     ) -> None:
-        """Sent when the Thesis Stop arms an exit.
+        """Sent when the Prove-It Stop arms an exit.
 
-        Fires only for breakouts that have never closed above entry and are now
-        more than THESIS_STOP_ATR_MULT x ATR below it — i.e. the breakout thesis
-        is dead, not merely wobbling.
+        Phase 1 fires on a breakout that has never closed above entry. Phase 2
+        fires on a position that DID go green and has given the gain back to the
+        floor — a very different event, so the message says which happened.
         """
         if not self._is_configured():
             return
         try:
             ret_pct = ((current_price / buy_price) - 1.0) * 100.0
+            if phase == "phase1":
+                header = "PROVE-IT STOP (Phase 1 — unproven)"
+                body = (f"Breakout never closed above entry in "
+                        f"{days_held} day(s).\n\n")
+            else:
+                header = "PROVE-IT STOP (Phase 2 — give-back floor)"
+                body = (f"Went green (peak +{peak_pct:.2f}%) and gave it back.\n"
+                        f"A trade that proved itself does not become a loss.\n\n")
             msg = (
-                f"🧭 <b>THESIS STOP — ${ticker}</b>\n\n"
-                f"Breakout never confirmed: no close above entry in "
-                f"{days_held} days.\n\n"
-                f"  Entry:      <code>${buy_price:,.2f}</code>\n"
-                f"  Now:        <code>${current_price:,.2f}</code>  "
+                f"\U0001f6d1 <b>{header} — ${ticker}</b>\n\n"
+                f"{body}"
+                f"  Entry:   <code>${buy_price:,.2f}</code>\n"
+                f"  Now:     <code>${current_price:,.2f}</code>  "
                 f"({ret_pct:+.2f}%)\n"
-                f"  Threshold:  <code>{threshold_pct:.2f}%</code>  "
-                f"({atr_mult:.2f}x ATR of {entry_atr_pct:.2f}%/day)\n\n"
-                f"🎯 <b>Exit armed</b> — tight trail rides any bounce rather than "
-                f"selling into this dip.\n"
-                f"🕒 {self._now_et()}"
+                f"  Level:   <code>${level:,.2f}</code>\n\n"
+                f"\U0001f3af <b>Exit armed</b> \u2014 tight trail rides any bounce rather "
+                f"than selling into this dip.\n"
+                f"\U0001f552 {self._now_et()}"
             )
             self._send(msg)
         except Exception:
@@ -291,7 +297,8 @@ class TelegramNotifier:
         vol_pass: bool,
     ) -> None:
         """Sent at EOD of Day 3 when a position fails the breakout verdict.
-        Activates the Intraday Loss Minimiser from Day 4 onwards.
+        A FAIL verdict lowers the Rank & Replace swap threshold, making the
+        position easier to rotate out of when a better breakout appears.
         """
         if not self._is_configured():
             return

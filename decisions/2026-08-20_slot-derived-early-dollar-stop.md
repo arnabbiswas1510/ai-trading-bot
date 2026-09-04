@@ -1,9 +1,15 @@
 # Early Dollar Stop becomes slot-derived, not a flat dollar amount
 
 **Date:** 2026-08-20
-**Status:** Accepted
+**Status:** Superseded by [`2026-09-04_prove-it-stop.md`](2026-09-04_prove-it-stop.md)
 **Supersedes the sizing decision in:** `decisions/2026-08-18_early-dollar-stop.md`
 (the rule itself, its day window and its arm-don't-sell mechanism are unchanged)
+
+> **2026-09-04 — retired.** `EARLY_DOLLAR_STOP_PCT` and
+> `EFFECTIVE_POSITION_SLOTS` are both deleted. The slot-derived cap this ADR
+> introduced was never reached in 30 closed trades. Deleting it also closes
+> FU-007 (retire `EFFECTIVE_POSITION_SLOTS`) without the portfolio reset that
+> item was waiting on, since the constant no longer has a consumer.
 
 ## Context
 

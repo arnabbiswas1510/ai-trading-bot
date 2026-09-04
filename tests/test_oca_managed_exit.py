@@ -41,7 +41,12 @@ def _pos(ticker="DELL", shares=46, buy_price=496.04, atr=7.6, **kw):
         # 2 trading days held: inside the Early Dollar Stop window (0-5) and
         # before the Day 7+ discretionary exits open.
         "buy_date": _trading_days_ago(2), "buy_reason": "CANSLIM",
-        "entry_atr_pct": atr, "stop_loss_pct": 0.12, "hwm_price": 499.23,
+        "entry_atr_pct": atr, "stop_loss_pct": 0.12, "hwm_price": 494.10,
+        # Never closed above entry, so this sits in Prove-It Phase 1 and the
+        # -5.5% mark used below is well through the day-1+ band. Without the
+        # latch the rule fails SAFE to "proven", and an unarmed Phase 2 position
+        # has no level at all — the ladder would go quiet for the wrong reason.
+        "closed_above_entry": False, "highest_unrealized_pct": 0.0,
     }
     p.update(kw)
     return p
@@ -228,10 +233,10 @@ class TestManagedTickers:
 def _with_equity(ib, equity=80_000.0):
     """Give a mock IB an account with readable NetLiquidation.
 
-    The Early Dollar Stop threshold is derived from equity ((equity / 4) x 6%),
-    so a mock without accountValues() disables the rule entirely and any test
-    asserting the rule fired will fail for the wrong reason. $80K -> a $1,200
-    cap, which the -$1,262 DELL position below clears.
+    No live loss rule derives a threshold from equity any more — the slot-derived
+    Early Dollar Stop was retired with the Prove-It Stop (docs/retired_code.md).
+    This is kept because the monitor loop still reads NetLiquidation for its cash
+    reconciliation, and a mock without accountValues() makes that noisy.
     """
     account = "DU1234567"
     ib.managedAccounts.return_value = [account]
@@ -282,11 +287,12 @@ class TestLadderSuspension:
             execution_agent.monitor_portfolio_intraday(ib)
 
         # Same position, same price as the test above — the only difference is
-        # that it is not OCA-managed. DELL is -$1,262 on the day, so the Early
-        # Dollar Stop must arm. This is the control proving suspension is what
-        # silenced the ladder in the previous test, not some unrelated skip.
+        # that it is not OCA-managed. DELL never closed above entry and is well
+        # through the Phase 1 band, so the Prove-It Stop must arm. This is the
+        # control proving suspension is what silenced the ladder in the previous
+        # test, not some unrelated skip.
         arm.assert_called_once()
-        assert "Early Dollar Stop" in arm.call_args.args[5]
+        assert "Prove-It Stop" in arm.call_args.args[5]
 
 
 # ── process_exit_requests ────────────────────────────────────────────────────
@@ -674,15 +680,13 @@ class TestSmartExitRuleScoping:
 
     def test_day_0_to_6_loss_cutters_still_arm_rather_than_enqueue(self):
         # A placed OCA suspends the ladder for up to expires_after_days. For a
-        # position that is actively failing in its first week that is the wrong
-        # trade, so the kill-switch, dollar stop and thesis stop keep arm_exit().
+        # position that is actively failing that is the wrong trade, so the
+        # Prove-It Stop keeps arm_exit() in both phases.
         import inspect
         src = inspect.getsource(execution_agent.monitor_portfolio_intraday)
         # Anchor on the trigger print, which is unique, rather than the rule
         # name, which also appears in comments and reason strings.
-        for rule in ("Early Loss Kill-switch triggered",
-                     "Early Dollar Stop triggered",
-                     "Thesis Stop triggered"):
+        for rule in ("Prove-It Stop triggered",):
             assert rule in src, f"{rule} vanished — update this test"
             seg = src.split(rule)[1][:900]
             assert "arm_exit(" in seg, f"{rule} must arm, not enqueue"

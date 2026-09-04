@@ -24,17 +24,32 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # ── PortfolioItem mock ────────────────────────────────────────────────────────
 
 def make_portfolio_item(symbol: str, position: int = 100,
-                        avg_cost: float = 100.0, sec_type: str = "STK") -> MagicMock:
+                        avg_cost: float = 100.0, sec_type: str = "STK",
+                        market_price: float | None = None,
+                        market_value: float | None = None,
+                        unrealized_pnl: float | None = None) -> MagicMock:
     """
     Mimics an ib_insync PortfolioItem.
     IMPORTANT: uses .averageCost (PortfolioItem) NOT .avgCost (Position).
     This distinction is Bug #5 — never revert.
+
+    marketPrice/marketValue/unrealizedPNL are set explicitly rather than left to
+    MagicMock's auto-attributes, which coerce to 1.0 under float() and would make
+    the IBKR valuation sync appear to work while asserting nothing meaningful.
     """
     item = MagicMock()
     item.contract.symbol = symbol
     item.contract.secType = sec_type
     item.position = position
     item.averageCost = avg_cost
+    item.marketPrice = avg_cost if market_price is None else market_price
+    item.marketValue = (
+        item.marketPrice * position if market_value is None else market_value
+    )
+    item.unrealizedPNL = (
+        item.marketValue - (avg_cost * position)
+        if unrealized_pnl is None else unrealized_pnl
+    )
     return item
 
 
@@ -42,9 +57,17 @@ def make_ib_mock(symbols: list | None = None, avg_cost: float = 100.0) -> MagicM
     """
     Creates a mock IB instance whose portfolio() always returns the given symbols.
     Includes stubs for placeOrder, qualifyContracts, sleep, accountValues, openTrades.
+
+    Portfolio items are given marketPrice=0.0 (no live IBKR mark) so that
+    get_position_price() falls through to its FMP fallback — the branch monitor
+    tests drive by patching execution_agent.get_live_price. Tests that need a
+    live IBKR mark build their own items (see make_portfolio_item(market_price=...)).
     """
     ib = MagicMock()
-    items = [make_portfolio_item(s, avg_cost=avg_cost) for s in (symbols or [])]
+    items = [
+        make_portfolio_item(s, avg_cost=avg_cost, market_price=0.0)
+        for s in (symbols or [])
+    ]
     ib.portfolio.return_value = items
     ib.accountValues.return_value = []
     ib.sleep.return_value = None

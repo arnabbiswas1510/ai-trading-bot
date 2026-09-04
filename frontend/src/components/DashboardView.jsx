@@ -32,7 +32,8 @@ import {
 // Fallback only — the agent writes the live per-position value into
 // portfolio_positions.stop_loss_pct (ATR-scaled, 10% floor / 12% cap).
 const STOP_LOSS_PCT  = RULES_CONFIG.STOP_LOSS_PCT;
-// Trading days without a new high water mark before the plateau exit fires.
+// Trading days without a new high water mark before a position counts as stale.
+// Staleness no longer sells to cash — it discounts the Rank & Replace bar.
 const PLATEAU_DAYS   = RULES_CONFIG.STALE_EXIT_DAYS;
 
 // ── Stable module-level sort-key functions ────────────────────────────────────
@@ -172,7 +173,7 @@ function activeProfitLockTier(pos) {
 
 // Derive the most urgent status badge for the compact column
 function getStatusBadge(pos, days) {
-  // Power Hold and Stale Rotation rules removed — only plateau exits are active.
+  // No badge is derived here — the Risk Rule Ladder owns rule state end to end.
   return null; // Normal — no special badge
 }
 
@@ -883,8 +884,8 @@ function ExitConditionsPanel({ pos, formatCurrency, openPositions, equity }) {
                           may be exiting. The trailing stop is still active via IBKR.
                         </div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                          No auto-sell. If the EMA-21 also fails, an automatic exit will fire.
-                          Dismiss if you believe this was a one-day shake-out.
+                          No auto-sell. The Prove-It Stop and the resting IBKR trailing stop remain the
+                          automatic exits. Dismiss if you believe this was a one-day shake-out.
                         </div>
                         <button
                           id={`dismiss-rotation-${pos.ticker}`}
@@ -1111,6 +1112,20 @@ export default function DashboardView({ data, marketData, trades }) {
 
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+
+  // Renders the IBKR mark's age. The agent only reconciles while the market is
+  // open (09:30-16:00 ET), so outside those hours this deliberately shows the
+  // closing mark's timestamp rather than a fresher price from another vendor.
+  const formatSyncedAt = (ts) => {
+    if (!ts) return 'as of —';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return 'as of —';
+    const today = new Date().toDateString() === d.toDateString();
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return today
+      ? `as of ${time}`
+      : `as of ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`;
+  };
 
   const toggleRow = (ticker) =>
     setExpandedRow(prev => prev === ticker ? null : ticker);
@@ -1401,7 +1416,16 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td>{pos.shares}</td>
                         <td>{formatCurrency(pos.buy_price)}</td>
                         <td style={{ color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
-                          {formatCurrency(pos.current_price)}
+                          <div>{formatCurrency(pos.current_price)}</div>
+                          {/* IBKR is the only source for this number. When the
+                              agent has never marked the position we show the
+                              cost basis and say so, rather than implying a live
+                              price the broker never quoted. */}
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.1rem', fontWeight: 400 }}>
+                            {pos.price_source === 'IBKR'
+                              ? `IBKR ${formatSyncedAt(pos.ibkr_synced_at)}`
+                              : 'Cost basis — not synced'}
+                          </div>
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <div style={{ fontWeight: 600, color: '#93c5fd' }}>

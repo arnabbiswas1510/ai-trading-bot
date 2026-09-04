@@ -42,12 +42,19 @@ const FEATURE_FINGERPRINTS = [
   // Position lifecycle / risk tier visibility (added 2026-08-14)
   { feature: "Risk Rule Ladder card",     string: "data-risk-ladder" },
   { feature: "Risk ladder heading",       string: "Risk Rule Ladder" },
-  { feature: "Thesis Stop rule row",      string: "Thesis Stop" },
-  { feature: "Kill-switch rule row",      string: "Early Loss Kill-switch" },
+  // The Prove-It Stop replaced five rules on 2026-09-04. Both phase labels are
+  // fingerprinted because a build that ships only one of them means the phase
+  // branch was tree-shaken or the mirror in positionRules.js went stale.
+  { feature: "Prove-It rule row",         string: "Prove-It Stop (" },
+  { feature: "Prove-It Phase 1 label",    string: "Phase 1 — unproven" },
+  { feature: "Prove-It Phase 2 label",    string: "Phase 2 — proven" },
+  { feature: "Give-back floor copy",      string: "give-back floor" },
   { feature: "Power Hold rule row",       string: "Power Hold (8-week rule)" },
-  { feature: "Plateau exit rule row",     string: "Plateau Exit" },
   { feature: "Rank & Replace rule row",   string: "Rank & Replace" },
   { feature: "Armed exit rule row",       string: "Armed Exit" },
+  // Retired-rule labels must survive forever: trade history still contains
+  // their sell_reason strings and the exit panel has to keep resolving them.
+  { feature: "Retired rule labels kept",  string: "Early Loss Kill-switch" },
   { feature: "Latch degradation warning", string: "DISARMED by an intraday poke above entry" },
   // Position Journey — phase / history / next step (added 2026-08-20)
   { feature: "Position Journey card",     string: "Position Journey" },
@@ -63,6 +70,12 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Exit executor attribution", string: "Sold by " },
   { feature: "Exit unrecorded disclosure", string: "Not recorded for this exit" },
   { feature: "Exit verbatim reason",      string: "Exit reason as stored" },
+  // IBKR-sourced position values (added 2026-09-03). Without these the price
+  // column silently reverts to looking live while showing cost basis, which is
+  // the exact ambiguity decisions/2026-09-03_ibkr-sourced-position-values.md
+  // exists to remove.
+  { feature: "IBKR price provenance",     string: "Cost basis — not synced" },
+  { feature: "IBKR price as-of stamp",    string: "as of " },
 ];
 
 // -- Source-level structural guards --------------------------------------------

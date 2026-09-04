@@ -1,5 +1,13 @@
 # Decision: Keep the Thesis Stop at 1.0×ATR from day 2, reclassified as risk-shaping rather than return-enhancing
 
+**Status:** Superseded by [`2026-09-04_prove-it-stop.md`](2026-09-04_prove-it-stop.md)
+
+> **2026-09-04 — retired.** This ADR decided to keep the Thesis Stop on
+> risk-shaping grounds. Live evidence did not support that: it fired zero times
+> in 30 closed trades. It is replaced by the Prove-It Stop's Phase 1, which
+> makes the same risk-shaping argument with an entry anchor instead of an ATR
+> one and without a day window.
+
 Follow-up to `decisions/2026-08-17_armed-exit-backtest-lookahead.md`, which
 removed the look-ahead bias from `research/thesis_bt.py` and in doing so cost
 the thesis stop its headline result (+18.8pp PASS, significant → +10.3pp,

@@ -1,8 +1,15 @@
 # ADR: Thesis Stop — ATR-normalised early exit for breakouts that never confirm
 
 **Date:** 2026-08-09
-**Status:** Accepted
+**Status:** Superseded by [`2026-09-04_prove-it-stop.md`](2026-09-04_prove-it-stop.md)
 **Supersedes/relates to:** 2026-08-01 (early loss kill-switch), 2026-08-04 (intraday loss minimiser disabled)
+
+> **2026-09-04 — retired.** The Thesis Stop never fired once in 30 closed
+> trades: whenever a position was bad enough to qualify, the day-0 kill-switch
+> had already caught it. Its days 2–5 window is replaced by the Prove-It Stop's
+> Phase 1, which has no expiry. Its `closed_above_entry` latch — the most
+> valuable thing this ADR produced — survives unchanged as the Prove-It phase
+> discriminator. The reasoning below is unaltered.
 
 ---
 

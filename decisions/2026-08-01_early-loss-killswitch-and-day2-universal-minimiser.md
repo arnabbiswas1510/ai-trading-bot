@@ -1,7 +1,15 @@
 # Decision: Early Loss Kill-switch + Day-2 Universal Intraday Minimiser
 
 **Date:** 2026-08-01  
-**Status:** Accepted
+**Status:** Superseded by [`2026-09-04_prove-it-stop.md`](2026-09-04_prove-it-stop.md)
+
+> **2026-09-04 — retired.** The Early Loss Kill-switch and the Intraday Loss
+> Minimiser described below no longer exist. Both are folded into the Prove-It
+> Stop: the day-0 band survives verbatim as `PROVE_IT_P1_DAY0_PCT`, but it no
+> longer expires after day 0, which is the gap this ADR's day-only scope left
+> open. The context and reasoning below remain the record of why the day-0 band
+> was chosen and are unchanged. See `docs/retired_code.md` for the code
+> footprint and the conditions under which either rule would be restored.
 
 ## Problem
 

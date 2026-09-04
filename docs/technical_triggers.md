@@ -129,7 +129,7 @@ history penalty from recent `trade_history` outcomes. The buy loop uses
 
 `ATR%` and `est_days_to_target` are computed here and persisted. `entry_atr_pct` is later
 copied onto the position at fill and becomes the scaling factor for the
-[Thesis Stop](sell_logic.md#3-thesis-stop--days-25) — a trigger written without it forces
+[Prove-It Stop](sell_logic.md#2-the-prove-it-stop--always-live) — a trigger written without it forces
 that rule onto a generic 3.0% fallback.
 
 ### Volatility fit (how ATR is scored)
@@ -234,7 +234,7 @@ to settled triggers.
 | `entry_ref_price` / `entry_ref_date` | The **next session's open** — what the bot would have paid |
 | `fwd_1d_pct` / `fwd_5d_pct` / `fwd_20d_pct` | Close of the Nth session **of holding**, entry counted as session 1 |
 | `max_gain_20d_pct` / `max_drawdown_20d_pct` | Best and worst excursion, **including** the entry session |
-| `ever_above_entry` | Empirical twin of the Thesis Stop's `closed_above_entry` latch |
+| `ever_above_entry` | Empirical twin of the Prove-It Stop's `closed_above_entry` latch |
 | `bench_fwd_20d_pct` / `alpha_20d_pct` | Same-window SPY return and the excess over it |
 | `outcome_bars` | Sessions measured; short windows are left unwritten |
 

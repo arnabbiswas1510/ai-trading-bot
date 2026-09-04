@@ -69,6 +69,22 @@ export const EXECUTOR = {
  */
 const RULES = [
   {
+    match: (s) => s.includes('prove-it stop') && s.includes('phase 2'),
+    label: 'Prove-It Stop · Phase 2',
+    executor: EXECUTOR.BOT,
+    tone: 'neutral',
+    what: 'The position had closed above entry and reached the arming gain, then gave the move back. '
+        + 'The give-back floor closed it just below entry so a trade that went green did not become a real loss.',
+  },
+  {
+    match: (s) => s.includes('prove-it stop'),
+    label: 'Prove-It Stop · Phase 1',
+    executor: EXECUTOR.BOT,
+    tone: 'bad',
+    what: 'The breakout never closed above its entry price and then reversed through the Phase 1 band below entry, '
+        + 'so it was cut before the loss could widen.',
+  },
+  {
     match: (s) => s.includes('rank & replace') || s.includes('rank and replace'),
     label: 'Rank & Replace',
     executor: EXECUTOR.BOT,
@@ -80,28 +96,28 @@ const RULES = [
     label: 'Intraday Loss Minimiser',
     executor: EXECUTOR.BOT,
     tone: 'bad',
-    what: 'The position was flat or failing by day 3, so the agent sold into a small pullback from the intraday high rather than holding for the trailing stop.',
+    what: 'The position was flat or failing by day 3, so the agent sold into a small pullback from the intraday high rather than holding for the trailing stop. (Retired rule — kept so historical trades still label correctly; see docs/retired_code.md.)',
   },
   {
     match: (s) => s.includes('early loss kill-switch') || s.includes('kill-switch') || s.includes('kill_switch'),
     label: 'Early Loss Kill-switch',
     executor: EXECUTOR.BOT,
     tone: 'bad',
-    what: 'Down more than the day-0 tolerance on the entry day itself — cut immediately rather than given room.',
+    what: 'Down more than the day-0 tolerance on the entry day itself — cut immediately rather than given room. (Retired rule — kept so historical trades still label correctly; see docs/retired_code.md.)',
   },
   {
     match: (s) => s.includes('early dollar stop'),
     label: 'Early Dollar Stop',
     executor: EXECUTOR.BOT,
     tone: 'bad',
-    what: 'The open loss breached the slot-derived dollar cap, which acts as a backstop for a position that never rose enough for the peak-anchored trail to help.',
+    what: 'The open loss breached the slot-derived dollar cap, which acts as a backstop for a position that never rose enough for the peak-anchored trail to help. (Retired rule — kept so historical trades still label correctly; see docs/retired_code.md.)',
   },
   {
     match: (s) => s.includes('thesis stop'),
     label: 'Thesis Stop',
     executor: EXECUTOR.BOT,
     tone: 'bad',
-    what: 'The breakout thesis was invalidated on an ATR-scaled basis during days 2-5.',
+    what: 'The breakout thesis was invalidated on an ATR-scaled basis during days 2-5. (Retired rule — kept so historical trades still label correctly; see docs/retired_code.md.)',
   },
   {
     match: (s) => s.includes('time-stop') || (s.includes('mandatory') && s.includes('time')),
@@ -150,14 +166,14 @@ const RULES = [
     label: 'EMA-21 Exit',
     executor: EXECUTOR.BOT,
     tone: 'neutral',
-    what: 'Closed below the EMA-21 buffer at end of day, after the breakout consolidation window had passed.',
+    what: 'Closed below the EMA-21 buffer at end of day, after the breakout consolidation window had passed. (Retired rule — kept so historical trades still label correctly; see docs/retired_code.md.)',
   },
   {
     match: (s) => s.includes('stale rotation') || s.includes('plateau rotation') || s.includes('plateau exit'),
     label: 'Plateau Exit',
     executor: EXECUTOR.BOT,
     tone: 'neutral',
-    what: 'Went sideways long enough that the capital was better deployed elsewhere.',
+    what: 'Went sideways long enough that the capital was better deployed elsewhere. (Retired rule — kept so historical trades still label correctly; see docs/retired_code.md.)',
   },
   {
     match: (s) => s.includes('partial_sell') || s.includes('partial sell'),

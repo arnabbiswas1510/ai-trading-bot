@@ -7,7 +7,7 @@ On 2026-08-13 an audit found that migrations believed to be applied were not.
 were all absent from the live Supabase project. The consequence was not a crash
 and not an alert — it was silence:
 
-  * The Thesis Stop reads `closed_above_entry` to confine itself to breakouts
+  * The Prove-It Stop reads `closed_above_entry` to confine Phase 1 to breakouts
     that never followed through. A missing column reads as None, so the code took
     its conservative fallback (any INTRADAY poke above entry counts as
     follow-through) and the rule was effectively disabled. NBIX and DELL were
@@ -43,8 +43,9 @@ from dataclasses import dataclass, field
 CRITICAL_COLUMNS: dict[str, dict[str, str]] = {
     "portfolio_positions": {
         "closed_above_entry":
-            "Thesis Stop follow-through latch — without it the stop falls back to "
-            "an intraday-poke test and is effectively disabled "
+            "Prove-It Stop phase discriminator — without it the stop fails safe to "
+            "an intraday-poke test, which treats almost every position as proven "
+            "and effectively disables Phase 1 "
             "(migrations/add_closed_above_entry.sql)",
         "hwm_rs_score":
             "Rule 1 (RS Decay) anchor — without it RS breakdown never triggers an "

@@ -1,5 +1,10 @@
 # CAN SLIM AI Trading Bot — Project Context & Memory
 
+# Formatting Requirements
+- You must always preserve, expose, and display your full internal reasoning and chain-of-thought "thinking lines" in your chat responses.
+- Do not collapse, hide, or strip your analytical steps.
+- Format your raw thinking process inside standard markdown code blocks or `<think>` tags so they remain permanently visible within the IntelliJ chat screen.
+
 ---
 
 ## 🖥️ New Machine Setup (REQUIRED BEFORE ANY WORK)
@@ -141,7 +146,18 @@ The application uses a decoupled cloud screening and local execution environment
 * **Brokerage Write Access**:
   `READ_ONLY_API=no` is set in the `ib-gateway` container config to allow order submission.
 * **FMP Pricing Integration**:
-  Real-time stock prices via Financial Modeling Prep (FMP) Stable Quote API.
+  Real-time stock prices via Financial Modeling Prep (FMP) Stable Quote API, used
+  by the screener/research for non-held candidates, and as the **fallback** live
+  price for held positions when IBKR has no mark (`get_live_price()`).
+  **Live-position pricing is IBKR-first** — the execution agent's exit rules and
+  account rollup price open positions from IBKR's own `marketPrice` via
+  `get_position_price()` / `build_ibkr_price_map()` (non-blocking `ib.portfolio()`,
+  never the blocking `reqTickers()`), falling back to FMP only when no mark is
+  available. **Dashboard position values** are likewise IBKR's own
+  `marketPrice` / `marketValue` / `unrealizedPNL`, persisted onto
+  `portfolio_positions` by `reconcile_with_ibkr()` and rendered with an "as of"
+  timestamp. See `decisions/2026-09-04_ibkr-first-live-pricing.md` and
+  `decisions/2026-09-03_ibkr-sourced-position-values.md`.
 
 ---
 
@@ -235,6 +251,7 @@ matching pages.
 | Any env var, threshold, default, or `config.py` constant | `docs/configuration.md`, `.env.template` |
 | Container layout, deploy pipeline, gateway/IBKR connectivity | `README.md`, `docs/ibkr_totp_setup.md` |
 | New Supabase table/column that code reads or writes | The page describing the rule that consumes it |
+| **Any rule, constant, function or feature DELETED** | **`docs/retired_code.md`** (see the deletion-logging rule below) |
 
 ### What the doc update must contain
 
@@ -340,6 +357,72 @@ yes, the update is not finished.
 > there. That reasoning is what produces stale docs: it fails precisely when a
 > value has been duplicated somewhere the routing table never anticipated. Run
 > the grep and let the result — not the mental model — define the file list.
+
+---
+
+## 🗄️ MANDATORY: Log Every Deletion in `docs/retired_code.md`
+
+> **Before deleting any rule, constant, function or code path, record it in
+> `docs/retired_code.md` — in the same commit as the deletion.**
+
+Deleted code is invisible. Once a rule is gone the only trace is a diff nobody
+will find, and the reasoning evaporates with it. The predictable result is that
+someone re-derives the same idea months later, ships it again, and reintroduces a
+bug that was already paid for once.
+
+This is not the same job as an ADR. An ADR says *why a decision was made*;
+`docs/retired_code.md` says *what was physically removed, where it lived, and how
+to restore it with its context intact*. Shipping one without the other leaves you
+knowing a rule was retired but not what its code actually did.
+
+### What triggers an entry
+
+| Deletion | Log it? |
+|---|---|
+| A trading rule or exit rule | ✅ Always |
+| A tunable constant or env var | ✅ Always |
+| A function other code called | ✅ Always |
+| A schema column the code read | ✅ Always |
+| A whole feature or subsystem | ✅ Always |
+| Dead code already disabled by default | ✅ Always — *especially* this |
+| Renaming a local variable | ❌ Skip |
+| Removing a stale comment | ❌ Skip |
+| Deleting a test for code that still exists | ❌ Skip |
+
+The "already disabled" row is the one that gets skipped and shouldn't. A rule
+that has been off for a month still encodes a measured result, and that
+measurement is exactly what a future session needs in order not to re-enable it.
+
+### What each entry must contain
+
+- **The identifiers removed** — constant names, function names, env vars. These
+  are what a future `grep` will be searching for.
+- **Where the code lived** — every file, including frontend mirrors and tests.
+- **Its status when retired** — active or already disabled, and *whether it ever
+  fired in live trading*. A rule that never fired is a very different thing from
+  one that fired and lost money.
+- **What it did**, in two or three sentences.
+- **Why it was retired**, with the evidence. Cite the ADR.
+- **A restore path** — the commit that still contains the code, so
+  `git show <sha>:<path>` recovers it.
+- **What would have to be true to bring it back.** "Never" is rarely honest;
+  *"if the screener starts producing +20% leaders"* usually is.
+
+### Rules for the file
+
+1. **Log before deleting**, never after.
+2. **Never remove an entry.** The file only grows. A rule retired twice gets two
+   entries — the second one is evidence the first removal was wrong.
+3. **Distinguish *retired* from *relocated*.** If a rule's logic survives
+   somewhere else in another form, say so explicitly and name its new home.
+   Silently listing it as deleted sends a future reader looking for behaviour
+   that is still live.
+
+### Self-check
+
+Run the same grep the Doc Sync Rule mandates. Every identifier you removed should
+now appear in exactly two places: the git history, and `docs/retired_code.md`. If
+a deleted constant name returns **zero** hits repo-wide, the entry is missing.
 
 ---
 
@@ -570,67 +653,66 @@ change something.
 
 | Parameter | Shipped value | Why it is provisional |
 |---|---|---|
-| `EARLY_LOSS_STOP_PCT` | `0.01` | 0.75% scored $70 better — inside noise. Either could be right. |
-| `EARLY_LOSS_STOP_MAX_DAY` | `0` | The day-1 damage rests largely on one winner (CPAY). |
+| `PROVE_IT_P1_DAY0_PCT` | `0.01` | 0.75% scored $70 better on the earlier 17-trade sample — inside noise. Either could be right. |
+| `PROVE_IT_P1_LATER_PCT` | `0.03` | Chosen because CPAY's day-1 close of −2.24% (low −2.88%) sits just inside it. That is **one trade** defining a threshold. |
+| `PROVE_IT_P1_DAY0_LAST_DAY` | `0` | The day-1 damage rests largely on that same winner. |
+| `PROVE_IT_P2_ARM_GAIN_PCT` | `0.02` | Not swept independently of the floor. Its only job is to keep the floor out of ±2% noise. |
+| `PROVE_IT_P2_FLOOR_PCT` | `-0.01` | The 1% of slack is worth +$1,189 on CPAY alone. Whether 1% is the *right* slack, or merely enough for CPAY, is unresolved. |
+| `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | Not measured. Set wide enough that the resting order provably cannot front-run the bot; no sweep supports the exact value. |
 | `TRAIL_PROFIT_TIERS` | `+5% → 1.5%` | 2026-08-22 replay on 17 trades outperformed +6% by +$1,385 with no harmed trades; still under review due to sample size. |
-| `EARLY_DOLLAR_STOP_PCT` | `0.06` | The sample cannot distinguish 6% from any larger value — nothing reached that band without the kill-switch firing first. An upper bound, not a measured optimum. |
-| `EFFECTIVE_POSITION_SLOTS` | `4` | **Temporary.** Must become `MAX_POSITIONS` after the portfolio is reset at 5 slots — see below. |
-| `THESIS_STOP_ATR_MULT` | `1.0` | Never fired in the 17-trade replay; effectively untested. |
+| `POWER_HOLD_GAIN_PCT` | `10.0` | **Entirely unvalidated.** No trade in the 30-trade replay reached +10% within 21 days, so the harness is silent on it. Lowered from 20% only because 20% was unreachable. |
+| `STALE_EXIT_DAYS` (as a rotation discount) | `10` | The staleness discount is **unmodelled by the harness** — the replay cannot see Rank & Replace at all. |
 | `MARKET_DIRECTION_TICKERS` | `SPY,QQQ` | Chosen on a 4,940-session **index** grid. The trade-history replay could not discriminate — all 21 closed trades fall in one six-week window where every config says BULL. |
 | `MARKET_DIRECTION_BUFFER_PCT` | `0.01` | Same caveat. 1% and 2% scored within noise of each other on index data. |
 | `MARKET_DIRECTION_SLOPE_DAYS` | `20` | Same caveat. Note the gate's mean-return edge is **negative outside 2008** — it is justified as drawdown insurance, not as a return enhancer. |
 
-### Pending action: retire `EFFECTIVE_POSITION_SLOTS`
+### Resolved: `EFFECTIVE_POSITION_SLOTS` is gone
 
-`config.MAX_POSITIONS` is `5`, but the portfolio is not yet sized for 5 slots:
-the open positions were each bought as a quarter of capital, so there is no cash
-left to fill a fifth and sizing will not converge on 5 until the book is
-liquidated and rebuilt. `EFFECTIVE_POSITION_SLOTS = 4` exists solely to keep the
-Early Dollar Stop's slot arithmetic honest in the meantime — dividing equity by 5
-today would make the stop 20% tighter than intended.
+Deleted 2026-09-04 along with the Early Dollar Stop that was its only consumer.
+FU-007 is closed without the portfolio reset it was waiting on.
 
-**When the portfolio has been reset at 5 slots:** delete
-`EFFECTIVE_POSITION_SLOTS` from `execution_agent.py`, `.env.template` and
-`frontend/src/lib/positionRules.js`, and use `MAX_POSITIONS` in
-`early_dollar_stop_threshold()` and its frontend mirror. Tracked as FU-007 in
-`docs/tech_debt_and_requirements_tracker.md`.
+### What each review must answer first, from 2026-09-20
 
-### Open question for the first review (2026-09-20)
+Everything in the table above was re-tuned on **2026-09-04**, when five exit
+rules were replaced by the Prove-It Stop
+(`decisions/2026-09-04_prove-it-stop.md`). The earlier open questions about the
+Early Dollar Stop and the Thesis Stop are moot — both rules are retired, having
+fired **zero** times in 30 closed trades.
 
-The 2026-08-20 replay found the **$500 Early Dollar Stop is net harmful as
-configured**. Measured standalone against realised exits it costs **−$3,240 on
-winners** — cutting CPAY (−$1,873) and DXCM (−$1,367) — while every loser it
-catches (HWM, DELL, RSI) is already caught a day earlier and more cheaply by the
-day-0 kill-switch. Like-for-like, all-in, across whole stacks:
+The measurement that replaced them, over all 30 closed trades:
 
-| Stack | All-in net vs realised |
+| | Net |
 |---|---|
-| Previous (2.0% days 0–1 + $500 + 1×ATR) | −$1,603 |
-| **Shipped (1.0% day 0 + $500 + 1×ATR)** | **−$272** |
-| Shipped with the dollar stop raised to $1,500 | +$3,027 |
-| Shipped with the dollar stop removed | +$3,027 |
+| What actually happened | −$6,548 |
+| The rules shipped before 2026-09-04 | −$4,069 |
+| **Prove-It (shipped)** | **+$5,410** |
 
-So the day-0 tightening was a real improvement (+$1,331 at stack level), and the
-dollar stop is what keeps the stack negative. Raising the cap to $1,500 is
-strictly dominant over $500 in this sample: identical loser outcomes, zero winner
-damage, and a catastrophic-loss backstop still in place.
+Reproduce with `python3 research/exit_rule_replay.py --insecure --proveit`.
 
-This contradicts `decisions/2026-08-18_early-dollar-stop.md`, which measured
-+$2,936. The earlier simulation predates the day-0 kill-switch tightening, so the
-dollar stop was being credited with saves that now happen sooner anyway.
+**The three questions this leaves open:**
 
-**Acted on 2026-08-20.** The rule was not removed — the base trailing stop is
-peak-anchored at 8.25–10% and cannot help a position that never rose, so there is
-a real band where the dollar stop is the only cover. Instead the cap was made
-slot-derived: `(equity / EFFECTIVE_POSITION_SLOTS) × EARLY_DOLLAR_STOP_PCT`,
-which resolves to ≈$1,500 today and scales with the account. See
-`decisions/2026-08-20_slot-derived-early-dollar-stop.md`.
+1. **Is `PROVE_IT_P1_LATER_PCT = 3%` right, or is it CPAY-shaped?** The 3% band
+   was chosen because CPAY's day-1 low of −2.88% sits just inside it. Sweep it
+   again with more trades and check whether the winner-damage cliff is still at
+   the same place, or whether it moved because one trade left the sample.
 
-**What the review must still answer:** whether 6% is right. The sample cannot
-distinguish it from any larger value, because nothing reached that band without
-the kill-switch firing first, and the winner damage that motivated the retune
-rests on two trades. Re-run the replay and check whether any loser now reaches
-the 6% band before the thesis stop does.
+2. **Does the Phase 2 floor need 1% of slack, or less?** Same problem: the slack
+   exists because CPAY retested entry on day 4. Test 0.5% and 1.5% and report
+   whether the difference is carried by more than one trade.
+
+3. **Is `POWER_HOLD_GAIN_PCT = 10%` reachable?** It was lowered from 20%
+   because no realised trade ever hit 20% within 21 days. Check whether anything
+   has now hit 10% — if not, the rule is still dormant and the number is still a
+   guess.
+
+**An erratum to carry forward.** Two bugs in `research/exit_rule_replay.py` were
+found and fixed on 2026-09-04, and **any figure quoted from a replay run before
+that date is unreliable**: (a) same-day round trips produced a zero-width
+price-fetch window and were silently dropped — this removed OII, FROG and APH,
+**all losers, −$2,583**, flattering every result; (b) APH's 2-for-1 split was not
+corrected for, producing a fictitious −$11,650. The fixed harness reproduces the
+realised total exactly (−$6,547.59, matching the dashboard to the cent). Before
+citing any older number, re-run it.
 
 > **Note on mechanism:** this is a *passive* reminder — it fires when a session
 > reads this file, not on a calendar. If you want it to fire regardless of

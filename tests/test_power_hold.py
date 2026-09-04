@@ -40,18 +40,21 @@ def _client():
 
 class TestQualification:
 
-    def test_qualifies_at_20pct_within_window(self):
-        assert is_power_hold_active(_pos(peak_pct=20.0), calendar_days=14) is True
+    def test_qualifies_at_the_gain_threshold_within_window(self):
+        gain = execution_agent.POWER_HOLD_GAIN_PCT
+        assert is_power_hold_active(_pos(peak_pct=gain), calendar_days=14) is True
 
     def test_does_not_qualify_below_gain_threshold(self):
-        assert is_power_hold_active(_pos(peak_pct=19.9), calendar_days=14) is False
+        gain = execution_agent.POWER_HOLD_GAIN_PCT
+        assert is_power_hold_active(_pos(peak_pct=gain - 0.1), calendar_days=14) is False
 
     def test_does_not_qualify_when_gain_came_too_late(self):
         """+25% but only after 30 days - that is a normal advance, not a leader."""
         assert is_power_hold_active(_pos(peak_pct=25.0), calendar_days=30) is False
 
     def test_qualifies_on_the_boundary_day(self):
-        assert is_power_hold_active(_pos(peak_pct=20.0), calendar_days=21) is True
+        gain = execution_agent.POWER_HOLD_GAIN_PCT
+        assert is_power_hold_active(_pos(peak_pct=gain), calendar_days=21) is True
 
     def test_handles_missing_peak_field(self):
         assert is_power_hold_active({"ticker": "X"}, calendar_days=5) is False
@@ -139,15 +142,15 @@ class TestArming:
 class TestPowerHoldTrailWidening:
     """
     The rule was previously self-defeating: TRAIL_PROFIT_TIERS tightens the trail
-    to an aggressive profit-lock at exactly the +20% gain that arms the power hold, so every armed
-    position still exited on the trailing stop and the rule was inert. While
+    to an aggressive profit-lock well below the gain that arms the power hold, so every
+    armed position still exited on the trailing stop and the rule was inert. While
     power-held the ladder must be bypassed and the trail widened instead.
     """
 
     def test_ladder_would_tighten_at_the_arming_threshold(self):
-        """Guards the premise: at +20% the ladder clamps to a tight trail."""
+        """Guards the premise: at the arming gain the ladder clamps to a tight trail."""
         tightened = execution_agent._compute_dynamic_trail_pct(
-            20.0, 5, execution_agent.STOP_LOSS_PCT
+            execution_agent.POWER_HOLD_GAIN_PCT, 5, execution_agent.STOP_LOSS_PCT
         )
         assert tightened is not None
         assert tightened < execution_agent.STOP_LOSS_PCT

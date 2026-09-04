@@ -1,8 +1,16 @@
 # ADR: Early Dollar Stop — $500 Hard Cap on Days 0–5
 
 **Date:** 2026-08-18  
-**Status:** Superseded in part by
-[`2026-08-20_slot-derived-early-dollar-stop.md`](2026-08-20_slot-derived-early-dollar-stop.md)
+**Status:** Superseded by [`2026-09-04_prove-it-stop.md`](2026-09-04_prove-it-stop.md)
+(and previously in part by
+[`2026-08-20_slot-derived-early-dollar-stop.md`](2026-08-20_slot-derived-early-dollar-stop.md))
+
+> **2026-09-04 — retired entirely.** The rule is gone, not just resized. It
+> fired zero times in 30 closed trades. The +$2,936 figure below was already
+> flagged as **do not cite**; the corrected 30-trade replay confirms the dollar
+> stop was net harmful as configured, cutting winners the day-0 band already
+> covered. Its job is now done by the Prove-It Stop's Phase 1, which has no
+> expiry and no dollar arithmetic.
 
 > **The rule survives; the $500 sizing and the simulation below do not.**
 >

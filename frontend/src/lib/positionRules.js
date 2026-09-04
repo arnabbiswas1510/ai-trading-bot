@@ -17,27 +17,22 @@ export const RULES_CONFIG = {
   TRAIL_PROFIT_TIERS: [           // (min unrealised gain %, trail %) — tightening only
     [5.0, 0.015],
   ],
-  EARLY_LOSS_STOP_PCT: 0.01,      // kill-switch, entry day only
-  EARLY_LOSS_LAST_DAY: 0,
-  EARLY_DOLLAR_STOP_PCT: 0.06,    // share of ONE position slot, days 0–5
-  EARLY_DOLLAR_STOP_MAX_DAY: 5,
-  // Slots the portfolio is actually sized for today. Deliberately not
-  // MAX_POSITIONS (5) — see execution_agent.py EFFECTIVE_POSITION_SLOTS.
-  EFFECTIVE_POSITION_SLOTS: 4,
-  THESIS_STOP_ATR_MULT: 1.0,
-  THESIS_STOP_START_DAY: 2,
-  THESIS_STOP_LAST_DAY: 5,
-  THESIS_STOP_ATR_FALLBACK: 3.0,  // used when entry_atr_pct is missing
-  EXIT_MA_WINDOW: 21,
-  EXIT_MA_BUFFER_PCT: 0.01,
-  EXIT_MA_MIN_DAYS: 7,
-  STALE_EXIT_DAYS: 10,            // trading days without a new HWM
+  // ── The Prove-It Stop ───────────────────────────────────────────────────────
+  // Mirrors execution_agent.py. One question decides the phase: has this
+  // position ever CLOSED above entry (portfolio_positions.closed_above_entry)?
+  PROVE_IT_P1_DAY0_PCT: 0.01,       // unproven, entry day — 1% below entry
+  PROVE_IT_P1_LATER_PCT: 0.03,      // unproven, day 1+   — 3% below entry
+  PROVE_IT_P1_DAY0_LAST_DAY: 0,
+  PROVE_IT_P2_ARM_GAIN_PCT: 0.02,   // peak gain that arms the give-back floor
+  PROVE_IT_P2_FLOOR_PCT: -0.01,     // floor sits 1% BELOW entry (negative)
+  PROVE_IT_BACKSTOP_SLACK_PCT: 0.01,// resting IBKR order sits this much wider
+  STALE_EXIT_DAYS: 10,              // trading days without a new HWM
   STALE_EXIT_MIN_DAYS_HELD: 7,
   RANK_REPLACE_MIN_DAYS: 7,
   RANK_REPLACE_THRESHOLD: 15,     // margin required when the day-3 verdict was PASS
   RANK_REPLACE_FAIL_THRESHOLD: 5, // lower bar once the breakout has already failed
   MAX_POSITIONS: 5,               // Rank & Replace only runs when the book is full
-  POWER_HOLD_GAIN_PCT: 20.0,
+  POWER_HOLD_GAIN_PCT: 10.0,
   POWER_HOLD_TRIGGER_DAYS: 21,    // calendar
   POWER_HOLD_DURATION_DAYS: 56,   // calendar
   POWER_HOLD_TRAIL_PCT: 0.30,
@@ -85,21 +80,47 @@ const pctAway = (price, level) => (level > 0 ? (price / level - 1) * 100 : null)
 const approxEq = (a, b) => a != null && b != null && Math.abs(a - b) < 1e-6;
 
 /**
- * Dollar loss that arms the Early Dollar Stop — mirror of
- * execution_agent.early_dollar_stop_threshold(). The cap is a share of one
- * position slot rather than a flat dollar figure, so it tracks account growth
- * and is identical across positions regardless of their own cost basis.
+ * Has this position ever CLOSED above entry? Mirror of
+ * execution_agent.prove_it_is_proven().
  *
- * Returns null when equity is unknown. Callers must render that as "unavailable"
- * rather than 0, which would imply every position is already triggered.
+ * Fails SAFE, exactly as the agent does: a missing `closed_above_entry` column
+ * reads as null, and null must never be reported as "unproven" — that would show
+ * the tight Phase 1 band on a position the agent is actually treating as proven.
  */
-export function earlyDollarStopThreshold(equity) {
+export function proveItIsProven(pos) {
+  const latch = pos.closed_above_entry;
+  if (latch === true || latch === false) return latch;
+  const buy = num(pos.buy_price) ?? 0;
+  if (buy <= 0) return true;
+  return (num(pos.highest_unrealized_pct) ?? 0) > 0
+      || (num(pos.hwm_price) ?? 0) > buy
+      || (num(pos.intraday_high_today) ?? 0) > buy;
+}
+
+/** Phase 1 band for a given day, as a positive fraction below entry. */
+export function proveItP1ThresholdPct(daysHeld) {
   const C = RULES_CONFIG;
-  const eq = num(equity);
-  if (eq == null || eq <= 0 || C.EARLY_DOLLAR_STOP_PCT <= 0 || C.EFFECTIVE_POSITION_SLOTS <= 0) {
-    return null;
+  return daysHeld <= C.PROVE_IT_P1_DAY0_LAST_DAY ? C.PROVE_IT_P1_DAY0_PCT : C.PROVE_IT_P1_LATER_PCT;
+}
+
+/**
+ * Price this position is protected at right now, and which phase produced it.
+ * Mirror of execution_agent.prove_it_stop_level().
+ *
+ * Returns level === null for a proven position whose peak has not yet reached
+ * PROVE_IT_P2_ARM_GAIN_PCT — the give-back floor is not armed, so only the base
+ * trailing stop applies.
+ */
+export function proveItStopLevel(pos, daysHeld) {
+  const C = RULES_CONFIG;
+  const buy = num(pos.buy_price) ?? 0;
+  if (buy <= 0) return { level: null, phase: 'unknown' };
+  if (proveItIsProven(pos)) {
+    const peakPct = num(pos.highest_unrealized_pct) ?? 0;
+    if (peakPct < C.PROVE_IT_P2_ARM_GAIN_PCT * 100) return { level: null, phase: 'phase2-unarmed' };
+    return { level: buy * (1 + C.PROVE_IT_P2_FLOOR_PCT), phase: 'phase2' };
   }
-  return Math.round((eq / C.EFFECTIVE_POSITION_SLOTS) * C.EARLY_DOLLAR_STOP_PCT * 100) / 100;
+  return { level: buy * (1 - proveItP1ThresholdPct(daysHeld)), phase: 'phase1' };
 }
 
 /** Which rung of the profit ratchet the position currently sits on. */
@@ -130,14 +151,12 @@ export function trailLadderRung(gainPct, powerHold, effectivePct = null) {
  * @param {number} calendarDaysHeld    calendar days since entry (Power Hold uses these)
  * @param {number} [openPositions]     how many slots are currently filled — Rank & Replace
  *                                     only runs with a full book. Omit to skip the gate.
- * @param {number} [equity]            total account equity, used to derive the Early Dollar
- *                                     Stop threshold. Omit and that rule reports as unknown
- *                                     rather than guessing a dollar figure.
+ * @param {number} [equity]            total account equity. Retained for signature compatibility;
+ *                                     no live rule derives a threshold from it any more.
  * @returns {{phase: object, rules: array, headline: object}}
  */
-export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysHeld, openPositions, equity = null) {
+export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysHeld, openPositions, equity = null) {  // eslint-disable-line no-unused-vars
   const C = RULES_CONFIG;
-  const dollarCap = earlyDollarStopThreshold(equity);
   const buy = num(pos.buy_price) ?? 0;
   const price = num(pos.current_price) ?? buy;
   const hwm = num(pos.hwm_price) ?? buy;
@@ -170,7 +189,7 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
       id: 'armed_exit', tier: 'EXIT', name: 'Armed Exit',
       state: STATE.PENDING,
       headline: 'Standby — no loss rule has fired',
-      detail: `When the Kill-switch or Thesis Stop fires it places a ${(C.ARMED_EXIT_TRAIL_PCT * 100).toFixed(2)}% `
+      detail: `When the Prove-It Stop fires it places a ${(C.ARMED_EXIT_TRAIL_PCT * 100).toFixed(2)}% `
             + `trailing stop rather than market-selling into the low tick, with a ${C.ARMED_EXIT_DEADLINE_HOURS}h deadline.`,
     });
   }
@@ -200,177 +219,85 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
     });
   }
 
-  // ── 3. Early Loss Kill-switch (entry day only) ───────────────────────────────
+  // ── 3. The Prove-It Stop ────────────────────────────────────────────────────
+  // Replaces the Early Loss Kill-switch, Early Dollar Stop and Thesis Stop with
+  // one rule and one question: has this position ever CLOSED above entry?
   {
-    const level = buy * (1 - C.EARLY_LOSS_STOP_PCT);
-    const away = pctAway(price, level);
-    const windowLabel = C.EARLY_LOSS_LAST_DAY === 0 ? 'Day 0' : `Days 0–${C.EARLY_LOSS_LAST_DAY}`;
-    let state, headline;
-    if (daysHeld > C.EARLY_LOSS_LAST_DAY) {
-      state = STATE.EXPIRED;
-      headline = C.EARLY_LOSS_LAST_DAY === 0
-        ? 'Window closed — entry day only'
-        : `Window closed after day ${C.EARLY_LOSS_LAST_DAY}`;
-    } else if (price <= level) {
-      state = STATE.TRIGGERED;
-      headline = 'Threshold breached — exit arming';
-    } else if (away != null && away <= 1.0) {
-      state = STATE.WATCH;
-      headline = `${away.toFixed(2)}% above the trigger`;
-    } else {
-      state = STATE.ACTIVE;
-      headline = `Live today only · ${away.toFixed(1)}% of room`;
-    }
-    const done = state === STATE.EXPIRED;
-    rules.push({
-      id: 'kill_switch', tier: 'T1', name: 'Early Loss Kill-switch',
-      state, headline,
-      level: done ? null : level,
-      levelLabel: 'Fires at',
-      distancePct: done ? null : away,
-      window: windowLabel,
-      detail: `Arms an exit if price falls ${(C.EARLY_LOSS_STOP_PCT * 100).toFixed(1)}% below entry on the entry day itself. `
-            + 'A breakout that reverses that fast has already falsified its premise, and the 10–12% '
-            + 'trailing stop is far too wide to be useful this early.\n'
-            + 'The window is deliberately the entry day only: a 5-minute replay of all 17 closed trades showed '
-            + 'extending it to day 1 cut winners (CPAY alone −$1,873) and turned a +$3,027 net gain into +$893. '
-            + 'From day 1 the Early Dollar Stop and then the Thesis Stop take over.',
-    });
-  }
+    const { level, phase } = proveItStopLevel(pos, daysHeld);
+    const latch    = pos.closed_above_entry;
+    const proven   = phase === 'phase2' || phase === 'phase2-unarmed';
+    const bandPct  = proveItP1ThresholdPct(daysHeld) * 100;
+    const armGain  = C.PROVE_IT_P2_ARM_GAIN_PCT * 100;
+    const floorPct = C.PROVE_IT_P2_FLOOR_PCT * 100;
+    const away     = level != null ? pctAway(price, level) : null;
 
-  // ── 3b. Early Dollar Stop (days 0–EARLY_DOLLAR_STOP_MAX_DAY) ─────────────────
-  // Cap on unrealised dollar loss during the first 5 trading days, sized as a
-  // share of one position slot. Complements the % kill-switch (day 0) and the
-  // ATR-based thesis stop (days 2–5).
-  {
-    const maxDay     = C.EARLY_DOLLAR_STOP_MAX_DAY;
-    const shares     = num(pos.shares) ?? 0;
-    const posSize    = shares > 0 ? shares * buy : null;
-    const dollarLoss = shares > 0 ? shares * (price - buy) : null; // negative when losing
-    const triggerPx  = (shares > 0 && dollarCap != null && dollarCap > 0) ? buy - dollarCap / shares : null;
-    const away       = triggerPx != null ? pctAway(price, triggerPx) : null;
-    const usedDollar = dollarLoss != null ? Math.max(0, -dollarLoss) : 0;
-    const capEquivPct = (posSize != null && posSize > 0 && dollarCap != null)
-      ? (dollarCap / posSize * 100) : null;
+    const base = proven
+      ? `This position CLOSED above its $${buy.toFixed(2)} entry, so it earned patience. `
+        + `Phase 2 anchors to the peak: once the gain has reached +${armGain.toFixed(1)}% the floor arms at `
+        + `${floorPct.toFixed(1)}% of entry and a trade that went green is not allowed to become a real loss. `
+      : `This position has never CLOSED above its $${buy.toFixed(2)} entry, so the breakout is unproven. `
+        + `Phase 1 anchors to entry: ${(C.PROVE_IT_P1_DAY0_PCT * 100).toFixed(1)}% below it on the entry day, `
+        + `${(C.PROVE_IT_P1_LATER_PCT * 100).toFixed(1)}% from day 1 onward. `;
+    const mechanism = 'Fires arm_exit() (0.6% tight trail) rather than a market sell, so a bounce can still be '
+      + `captured. A GTC order also rests ${(C.PROVE_IT_BACKSTOP_SLACK_PCT * 100).toFixed(1)}% wider at the broker `
+      + 'so an overnight gap is still capped when the agent is offline.';
+
+    // The NBIX failure mode. Without the `closed_above_entry` column the rule
+    // fails safe to "proven", so a single intraday poke above entry promotes a
+    // position that has never actually CLOSED green — and Phase 1, the tight
+    // entry-anchored band that is the whole point of the rule, silently stops
+    // applying. That must be visible, not inferred.
+    const latchMissing = latch !== true && latch !== false;
+    const degraded = latchMissing && proven;
 
     let state, headline, detail;
-    const slotLabel = `${(C.EARLY_DOLLAR_STOP_PCT * 100).toFixed(0)}% of a 1/${C.EFFECTIVE_POSITION_SLOTS} equity slot`;
-    const base = (dollarCap != null
-        ? `Arms an exit if the unrealised dollar loss reaches $${dollarCap.toFixed(0)} at any point during days 0–${maxDay}. `
-          + `The cap is ${slotLabel}, so it scales with the account instead of going stale as equity grows, `
-          + `and every position gets the same dollar cap regardless of its own size — an oversized position is concentrated risk and should not get a wider allowance. `
-        : `Arms an exit if the unrealised dollar loss reaches ${slotLabel} at any point during days 0–${maxDay}. `)
-      + (capEquivPct != null ? `On this $${posSize != null ? (posSize/1000).toFixed(1) : '?'}K position that is ≈ ${capEquivPct.toFixed(2)}%. ` : '')
-      + 'Fires arm_exit() (0.6% tight trail) rather than a market sell, so any bounce can be captured.';
-
-    if (C.EARLY_DOLLAR_STOP_PCT <= 0) {
-      state   = STATE.OFF;
-      headline = 'Disabled (EARLY_DOLLAR_STOP_PCT = 0)';
-      detail   = base;
-    } else if (dollarCap == null) {
-      state   = STATE.OFF;
-      headline = 'Account equity unavailable — cap not resolved';
-      detail   = base + ' The agent skips this rule for any cycle in which it cannot read equity, rather than computing a $0 threshold.';
-    } else if (daysHeld > maxDay) {
-      state   = STATE.EXPIRED;
-      headline = `Window closed after day ${maxDay}`;
-      detail   = base;
-    } else if (dollarLoss != null && dollarLoss <= -dollarCap) {
-      state   = STATE.TRIGGERED;
-      headline = `Loss $${usedDollar.toFixed(0)} ≥ $${dollarCap.toFixed(0)} cap — exit arming`;
-      detail   = base;
-    } else if (away != null && away <= 1.0) {
-      state   = STATE.WATCH;
-      headline = `$${usedDollar.toFixed(0)} / $${dollarCap.toFixed(0)} · ${away.toFixed(2)}% above trigger`;
-      detail   = base;
-    } else {
-      state   = STATE.ACTIVE;
-      headline = `$${usedDollar.toFixed(0)} / $${dollarCap.toFixed(0)} used`
-               + (away != null ? ` · ${away.toFixed(1)}% of room` : '');
-      detail   = base + ' This is the catastrophic-loss backstop for days 1–5: it sits inside the base trailing stop, which is measured from the peak and is far too wide to help a position that never rose.';
-    }
-
-    const done = state === STATE.EXPIRED || state === STATE.OFF;
-    rules.push({
-      id: 'dollar_stop', tier: 'T1', name: 'Early Dollar Stop',
-      state, headline, detail,
-      level: done ? null : triggerPx,
-      levelLabel: 'Fires at',
-      distancePct: done ? null : away,
-      window: `Days 0–${maxDay}`,
-      progress: (!done && dollarCap > 0) ? { value: usedDollar, max: dollarCap } : undefined,
-    });
-  }
-
-  // ── 4. Thesis Stop (days 2–5) — and its follow-through latch ────────────────
-  {
-    const atr = num(pos.entry_atr_pct) ?? C.THESIS_STOP_ATR_FALLBACK;
-    const thresholdPct = C.THESIS_STOP_ATR_MULT * atr;
-    const level = buy * (1 - thresholdPct / 100);
-    const away = pctAway(price, level);
-    const latch = pos.closed_above_entry;           // true / false / null(=column absent)
-    const pokedAboveEntry = peakPct > 0 || hwm > buy || (num(pos.intraday_high_today) ?? 0) > buy;
-
-    const base = `Fires only while the position has never CLOSED above its $${buy.toFixed(2)} entry, and price is `
-               + `at least 1×ATR (${thresholdPct.toFixed(2)}%) below it. `;
-    let state, headline, detail;
-
-    if (daysHeld > C.THESIS_STOP_LAST_DAY) {
-      // Past the window the latch is irrelevant — the rule cannot fire either way,
-      // so reporting DEGRADED here would be alarming without being actionable.
-      state = STATE.EXPIRED;
-      headline = `Window closed after day ${C.THESIS_STOP_LAST_DAY}`;
-      detail = base + 'Beyond day 5 the EMA-21, plateau and rotation rules take over.';
-    } else if (latch === true) {
-      state = STATE.SUPPRESSED;
-      headline = 'Exempt — closed above entry (followed through)';
-      detail = base + 'This position established follow-through on a daily close, so it is permanently exempt by design.';
-    } else if (latch === null || latch === undefined) {
-      // The `closed_above_entry` column is missing, so the agent is running the weaker
-      // intraday fallback. This is the NBIX/DELL failure mode — surface it loudly.
+    if (degraded && !powerHold) {
       state = STATE.DEGRADED;
-      headline = pokedAboveEntry ? 'DISARMED by an intraday poke above entry' : 'Running on the intraday fallback';
-      detail = base
-        + '\n⚠️ The closed_above_entry column is missing from Supabase, so the agent is falling back to intraday '
-        + 'evidence (peak / HWM / today\'s high above entry). '
-        + (pokedAboveEntry
-            ? `This position printed above entry intraday (peak +${peakPct.toFixed(2)}%, HWM $${hwm.toFixed(2)}) `
-              + 'without ever closing there, so the fallback has exempted it and the Thesis Stop CANNOT fire. '
-              + 'Only the wide trailing stop is protecting it — this is exactly how NBIX ran from −2.9% to −11.5%.'
-            : 'Apply migrations/2026-08-13_apply_missing_migrations.sql to restore the close-based latch.');
-    } else if (daysHeld < C.THESIS_STOP_START_DAY) {
+      headline = 'DISARMED by an intraday poke above entry';
+      detail = 'The `closed_above_entry` column is missing, so the phase is being guessed from '
+        + 'intraday highs. This position never CLOSED above its $' + buy.toFixed(2) + ' entry, but a '
+        + 'poke above it has promoted it to Phase 2 — the tight Phase 1 band is not protecting it. '
+        + 'Apply migrations/add_closed_above_entry.sql.\n' + base + mechanism;
+    } else if (powerHold) {
+      state = STATE.SUPPRESSED;
+      headline = 'Suppressed by Power Hold';
+      detail = base + 'Power Hold has widened the trail deliberately; a leader that far ahead is nowhere near this level.';
+    } else if (phase === 'phase2-unarmed') {
       state = STATE.PENDING;
-      headline = `Arms on day ${C.THESIS_STOP_START_DAY} (${C.THESIS_STOP_START_DAY - daysHeld} session away)`;
-      detail = base + 'Day 0 is covered by the Kill-switch, and the Early Dollar Stop covers the gap on day 1.';
-    } else if (price <= level) {
+      headline = `Floor arms at +${armGain.toFixed(1)}% peak · peak is +${peakPct.toFixed(2)}%`;
+      detail = base + 'Below the arming gain a floor would sit inside ordinary noise, so only the base trailing '
+        + 'stop applies for now.\n' + mechanism;
+    } else if (level != null && price <= level) {
       state = STATE.TRIGGERED;
-      headline = 'Threshold breached — exit arming';
-      detail = base + 'Price is below the 1×ATR threshold and the position never closed above entry.';
-    } else if (away != null && away <= thresholdPct / 3) {
+      headline = proven ? 'Gave back to the floor — exit arming' : 'Threshold breached — exit arming';
+      detail = base + mechanism;
+    } else if (away != null && away <= 1.0) {
       state = STATE.WATCH;
-      headline = `${away.toFixed(2)}% above the trigger`;
-      detail = base;
+      headline = `${away.toFixed(2)}% above the ${proven ? 'give-back floor' : 'Phase 1 band'}`;
+      detail = base + mechanism;
     } else {
       state = STATE.ACTIVE;
-      headline = `Live · ${away.toFixed(1)}% of room · 1×ATR = ${thresholdPct.toFixed(2)}%`;
-      detail = base + 'This is the primary loss-cutting rule for a breakout that never follows through.';
+      headline = proven
+        ? `Phase 2 · floor locked${away != null ? ` · ${away.toFixed(1)}% of room` : ''}`
+        : `Phase 1 · ${bandPct.toFixed(1)}% band${away != null ? ` · ${away.toFixed(1)}% of room` : ''}`;
+      detail = base + mechanism;
     }
 
-    const done = state === STATE.EXPIRED || state === STATE.SUPPRESSED;
     rules.push({
-      id: 'thesis_stop', tier: 'T2', name: 'Thesis Stop',
+      id: 'prove_it', tier: 'T1', name: `Prove-It Stop (${proven ? 'Phase 2 — proven' : 'Phase 1 — unproven'})`,
       state, headline, detail,
-      level: done ? null : level,
-      levelLabel: 'Fires at',
-      distancePct: done ? null : away,
-      window: `Days ${C.THESIS_STOP_START_DAY}–${C.THESIS_STOP_LAST_DAY}`,
+      level: level ?? null,
+      levelLabel: level != null ? (proven ? 'Floor at' : 'Fires at') : null,
+      distancePct: away,
+      window: 'Always',
       latch: latch === true ? 'Closed above entry'
            : latch === false ? 'Never closed above entry'
-           : 'Unknown — column missing',
+           : 'Column missing — using intraday fallback',
     });
   }
 
-  // ── 5. Day-3 breakout verdict ───────────────────────────────────────────────
+
+  // ── 4. Day-3 breakout verdict ───────────────────────────────────────────────
   {
     const v = pos.breakout_verdict;
     let state, headline;
@@ -390,56 +317,15 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
     });
   }
 
-  // ── 6. EMA-21 support breach (day 7+) ───────────────────────────────────────
-  {
-    let state, headline;
-    if (powerHold) { state = STATE.SUPPRESSED; headline = 'Suppressed by Power Hold'; }
-    else if (daysHeld < C.EXIT_MA_MIN_DAYS) {
-      state = STATE.PENDING;
-      headline = `Arms on day ${C.EXIT_MA_MIN_DAYS} (${C.EXIT_MA_MIN_DAYS - daysHeld} sessions away)`;
-    } else { state = STATE.ACTIVE; headline = 'Live — checked at 15:45–16:00 ET'; }
-    rules.push({
-      id: 'ema21', tier: 'T3', name: `EMA-${C.EXIT_MA_WINDOW} Support Breach`,
-      state, headline,
-      window: `Day ${C.EXIT_MA_MIN_DAYS}+`,
-      detail: `Market-sells when the close is below EMA-${C.EXIT_MA_WINDOW} × ${(1 - C.EXIT_MA_BUFFER_PCT).toFixed(2)} `
-            + `(a ${(C.EXIT_MA_BUFFER_PCT * 100).toFixed(0)}% buffer). Evaluated only in the closing window so an `
-            + 'intraday wick cannot trigger a sale the close would not have justified. Suppressed before day '
-            + `${C.EXIT_MA_MIN_DAYS} so normal post-breakout consolidation is not read as failure.`,
-    });
-  }
-
-  // ── 7. Plateau exit (day 7+, capital velocity) ──────────────────────────────
-  {
-    const d = num(daysSinceHwm) ?? 0;
-    let state, headline;
-    if (powerHold) { state = STATE.SUPPRESSED; headline = 'Suppressed by Power Hold'; }
-    else if (daysHeld < C.STALE_EXIT_MIN_DAYS_HELD) {
-      state = STATE.PENDING;
-      headline = `Arms on day ${C.STALE_EXIT_MIN_DAYS_HELD} · ${d}/${C.STALE_EXIT_DAYS} stale days so far`;
-    } else if (d >= C.STALE_EXIT_DAYS) {
-      state = STATE.TRIGGERED; headline = `${d}/${C.STALE_EXIT_DAYS} stale days — sells at EOD`;
-    } else if (d >= C.STALE_EXIT_DAYS - 3) {
-      state = STATE.WATCH; headline = `${d}/${C.STALE_EXIT_DAYS} days without a new high`;
-    } else {
-      state = STATE.ACTIVE; headline = `${d}/${C.STALE_EXIT_DAYS} days without a new high`;
-    }
-    rules.push({
-      id: 'plateau', tier: 'T3', name: 'Plateau Exit',
-      state, headline,
-      progress: { value: d, max: C.STALE_EXIT_DAYS },
-      window: `Day ${C.STALE_EXIT_MIN_DAYS_HELD}+`,
-      detail: `Sells after ${C.STALE_EXIT_DAYS} trading days without a new high water mark. This is a capital `
-            + 'velocity rule, not a risk rule — the position may sit comfortably above its stop and its EMA, but '
-            + 'with a hard cap on slots, dead money costs the return of the best trigger it is blocking.',
-    });
-  }
-
-  // ── 8. Rank & Replace (day 7+) ──────────────────────────────────────────────
+  // ── 5. Rank & Replace (day 7+, absorbs the retired Plateau Exit) ─────────────
   {
     const mt = num(pos.momentum_health_score);
     const top = num(pos.top_trigger_score);
-    const margin = pos.breakout_verdict === 'FAIL' ? C.RANK_REPLACE_FAIL_THRESHOLD : C.RANK_REPLACE_THRESHOLD;
+    const staleDays = num(daysSinceHwm) ?? 0;
+    const isStale = daysHeld >= C.STALE_EXIT_MIN_DAYS_HELD && staleDays >= C.STALE_EXIT_DAYS;
+    const verdictMargin = pos.breakout_verdict === 'FAIL' ? C.RANK_REPLACE_FAIL_THRESHOLD : C.RANK_REPLACE_THRESHOLD;
+    // Staleness discounts the bar rather than selling to cash on its own.
+    const margin = isStale ? Math.min(verdictMargin, C.RANK_REPLACE_FAIL_THRESHOLD) : verdictMargin;
     const gap = (mt != null && top != null) ? top - mt : null;
     // The agent gates the whole rule on `len(positions) >= MAX_POSITIONS`. With a
     // free slot it buys the trigger instead of rotating, so showing a score gap as
@@ -461,20 +347,29 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
         ? `Best trigger leads by only ${gap.toFixed(1)} pts (bar ${margin})`
         : `Outranks the best trigger by ${(-gap).toFixed(1)} pts`;
     }
+    if (isStale && state !== STATE.SUPPRESSED && state !== STATE.PENDING) {
+      headline += ` · stale ${staleDays}d`;
+    }
     rules.push({
       id: 'rank_replace', tier: 'T3', name: 'Rank & Replace',
       state, headline,
       window: `Day ${C.RANK_REPLACE_MIN_DAYS}+`,
+      progress: daysHeld >= C.STALE_EXIT_MIN_DAYS_HELD ? { value: staleDays, max: C.STALE_EXIT_DAYS } : undefined,
       detail: 'Runs once daily at EOD, and only when all '
             + `${C.MAX_POSITIONS} slots are full and fresh triggers exist — with a free slot the agent buys the `
             + 'trigger instead of rotating. Compares this holding\'s momentum health Mₜ (0.40 × live RS + '
             + '0.35 × volume ratio + 0.25 × sentiment) against the best available trigger. Required margin: '
             + `${C.RANK_REPLACE_THRESHOLD} pts after a PASS verdict, ${C.RANK_REPLACE_FAIL_THRESHOLD} pts after a FAIL.`
+            + `\nA position with no new high in ${C.STALE_EXIT_DAYS} trading days is stale, which also drops the bar `
+            + `to ${C.RANK_REPLACE_FAIL_THRESHOLD} pts. Staleness no longer sells to cash on its own — with the `
+            + 'Prove-It floor in place, holding dead money is nearly free, so the position is only released when '
+            + 'somewhere better to put the money actually exists.'
+            + (isStale ? `\n⏳ Stale now: ${staleDays} trading days without a new high — rotation bar discounted to ${margin} pts.` : '')
             + (mt != null ? `\nMₜ now ${mt.toFixed(1)}${top != null ? ` vs best trigger ${top.toFixed(1)} (EOD snapshot)` : ''}.` : ''),
     });
   }
 
-  // ── 9. Power Hold (O'Neil's 8-week rule) ────────────────────────────────────
+  // ── 6. Power Hold (O'Neil's 8-week rule) ────────────────────────────────────
   {
     const cd = num(calendarDaysHeld) ?? 0;
     const base = `Arms when a position gains ≥ ${C.POWER_HOLD_GAIN_PCT}% within ${C.POWER_HOLD_TRIGGER_DAYS} calendar `
@@ -506,25 +401,36 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
   }
 
   // ── Phase (the compact headline pill) ───────────────────────────────────────
-  const capNote = dollarCap != null
-    ? `the $${dollarCap.toFixed(0)} dollar cap`
-    : 'the dollar cap';
-  const capNoteCap = capNote.charAt(0).toUpperCase() + capNote.slice(1);
+  // The phase is now the Prove-It phase: everything hinges on whether this
+  // position has ever CLOSED above entry.
+  const proven = proveItIsProven(pos);
   let phase;
   if (pos.exit_armed) {
     phase = { key: 'EXITING', label: 'Exiting', color: '#f43f5e', note: 'An armed exit is live at the broker.' };
   } else if (powerHold) {
     phase = { key: 'POWER_HOLD', label: `D${daysHeld} · Power Hold`, color: '#8b5cf6', note: 'Discretionary exits suppressed; a 30% disaster stop is the only backstop.' };
-  } else if (daysHeld <= C.EARLY_LOSS_LAST_DAY) {
-    phase = { key: 'KILL_SWITCH', label: `D${daysHeld} · Kill-switch`, color: '#3b82f6', note: `Entry day: a ${(C.EARLY_LOSS_STOP_PCT * 100).toFixed(1)}% reverse arms an exit. ${capNoteCap} is also active.` };
-  } else if (daysHeld < C.THESIS_STOP_START_DAY) {
-    phase = { key: 'DOLLAR_ONLY', label: `D${daysHeld} · Dollar cap only`, color: '#0284c7', note: `Day 1: the Kill-switch has expired and the Thesis Stop has not armed — ${capNote} and the trailing stop are the protection.` };
-  } else if (daysHeld <= C.THESIS_STOP_LAST_DAY) {
-    phase = { key: 'THESIS', label: `D${daysHeld} · Thesis window`, color: '#0ea5e9', note: `Days 2–5: Thesis Stop is the primary loss-cutter. ${capNoteCap} is still active.` };
-  } else if (daysHeld < C.EXIT_MA_MIN_DAYS) {
-    phase = { key: 'TRANSITION', label: `D${daysHeld} · Transition`, color: '#64748b', note: 'Day 6: the loss rules have expired and the rotation rules have not yet armed — trailing stop only.' };
+  } else if (!proven) {
+    const band = (proveItP1ThresholdPct(daysHeld) * 100).toFixed(1);
+    phase = {
+      key: 'PROVE_IT_P1', label: `D${daysHeld} · Unproven`, color: '#3b82f6',
+      note: `Never closed above entry — a ${band}% reverse from entry arms an exit.`,
+    };
+  } else if (peakPct < C.PROVE_IT_P2_ARM_GAIN_PCT * 100) {
+    phase = {
+      key: 'PROVE_IT_P2_UNARMED', label: `D${daysHeld} · Proven`, color: '#0ea5e9',
+      note: `Closed above entry, but the peak has not reached +${(C.PROVE_IT_P2_ARM_GAIN_PCT * 100).toFixed(1)}% `
+          + 'so the give-back floor has not armed — the trailing stop is the protection.',
+    };
+  } else if (daysHeld >= C.RANK_REPLACE_MIN_DAYS) {
+    phase = {
+      key: 'ROTATION', label: `D${daysHeld} · Rotation window`, color: '#a78bfa',
+      note: `Give-back floor locked at ${(C.PROVE_IT_P2_FLOOR_PCT * 100).toFixed(1)}% of entry; Rank & Replace is live.`,
+    };
   } else {
-    phase = { key: 'ROTATION', label: `D${daysHeld} · Rotation window`, color: '#a78bfa', note: 'Day 7+: EMA-21, plateau and Rank & Replace are all live.' };
+    phase = {
+      key: 'PROVE_IT_P2', label: `D${daysHeld} · Floor locked`, color: '#10b981',
+      note: `Went green and held it — the floor at ${(C.PROVE_IT_P2_FLOOR_PCT * 100).toFixed(1)}% of entry stops this becoming a real loss.`,
+    };
   }
 
   // Most urgent rule drives the row-level colour.
@@ -569,29 +475,20 @@ export function rulesTooltip(ticker, phase, rules, lifecycle = null) {
  */
 export const LIFECYCLE_TRACK = [
   {
-    key: 'KILL_SWITCH', label: 'Kill-switch', short: 'D0',
-    from: 0, to: 0,
-    owns: 'Early Loss Kill-switch + dollar cap',
+    key: 'PROVE_IT_P1', label: 'Unproven', short: 'P1', order: 0,
+    owns: 'Prove-It Phase 1 — a fixed band below entry',
   },
   {
-    key: 'DOLLAR_ONLY', label: 'Dollar cap', short: 'D1',
-    from: 1, to: 1,
-    owns: 'Early Dollar Stop only',
+    key: 'PROVE_IT_P2_UNARMED', label: 'Proven', short: 'P2', order: 1,
+    owns: 'Closed above entry; give-back floor not yet armed',
   },
   {
-    key: 'THESIS', label: 'Thesis window', short: 'D2–5',
-    from: RULES_CONFIG.THESIS_STOP_START_DAY, to: RULES_CONFIG.THESIS_STOP_LAST_DAY,
-    owns: 'Thesis Stop + dollar cap',
+    key: 'PROVE_IT_P2', label: 'Floor locked', short: 'P2+', order: 2,
+    owns: 'Prove-It Phase 2 — give-back floor at ' + (RULES_CONFIG.PROVE_IT_P2_FLOOR_PCT * 100).toFixed(1) + '% of entry',
   },
   {
-    key: 'TRANSITION', label: 'Transition', short: 'D6',
-    from: RULES_CONFIG.THESIS_STOP_LAST_DAY + 1, to: RULES_CONFIG.EXIT_MA_MIN_DAYS - 1,
-    owns: 'Trailing stop only',
-  },
-  {
-    key: 'ROTATION', label: 'Rotation', short: 'D7+',
-    from: RULES_CONFIG.EXIT_MA_MIN_DAYS, to: null,
-    owns: 'EMA-21, plateau, Rank & Replace',
+    key: 'ROTATION', label: 'Rotation', short: `D${RULES_CONFIG.RANK_REPLACE_MIN_DAYS}+`, order: 3,
+    owns: 'Floor locked + Rank & Replace',
   },
 ];
 
@@ -649,24 +546,12 @@ export function buildLifecycle(pos, evald, daysHeld, daysSinceHwm) {
     tone: 'neutral',
   });
 
-  if (daysHeld > C.EARLY_LOSS_LAST_DAY) {
-    past.push({
-      key: 'killswitch_survived',
-      icon: '✅',
-      label: 'Survived the Kill-switch day',
-      when: `D${C.EARLY_LOSS_LAST_DAY}`,
-      detail: `Never closed ${(C.EARLY_LOSS_STOP_PCT * 100).toFixed(1)}% below entry on its entry day, `
-            + 'so the fastest loss-cutter never fired.',
-      tone: 'good',
-    });
-  }
-
   if (pos.closed_above_entry === true) {
     past.push({
       key: 'follow_through',
       icon: '✅',
       label: 'Closed above entry — follow-through confirmed',
-      detail: 'Permanently exempt from the Thesis Stop: the breakout proved itself on a daily close.',
+      detail: 'Promoted to Prove-It Phase 2: the breakout proved itself on a daily close, so the stop now \nanchors to the peak instead of to entry.',
       tone: 'good',
     });
   } else if (pos.closed_above_entry === false && daysHeld >= 1) {
@@ -674,7 +559,7 @@ export function buildLifecycle(pos, evald, daysHeld, daysSinceHwm) {
       key: 'no_follow_through',
       icon: '⚠️',
       label: 'Has never closed above entry',
-      detail: 'The Thesis Stop stays live while this is true — the breakout has not yet proved itself.',
+      detail: `Prove-It Phase 1 stays live while this is true — a ${(C.PROVE_IT_P1_LATER_PCT * 100).toFixed(1)}% \nreverse from entry arms an exit.`,
       tone: 'bad',
     });
   }
@@ -742,15 +627,17 @@ export function buildLifecycle(pos, evald, daysHeld, daysSinceHwm) {
   }
 
   // ── Where it is now ─────────────────────────────────────────────────────────
+  // The track is ordered by proof, not by calendar day: a position advances only
+  // by closing above entry and then by reaching the arming gain. A position can
+  // therefore sit in the first segment indefinitely, which is the point.
+  const currentOrder = LIFECYCLE_TRACK.find((s) => s.key === phase.key)?.order;
   const track = LIFECYCLE_TRACK.map((seg) => {
     let status;
     if (seg.key === phase.key) status = 'current';
-    else if (seg.to != null && daysHeld > seg.to) status = 'done';
-    else if (daysHeld < seg.from) status = 'upcoming';
-    else status = 'done';
+    else if (currentOrder == null) status = 'upcoming';
+    else status = seg.order < currentOrder ? 'done' : 'upcoming';
     return { ...seg, status };
   });
-  // Power Hold and Exiting sit outside the day track — nothing on it is "current".
   const offTrack = !LIFECYCLE_TRACK.some((s) => s.key === phase.key);
 
   // ── What happens next ───────────────────────────────────────────────────────
@@ -798,18 +685,31 @@ export function buildLifecycle(pos, evald, daysHeld, daysSinceHwm) {
       });
     }
 
-    // Next scheduled change in which rules own the position.
-    const upcoming = LIFECYCLE_TRACK.find((s) => s.from > daysHeld);
-    if (upcoming) {
-      const inDays = upcoming.from - daysHeld;
-      next.push({
-        key: 'next_phase',
-        icon: '📅',
-        when: `In ${inDays} session${inDays === 1 ? '' : 's'} (D${upcoming.from})`,
-        label: `${upcoming.label} opens`,
-        detail: `${upcoming.owns} takes over.`,
-        tone: 'neutral',
-      });
+    // Next advance along the proof track. This is not a calendar event any more —
+    // it is a price event, so it is stated as a price rather than a session count.
+    if (!powerHold && buy > 0) {
+      if (!proveItIsProven(pos)) {
+        next.push({
+          key: 'next_phase',
+          icon: '🎯',
+          when: `On a daily close above $${buy.toFixed(2)}`,
+          label: 'Promotion to Prove-It Phase 2',
+          detail: 'The stop stops anchoring to entry and starts anchoring to the peak. '
+                + 'Only a CLOSE counts — an intraday poke above entry does not promote it.',
+          tone: 'good',
+        });
+      } else if (peakPct < C.PROVE_IT_P2_ARM_GAIN_PCT * 100) {
+        const armPrice = buy * (1 + C.PROVE_IT_P2_ARM_GAIN_PCT);
+        next.push({
+          key: 'next_phase',
+          icon: '🔒',
+          when: `At $${armPrice.toFixed(2)} (+${(C.PROVE_IT_P2_ARM_GAIN_PCT * 100).toFixed(1)}% peak)`,
+          label: 'Give-back floor arms',
+          detail: `A floor locks in at $${(buy * (1 + C.PROVE_IT_P2_FLOOR_PCT)).toFixed(2)}, so a trade that `
+                + 'went green cannot turn into a real loss.',
+          tone: 'good',
+        });
+      }
     }
 
     // The day-3 verdict is a scheduled, one-off event worth calling out.
@@ -840,17 +740,19 @@ export function buildLifecycle(pos, evald, daysHeld, daysSinceHwm) {
       }
     }
 
-    // Plateau is a time-based exit — show the countdown once it is meaningful.
+    // Staleness no longer sells to cash — it discounts the Rank & Replace bar.
     if (daysHeld >= C.STALE_EXIT_MIN_DAYS_HELD && daysSinceHwm != null && !powerHold) {
       const left = C.STALE_EXIT_DAYS - daysSinceHwm;
       if (left > 0 && left <= 5) {
         next.push({
-          key: 'plateau_due',
+          key: 'stale_due',
           icon: '⏳',
           when: `In ${left} session${left === 1 ? '' : 's'} without a new high`,
-          label: 'Plateau exit queues a smart sell',
-          detail: `${daysSinceHwm} of ${C.STALE_EXIT_DAYS} stale sessions used.`,
-          tone: 'bad',
+          label: 'Counts as stale — rotation bar is discounted',
+          detail: `${daysSinceHwm} of ${C.STALE_EXIT_DAYS} stale sessions used. Staleness on its own no longer `
+                + `sells: the bar for Rank & Replace simply drops to ${C.RANK_REPLACE_FAIL_THRESHOLD} pts, so the `
+                + 'position is released only when there is somewhere better to put the money.',
+          tone: 'neutral',
         });
       }
     }

@@ -66,7 +66,7 @@ TWO DIFFERENT INTENTS
 
 SAFETY
     While an OCA request is PLACED, the agent SUSPENDS its automated exit rules
-    for that ticker (thesis stop, dollar stop, intraday minimiser, EMA-21 exit).
+    for that ticker (the Prove-It Stop and Rank & Replace).
     Those all cancel open SELL orders, which would destroy the OCA. The OCA's
     own hard floor and expiry are what protect the position instead — so do not
     set --floor absurdly wide. (--now exits immediately, so it never suspends

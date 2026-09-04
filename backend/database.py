@@ -433,7 +433,14 @@ def get_positions():
                 "buy_date": row["buy_date"],
                 "buy_source": row.get("buy_source", "daily_triggers"),
                 "buy_reason": row.get("buy_reason", "CANSLIM Breakout"),
-                "current_price": float(row.get("current_price") or row["buy_price"]),
+                # Preserved as None when IBKR has never marked this position.
+                # Do NOT coerce to buy_price here: the caller must be able to
+                # distinguish "broker says it is worth cost" from "never synced",
+                # which is the ambiguity add_ibkr_position_values.sql removes.
+                "current_price": float(row["current_price"]) if row.get("current_price") is not None else None,
+                "market_value": float(row["market_value"]) if row.get("market_value") is not None else None,
+                "unrealized_pnl": float(row["unrealized_pnl"]) if row.get("unrealized_pnl") is not None else None,
+                "ibkr_synced_at": row.get("ibkr_synced_at"),
                 # NOTE: the legacy `stop_loss` price column was dropped — it was a
                 # write-once mirror of a broker-managed value and went stale
                 # immediately. Derive the live level as
@@ -498,10 +505,6 @@ def get_positions():
     except Exception as e:
         print(f"Error getting positions from Supabase: {e}")
         return []
-
-def update_position_price(ticker, current_price):
-    # Since current_price is fetched dynamically from FMP quote in main.py, we don't need to write it to Supabase
-    pass
 
 def get_trade_history():
     try:

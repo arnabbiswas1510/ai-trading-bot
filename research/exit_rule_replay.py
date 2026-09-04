@@ -114,8 +114,51 @@ class ExitConfig:
     trail: float = ARMED_EXIT_TRAIL_PCT
     deadline_h: float = ARMED_EXIT_DEADLINE_HOURS
 
+    # ── Prove-It Stop ────────────────────────────────────────────────────────
+    # When `proveit` is True the trade is replayed by simulate_proveit() instead
+    # of simulate(), and the three entry-anchored rules above are ignored: the
+    # whole point of the design is that Phase 1 REPLACES them.
+    proveit: bool = False
+    # Phase 1 (position has never closed above entry) — entry-anchored tiers,
+    # ordered, as ((last_day, pct), ...). The first tier whose last_day >= the
+    # current day index wins, so ((1, 1.0), (99, 1.5)) means "1% on days 0-1,
+    # then 1.5% from day 2 onwards".
+    p1_tiers: tuple[tuple[int, float], ...] | None = None
+    # True  = fire the instant price TOUCHES the level (models a resting IBKR
+    #         stop; wick-sensitive).
+    # False = fire only if a 15-minute CLOSE is at/below the level (models the
+    #         agent's monitoring cycle; ignores wicks).
+    p1_touch: bool = False
+    # Phase 2 (position HAS closed above entry) — peak-anchored give-back.
+    p2_enabled: bool = True
+    # Minimum peak gain % before the breakeven floor arms. Below this a floor
+    # would sit inside spread/tick noise and shake the position out; see INCY.
+    p2_arm_gain: float = 2.0
+    # Where the floor sits, as % above entry. 0.0 == breakeven.
+    p2_floor_pct: float = 0.0
+    # Above this gain the existing tight ladder rung takes over instead.
+    p2_ladder_gain: float = 5.0
+    p2_ladder_trail: float = 0.015
+
     def describe(self) -> str:
         bits = []
+        if self.proveit:
+            if self.p1_tiers:
+                spans = []
+                prev = 0
+                for last_day, pct in self.p1_tiers:
+                    span = (f"d{prev}" if last_day >= 90 or last_day == prev
+                            else f"d{prev}-{last_day}")
+                    span = f"d{prev}+" if last_day >= 90 else span
+                    spans.append(f"{span}:{pct}%")
+                    prev = last_day + 1
+                bits.append("P1[" + " ".join(spans) + "]")
+                bits.append("touch" if self.p1_touch else "close")
+            if self.p2_enabled:
+                bits.append(f"P2[arm>={self.p2_arm_gain}% floor=+{self.p2_floor_pct}% "
+                            f"ladder>={self.p2_ladder_gain}%@{self.p2_ladder_trail*100:.1f}%]")
+            bits.append(self.mode)
+            return ", ".join(bits)
         if self.pct is not None:
             span = "day 0" if self.pct_last_day == 0 else f"days 0-{self.pct_last_day}"
             bits.append(f"{self.pct}% {span}")
@@ -125,6 +168,14 @@ class ExitConfig:
             bits.append(f"{self.atr_mult}xATR days {self.atr_start_day}-{self.atr_last_day}")
         bits.append(self.mode)
         return ", ".join(bits)
+
+    def p1_pct_for_day(self, day: int) -> float | None:
+        if not self.p1_tiers:
+            return None
+        for last_day, pct in self.p1_tiers:
+            if day <= last_day:
+                return pct
+        return None
 
 
 @dataclass
@@ -271,7 +322,13 @@ def hydrate(trades: list[Trade], api_key: str, quiet: bool = False) -> list[Trad
     for i, trade in enumerate(trades, 1):
         if not quiet:
             print(f"  [{i}/{len(trades)}] {trade.ticker}", file=sys.stderr)
-        trade.bars = fetch_5min(trade.ticker, trade.buy_ts, trade.sell_ts, api_key)
+        # Widen to whole-day boundaries. Supabase stores buy_date/sell_date at
+        # midnight, so a same-day round trip yields a zero-width window and the
+        # trade is silently dropped -- which excluded exactly the fastest,
+        # largest same-day losers (OII, FROG) that Phase 1 is meant to catch.
+        window_start = trade.buy_ts.replace(hour=0, minute=0, second=0, microsecond=0)
+        window_end = trade.sell_ts.replace(hour=23, minute=59, second=59, microsecond=0)
+        trade.bars = fetch_5min(trade.ticker, window_start, window_end, api_key)
         if not trade.bars:
             continue
         days: list[str] = []
@@ -279,10 +336,41 @@ def hydrate(trades: list[Trade], api_key: str, quiet: bool = False) -> list[Trad
             if not days or days[-1] != bar["date"]:
                 days.append(bar["date"])
         trade.trade_days = days
+        _correct_split(trade)
         trade.entry_atr_pct = fetch_entry_atr_pct(
             trade.ticker, trade.buy_ts.date(), api_key)
         hydrated.append(trade)
     return hydrated
+
+
+# Common corporate-action ratios. FMP's intraday history is split-ADJUSTED,
+# but trade_history stores the unadjusted price actually paid, so any trade
+# spanning a split replays against prices on a different scale. APH (2-for-1)
+# produced a fictitious -$11,650 loss before this guard existed.
+_SPLIT_RATIOS = (1/10, 1/7, 1/5, 1/4, 1/3, 1/2, 2/3, 3/2, 2, 3, 4, 5, 7, 10)
+
+
+def _correct_split(trade: Trade) -> None:
+    """Rescale split-adjusted bars back onto the price actually paid."""
+    if not trade.bars:
+        return
+    ref = min(trade.bars, key=lambda b: abs(b["ts"] - trade.buy_ts))["close"]
+    if ref <= 0:
+        return
+    raw = trade.buy_price / ref
+    if 0.8 <= raw <= 1.25:
+        return
+    ratio = min(_SPLIT_RATIOS, key=lambda r: abs(r - raw))
+    if abs(ratio - raw) / raw > 0.15:
+        print(f"  ! {trade.ticker}: price scale {raw:.3f} matches no known "
+              f"split ratio -- excluding from replay", file=sys.stderr)
+        trade.bars = []
+        return
+    print(f"  ~ {trade.ticker}: rescaling bars by {ratio:g} "
+          f"(split-adjusted history)", file=sys.stderr)
+    for bar in trade.bars:
+        for field_name in ("open", "high", "low", "close"):
+            bar[field_name] *= ratio
 
 
 # ── The replay itself ─────────────────────────────────────────────────────────
@@ -349,6 +437,109 @@ def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
     return None
 
 
+def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
+    """Replay one trade under the two-phase Prove-It Stop.
+
+    The governing question is asked once per bar: has this position ever CLOSED
+    above entry?
+
+      No  -> PHASE 1. Entry-anchored tiered stop. Fires via arm_exit() (a 0.6%
+             trail with a deadline) exactly like the live kill-switch, because
+             the replay already showed arming beats a market sell by ~$600.
+      Yes -> PHASE 2. Peak-anchored give-back. Below `p2_ladder_gain` the stop
+             is a flat floor at/above entry so a green trade cannot become a
+             loss; above it, the existing tight ladder rung takes over.
+
+    Phase 2 is modelled as a RESTING stop (filled at the level, or at the open
+    when a bar gaps through it) because that is how it is intended to live at
+    IBKR. Phase 1 respects `p1_touch`: touch = resting stop, close = the agent's
+    15-minute cycle.
+
+    The Phase 2 stop is one-way. It never moves down, mirroring the live
+    `_compute_dynamic_trail_pct()` contract.
+    """
+    entry = trade.buy_price
+    day_index = {d: i for i, d in enumerate(trade.trade_days)}
+    armed: dict | None = None
+    proven = False
+    peak = entry
+    stop_price: float | None = None
+    day_bars: list[dict] = []
+    current_date: str | None = None
+
+    for bar in trade.bars:
+        # ── Resolve an armed Phase 1 exit before anything else ───────────────
+        if armed:
+            level = armed["peak"] * (1 - cfg.trail)
+            if armed["first"] and bar["open"] <= level:
+                return {"price": bar["open"], "reason": f"{armed['reason']}_gap"}
+            if bar["low"] <= level:
+                return {"price": level, "reason": f"{armed['reason']}_trail"}
+            armed["peak"] = max(armed["peak"], bar["high"])
+            armed["first"] = False
+            if bar["ts"].minute in CHECK_MINUTES:
+                held_h = (bar["ts"] - armed["at"]).total_seconds() / 3600.0
+                if held_h >= cfg.deadline_h:
+                    return {"price": bar["close"], "reason": f"{armed['reason']}_deadline"}
+            continue
+
+        # ── Daily rollover: a position becomes "proven" on a close above entry
+        if current_date != bar["date"]:
+            if day_bars and day_bars[-1]["close"] > entry:
+                proven = True
+            day_bars = []
+            current_date = bar["date"]
+        day_bars.append(bar)
+
+        if bar["ts"] < trade.buy_ts:
+            continue
+        day = day_index[bar["date"]]
+
+        if proven and cfg.p2_enabled:
+            # Level is derived from the peak BEFORE this bar, then this bar's
+            # low is tested against it. Raising the stop with the same bar's
+            # high and then filling on its low would be look-ahead.
+            peak_gain = (peak / entry - 1) * 100.0
+            candidate: float | None = None
+            if peak_gain >= cfg.p2_ladder_gain:
+                candidate = peak * (1 - cfg.p2_ladder_trail)
+            elif peak_gain >= cfg.p2_arm_gain:
+                candidate = entry * (1 + cfg.p2_floor_pct / 100.0)
+            if candidate is not None:
+                stop_price = candidate if stop_price is None else max(stop_price, candidate)
+
+            if stop_price is not None:
+                if bar["open"] <= stop_price:
+                    return {"price": bar["open"], "reason": "p2_gap"}
+                if bar["low"] <= stop_price:
+                    return {"price": stop_price, "reason": "p2_floor"}
+
+        elif not proven:
+            pct = cfg.p1_pct_for_day(day)
+            if pct is not None:
+                level = entry * (1 - pct / 100.0)
+                hit = False
+                fill = level
+                if cfg.p1_touch:
+                    if bar["open"] <= level:
+                        hit, fill = True, bar["open"]
+                    elif bar["low"] <= level:
+                        hit, fill = True, level
+                elif bar["ts"].minute in CHECK_MINUTES and bar["close"] <= level:
+                    hit, fill = True, bar["close"]
+
+                if hit:
+                    if cfg.mode == "market":
+                        return {"price": fill, "reason": "p1_market"}
+                    armed = {"at": bar["ts"], "peak": fill,
+                             "first": True, "reason": "p1"}
+                    continue
+
+        peak = max(peak, bar["high"])
+
+    return None
+
+
 def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
     """Aggregate one configuration into a comparable result.
 
@@ -363,16 +554,28 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
     loser_saved = loser_cost = winner_delta = 0.0
     losers_helped = losers_hurt = winners_hurt = 0
     per_trade = []
+    worst_loss = 0.0
+    over_300 = 0
+    over_500 = 0
 
     for trade in trades:
-        sim = simulate(trade, cfg)
+        sim = simulate_proveit(trade, cfg) if cfg.proveit else simulate(trade, cfg)
         delta = 0.0 if sim is None else round(
             (sim["price"] - trade.sell_price) * trade.shares, 2)
+        # Resulting P&L for this trade under `cfg`. This is what answers "how
+        # big is my worst loss", which an aggregate net deliberately hides.
+        result_pl = trade.profit_loss + delta
+        worst_loss = min(worst_loss, result_pl)
+        if result_pl < -300:
+            over_300 += 1
+        if result_pl < -500:
+            over_500 += 1
         if abs(delta) > 0.005:
             per_trade.append({
                 "ticker": trade.ticker,
                 "actual_pl": round(trade.profit_loss, 2),
                 "delta": delta,
+                "result_pl": round(result_pl, 2),
                 "reason": sim["reason"] if sim else None,
             })
         if trade.is_loser:
@@ -398,6 +601,9 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
         "losers_helped": losers_helped,
         "losers_hurt": losers_hurt,
         "winners_hurt": winners_hurt,
+        "worst_loss": round(worst_loss, 2),
+        "over_300": over_300,
+        "over_500": over_500,
         "per_trade": sorted(per_trade, key=lambda r: r["delta"]),
     }
 
@@ -484,6 +690,62 @@ def grid_configs() -> list[ExitConfig]:
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
+def proveit_configs() -> list[ExitConfig]:
+    """The Prove-It Stop sweep.
+
+    Every row here REPLACES the kill-switch, dollar stop and thesis stop with a
+    single two-phase rule, so these are whole-stack comparisons against the
+    exits that actually happened — directly comparable to the SHIPPED row.
+
+    Two things are being measured:
+      1. Phase 1 shape — does widening the tier after day 1 help or hurt, and
+         does firing on an intraday TOUCH cost more than waiting for a 15-minute
+         CLOSE? (INCY is the motivating case: it wicked to -1.84% on day 1 and
+         still finished at -1.09%.)
+      2. Phase 2 arming gain — how far must a trade advance before a breakeven
+         floor is safe to place? Too low and normal noise stops it out.
+    """
+    out = [shipped_config()]
+
+    tier_shapes: list[tuple[str, tuple[tuple[int, float], ...]]] = [
+        ("1.0%/d0-1 then 1.5%", ((1, 1.0), (99, 1.5))),
+        ("1.0%/d0-1 then 2.0%", ((1, 1.0), (99, 2.0))),
+        ("1.0%/d0   then 1.5%", ((0, 1.0), (99, 1.5))),
+        ("1.0%/d0   then 2.0%", ((0, 1.0), (99, 2.0))),
+        ("flat 1.0%",           ((99, 1.0),)),
+        ("flat 1.5%",           ((99, 1.5),)),
+        ("flat 2.0%",           ((99, 2.0),)),
+    ]
+
+    for name, tiers in tier_shapes:
+        for touch in (False, True):
+            mech = "touch" if touch else "close"
+            out.append(ExitConfig(
+                f"ProveIt P1 {name} [{mech}] + P2 arm2%",
+                proveit=True, p1_tiers=tiers, p1_touch=touch,
+                p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=0.0))
+
+    # Phase 2 arming sensitivity, held against the leading Phase 1 shape.
+    for arm in (1.0, 1.5, 2.0, 3.0, 4.0):
+        for floor in (0.0, 0.5):
+            out.append(ExitConfig(
+                f"ProveIt P1 1.0/1.5 [close] + P2 arm{arm}% floor+{floor}%",
+                proveit=True, p1_tiers=((1, 1.0), (99, 1.5)), p1_touch=False,
+                p2_enabled=True, p2_arm_gain=arm, p2_floor_pct=floor))
+
+    # Isolate each phase so a headline result cannot be misread as coming from
+    # the half that did not actually produce it.
+    out.append(ExitConfig(
+        "ProveIt PHASE 1 ONLY (1.0/1.5, close)",
+        proveit=True, p1_tiers=((1, 1.0), (99, 1.5)), p1_touch=False,
+        p2_enabled=False))
+    out.append(ExitConfig(
+        "ProveIt PHASE 2 ONLY (arm 2%, breakeven floor)",
+        proveit=True, p1_tiers=None, p2_enabled=True, p2_arm_gain=2.0))
+
+    return out
+
+
 def report(results: list[dict], trades: list[Trade], top: int | None = None) -> None:
     losers = [t for t in trades if t.is_loser]
     total_loss = sum(t.profit_loss for t in losers)
@@ -501,8 +763,8 @@ def report(results: list[dict], trades: list[Trade], top: int | None = None) -> 
     print("All figures are deltas against the exits that ACTUALLY happened.")
     print("A positive net means the configuration would have made more money.")
     print()
-    header = (f"{'configuration':<52}{'losers':>10}{'winners':>10}"
-              f"{'NET':>11}{'harmed':>8}")
+    header = (f"{'configuration':<50}{'losers':>9}{'winners':>9}"
+              f"{'NET':>10}{'worst':>9}{'>300':>6}{'harmed':>8}")
     print(header)
     print("-" * len(header))
 
@@ -511,12 +773,17 @@ def report(results: list[dict], trades: list[Trade], top: int | None = None) -> 
         ordered = ordered[:top]
     for res in ordered:
         harmed = res["losers_hurt"] + res["winners_hurt"]
-        print(f"{res['label'][:51]:<52}"
-              f"{res['loser_net']:>10,.0f}"
-              f"{res['winner_delta']:>10,.0f}"
-              f"{res['net']:>11,.0f}"
+        print(f"{res['label'][:49]:<50}"
+              f"{res['loser_net']:>9,.0f}"
+              f"{res['winner_delta']:>9,.0f}"
+              f"{res['net']:>10,.0f}"
+              f"{res.get('worst_loss', 0):>9,.0f}"
+              f"{res.get('over_300', 0):>6}"
               f"{harmed:>8}")
 
+    print()
+    print("  worst = largest single-trade loss under that configuration")
+    print("  >300  = number of trades losing more than $300")
     print()
     print("Per-trade detail for the top configuration "
           "(watch for a result carried by one trade):")
@@ -525,8 +792,10 @@ def report(results: list[dict], trades: list[Trade], top: int | None = None) -> 
         print("  (no trade would have exited differently)")
     for row in best["per_trade"]:
         sign = "+" if row["delta"] >= 0 else ""
+        result = row.get("result_pl")
+        tail = f"   -> ${result:>9,.2f}" if result is not None else ""
         print(f"  {row['ticker']:<8} actual ${row['actual_pl']:>10,.2f}   "
-              f"delta {sign}${row['delta']:>10,.2f}   [{row['reason']}]")
+              f"delta {sign}${row['delta']:>10,.2f}{tail}   [{row['reason']}]")
     print()
 
 
@@ -534,6 +803,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--grid", action="store_true",
                         help="run the full parameter sweep instead of the headline set")
+    parser.add_argument("--proveit", action="store_true",
+                        help="run the two-phase Prove-It Stop sweep")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -551,9 +822,14 @@ def main() -> None:
     if not trades:
         sys.exit("No trades with usable price history — nothing to replay.")
 
-    configs = grid_configs() if args.grid else headline_configs()
+    if args.proveit:
+        configs = proveit_configs()
+    elif args.grid:
+        configs = grid_configs()
+    else:
+        configs = headline_configs()
     results = [score(trades, cfg) for cfg in configs]
-    report(results, trades, top=args.top if args.grid else None)
+    report(results, trades, top=args.top if (args.grid or args.proveit) else None)
 
     if args.json:
         with open(args.json, "w") as fh:

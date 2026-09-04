@@ -71,7 +71,7 @@ export default function BacktesterView() {
           Setup Backtest Parameters
         </h3>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-          Matches live bot: trailing stop from peak · EMA-21 exit · cash/slots sizing · 4 positions · no profit target
+          Approximates the live bot: trailing stop from peak · cash/slots sizing · 4 positions · no profit target. Does not model the Prove-It Stop.
         </p>
         <form onSubmit={handleRunBacktest}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>

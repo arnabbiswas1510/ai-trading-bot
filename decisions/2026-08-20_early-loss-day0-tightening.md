@@ -1,8 +1,14 @@
 # Early Loss Kill-switch: tighten to 1% and restrict to the entry day
 
 **Date:** 2026-08-20
-**Status:** Accepted
+**Status:** Superseded by [`2026-09-04_prove-it-stop.md`](2026-09-04_prove-it-stop.md)
 **Supersedes (partially):** `decisions/2026-08-01_early-loss-killswitch-and-day2-universal-minimiser.md`
+
+> **2026-09-04 — carried forward, not reversed.** The 1.0% day-0 band this ADR
+> established survives verbatim as `PROVE_IT_P1_DAY0_PCT`, and the finding that
+> holding it through day 1 damages winners is the direct reason Phase 1 WIDENS
+> to 3.0% from day 1 rather than tightening. Only the rule that housed the band
+> has been replaced.
 
 ## Context
 

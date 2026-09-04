@@ -54,51 +54,6 @@ class TestProfitLever:
         assert result is None
 
 
-class TestTimeLeverDisabledByDefault:
-    """Time held is not a sell signal - the time lever must not fire."""
-
-    @pytest.mark.parametrize("days", [8, 15, 22, 30, 45, 90])
-    def test_time_alone_never_tightens(self, days):
-        result = _compute_dynamic_trail_pct(unrealized_pct=1.0, calendar_days=days, current_pct=0.07)
-        assert result is None, f"time lever fired at {days} days"
-
-    def test_long_held_flat_position_keeps_base_stop(self):
-        """
-        Regression: the time lever must not penalize a flat position just because
-        time passed.
-        """
-        result = _compute_dynamic_trail_pct(unrealized_pct=2.0, calendar_days=30, current_pct=0.07)
-        assert result is None
-
-    def test_big_winner_held_long_uses_profit_tier_only(self):
-        """A big winner still uses the profit-lock tier, not the disabled time lever."""
-        result = _compute_dynamic_trail_pct(unrealized_pct=35.0, calendar_days=60, current_pct=0.07)
-        assert result == pytest.approx(0.015)
-
-
-class TestTimeLeverOptIn:
-    """TRAIL_TIME_TIERS_ENABLED=true restores the legacy behaviour."""
-
-    LEGACY = [(30, 0.035), (22, 0.040), (15, 0.050), (8, 0.060), (0, None)]
-
-    def test_time_lever_fires_when_explicitly_enabled(self):
-        with patch.object(execution_agent, "TRAIL_TIME_TIERS", self.LEGACY):
-            result = _compute_dynamic_trail_pct(unrealized_pct=1.0, calendar_days=15, current_pct=0.07)
-        assert result == pytest.approx(0.05)
-
-    def test_tighter_of_two_levers_wins_when_enabled(self):
-        """+5% (profit->1.5%) vs 30 days (time->3.5%) - profit is tighter."""
-        with patch.object(execution_agent, "TRAIL_TIME_TIERS", self.LEGACY):
-            result = _compute_dynamic_trail_pct(unrealized_pct=5.0, calendar_days=30, current_pct=0.07)
-        assert result == pytest.approx(0.015)
-
-    def test_profit_lever_wins_when_tighter_than_time(self):
-        """Any winner beyond +5% keeps the 1.5% cap even when time tightening exists."""
-        with patch.object(execution_agent, "TRAIL_TIME_TIERS", self.LEGACY):
-            result = _compute_dynamic_trail_pct(unrealized_pct=50.0, calendar_days=8, current_pct=0.07)
-        assert result == pytest.approx(0.015)
-
-
 class TestOneWayOnly:
 
     def test_no_change_when_already_at_correct_tier(self):

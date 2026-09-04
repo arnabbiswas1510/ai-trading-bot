@@ -66,8 +66,8 @@ Two properties of real breakouts drive the entire risk model:
    Beyond that, the risk/reward inverts: the stop is now far below and the easy move is
    already gone.
 
-Both are enforced mechanically — see the [Thesis Stop](#tier-2--thesis-stop-days-25) and
-the [pivot extension gate](docs/buy_logic.md).
+Both are enforced mechanically — see [The Prove-It Stop](#tier-1--the-prove-it-stop-always-live)
+and the [pivot extension gate](docs/buy_logic.md).
 
 ---
 
@@ -139,7 +139,7 @@ stack — capacity, freshness, duplicate, cooling-off, cash floor, score floor, 
 buy-zone bounds, share count. A trigger must clear **every** gate.
 
 On fill, a GTC trailing stop is registered with IBKR immediately, and the entry ATR is
-persisted — that value later parameterises the Thesis Stop.
+persisted — that value later parameterises the base trailing stop's ATR band.
 
 Full detail: [docs/buy_logic.md](docs/buy_logic.md)
 
@@ -178,75 +178,72 @@ See [decisions/2026-08-22_hwm-profit-lock-arm-5pct.md](decisions/2026-08-22_hwm-
 Because it lives at the broker, this is the one protection that survives the bot being
 offline. Treat it as the disaster backstop, not the primary exit.
 
-### Tier 1 — Early Loss Kill-switch (entry day only)
+### Tier 1 — The Prove-It Stop (always live)
 
-Down 1% from entry on the day it was bought → arm the exit. A breakout that immediately
-reverses was not a breakout.
+The central rule, and the one most worth understanding. It replaced five separate exits and
+asks a single question:
 
-The window is deliberately **the entry day only**. A 5-minute replay of all 17 closed trades
-found that extending it to day 1 cut winners (CPAY alone −$1,873) while catching nothing the
-entry day had not already caught — turning a +$3,027 net gain into +$893. No winner in the
-sample ever closed 1% below entry on its own entry day. From day 1 the Early Dollar Stop, and
-then the Thesis Stop, take over.
-See [decisions/2026-08-20_early-loss-day0-tightening.md](decisions/2026-08-20_early-loss-day0-tightening.md).
+> **Has this position ever *closed* above the price we paid?**
 
-### Tier 1b — Early Dollar Stop (days 0–5)
+`closed_above_entry` is latched `True` at EOD the first time a close prints above entry, and
+is never cleared — a breakout confirms only once. That latch selects the phase.
 
-A cap on unrealised loss during the first six sessions, checked every 15 minutes. The cap is
-a **share of one position slot** — `(equity / 4) × 6%`, roughly **$1,500** at current equity
-— not a flat dollar figure, so it scales with the account instead of silently tightening as
-equity grows. Every position gets the same dollar cap regardless of its own size, because an
-oversized holding is concentrated risk and should not get a wider allowance.
+**Phase 1 — unproven. Anchored to entry.**
 
-This is the rule that covers day 1, between the Kill-switch expiring and the Thesis Stop
-arming on day 2. It sits inside the base trailing stop, which is measured from the peak and
-so cannot help a position that never rose.
+| Day held | Arms an exit at |
+|---|---|
+| 0 | **1%** below entry |
+| 1 and after | **3%** below entry |
 
-If account equity cannot be read on a given cycle, the rule is skipped for that cycle rather
-than firing on a $0 threshold.
+The band **widens** after day 0 rather than tightening, which is counter-intuitive and was
+measured. A breakout that fails on day one is wrong immediately and cheaply; from day 1 the
+failing and working populations overlap, and holding the tight band costs roughly
+$1,500–2,000 in clipped winners across the 30-trade sample. CPAY closed −2.24% on day 1 and
+then ran to +8.95%.
 
-Set `EARLY_DOLLAR_STOP_PCT=0` to disable. See
-[decisions/2026-08-20_slot-derived-early-dollar-stop.md](decisions/2026-08-20_slot-derived-early-dollar-stop.md).
+**Phase 1 never expires**, and that is the entire point. Every rule it replaced was scoped
+to a window, which is precisely how NBIX (−$2,261), DELL (−$1,283), RSI (−$1,390) and HWM
+(−$1,463) were allowed to run: the kill-switch stopped looking after day 0, and the
+peak-anchored trailing stop sits far below entry for a stock that never rose.
 
-### Tier 2 — Thesis Stop (days 2–5)
+**Phase 2 — proven. Anchored to the peak.**
 
-The central innovation, and the rule most worth understanding.
+It closed above entry, so it earned patience. Once the peak gain reaches **+2%**, a
+give-back floor arms at **1% below entry**: a trade that went green is never allowed to
+become a real loss. Above +5% the profit ladder (1.5% from the high-water mark) is tighter
+and takes over.
 
-**Fires when a position has never *closed* above its entry price and is now more than
-1.0 × its entry ATR underwater.**
+The floor sits 1% *below* entry, not at it. An exact-breakeven floor flushes any position
+that pokes green and immediately retests entry — CPAY did exactly that on day 4 and an
+at-entry floor would have forfeited +$1,189.
 
-The ATR normalisation is what makes it coherent. A fixed percentage stop is simultaneously
-too tight for a volatile biotech and too loose for a slow industrial. Expressing the
-threshold in units of the stock's *own* daily range means the rule asks a consistent
-question of every name: *has this moved further against me than its normal daily noise can
-explain?*
+**Evidence.** A 5-minute replay of all 30 closed trades, reproducing the live mechanics:
 
-The `closed_above_entry` latch is equally load-bearing. Its predecessor — the Intraday Loss
-Minimiser — required the day's high to reach entry, which meant it cut positions that had
-rallied *back* to break-even. Same-sounding rule, opposite population: it was killing
-working trades and roughly halving expectancy. It is retained in the codebase but
-**disabled by default** (`INTRADAY_MINIMISER_ENABLED=false`).
+| | Net |
+|---|---|
+| What actually happened | **−$6,548** |
+| The rules shipped before this change | −$4,069 |
+| **Prove-It** | **+$5,410** |
 
-The Thesis Stop targets the complement — breakouts that never followed through at all.
+Zero winners cut short. Worst single loss falls from −$2,002 to −$1,140 — and that −$1,140
+is an overnight gap no stop of any kind prevents. There is **no guaranteed loss cap**, and
+INCY is worse under this rule (−$137 → −$429): it is a net improvement across the
+distribution, not on every trade. n = 30 is small and every parameter is provisional.
 
-> Validation: paired stationary-block bootstrap, 2,000 resamples, across two independent
-> universes. Screener-passing universe +18.8 CAGR points (90% CI [+7.1, +33.0]); broad
-> universe directionally flat but with improved average loss (−5.60% → −4.39%).
-> See `decisions/2026-08-09_thesis-stop.md`.
+See [decisions/2026-09-04_prove-it-stop.md](decisions/2026-09-04_prove-it-stop.md).
 
-### Tier 3 — EMA-21 support breach (day 7+, EOD)
+### Tier 2 — Staleness (day 7+, EOD)
 
-Close below the 21-day EMA × 0.99 → market sell in the 3:45–4:00 PM window. Catches the
-slow bleed that never trips a trailing stop. Suppressed before day 7 so a normal
-post-breakout consolidation is not mistaken for failure.
+No new high-water mark in 10 trading days → the position counts as **stale**. This is a
+**capital velocity** concern, not a risk one: a position going nowhere still occupies one of
+the book's slots.
 
-### Tier 4 — Plateau exit (day 7+, EOD)
+Staleness does **not** sell to cash. It discounts the Rank & Replace margin below, so the
+slot is released when somewhere better to put the money exists — not merely because this
+position stopped moving. With the give-back floor in place, holding dead money is nearly
+free; selling it on a timer is not.
 
-No new high-water mark in 10 trading days → sell. This is a **capital velocity** rule, not
-a risk rule: a position going nowhere still occupies one of the book's slots. Dead money has
-an opportunity cost equal to the best trigger it is displacing.
-
-### Tier 5 — Rank & Replace (day 7+, EOD)
+### Tier 3 — Rank & Replace (day 7+, EOD)
 
 When the book is full and a fresh trigger materially outranks the weakest holding's
 momentum-health score, the system rotates. The margin required depends on the day-3
@@ -254,15 +251,21 @@ breakout verdict:
 
 - Verdict `PASS` → new trigger must beat it by **15 points**
 - Verdict `FAIL` → **5 points** suffices
+- **Stale** (no new high in 10 trading days) → **5 points** suffices
 
-A breakout that already failed to confirm has forfeited the benefit of the doubt.
+A breakout that already failed to confirm has forfeited the benefit of the doubt, and so has
+one that has stopped making progress.
 
 ### Override — Power Hold
 
-O'Neil's 8-week rule: a stock that gains **+20% within 21 calendar days** is exhibiting
+O'Neil's 8-week rule: a stock that gains **+10% within 21 calendar days** is exhibiting
 institutional-grade demand and is granted 56 calendar days of protection. During that
-window the profit ladder is bypassed and the trail *widens* to 30%, while the EMA, plateau
-and rotation exits are suppressed entirely.
+window the profit ladder is bypassed and the trail *widens* to 30%, while the Prove-It Stop
+and the rotation exits are suppressed entirely.
+
+The trigger was lowered from +20% to +10% because at 20% the rule was unreachable — the
+realised trade distribution contains no +20% runners. The +10% figure is **unvalidated**: no
+trade in the 30-trade replay reached it within 21 days.
 
 This is counter-intuitive and it is the point. The strategy's returns are outlier-dependent
 — historically the top-10 trades have accounted for the majority of total P/L. A profit lock
@@ -272,8 +275,8 @@ throughout as the disaster backstop.
 
 ### Armed Exit — how the system sells
 
-Tiers 1, 1b and 2 do not market-sell. They **arm** a 0.6% trailing stop with a 3.25-hour
-deadline.
+The Prove-It Stop does not market-sell in either phase. It **arms** a 0.6% trailing stop
+with a 3.25-hour deadline.
 
 The reasoning: the moment a loss threshold is breached is frequently a local trough — a
 market order there sells the low tick. Arming a tight trail lets an intraday bounce be
@@ -281,19 +284,21 @@ captured while guaranteeing the position is gone within half a session. If the t
 not filled by the deadline, a market order is forced.
 
 This is what "cut it smartly" means operationally: exit on the system's terms, not the
-worst print of the day.
+worst print of the day. Across the 30-trade replay the armed exit is worth roughly **+$600**
+over selling at market on the trigger tick.
+
+A resting IBKR GTC order backs it up so an overnight gap is capped even when the agent is
+offline. In Phase 1 that order sits 1% *wider* than the trigger so it can never front-run
+the bot; in Phase 2 the resting order **is** the floor.
 
 ### Exit hierarchy at a glance
 
 | Tier | Rule | Days | Evaluated | Fires as | Suppressed by |
 |---|---|---|---|---|---|
 | 0 | Dynamic trailing stop | all | continuous (IBKR) | broker trail | — (widened by power hold) |
-| 1 | Early Loss Kill-switch | 0 | every 15 min | armed exit | exit armed |
-| 1b | Early Dollar Stop | 0–5 | every 15 min | armed exit | exit armed, equity unreadable |
-| 2 | **Thesis Stop** | 2–5 | every 15 min | armed exit | power hold, exit armed |
-| 3 | EMA-21 breach | 7+ | EOD 15:45–16:00 | market | power hold |
-| 4 | Plateau exit | 7+ | EOD 15:45–16:00 | market | power hold |
-| 5 | Rank & Replace | 7+ | EOD, once daily | market | power hold |
+| 1 | **The Prove-It Stop** | **all** | every 15 min | armed exit | power hold, exit armed |
+| 2 | Staleness | 7+ | EOD, once daily | *(discounts tier 3)* | power hold |
+| 3 | Rank & Replace | 7+ | EOD, once daily | market | power hold |
 
 Checks are ordered, and the first to fire pre-empts the rest for that cycle.
 
@@ -330,7 +335,7 @@ allowed to stop trailing-stop maintenance. Only the agent holds brokerage write 
 | Language | Python 3.11+ |
 | Broker | Interactive Brokers via `ib_insync`, headless IB Gateway |
 | Fundamentals | TradingView Scanner API |
-| Prices | Financial Modeling Prep (FMP) |
+| Prices | Financial Modeling Prep (FMP) for screening and agent exit rules; **open-position values come from IBKR** (`decisions/2026-09-03_ibkr-sourced-position-values.md`) |
 | Database | Supabase (Postgres) — cloud state; SQLite for local settings only |
 | AI | OpenAI (trigger evaluation) |
 | Alerts | Telegram |
@@ -424,9 +429,11 @@ Dashboard at `http://localhost:8000`. Verify the gateway is connected and report
 expected account before the next market open.
 
 Each open position expands into a **Position Journey** panel that states, without needing
-this document: which lifecycle phase the position is in (`D0 Kill-switch` → `D1 Dollar cap`
-→ `D2–5 Thesis` → `D6 Transition` → `D7+ Rotation`, with Power Hold and Exiting shown as
-overrides), what has already happened to it (entry, follow-through latch, day-3 verdict,
+this document: which lifecycle phase the position is in (`Unproven` → `Proven` →
+`Floor locked` → `Rotation`, with Power Hold and Exiting shown as overrides). That track is
+indexed by **proof, not by calendar day** — a position advances only by closing above entry
+and then by reaching the arming gain, and it can sit in `Unproven` indefinitely. The panel
+also states what has already happened to it (entry, follow-through latch, day-3 verdict,
 high-water mark and give-back, profit lock, armed exits), and what happens next — the
 nearest price trigger and its level, the next phase change, and any pending scheduled
 event. Below it, the **Risk Rule Ladder** shows every rule's live state and trigger price.
@@ -453,10 +460,9 @@ docker compose logs -f execution-agent
 - Changing slot count is a `.env` edit plus a restart — but on a fully-invested book it does
   not take effect immediately: existing positions keep their original sizing and the book
   only converges after full turnover. `MAX_POSITIONS` is read from a single source
-  (`config.py`) by every module that *buys*. The Early Dollar Stop deliberately reads a
-  separate `EFFECTIVE_POSITION_SLOTS` (`4`) instead, because it needs the slot count the
-  book is actually sized for, not the configured target — see
-  [decisions/2026-08-20_slot-derived-early-dollar-stop.md](decisions/2026-08-20_slot-derived-early-dollar-stop.md).
+  (`config.py`) by every module that *buys*. No exit rule derives a threshold from the slot
+  count any more — `EFFECTIVE_POSITION_SLOTS` was deleted with the Early Dollar Stop that
+  was its only consumer.
 
 ### Manual tools
 
@@ -520,20 +526,19 @@ Full operator guide: **[docs/backups.md](docs/backups.md)**. Rationale:
 | Term | Definition |
 |---|---|
 | **Armed exit** | A 0.6% trailing stop with a 3.25-hour deadline, used instead of a market sell so an intraday bounce can be captured rather than selling the low tick |
-| **ATR** | Average True Range — mean daily price range; the unit in which the Thesis Stop measures adverse movement |
+| **ATR** | Average True Range — mean daily price range; the unit the base trailing stop is scaled in |
 | **Base** | Sideways consolidation where institutions accumulate before a move |
 | **Breakout verdict** | Day-3 PASS/FAIL assessment (close ≥ entry +1% on ≥ 75% of average volume). Governs how easily a position can later be rotated out |
 | **Buy zone** | Pivot to pivot +5%. Above it, `EXTENDED_ABOVE_PIVOT`; more than 2% below, `BELOW_PIVOT` |
 | **Cooling-off** | 7-day block on re-buying a name after it was sold |
-| **Early Dollar Stop** | Cap on unrealised dollar loss during days 0–5, sized as `(equity / EFFECTIVE_POSITION_SLOTS) × 6%`. Identical for every position regardless of its own cost basis |
 | **Hive partitioning** | Encoding column values in directory names (`table_name=…/snapshot_date=…`) so a query engine reads them as real columns without them being stored in the files |
-| **HWM** | High-water mark — the position's peak price. Anchors the trailing stop, the profit lock and the plateau clock |
-| **Kill-switch** | Entry-day-only rule: a 1% reverse from entry arms an exit. A breakout that fails that fast has falsified its own premise |
+| **HWM** | High-water mark — the position's peak price. Anchors the trailing stop, the profit lock and the staleness clock |
+| **Give-back floor** | Prove-It Phase 2: once a proven position's peak reaches +2%, a floor arms 1% below entry so a green trade never becomes a real loss |
 | **Pivot** | The high of the base; the breakout reference price |
-| **Power Hold** | +20% within 21 days grants 56 days of protection, widening the trail to 30% so a leader can run |
+| **Power Hold** | +10% within 21 days grants 56 days of protection, widening the trail to 30% so a leader can run |
 | **RS** | Relative strength vs SPY over 12 weeks, percentile-ranked |
-| **Slot** | One position's share of capital. `MAX_POSITIONS` is the configured target; `EFFECTIVE_POSITION_SLOTS` is what the book is currently sized for, and they differ until a fully-invested book turns over |
-| **Thesis Stop** | Exit for a breakout that never *closed* above entry and is now > 1 × ATR underwater |
+| **Slot** | One position's share of capital. `MAX_POSITIONS` is the configured target; a fully-invested book only converges on it after full turnover |
+| **Prove-It Stop** | The single loss rule. Phase 1 (never closed above entry) anchors to entry and never expires; Phase 2 (proven) anchors to the peak via the give-back floor |
 | **Trailing stop** | Broker-side stop that ratchets up with price and never loosens |
 | **Volume surge** | Breakout-bar volume ≥ 1.50× the 50-day average — the evidence of institutional participation |
 

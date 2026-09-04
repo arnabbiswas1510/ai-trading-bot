@@ -174,12 +174,18 @@ class TestReconcileCase3:
 
         _reconcile(ib, supabase)
 
-        supabase.table("portfolio_positions").update.assert_called()
-        update_data = supabase.table("portfolio_positions").update.call_args[0][0]
-        assert update_data["shares"] == 150
+        # Reconciliation now issues two distinct writes per position — the share
+        # correction and the IBKR valuation sync — so assert on the share payload
+        # specifically rather than on whichever call happened to be last.
+        share_writes = [
+            c[0][0] for c in supabase.table("portfolio_positions").update.call_args_list
+            if "shares" in c[0][0]
+        ]
+        assert share_writes, "Expected a share-count correction write"
+        assert share_writes[0]["shares"] == 150
 
     def test_case3_no_update_when_shares_match(self):
-        """Case 3: IBKR and Supabase both have 100 shares → no update."""
+        """Case 3: IBKR and Supabase both have 100 shares → no share-count write."""
         pos = make_position("AAPL", shares=100, buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.0)
@@ -187,7 +193,105 @@ class TestReconcileCase3:
 
         _reconcile(ib, supabase)
 
-        supabase.table("portfolio_positions").update.assert_not_called()
+        # The valuation sync still writes every cycle; only the share correction
+        # must be absent when the counts already agree.
+        share_writes = [
+            c[0][0] for c in supabase.table("portfolio_positions").update.call_args_list
+            if "shares" in c[0][0]
+        ]
+        assert share_writes == [], f"Unexpected share-count write: {share_writes}"
+
+
+class TestIBKRValuationSync:
+    """
+    The IBKR valuation columns are what let the read-only web container render
+    the broker's own numbers. Before them the dashboard multiplied Supabase share
+    counts by FMP quotes, which never matched IBKR and mixed two vintages of data
+    into one total. See decisions/2026-09-03_ibkr-sourced-position-values.md.
+    """
+
+    def _valuation_writes(self, supabase):
+        return [
+            c[0][0] for c in supabase.table("portfolio_positions").update.call_args_list
+            if "ibkr_synced_at" in c[0][0]
+        ]
+
+    def test_writes_broker_valuation_for_held_position(self):
+        """marketPrice/marketValue/unrealizedPNL are persisted verbatim from IBKR."""
+        pos = make_position("AAPL", shares=100, buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.0)
+        item = ib.portfolio.return_value[0]
+        item.position       = 100
+        item.marketPrice    = 111.25
+        item.marketValue    = 11125.0
+        item.unrealizedPNL  = 1125.0
+
+        execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+        _reconcile(ib, supabase)
+
+        writes = self._valuation_writes(supabase)
+        assert len(writes) == 1, f"Expected exactly one valuation write, got {writes}"
+        assert writes[0]["current_price"]  == 111.25
+        assert writes[0]["market_value"]   == 11125.0
+        assert writes[0]["unrealized_pnl"] == 1125.0
+        assert writes[0]["ibkr_synced_at"]
+
+    def test_market_value_is_stored_not_recomputed(self):
+        """
+        IBKR is the authority on both share count and price. Recomputing
+        shares x price would reintroduce exactly the drift these columns remove,
+        so a marketValue that disagrees with that product must survive intact.
+        """
+        pos = make_position("AAPL", shares=100, buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.0)
+        item = ib.portfolio.return_value[0]
+        item.position      = 100
+        item.marketPrice   = 110.0
+        item.marketValue   = 10_998.0      # deliberately != 100 * 110
+        item.unrealizedPNL = 998.0
+
+        execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+        _reconcile(ib, supabase)
+
+        writes = self._valuation_writes(supabase)
+        assert writes[0]["market_value"] == 10_998.0
+
+    def test_skips_position_without_a_broker_mark(self):
+        """
+        The positions() fallback yields objects with no marketPrice. Writing a
+        fabricated price there would be indistinguishable from a real broker mark,
+        which is the ambiguity the ibkr_synced_at column exists to prevent.
+        """
+        pos = make_position("AAPL", shares=100, buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.0)
+        item = ib.portfolio.return_value[0]
+        item.position    = 100
+        item.marketPrice = 0.0        # no live mark available
+
+        execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+        _reconcile(ib, supabase)
+
+        assert self._valuation_writes(supabase) == []
+
+    def test_missing_migration_disables_write_without_failing(self):
+        """PGRST204 must degrade gracefully, not break reconciliation."""
+        pos = make_position("AAPL", shares=100, buy_price=100.0)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.0)
+        ib.portfolio.return_value[0].position = 100
+
+        supabase.table("portfolio_positions").update.side_effect = \
+            Exception("PGRST204: column current_price does not exist")
+
+        execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
+        try:
+            _reconcile(ib, supabase)     # must not raise
+        finally:
+            supabase.table("portfolio_positions").update.side_effect = None
+            execution_agent._IBKR_VALUATION_COLUMNS_MISSING = False
 
 
 class TestReconcileCase4:

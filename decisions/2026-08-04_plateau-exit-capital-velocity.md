@@ -1,8 +1,17 @@
 # Plateau exit: optimise capital velocity, not per-trade expectancy
 
 - **Date:** 2026-08-04
-- **Status:** Accepted
+- **Status:** Superseded by [`2026-09-04_prove-it-stop.md`](2026-09-04_prove-it-stop.md)
 - **Builds on:** `2026-08-04_tune-exits-on-breakout-population.md`
+
+> **2026-09-04 — the exit is retired; the measurement still stands.** Staleness
+> no longer sells to cash. With the Prove-It give-back floor in place, holding
+> dead money is nearly free, so `STALE_EXIT_DAYS` now only DISCOUNTS the Rank &
+> Replace margin to `RANK_REPLACE_FAIL_THRESHOLD` — the slot is released when
+> somewhere better to put the money exists, not merely because the position
+> stopped moving. The capital-velocity argument below is why staleness still
+> matters at all; only the action it triggers has changed. Note the plateau exit
+> never fired once in 30 live closed trades.
 
 ## Context
 
