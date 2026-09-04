@@ -4,8 +4,28 @@ import { History, TrendingUp, TrendingDown, Award, Calendar, AlertCircle, Shield
 import ExitDetailPanel from './ExitDetailPanel';
 import { classifyExit, toneToBadgeClass } from '../lib/exitDetails';
 
+// ── Stable module-level sort-key functions ────────────────────────────────────
+// Must be defined outside the component: useSortableTable stores the key in
+// state and getSortIcon compares it by identity, so an inline arrow would be a
+// fresh reference on every render and the active-sort arrow would never show.
+//
+// Dates are sorted as timestamps rather than as raw strings. Lexicographic
+// order happens to be correct for uniform ISO-8601 input, but silently breaks
+// the moment one row carries a date-only value or a different offset.
+const toTime = (v) => {
+  if (!v) return null;
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;   // null sorts last in the hook
+};
+const buyDateKey  = (t) => toTime(t.buy_date);
+const sellDateKey = (t) => toTime(t.sell_date);
+// Sort by the label the cell actually renders, not the raw sell_reason string.
+// classifyExit() maps many raw reasons onto one label, so sorting the raw value
+// produced an order that did not match the visible column.
+const exitLabelKey = (t) => classifyExit(t.exit_reason).label;
+
 export default function TradesView({ trades }) {
-  const { items: sortedTrades, requestSort, getSortIcon } = useSortableTable(trades, 'sell_date', 'desc');
+  const { items: sortedTrades, requestSort, getSortIcon } = useSortableTable(trades, sellDateKey, 'desc');
   const [expandedTrade, setExpandedTrade] = useState(null);
   const toggleTrade = (id) => setExpandedTrade((prev) => (prev === id ? null : id));
   const formatCurrency = (val) => {
@@ -104,11 +124,13 @@ export default function TradesView({ trades }) {
                       <th style={{ width: '1rem', paddingRight: 0 }} aria-label="Expand" />
                       <th onClick={() => requestSort('ticker')} style={{ cursor: 'pointer' }}>Ticker{getSortIcon('ticker')}</th>
                       <th onClick={() => requestSort('shares')} style={{ cursor: 'pointer' }}>Shares{getSortIcon('shares')}</th>
-                      <th onClick={() => requestSort('buy_price')} style={{ cursor: 'pointer' }}>Buy Price / Date{getSortIcon('buy_price')}</th>
-                      <th onClick={() => requestSort('sell_price')} style={{ cursor: 'pointer' }}>Sell Price / Date{getSortIcon('sell_price')}</th>
+                      <th onClick={() => requestSort('buy_price')} style={{ cursor: 'pointer' }}>Buy Price{getSortIcon('buy_price')}</th>
+                      <th onClick={() => requestSort(buyDateKey)} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>Buy Date{getSortIcon(buyDateKey)}</th>
+                      <th onClick={() => requestSort('sell_price')} style={{ cursor: 'pointer' }}>Sell Price{getSortIcon('sell_price')}</th>
+                      <th onClick={() => requestSort(sellDateKey)} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>Sell Date{getSortIcon(sellDateKey)}</th>
                       <th onClick={() => requestSort('profit_loss')} style={{ cursor: 'pointer' }}>P&L ($){getSortIcon('profit_loss')}</th>
                       <th onClick={() => requestSort('percent_return')} style={{ cursor: 'pointer' }}>Return (%){getSortIcon('percent_return')}</th>
-                      <th onClick={() => requestSort('exit_reason')} style={{ cursor: 'pointer' }}>Exit Reason{getSortIcon('exit_reason')}</th>
+                      <th onClick={() => requestSort(exitLabelKey)} style={{ cursor: 'pointer' }}>Exit Reason{getSortIcon(exitLabelKey)}</th>
                     </tr>
                   </thead>
 
@@ -136,15 +158,19 @@ export default function TradesView({ trades }) {
                             <td>{trade.shares}</td>
                             <td>
                               <div style={{ fontWeight: 500 }}>{formatCurrency(trade.buy_price)}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.15rem' }}>
+                            </td>
+                            <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                                 <Calendar size={10} /> {buyDateStr}
-                              </div>
+                              </span>
                             </td>
                             <td>
                               <div style={{ fontWeight: 500 }}>{formatCurrency(trade.sell_price)}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.15rem' }}>
+                            </td>
+                            <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                                 <Calendar size={10} /> {sellDateStr}
-                              </div>
+                              </span>
                             </td>
                             <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                               {trade.profit_loss >= 0 ? '+' : ''}{formatCurrency(trade.profit_loss)}
@@ -167,7 +193,7 @@ export default function TradesView({ trades }) {
 
                           {isOpen && (
                             <tr>
-                              <td colSpan={8} style={{ padding: 0 }}>
+                              <td colSpan={10} style={{ padding: 0 }}>
                                 <ExitDetailPanel trade={trade} />
                               </td>
                             </tr>
