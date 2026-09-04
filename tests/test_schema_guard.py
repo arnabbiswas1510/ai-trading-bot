@@ -62,6 +62,7 @@ class TestSchemaHealthy:
         assert not r.degraded
         assert r.missing_critical == []
         assert r.missing_advisory == []
+        assert r.missing_advisory_columns == []
         assert "passed" in r.summary()
 
 
@@ -98,6 +99,46 @@ class TestCriticalColumns:
         assert r.degraded
         assert len(r.missing_critical) == 3
         assert len(r.missing_advisory) == 3
+
+
+class TestAdvisoryColumns:
+    """The add_ibkr_position_values.sql migration going unrun silently turned
+    Invested Portfolio Value into cost basis and Unrealized P&L into $0.00.
+    Nothing detected it, because these columns feed reporting rather than a
+    risk rule. They must warn without ever blocking trading."""
+
+    IBKR_COLS = [
+        ("portfolio_positions", "current_price"),
+        ("portfolio_positions", "market_value"),
+        ("portfolio_positions", "unrealized_pnl"),
+        ("portfolio_positions", "ibkr_synced_at"),
+    ]
+
+    def test_missing_ibkr_value_columns_are_detected(self):
+        r = schema_guard.check_schema(_client(missing_cols=self.IBKR_COLS))
+        found = {(t, c) for t, c, _ in r.missing_advisory_columns}
+        assert found == set(self.IBKR_COLS)
+
+    def test_missing_ibkr_value_columns_never_block_trading(self):
+        r = schema_guard.check_schema(_client(missing_cols=self.IBKR_COLS))
+        assert r.ok
+        assert not r.degraded
+        assert r.missing_critical == []
+
+    def test_summary_explains_the_cost_basis_symptom(self):
+        r = schema_guard.check_schema(_client(missing_cols=self.IBKR_COLS))
+        out = r.summary()
+        assert "current_price" in out
+        assert "add_ibkr_position_values.sql" in out
+        # The operator-visible symptom must be named, not just the column.
+        assert "COST BASIS" in out or "cost basis" in out
+        assert "$0.00" in out
+
+    def test_partial_migration_reports_only_what_is_missing(self):
+        r = schema_guard.check_schema(
+            _client(missing_cols=[("portfolio_positions", "ibkr_synced_at")]))
+        assert [(t, c) for t, c, _ in r.missing_advisory_columns] == [
+            ("portfolio_positions", "ibkr_synced_at")]
 
 
 class TestAdvisoryTables:

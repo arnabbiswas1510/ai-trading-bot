@@ -242,6 +242,41 @@ COMMENT ON COLUMN portfolio_positions.hwm_rs_score IS 'RS score on the day the p
 
 
 -- =============================================================================
+-- 5b. IBKR-sourced position values (from migrations/add_ibkr_position_values.sql)
+-- Not a trading dependency -- the agent prices positions from ib.portfolio()
+-- directly. But without these the dashboard has nothing to report and silently
+-- falls back to COST BASIS, which makes Invested Portfolio Value read as what
+-- you paid and drives Unrealized P&L to exactly $0.00.
+-- See decisions/2026-09-03_ibkr-sourced-position-values.md
+-- =============================================================================
+
+ALTER TABLE portfolio_positions
+  ADD COLUMN IF NOT EXISTS current_price   NUMERIC     DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS market_value    NUMERIC     DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS unrealized_pnl  NUMERIC     DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS ibkr_synced_at  TIMESTAMPTZ DEFAULT NULL;
+
+COMMENT ON COLUMN portfolio_positions.current_price IS
+  'IBKR PortfolioItem.marketPrice, written by execution_agent.reconcile_with_ibkr(). '
+  'This is the broker''s own mark, NOT an FMP quote. Never write an FMP price here.';
+
+COMMENT ON COLUMN portfolio_positions.market_value IS
+  'IBKR PortfolioItem.marketValue. Stored rather than recomputed as shares x price '
+  'because IBKR is the authority on both factors.';
+
+COMMENT ON COLUMN portfolio_positions.unrealized_pnl IS
+  'IBKR PortfolioItem.unrealizedPNL. Uses IBKR''s average cost, which can differ from '
+  'our buy_price after partial fills, so it is not derivable from our own columns.';
+
+COMMENT ON COLUMN portfolio_positions.ibkr_synced_at IS
+  'When the three columns above were last written from IBKR. NULL means never synced -- '
+  'callers must fall back to cost basis and say so.';
+
+-- Deliberately no back-fill: seeding these with buy_price would make a
+-- never-synced position indistinguishable from one marked flat by IBKR.
+
+
+-- =============================================================================
 -- 6. Row Level Security on the new tables
 -- Matches the convention in enable_rls_all_tables.sql. The service role key the
 -- bot uses bypasses RLS, so this does not affect the pipeline; it stops the anon
@@ -320,6 +355,10 @@ UNION ALL SELECT 'trigger_history.outcomes_computed_at',  CASE WHEN EXISTS (SELE
 UNION ALL SELECT 'portfolio_positions.closed_above_entry',CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='portfolio_positions' AND column_name='closed_above_entry')   THEN 'OK' ELSE 'FAIL' END
 UNION ALL SELECT 'portfolio_positions.highest_rs_score',  CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='portfolio_positions' AND column_name='highest_rs_score')     THEN 'OK' ELSE 'FAIL' END
 UNION ALL SELECT 'portfolio_positions.hwm_rs_score',      CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='portfolio_positions' AND column_name='hwm_rs_score')         THEN 'OK' ELSE 'FAIL' END
+UNION ALL SELECT 'portfolio_positions.current_price',     CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='portfolio_positions' AND column_name='current_price')        THEN 'OK' ELSE 'FAIL' END
+UNION ALL SELECT 'portfolio_positions.market_value',      CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='portfolio_positions' AND column_name='market_value')         THEN 'OK' ELSE 'FAIL' END
+UNION ALL SELECT 'portfolio_positions.unrealized_pnl',    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='portfolio_positions' AND column_name='unrealized_pnl')       THEN 'OK' ELSE 'FAIL' END
+UNION ALL SELECT 'portfolio_positions.ibkr_synced_at',    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='portfolio_positions' AND column_name='ibkr_synced_at')       THEN 'OK' ELSE 'FAIL' END
 UNION ALL SELECT 'seeded trigger_history rows',   COALESCE((SELECT COUNT(*)::text FROM trigger_history), '0')
 UNION ALL SELECT 'seeded watchlist_history rows', COALESCE((SELECT COUNT(*)::text FROM watchlist_history), '0')
 UNION ALL SELECT 'positions latched closed_above_entry', COALESCE((SELECT COUNT(*)::text FROM portfolio_positions WHERE closed_above_entry), '0');

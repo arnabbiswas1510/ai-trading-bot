@@ -56,6 +56,11 @@ const FEATURE_FINGERPRINTS = [
   // their sell_reason strings and the exit panel has to keep resolving them.
   { feature: "Retired rule labels kept",  string: "Early Loss Kill-switch" },
   { feature: "Latch degradation warning", string: "DISARMED by an intraday poke above entry" },
+  // A missing add_ibkr_position_values.sql migration silently turns Invested
+  // Portfolio Value into cost basis and Unrealized P&L into $0.00. The warning
+  // is the only thing distinguishing that from a genuinely flat book.
+  { feature: "Cost-basis fallback warning", string: "data-unsynced-warning" },
+  { feature: "Cost-basis warning copy",     string: "Cost basis — not market value" },
   // Position Journey — phase / history / next step (added 2026-08-20)
   { feature: "Position Journey card",     string: "Position Journey" },
   { feature: "Journey history column",    string: "What has happened" },

@@ -65,8 +65,8 @@
     "semantic_hash": ""
   },
   "frontend/scripts/verify-build.mjs": {
-    "mtime": 1788555350.5764282,
-    "ast_hash": "8b1461a4720e117b11737e55e6345c05",
+    "mtime": 1788558377.5134206,
+    "ast_hash": "3625939f599bcee0b56b4b96a0c97fe2",
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
@@ -85,8 +85,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/DashboardView.jsx": {
-    "mtime": 1788554596.0168073,
-    "ast_hash": "a17f07340015802bf4bbd086a341ce1d",
+    "mtime": 1788558369.4140406,
+    "ast_hash": "0f0f8f5da96b43ba82480b48273794cb",
     "semantic_hash": ""
   },
   "frontend/src/components/ReturnsView.jsx": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788557026.6184585,
-    "ast_hash": "3680cafeb15abb897f4c048175722364",
+    "mtime": 1788558460.965172,
+    "ast_hash": "3f23a324b425a6529043336571823b5c",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -770,8 +770,8 @@
     "semantic_hash": ""
   },
   "migrations/2026-08-13_apply_missing_migrations.sql": {
-    "mtime": 1786829735.2213597,
-    "ast_hash": "60f023c7b2db38cade9d33211df4fed5",
+    "mtime": 1788558444.7814937,
+    "ast_hash": "1b9e292e2480e6cf9786ff0f2ffcbb22",
     "semantic_hash": ""
   },
   "decisions/2026-08-13_reconcile-supabase-schema-drift.md": {
@@ -785,13 +785,13 @@
     "semantic_hash": ""
   },
   "schema_guard.py": {
-    "mtime": 1788554842.3813827,
-    "ast_hash": "caaf427eb4c8b09591d73111619dc3b7",
+    "mtime": 1788558308.53582,
+    "ast_hash": "e3514ddbc66817e7e89e3364eb097f7b",
     "semantic_hash": ""
   },
   "tests/test_schema_guard.py": {
-    "mtime": 1786829735.222928,
-    "ast_hash": "9a50e80dabcb87999e26bb9f8c57181a",
+    "mtime": 1788558490.2080078,
+    "ast_hash": "91ef3e6239a1e67426355ebd0eb43603",
     "semantic_hash": ""
   },
   "decisions/2026-08-14_schema-guard-fail-loud.md": {

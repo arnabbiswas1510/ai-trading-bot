@@ -1099,6 +1099,13 @@ export default function DashboardView({ data, marketData, trades }) {
   const investedValue = positions.reduce((sum, pos) => sum + (pos.current_price || pos.buy_price) * pos.shares, 0);
   const recentTrades = trades?.slice(0, 5) || [];
 
+  // Positions the agent has never marked from IBKR. Their value falls back to
+  // cost basis, which makes Invested Portfolio Value read as "what you paid"
+  // and drives Unrealized P&L to exactly $0.00. That is indistinguishable from
+  // a genuinely flat book unless it is called out, so the metric cards below
+  // surface it rather than leaving the per-row label as the only signal.
+  const unsyncedPositions = positions.filter((p) => p.price_source !== 'IBKR');
+
   const { items: sortedPositions, requestSort: requestSortPos, getSortIcon: getSortIconPos } = useSortableTable(positions, 'ticker', 'asc');
   const { items: sortedTrades, requestSort: requestSortTrades, getSortIcon: getSortIconTrades } = useSortableTable(recentTrades, 'sell_date', 'desc');
 
@@ -1209,9 +1216,9 @@ export default function DashboardView({ data, marketData, trades }) {
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
             {Object.entries(marketData.indices || {}).map(([name, idx]) => (
-              <span key={name}>
+              <span key={name} style={{ whiteSpace: 'nowrap' }}>
                 {name}: <strong>{formatCurrency(idx.price)}</strong> (50d SMA: {formatCurrency(idx.sma50)})
               </span>
             ))}
@@ -1236,6 +1243,27 @@ export default function DashboardView({ data, marketData, trades }) {
               ? `${(((summary.invested_value ?? investedValue) / summary.portfolio_value) * 100).toFixed(1)}% of total portfolio (${formatCurrency(summary.portfolio_value)})`
               : `0.0% of total portfolio (${formatCurrency(0)})`}
           </span>
+          {unsyncedPositions.length > 0 && (
+            <div data-unsynced-warning style={{
+              marginTop: '0.65rem',
+              padding: '0.55rem 0.7rem',
+              background: 'rgba(245,158,11,0.07)',
+              border: '1px solid rgba(245,158,11,0.22)',
+              borderRadius: '8px',
+              fontSize: '0.7rem',
+              lineHeight: 1.55,
+              color: 'var(--text-muted)',
+            }}>
+              <div style={{ fontWeight: 700, color: '#f59e0b', marginBottom: '0.2rem', fontSize: '0.68rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                ⚠️ Cost basis — not market value
+              </div>
+              {unsyncedPositions.length} of {positions.length} position
+              {positions.length === 1 ? '' : 's'} ({unsyncedPositions.map((p) => p.ticker).join(', ')})
+              {' '}have never been marked from IBKR, so this figure is what you
+              paid, not what the positions are worth. Unrealized P&amp;L will read
+              $0.00 until the agent's next reconcile cycle writes broker values.
+            </div>
+          )}
         </div>
 
         <div className="card metric-card">
@@ -1289,7 +1317,9 @@ export default function DashboardView({ data, marketData, trades }) {
             {formatCurrency(summary.unrealized_pnl)}
           </div>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            Open positions growth
+            {unsyncedPositions.length > 0
+              ? `Not available — ${unsyncedPositions.length} position${unsyncedPositions.length === 1 ? '' : 's'} awaiting first IBKR sync`
+              : 'Open positions growth'}
           </span>
         </div>
 

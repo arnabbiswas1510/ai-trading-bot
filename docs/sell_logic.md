@@ -24,6 +24,26 @@ the primary source. Screening and research still price non-held candidates from
 FMP, where broker parity is irrelevant. See
 `decisions/2026-09-04_ibkr-first-live-pricing.md` for why.
 
+### The dashboard reads persisted values, not live ones
+
+The web container has no brokerage access by design, so it cannot call
+`ib.portfolio()`. It renders the `current_price` / `market_value` /
+`unrealized_pnl` / `ibkr_synced_at` columns that `reconcile_with_ibkr()` writes
+onto `portfolio_positions`, with an explicit "as of" timestamp.
+
+**These four columns require `migrations/add_ibkr_position_values.sql`.** Until
+it is run, the API falls back to cost basis and the dashboard reports
+**Invested Portfolio Value = what you paid** and **Unrealized P&L = exactly
+$0.00** — which is indistinguishable from a genuinely flat book. Both the
+per-row `Cost basis — not synced` label and a warning on the Invested Portfolio
+Value card call this out, and `schema_guard.py` lists the columns as missing
+*reporting* columns. It does **not** block trading: exit rules price from
+`ib.portfolio()` directly and are unaffected.
+
+Values stay `NULL` until the agent's next reconcile cycle after the migration.
+There is no back-fill, deliberately — seeding them with `buy_price` would make a
+never-synced position look identical to one IBKR has marked flat.
+
 ---
 
 ## Day counting

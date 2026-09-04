@@ -56,6 +56,30 @@ CRITICAL_COLUMNS: dict[str, dict[str, str]] = {
     },
 }
 
+# Columns that no risk rule reads, but that the dashboard reports from. Missing
+# => warn only. Trading is unaffected (the agent prices positions from IBKR live
+# via ib.portfolio(), not from these columns), but the operator-facing numbers
+# are silently wrong, which is its own kind of dangerous.
+ADVISORY_COLUMNS: dict[str, dict[str, str]] = {
+    "portfolio_positions": {
+        "current_price":
+            "IBKR mark used for dashboard position values — without it the "
+            "dashboard falls back to COST BASIS, so Invested Portfolio Value "
+            "shows what you paid and Unrealized P&L shows $0.00 "
+            "(migrations/add_ibkr_position_values.sql)",
+        "market_value":
+            "IBKR PortfolioItem.marketValue for dashboard totals "
+            "(migrations/add_ibkr_position_values.sql)",
+        "unrealized_pnl":
+            "IBKR PortfolioItem.unrealizedPNL for dashboard totals "
+            "(migrations/add_ibkr_position_values.sql)",
+        "ibkr_synced_at":
+            "'as of' timestamp for the three columns above — without it the "
+            "dashboard cannot distinguish a stale broker mark from a "
+            "never-synced position (migrations/add_ibkr_position_values.sql)",
+    },
+}
+
 # Analytics/archive objects. Missing => warn only, never block trading.
 ADVISORY_TABLES: dict[str, str] = {
     "trigger_history":
@@ -80,6 +104,7 @@ REPAIR_SCRIPT = "migrations/2026-08-13_apply_missing_migrations.sql"
 class SchemaReport:
     missing_critical: list[tuple[str, str, str]] = field(default_factory=list)
     missing_advisory: list[tuple[str, str]] = field(default_factory=list)
+    missing_advisory_columns: list[tuple[str, str, str]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -91,7 +116,7 @@ class SchemaReport:
         return bool(self.missing_critical)
 
     def summary(self) -> str:
-        if self.ok and not self.missing_advisory:
+        if self.ok and not self.missing_advisory and not self.missing_advisory_columns:
             return "✅ Schema check passed — all risk-rule columns present."
         lines = []
         if self.missing_critical:
@@ -99,6 +124,13 @@ class SchemaReport:
             lines.append("")
             lines.append("Missing columns that live risk rules depend on:")
             for table, col, why in self.missing_critical:
+                lines.append(f"• `{table}.{col}`\n  {why}")
+        if self.missing_advisory_columns:
+            if lines:
+                lines.append("")
+            lines.append("Missing reporting columns (trading unaffected, "
+                         "dashboard numbers wrong):")
+            for table, col, why in self.missing_advisory_columns:
                 lines.append(f"• `{table}.{col}`\n  {why}")
         if self.missing_advisory:
             if lines:
@@ -140,6 +172,17 @@ def check_schema(client) -> SchemaReport:
             ok, _ = _probe(client, table, col)
             if not ok:
                 report.missing_critical.append((table, col, why))
+
+    for table, cols in ADVISORY_COLUMNS.items():
+        table_ok, _err = _probe(client, table)
+        if not table_ok:
+            # Already reported against CRITICAL_COLUMNS if relevant; do not
+            # double-report a transport failure as reporting drift.
+            continue
+        for col, why in cols.items():
+            ok, _ = _probe(client, table, col)
+            if not ok:
+                report.missing_advisory_columns.append((table, col, why))
 
     for table, why in ADVISORY_TABLES.items():
         ok, _ = _probe(client, table)
