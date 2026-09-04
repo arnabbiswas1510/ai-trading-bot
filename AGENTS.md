@@ -153,11 +153,19 @@ The application uses a decoupled cloud screening and local execution environment
   account rollup price open positions from IBKR's own `marketPrice` via
   `get_position_price()` / `build_ibkr_price_map()` (non-blocking `ib.portfolio()`,
   never the blocking `reqTickers()`), falling back to FMP only when no mark is
-  available. **Dashboard position values** are likewise IBKR's own
+  available. **Dashboard position values** are likewise IBKR-first — IBKR's own
   `marketPrice` / `marketValue` / `unrealizedPNL`, persisted onto
   `portfolio_positions` by `reconcile_with_ibkr()` and rendered with an "as of"
-  timestamp. See `decisions/2026-09-04_ibkr-first-live-pricing.md` and
-  `decisions/2026-09-03_ibkr-sourced-position-values.md`.
+  timestamp — falling back to a **labelled** FMP quote when the broker has no
+  mark, and to cost basis only when there is no quote either. The web container
+  has no brokerage access, so "no IBKR mark" there means the persisted columns
+  are empty. Every fallback is named on screen via `price_source`
+  (`IBKR` / `FMP` / `COST_BASIS`); an *unlabelled* third-party price mixed into a
+  broker-sourced total remains forbidden. FMP is never written into the
+  `portfolio_positions` columns — the fallback is applied at render time only.
+  See `decisions/2026-09-04_ibkr-first-live-pricing.md`,
+  `decisions/2026-09-03_ibkr-sourced-position-values.md` and
+  `decisions/2026-09-04_labelled-fmp-dashboard-fallback.md`.
 
 ---
 

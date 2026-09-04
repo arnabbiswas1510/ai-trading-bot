@@ -321,10 +321,11 @@ from an unproven one. It fails safe by treating almost every position as *proven
 effectively disables Phase 1 — the tight entry-anchored band that is the whole point of the
 rule. `schema_guard.py` warns loudly about this.
 
-Until `add_ibkr_position_values.sql` is applied, the dashboard renders every open
-position at **cost basis** labelled `Cost basis — not synced`, because the columns
-holding IBKR's marks do not yet exist. Trading behaviour is unaffected — no exit
-rule reads them.
+Until `add_ibkr_position_values.sql` is applied, the dashboard has no persisted broker
+marks to render, so it prices every open position from a live FMP quote labelled
+`FMP estimate — not broker` — or, where no quote is available, at cost basis labelled
+`Cost basis — no quote`. Trading behaviour is unaffected: no exit rule reads these
+columns, and the agent prices exits from `ib.portfolio()` directly.
 
 ---
 

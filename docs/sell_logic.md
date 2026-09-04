@@ -24,25 +24,45 @@ the primary source. Screening and research still price non-held candidates from
 FMP, where broker parity is irrelevant. See
 `decisions/2026-09-04_ibkr-first-live-pricing.md` for why.
 
-### The dashboard reads persisted values, not live ones
+### The dashboard prices IBKR-first, then FMP, then cost basis
 
 The web container has no brokerage access by design, so it cannot call
 `ib.portfolio()`. It renders the `current_price` / `market_value` /
 `unrealized_pnl` / `ibkr_synced_at` columns that `reconcile_with_ibkr()` writes
 onto `portfolio_positions`, with an explicit "as of" timestamp.
 
+When a position has no persisted broker mark, `resolve_position_price()` in
+`backend/main.py` falls back to a live **FMP** quote, and to **cost basis** only
+when no usable quote exists either. This mirrors `get_position_price()` in the
+execution agent, which prices exits the same way.
+
+**Every price names its source.** The API returns `price_source` as `IBKR`,
+`FMP` or `COST_BASIS`, and the UI labels each row accordingly — `IBKR 15:47`,
+`FMP estimate — not broker`, or `Cost basis — no quote` — with the non-broker
+labels in amber. A warning on the Invested Portfolio Value card lists the
+affected tickers. An *unlabelled* third-party price mixed into a broker-sourced
+total is still forbidden; the label is what makes the fallback acceptable.
+See `decisions/2026-09-04_labelled-fmp-dashboard-fallback.md` for why.
+
+FMP is **never written** into the `portfolio_positions` columns. The fallback is
+applied at render time only, so those columns remain purely broker-sourced.
+
 **These four columns require `migrations/add_ibkr_position_values.sql`.** Until
-it is run, the API falls back to cost basis and the dashboard reports
-**Invested Portfolio Value = what you paid** and **Unrealized P&L = exactly
-$0.00** — which is indistinguishable from a genuinely flat book. Both the
-per-row `Cost basis — not synced` label and a warning on the Invested Portfolio
-Value card call this out, and `schema_guard.py` lists the columns as missing
-*reporting* columns. It does **not** block trading: exit rules price from
-`ib.portfolio()` directly and are unaffected.
+it is run, every position is priced from FMP (or cost basis), and
+`schema_guard.py` lists the columns as missing *reporting* columns. It does
+**not** block trading: exit rules price from `ib.portfolio()` directly and are
+unaffected.
 
 Values stay `NULL` until the agent's next reconcile cycle after the migration.
 There is no back-fill, deliberately — seeding them with `buy_price` would make a
 never-synced position look identical to one IBKR has marked flat.
+
+**No container restart is needed.** The agent re-attempts the write every cycle,
+so applying the migration to a running agent takes effect on its own. Note that
+`reconcile_with_ibkr()` only runs while the market is open (09:30–16:00 ET,
+weekdays) — a migration applied in the evening or at a weekend will not populate
+anything until the next session opens. That wait is normal and is not a failure.
+See `decisions/2026-09-03_ibkr-sourced-position-values.md` for why.
 
 **No container restart is needed.** The agent re-attempts the write every cycle,
 so applying the migration to a running agent takes effect on its own. Note that

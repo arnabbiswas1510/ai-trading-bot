@@ -1,7 +1,25 @@
 # Source dashboard position values from IBKR, not FMP
 
 - **Date:** 2026-09-03
-- **Status:** Accepted — with one implementation defect since corrected
+- **Status:** Accepted — fallback superseded by
+  `decisions/2026-09-04_labelled-fmp-dashboard-fallback.md`; one implementation
+  defect since corrected (see the erratum below)
+
+> **Superseded in part, 2026-09-04.** The core decision — value positions from
+> IBKR rather than FMP — stands and is unchanged. Two subsidiary points below no
+> longer describe the system:
+>
+> - The **cost-basis fallback** has been replaced by a *labelled* FMP quote,
+>   with cost basis used only when no quote is available. Showing `$0.00`
+>   unrealized P&L for an unsynced book reads as a flat book, which is the same
+>   provenance problem this ADR set out to fix.
+> - The claim that the FMP call "survives only to resolve a company name" is no
+>   longer true: its price is now used as the fallback. FMP is still **never
+>   written** to the `portfolio_positions` columns — the fallback is applied at
+>   render time only, so the column comments in the migration remain correct.
+>
+> The refined rule is that *unlabelled* source mixing was the defect, not source
+> mixing itself. See the superseding ADR.
 
 > **Erratum, 2026-09-04.** The degradation described under *Negative / accepted*
 > below, and Follow-up step 2, were **not delivered as written**. `PGRST204` set

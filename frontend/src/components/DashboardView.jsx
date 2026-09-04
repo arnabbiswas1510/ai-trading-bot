@@ -1099,12 +1099,15 @@ export default function DashboardView({ data, marketData, trades }) {
   const investedValue = positions.reduce((sum, pos) => sum + (pos.current_price || pos.buy_price) * pos.shares, 0);
   const recentTrades = trades?.slice(0, 5) || [];
 
-  // Positions the agent has never marked from IBKR. Their value falls back to
-  // cost basis, which makes Invested Portfolio Value read as "what you paid"
-  // and drives Unrealized P&L to exactly $0.00. That is indistinguishable from
-  // a genuinely flat book unless it is called out, so the metric cards below
-  // surface it rather than leaving the per-row label as the only signal.
-  const unsyncedPositions = positions.filter((p) => p.price_source !== 'IBKR');
+  // Positions the agent has never marked from IBKR. The API prices these from
+  // FMP where a quote is available, and from cost basis only when it is not.
+  // Both are estimates the broker never agreed with, so the metric cards below
+  // surface them rather than leaving the per-row label as the only signal --
+  // a cost-basis fallback in particular drives Unrealized P&L to exactly $0.00,
+  // which is indistinguishable from a genuinely flat book.
+  const unsyncedPositions  = positions.filter((p) => p.price_source !== 'IBKR');
+  const estimatedPositions = positions.filter((p) => p.price_source === 'FMP');
+  const costBasisPositions = positions.filter((p) => p.price_source === 'COST_BASIS');
 
   const { items: sortedPositions, requestSort: requestSortPos, getSortIcon: getSortIconPos } = useSortableTable(positions, 'ticker', 'asc');
   const { items: sortedTrades, requestSort: requestSortTrades, getSortIcon: getSortIconTrades } = useSortableTable(recentTrades, 'sell_date', 'desc');
@@ -1255,13 +1258,23 @@ export default function DashboardView({ data, marketData, trades }) {
               color: 'var(--text-muted)',
             }}>
               <div style={{ fontWeight: 700, color: '#f59e0b', marginBottom: '0.2rem', fontSize: '0.68rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                ⚠️ Cost basis — not market value
+                ⚠️ {costBasisPositions.length > 0 ? 'Includes cost basis' : 'Includes FMP estimates'}
               </div>
               {unsyncedPositions.length} of {positions.length} position
               {positions.length === 1 ? '' : 's'} ({unsyncedPositions.map((p) => p.ticker).join(', ')})
-              {' '}have never been marked from IBKR, so this figure is what you
-              paid, not what the positions are worth. Unrealized P&amp;L will read
-              $0.00 until the agent's next reconcile cycle writes broker values.
+              {' '}have not been marked from IBKR
+              {estimatedPositions.length > 0 && (
+                <> — {estimatedPositions.length === 1 ? 'it is' : 'they are'} valued
+                  from an FMP quote, which the broker never confirmed and which
+                  will not match a fill exactly</>
+              )}
+              {costBasisPositions.length > 0 && (
+                <> — {costBasisPositions.length === 1 ? 'one has' : `${costBasisPositions.length} have`} no
+                  quote at all and {costBasisPositions.length === 1 ? 'is' : 'are'} shown
+                  at what you paid</>
+              )}
+              . IBKR values replace these on the agent's next reconcile cycle,
+              which runs only while the market is open.
             </div>
           )}
         </div>
@@ -1317,9 +1330,11 @@ export default function DashboardView({ data, marketData, trades }) {
             {formatCurrency(summary.unrealized_pnl)}
           </div>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            {unsyncedPositions.length > 0
-              ? `Not available — ${unsyncedPositions.length} position${unsyncedPositions.length === 1 ? '' : 's'} awaiting first IBKR sync`
-              : 'Open positions growth'}
+            {costBasisPositions.length > 0
+              ? `Understated — ${costBasisPositions.length} position${costBasisPositions.length === 1 ? '' : 's'} priced at cost basis`
+              : estimatedPositions.length > 0
+                ? `Estimated — ${estimatedPositions.length} position${estimatedPositions.length === 1 ? '' : 's'} priced from FMP, not IBKR`
+                : 'Open positions growth'}
           </span>
         </div>
 
@@ -1447,14 +1462,21 @@ export default function DashboardView({ data, marketData, trades }) {
                         <td>{formatCurrency(pos.buy_price)}</td>
                         <td style={{ color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                           <div>{formatCurrency(pos.current_price)}</div>
-                          {/* IBKR is the only source for this number. When the
-                              agent has never marked the position we show the
-                              cost basis and say so, rather than implying a live
-                              price the broker never quoted. */}
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.1rem', fontWeight: 400 }}>
+                          {/* IBKR-first, FMP fallback, cost basis last. The
+                              source is always named: an unlabelled third-party
+                              price sitting next to a broker-sourced one is the
+                              ambiguity this label exists to remove. */}
+                          <div style={{
+                            fontSize: '0.68rem',
+                            marginTop: '0.1rem',
+                            fontWeight: 400,
+                            color: pos.price_source === 'IBKR' ? 'var(--text-muted)' : '#f59e0b',
+                          }}>
                             {pos.price_source === 'IBKR'
                               ? `IBKR ${formatSyncedAt(pos.ibkr_synced_at)}`
-                              : 'Cost basis — not synced'}
+                              : pos.price_source === 'FMP'
+                                ? 'FMP estimate — not broker'
+                                : 'Cost basis — no quote'}
                           </div>
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>

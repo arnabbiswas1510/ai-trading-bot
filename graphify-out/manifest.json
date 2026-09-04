@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "backend/main.py": {
-    "mtime": 1788473343.1669292,
-    "ast_hash": "2691b70e2d20307ab49ccc99a7cb72f4",
+    "mtime": 1788560723.0481462,
+    "ast_hash": "532a15af233a6ddff503c2bf651f831e",
     "semantic_hash": ""
   },
   "backend/screener.py": {
@@ -40,7 +40,7 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1788559775.4648554,
+    "mtime": 1788559852.9623106,
     "ast_hash": "d4e9b384e362da4d31b8e9292e7f7b7b",
     "semantic_hash": ""
   },
@@ -65,8 +65,8 @@
     "semantic_hash": ""
   },
   "frontend/scripts/verify-build.mjs": {
-    "mtime": 1788558377.5134206,
-    "ast_hash": "3625939f599bcee0b56b4b96a0c97fe2",
+    "mtime": 1788560685.94274,
+    "ast_hash": "e59f52de8ecf00d893309ea34951c94c",
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
@@ -85,8 +85,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/DashboardView.jsx": {
-    "mtime": 1788558369.4140406,
-    "ast_hash": "0f0f8f5da96b43ba82480b48273794cb",
+    "mtime": 1788560676.9553545,
+    "ast_hash": "b6ade335f46bb61799f8e30907e445f2",
     "semantic_hash": ""
   },
   "frontend/src/components/ReturnsView.jsx": {
@@ -315,7 +315,7 @@
     "semantic_hash": ""
   },
   "tests/test_reconcile.py": {
-    "mtime": 1788559761.347123,
+    "mtime": 1788559852.9842386,
     "ast_hash": "a2cd308a1d7cbbde40965ff2415d4d05",
     "semantic_hash": ""
   },
@@ -375,8 +375,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1788557026.6117122,
-    "ast_hash": "ae494bde3c17db740aa0f0986f80ffbc",
+    "mtime": 1788560799.4820046,
+    "ast_hash": "57de7dff0112530057609649c2893110",
     "semantic_hash": ""
   },
   "README.md": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1788555135.1095228,
-    "ast_hash": "e3645662ac1da1673b8534fe186c301d",
+    "mtime": 1788560821.5476925,
+    "ast_hash": "d39110cafabdc4cf780dfc814f39901f",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788559806.8314395,
-    "ast_hash": "f04f43d3f7bff75f1809200390526831",
+    "mtime": 1788560816.73059,
+    "ast_hash": "92437dece5196bf6d012394d0ee87671",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -1025,8 +1025,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-03_ibkr-sourced-position-values.md": {
-    "mtime": 1788559816.5493197,
-    "ast_hash": "dedf3755392b97767177cbfc93d07018",
+    "mtime": 1788560869.797188,
+    "ast_hash": "b9205fc38c744fc25aa3c987085dc3e1",
     "semantic_hash": ""
   },
   "tests/test_position_price.py": {
@@ -1052,6 +1052,16 @@
   "docs/retired_code.md": {
     "mtime": 1788555265.2078855,
     "ast_hash": "93ac5799a597ac6079d85cd9d4cc3cb7",
+    "semantic_hash": ""
+  },
+  "tests/test_dashboard_pricing.py": {
+    "mtime": 1788560755.5277135,
+    "ast_hash": "f7643b4aa39a557373a66e571eee6d3a",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-04_labelled-fmp-dashboard-fallback.md": {
+    "mtime": 1788560853.5325558,
+    "ast_hash": "6a6d02658e9fef13f37c390f066c3d4d",
     "semantic_hash": ""
   }
 }

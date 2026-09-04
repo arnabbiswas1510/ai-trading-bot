@@ -60,7 +60,7 @@ const FEATURE_FINGERPRINTS = [
   // Portfolio Value into cost basis and Unrealized P&L into $0.00. The warning
   // is the only thing distinguishing that from a genuinely flat book.
   { feature: "Cost-basis fallback warning", string: "data-unsynced-warning" },
-  { feature: "Cost-basis warning copy",     string: "Cost basis — not market value" },
+  { feature: "Fallback warning copy",       string: "have not been marked from IBKR" },
   // Position Journey — phase / history / next step (added 2026-08-20)
   { feature: "Position Journey card",     string: "Position Journey" },
   { feature: "Journey history column",    string: "What has happened" },
@@ -79,7 +79,8 @@ const FEATURE_FINGERPRINTS = [
   // column silently reverts to looking live while showing cost basis, which is
   // the exact ambiguity decisions/2026-09-03_ibkr-sourced-position-values.md
   // exists to remove.
-  { feature: "IBKR price provenance",     string: "Cost basis — not synced" },
+  { feature: "IBKR price provenance",     string: "FMP estimate — not broker" },
+  { feature: "Cost-basis provenance",     string: "Cost basis — no quote" },
   { feature: "IBKR price as-of stamp",    string: "as of " },
 ];
 

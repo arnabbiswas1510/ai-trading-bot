@@ -164,6 +164,38 @@ def get_screener_results():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def resolve_position_price(pos: dict, fmp_price: float | None) -> tuple[float, str]:
+    """Decide which price to display for an open position, and name the source.
+
+    IBKR first, FMP second, cost basis last. This mirrors get_position_price()
+    in execution_agent.py, which prices exits the same way: IBKR is
+    authoritative because it is what orders fill against, and FMP covers only
+    the window where the broker has no mark -- the agent has not reconciled the
+    position yet, or its data farm is down.
+
+    The web container cannot call ib.portfolio() itself (no brokerage access by
+    design), so "no IBKR mark" here means the persisted columns are empty. Both
+    fallbacks are named through the returned source so the UI can label them; an
+    unlabelled third-party price mixed into a broker-sourced total is the defect
+    this must not reintroduce.
+
+    Cost basis is last because it is not a market price at all -- it drives
+    unrealized P&L to exactly $0.00, which is indistinguishable from a flat book.
+
+    Returns (display_price, price_source) where price_source is one of
+    'IBKR', 'FMP' or 'COST_BASIS'.
+    """
+    ibkr_price  = pos.get('current_price')
+    ibkr_synced = pos.get('ibkr_synced_at')
+    # Both are required: a price without a sync timestamp cannot be attributed,
+    # and a timestamp without a price is not a mark.
+    if ibkr_price is not None and ibkr_synced is not None:
+        return float(ibkr_price), 'IBKR'
+    if fmp_price is not None and fmp_price > 0:
+        return float(fmp_price), 'FMP'
+    return float(pos['buy_price']), 'COST_BASIS'
+
+
 @app.get("/api/portfolio")
 def get_portfolio():
     try:
@@ -218,29 +250,27 @@ def get_portfolio():
         for pos in positions:
             ticker = pos['ticker']
             fmp_name = None
+            fmp_price = None
             try:
                 if fmp.is_configured():
-                    # NOTE: this quote is fetched for the company NAME ONLY.
-                    # The price field is deliberately ignored — position values
-                    # come from IBKR via portfolio_positions.current_price, which
-                    # reconcile_with_ibkr() writes from PortfolioItem.marketPrice.
-                    # Mixing a live FMP quote into a broker-sourced total is the
-                    # exact defect migrations/add_ibkr_position_values.sql removes.
+                    # This quote supplies the company name, and the fallback price
+                    # used only when IBKR has no mark for the position (see below).
                     quote = fmp.get_quote(ticker)
                     if quote:
                         fmp_name = (quote.get("name") or "").strip() or None
+                        try:
+                            _p = float(quote.get("price") or 0)
+                            fmp_price = _p if _p > 0 else None
+                        except (TypeError, ValueError):
+                            fmp_price = None
             except Exception as ex:
-                print(f"Could not fetch company name for {ticker}: {ex}")
+                print(f"Could not fetch quote for {ticker}: {ex}")
 
-            # IBKR's mark, or cost basis when the agent has never synced this
-            # position. Never a third-party quote — a stale broker price is
-            # recoverable and is labelled as such in the UI via ibkr_synced_at;
-            # a fresh-looking price the broker never agreed with is not.
-            ibkr_price   = pos.get('current_price')
+            # IBKR-first, FMP fallback, cost basis last -- see
+            # resolve_position_price() above for why, and for the labelling rule.
             ibkr_synced  = pos.get('ibkr_synced_at')
-            price_is_ibkr = ibkr_price is not None and ibkr_synced is not None
-
-            display_price = float(ibkr_price) if price_is_ibkr else float(pos['buy_price'])
+            display_price, price_source = resolve_position_price(pos, fmp_price)
+            price_is_ibkr = price_source == 'IBKR'
 
             # Prefer IBKR's own market_value: it is the authority on both share
             # count and price, so recomputing shares x price would reintroduce
@@ -263,9 +293,9 @@ def get_portfolio():
             pos['value'] = round(value, 2)
             pos['pnl'] = round(pnl, 2)
             pos['pnl_pct'] = round(pnl_pct, 2)
-            # Lets the dashboard say "as of 15:47" or flag a never-synced
-            # position instead of implying the cost basis is a live price.
-            pos['price_source']   = 'IBKR' if price_is_ibkr else 'COST_BASIS'
+            # Lets the dashboard say "as of 15:47", or mark the number as an FMP
+            # estimate, instead of implying every price came from the broker.
+            pos['price_source']   = price_source
             pos['ibkr_synced_at'] = ibkr_synced
             # Attach company name. The watchlist only holds the current screener
             # snapshot, so a ticker that has since dropped off it (SWK, CPAY) has
