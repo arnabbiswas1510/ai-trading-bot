@@ -225,6 +225,39 @@ becomes a fixed price floor with no new order type. The percentage is solved
 against the **current** price because IBKR resets the `trailingPercent` anchor on
 every cancel-and-replace — which is exactly what the tightening block does.
 
+### Why Phase 1 is enforced by the agent, not by the broker
+
+Phase 1 is deliberately **bot-enforced**: the agent's 15-minute cycle compares
+price to the band, and a breach *arms* a 0.6% trail rather than selling. The
+resting IBKR order is pushed 1% further away precisely so it cannot pre-empt
+that.
+
+This is a measured choice, not an oversight. The obvious alternative — park the
+resting order **on** the day-0 level so it is enforced continuously — was
+replayed across all 30 closed trades and is worse on every axis:
+
+| Day-0 enforcement | Net vs realised | Worst single loss | Losers > $300 |
+|---|---|---|---|
+| **Bot poll + arm (shipped)** | **+$11,665** | −$1,269 | 9 |
+| Resting broker stop @ 1.0% | +$11,262 | −$1,269 | 9 |
+| Resting broker stop @ 1.5% | +$10,354 | −$1,269 | 13 |
+| Resting broker stop @ 2.5% | +$9,513 | −$1,269 | 13 |
+
+It costs $403 and does not improve the worst loss at all. Widening the hard band
+degrades it monotonically, because a resting stop fires on wicks that a
+15-minute close ignores — and in this sample those wicks were noise. The armed
+trail more than pays for the sampling gap: seven of the thirteen Phase 1 exits
+came out *better* under arming (HWM −$579 → −$447, LPG −$231 → −$92,
+RSI −$252 → −$202).
+
+Reproduce with `python3 research/exit_rule_replay.py --day0`.
+
+**Consequence to understand:** the day-0 1% is a *trigger*, not a loss cap.
+Between the 15-minute sampling gap, the arm-then-trail mechanism and the
+backstop sitting at ≈2% below entry, a realistic worst case on day 0 is
+**2–2.5%**, and it is unbounded on a genuine fast move. That is the price of the
+bounce capture.
+
 ### Fails safe
 
 A missing `closed_above_entry` column reads as `None`, and `None` counts as

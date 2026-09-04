@@ -191,6 +191,52 @@ these numbers should be believed.
 
 ---
 
+## Addendum, 2026-09-04 — Phase 1 enforcement side, measured
+
+The question was raised whether Phase 1 (and the day-0 1% band in particular)
+should be enforced by a **resting IBKR stop sitting on the level** rather than by
+the agent's 15-minute cycle. The concern is legitimate: bot-side enforcement
+samples price 26 times a session instead of watching it continuously, and a
+breach *arms* a 0.6% trail rather than selling, so the day-0 1% is a trigger and
+not a loss cap. Realistic worst case on day 0 is 2–2.5%, unbounded on a fast
+move.
+
+`research/exit_rule_replay.py` gained a `p1_hard_max_day` mechanism and a
+`--day0` config set to settle it against all 30 closed trades.
+
+| Configuration | Net vs realised | Worst loss | > $300 |
+|---|---|---|---|
+| **Shipped (bot poll + arm)** | **+$11,665** | −$1,269 | 9 |
+| Broker-hard day 0 @ 1.0% | +$11,262 | −$1,269 | 9 |
+| Broker-hard day 0 @ 1.5% | +$10,354 | −$1,269 | 13 |
+| Broker-hard day 0 @ 2.5% | +$9,513 | −$1,269 | 13 |
+| Broker-hard *all* Phase 1 days | +$11,852 | −$770 | 9 |
+
+**Decision: keep Phase 1 bot-enforced. No code change.**
+
+- Hardening **day 0 only** costs $403 and does not move the worst loss by a cent.
+  Widening the hard band degrades it monotonically: a resting stop fires on wicks
+  a 15-minute close ignores, and in this sample those wicks were noise.
+- The armed trail more than pays for the sampling gap. Seven of the thirteen
+  Phase 1 exits were *better* under arming — HWM −$579 → −$447, LPG −$231 → −$92,
+  RSI −$252 → −$202.
+- Hardening **all** of Phase 1 appears to win (+$187, worst loss −$770) but is
+  **rejected as a single-trade artefact**. Per-trade, it hurts 9 trades and helps
+  4; the entire net is APH alone (−$1,269 → −$665), the overnight-gap trade where
+  a resting order fills on the gap open before the agent's first poll. Excluding
+  APH the configuration *loses* $418. This is exactly the "carried by one trade"
+  failure mode the scheduled review in `AGENTS.md` warns about.
+- **Winners are untouched by this choice.** Every Phase 2 exit reason is
+  byte-identical across all variants; the whole difference is confined to losers.
+
+APH does point at a real gap-risk gap, but on n=30 that is one trade of evidence.
+If it is ever revisited, the targeted fix is a wider always-resting backstop, not
+a tighter day 0. Added to the scheduled exit-parameter review.
+
+Reproduce: `python3 research/exit_rule_replay.py --day0`
+
+---
+
 ## Consequences
 
 ### Retired

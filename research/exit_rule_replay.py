@@ -129,6 +129,12 @@ class ExitConfig:
     # False = fire only if a 15-minute CLOSE is at/below the level (models the
     #         agent's monitoring cycle; ignores wicks).
     p1_touch: bool = False
+    # Days on which Phase 1 is enforced BROKER-SIDE: a resting IBKR stop sitting
+    # exactly on the level, filling the instant price touches it, with no
+    # arm_exit() bounce-capture. `None` disables it entirely (the shipped
+    # behaviour, where every Phase 1 day is bot-polled and then armed).
+    # Set to 0 to model "day 0 hard at the broker, day 1+ unchanged".
+    p1_hard_max_day: int | None = None
     # Phase 2 (position HAS closed above entry) — peak-anchored give-back.
     p2_enabled: bool = True
     # Minimum peak gain % before the breakeven floor arms. Below this a floor
@@ -154,6 +160,8 @@ class ExitConfig:
                     prev = last_day + 1
                 bits.append("P1[" + " ".join(spans) + "]")
                 bits.append("touch" if self.p1_touch else "close")
+                if self.p1_hard_max_day is not None:
+                    bits.append(f"hard<=d{self.p1_hard_max_day}")
             if self.p2_enabled:
                 bits.append(f"P2[arm>={self.p2_arm_gain}% floor=+{self.p2_floor_pct}% "
                             f"ladder>={self.p2_ladder_gain}%@{self.p2_ladder_trail*100:.1f}%]")
@@ -518,9 +526,14 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
             pct = cfg.p1_pct_for_day(day)
             if pct is not None:
                 level = entry * (1 - pct / 100.0)
+                # A "hard" day is enforced by a resting broker stop: wick-
+                # sensitive, fills at the level (or the open on a gap), and
+                # never arms. Otherwise fall back to the configured mechanism.
+                hard = (cfg.p1_hard_max_day is not None
+                        and day <= cfg.p1_hard_max_day)
                 hit = False
                 fill = level
-                if cfg.p1_touch:
+                if cfg.p1_touch or hard:
                     if bar["open"] <= level:
                         hit, fill = True, bar["open"]
                     elif bar["low"] <= level:
@@ -529,6 +542,8 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     hit, fill = True, bar["close"]
 
                 if hit:
+                    if hard:
+                        return {"price": fill, "reason": "p1_broker"}
                     if cfg.mode == "market":
                         return {"price": fill, "reason": "p1_market"}
                     armed = {"at": bar["ts"], "peak": fill,
@@ -688,6 +703,59 @@ def grid_configs() -> list[ExitConfig]:
     return out
 
 
+def shipped_proveit() -> ExitConfig:
+    """The Prove-It Stop exactly as it now runs live.
+
+    Mirrors the PROVE_IT_* constants in execution_agent.py: Phase 1 is 1.0% below
+    entry on day 0 and 3.0% from day 1, enforced on the agent's 15-minute CLOSE
+    and then armed; Phase 2 arms at a +2.0% peak and floors at -1.0% of entry.
+    """
+    return ExitConfig(
+        "ProveIt SHIPPED (P1 1.0%/d0 then 3.0%, close+arm; P2 arm2% floor-1%)",
+        proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+        p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0)
+
+
+def day0_configs() -> list[ExitConfig]:
+    """Day-0 mechanism test: bot-polled-then-armed vs a resting broker stop.
+
+    The shipped Phase 1 is enforced by the agent's 15-minute cycle, so the day-0
+    1% band is sampled 26 times a session rather than watched continuously, and a
+    breach ARMS a 0.6% trail instead of selling. The resting IBKR order sits 1%
+    wider (PROVE_IT_BACKSTOP_SLACK_PCT) precisely so it cannot pre-empt that.
+
+    The alternative is to put the resting order ON the day-0 level: continuous
+    enforcement, but wick-sensitive and with no bounce capture. Widening the hard
+    band is included because a touch-stop and a close-stop at the same number are
+    not the same rule — the touch version must be given room for noise.
+    """
+    out = [shipped_config(), shipped_proveit()]
+
+    for pct in (1.0, 1.25, 1.5, 2.0, 2.5):
+        out.append(ExitConfig(
+            f"ProveIt + BROKER-HARD day 0 @ {pct}% (d1+ unchanged 3.0% close+arm)",
+            proveit=True, p1_tiers=((0, pct), (99, 3.0)), p1_touch=False,
+            p1_hard_max_day=0,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0))
+
+    # Whole of Phase 1 broker-side, to show whether any benefit is specific to
+    # day 0 or is really just "hard stops beat armed exits".
+    out.append(ExitConfig(
+        "ProveIt + BROKER-HARD all Phase 1 days (1.0%/d0 then 3.0%)",
+        proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+        p1_hard_max_day=99,
+        p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0))
+
+    # Control: same day-0 band, still bot-polled, but selling at market instead
+    # of arming. Separates "continuous watching" from "no bounce capture".
+    out.append(ExitConfig(
+        "ProveIt + day 0 close-triggered MARKET sell (no arming)",
+        proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+        mode="market",
+        p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0))
+    return out
+
+
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
 def proveit_configs() -> list[ExitConfig]:
@@ -805,6 +873,9 @@ def main() -> None:
                         help="run the full parameter sweep instead of the headline set")
     parser.add_argument("--proveit", action="store_true",
                         help="run the two-phase Prove-It Stop sweep")
+    parser.add_argument("--day0", action="store_true",
+                        help="compare day-0 Phase 1 enforcement: bot poll + arm "
+                             "vs a resting broker stop")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -822,14 +893,17 @@ def main() -> None:
     if not trades:
         sys.exit("No trades with usable price history — nothing to replay.")
 
-    if args.proveit:
+    if args.day0:
+        configs = day0_configs()
+    elif args.proveit:
         configs = proveit_configs()
     elif args.grid:
         configs = grid_configs()
     else:
         configs = headline_configs()
     results = [score(trades, cfg) for cfg in configs]
-    report(results, trades, top=args.top if (args.grid or args.proveit) else None)
+    report(results, trades,
+           top=args.top if (args.grid or args.proveit) else None)
 
     if args.json:
         with open(args.json, "w") as fh:

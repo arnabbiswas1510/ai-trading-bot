@@ -612,6 +612,8 @@ parameters are corrected by evidence rather than left to ossify.
 set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
 python3 research/exit_rule_replay.py --insecure            # headline comparison
 python3 research/exit_rule_replay.py --insecure --grid     # full sweep
+python3 research/exit_rule_replay.py --insecure --proveit  # Prove-It parameter sweep
+python3 research/exit_rule_replay.py --insecure --day0     # Phase 1: bot-enforced vs broker-resting
 ```
 
 `research/exit_rule_replay.py` replays the bot's **own** closed trades on
@@ -658,7 +660,7 @@ change something.
 | `PROVE_IT_P1_DAY0_LAST_DAY` | `0` | The day-1 damage rests largely on that same winner. |
 | `PROVE_IT_P2_ARM_GAIN_PCT` | `0.02` | Not swept independently of the floor. Its only job is to keep the floor out of ±2% noise. |
 | `PROVE_IT_P2_FLOOR_PCT` | `-0.01` | The 1% of slack is worth +$1,189 on CPAY alone. Whether 1% is the *right* slack, or merely enough for CPAY, is unresolved. |
-| `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | Not measured. Set wide enough that the resting order provably cannot front-run the bot; no sweep supports the exact value. |
+| `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | Not measured. Set wide enough that the resting order provably cannot front-run the bot; no sweep supports the exact value. **Re-test with `--day0`:** a broker-hard Phase 1 wins by +$187 on the current sample, but the entire net is APH alone — recheck once more overnight-gap trades exist. |
 | `TRAIL_PROFIT_TIERS` | `+5% → 1.5%` | 2026-08-22 replay on 17 trades outperformed +6% by +$1,385 with no harmed trades; still under review due to sample size. |
 | `POWER_HOLD_GAIN_PCT` | `10.0` | **Entirely unvalidated.** No trade in the 30-trade replay reached +10% within 21 days, so the harness is silent on it. Lowered from 20% only because 20% was unreachable. |
 | `STALE_EXIT_DAYS` (as a rotation discount) | `10` | The staleness discount is **unmodelled by the harness** — the replay cannot see Rank & Replace at all. |

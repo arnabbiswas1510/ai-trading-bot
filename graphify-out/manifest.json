@@ -375,8 +375,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1788556959.9762282,
-    "ast_hash": "a0589792cc1b757c98002b68f1b4e540",
+    "mtime": 1788557026.6117122,
+    "ast_hash": "ae494bde3c17db740aa0f0986f80ffbc",
     "semantic_hash": ""
   },
   "README.md": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788556959.9758995,
-    "ast_hash": "6e9e7b98f3bb4acc5464a343320e949d",
+    "mtime": 1788557026.6184585,
+    "ast_hash": "3680cafeb15abb897f4c048175722364",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -900,8 +900,8 @@
     "semantic_hash": ""
   },
   "research/exit_rule_replay.py": {
-    "mtime": 1788556973.3745112,
-    "ast_hash": "04a92dc01b3c9d8ab63374789a457b3a",
+    "mtime": 1788557026.6218889,
+    "ast_hash": "18a13c9a33997a8dea9bf0f486eed5d7",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_slot-derived-early-dollar-stop.md": {
@@ -1045,8 +1045,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-04_prove-it-stop.md": {
-    "mtime": 1788556959.975523,
-    "ast_hash": "99a7f3e7333ed8bfa8d4f590098e67cd",
+    "mtime": 1788557026.615128,
+    "ast_hash": "09b781c81305ad9e88efad674bcb1e8f",
     "semantic_hash": ""
   },
   "docs/retired_code.md": {
