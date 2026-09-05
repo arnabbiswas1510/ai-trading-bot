@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "backend/main.py": {
-    "mtime": 1788560723.0481462,
-    "ast_hash": "532a15af233a6ddff503c2bf651f831e",
+    "mtime": 1788587104.8999143,
+    "ast_hash": "0967c0d330a9fdc622b0ddfae29b4b42",
     "semantic_hash": ""
   },
   "backend/screener.py": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1788560821.5476925,
-    "ast_hash": "d39110cafabdc4cf780dfc814f39901f",
+    "mtime": 1788587287.6199765,
+    "ast_hash": "2792fa519e9d6c4eaa709f5ceed5dbb0",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788560816.73059,
-    "ast_hash": "92437dece5196bf6d012394d0ee87671",
+    "mtime": 1788587240.5241408,
+    "ast_hash": "ef1d3b0e201bcd23ad92ea3a2ae7ba0f",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -1055,13 +1055,28 @@
     "semantic_hash": ""
   },
   "tests/test_dashboard_pricing.py": {
-    "mtime": 1788560755.5277135,
-    "ast_hash": "f7643b4aa39a557373a66e571eee6d3a",
+    "mtime": 1788587195.6812139,
+    "ast_hash": "9a77616ecdcb3e61f77ac4db2c24748d",
     "semantic_hash": ""
   },
   "decisions/2026-09-04_labelled-fmp-dashboard-fallback.md": {
-    "mtime": 1788560853.5325558,
-    "ast_hash": "6a6d02658e9fef13f37c390f066c3d4d",
+    "mtime": 1788587244.1665666,
+    "ast_hash": "c2120caeda4cf0e3bf67c6ed3402f21f",
+    "semantic_hash": ""
+  },
+  "backend/pricing.py": {
+    "mtime": 1788587093.9569974,
+    "ast_hash": "2e7a1a7eb5524404722bc2f32fad40ca",
+    "semantic_hash": ""
+  },
+  "tests/test_ci_import_hygiene.py": {
+    "mtime": 1788587186.6851566,
+    "ast_hash": "3ba0126f45222eb40a5b620b25249a60",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-05_ci-import-hygiene.md": {
+    "mtime": 1788587272.420397,
+    "ast_hash": "781c0bfc9bd2d188159e4575101a181b",
     "semantic_hash": ""
   }
 }

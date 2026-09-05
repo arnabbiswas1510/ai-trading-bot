@@ -284,6 +284,29 @@ Used by `managed_exit.py` for manual liquidation.
 
 `READ_ONLY_API=no` must be set in the gateway container or order submission is rejected.
 
+### Dependency manifests
+
+There are two, and they are **not** interchangeable:
+
+| Manifest | Installed into | Adds |
+|---|---|---|
+| `requirements.txt` (root) | execution agent, screeners, **all CI workflows** | `requests`, `pandas`, `supabase`, `httpx`, `pytest`, `watchdog`, `ib_insync`, `openai` |
+| `backend/requirements.txt` | `trading-bot` container only | `fastapi`, `uvicorn`, `yfinance`, `numpy` |
+
+The Daily Screener workflow installs **only the root manifest** and runs the
+full pytest suite before any screening step. A test that imports FastAPI —
+directly, or by importing a `backend/` module that does — therefore aborts
+collection on CI and takes the day's fundamental scan, breakout scan and AI
+evaluation with it. This will not reproduce locally, where the backend
+requirements are usually installed as well.
+
+So: **tests may import a `backend/` module only if that module is importable
+with the root manifest alone.** Pure logic that needs coverage belongs in a
+dependency-free module such as `backend/pricing.py`, which `backend/main.py`
+imports. `tests/test_ci_import_hygiene.py` enforces this and fails with the
+required fix in its message. See `decisions/2026-09-05_ci-import-hygiene.md`
+for why.
+
 ---
 
 ## Database schema

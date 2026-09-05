@@ -39,7 +39,7 @@ is invisible. Replacing a misleading price with a misleading zero is not progres
 Price dashboard positions **IBKR first, FMP second, cost basis last**, and label
 every one of them.
 
-`resolve_position_price()` in `backend/main.py` returns
+`resolve_position_price()` in `backend/pricing.py` returns
 `(display_price, price_source)` where `price_source` is `IBKR`, `FMP` or
 `COST_BASIS`. The UI renders the source under every price:
 
@@ -110,7 +110,11 @@ pins it.
 
 ## Files
 
-- `backend/main.py` — `resolve_position_price()`; endpoint wired to it.
+- `backend/pricing.py` — `resolve_position_price()`. A dependency-free module by
+  design: `backend/main.py` imports FastAPI at module scope, which CI does not
+  install, so a test importing `main` aborts collection. See
+  `decisions/2026-09-05_ci-import-hygiene.md`.
+- `backend/main.py` — endpoint wired to it.
 - `frontend/src/components/DashboardView.jsx` — three-way row label,
   `estimatedPositions` / `costBasisPositions`, card warning and subtitle.
 - `frontend/scripts/verify-build.mjs` — fingerprints for the new labels.

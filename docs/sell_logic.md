@@ -32,7 +32,7 @@ The web container has no brokerage access by design, so it cannot call
 onto `portfolio_positions`, with an explicit "as of" timestamp.
 
 When a position has no persisted broker mark, `resolve_position_price()` in
-`backend/main.py` falls back to a live **FMP** quote, and to **cost basis** only
+`backend/pricing.py` falls back to a live **FMP** quote, and to **cost basis** only
 when no usable quote exists either. This mirrors `get_position_price()` in the
 execution agent, which prices exits the same way.
 

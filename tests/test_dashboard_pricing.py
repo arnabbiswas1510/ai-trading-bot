@@ -16,10 +16,14 @@ import os
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-# backend/main.py does `import database`, a sibling module inside backend/.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
-from backend.main import resolve_position_price
+# Import from backend.pricing, NOT backend.main. main.py imports FastAPI at
+# module scope, and FastAPI ships only in backend/requirements.txt (the
+# trading-bot image) -- not in the root requirements.txt that CI installs. An
+# earlier version of this file imported backend.main and broke the Daily
+# Screener workflow at pytest collection, which runs before the screener steps.
+from pricing import resolve_position_price
 
 
 def make_pos(**kw):
