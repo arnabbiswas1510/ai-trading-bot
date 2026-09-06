@@ -88,11 +88,32 @@ actually happened.
 set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
 python3 research/exit_rule_replay.py --insecure          # headline comparison
 python3 research/exit_rule_replay.py --insecure --grid   # full parameter sweep
+python3 research/exit_rule_replay.py --insecure --ladder # profit-lock give-back sweep
 python3 research/exit_rule_replay.py --insecure --json out.json
 ```
 
 Drop `--insecure` if the local TLS trust store is working. Other flags:
 `--proveit`, `--day0`, `--top N` (default 25).
+
+`--ladder` sweeps the Phase 2 profit-lock give-back — the trail width in
+`TRAIL_PROFIT_TIERS`, shipped at **1.5% from the high-water mark once a position
+is up +5%** — and crosses it against the gain at which it arms. Every row holds
+the rest of the Prove-It Stop fixed, so differences are attributable to that one
+number.
+
+Interpret it with the ladder's **engagement rate**, not the trade count. The
+rung only applies to positions that have closed above entry *and* peaked at
+`p2_ladder_gain`; on the 30 closed trades available on 2026-09-06 that was only
+10 trades, and just 9 exited differently across the whole 0.5%–3.0% range. The
+sweep therefore describes those trades rather than estimating a parameter.
+
+Two mechanical caveats apply specifically to tight settings:
+
+- The replay fills **exactly at the stop level with no slippage**. Real fills on
+  a trail inside the spread are worse, so tight rows are an upper bound.
+- Below roughly a third of a stock's own 5-minute range the level stops acting
+  as a give-back cap and starts acting as "sell at the first pullback" — the
+  failure `OCA_EXIT_MIN_TRAIL_PCT` guards against on the OCA path.
 
 Read the results with the four questions in `AGENTS.md` — report `n` first,
 check whether the shipped config still wins, check whether any result is carried

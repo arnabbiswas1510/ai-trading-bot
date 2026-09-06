@@ -814,6 +814,50 @@ def proveit_configs() -> list[ExitConfig]:
     return out
 
 
+def ladder_configs() -> list[ExitConfig]:
+    """Phase 2 profit-lock give-back sweep (the `TRAIL_PROFIT_TIERS` trail width).
+
+    Everything except the ladder trail is held at the shipped Prove-It Stop, so
+    each row differs from `ProveIt SHIPPED` by exactly one number and the gaps
+    between rows are attributable to that number alone.
+
+    The ladder only engages once a position has closed above entry AND peaked at
+    `p2_ladder_gain` (+5% shipped), so this sweep is scored on a strict subset of
+    the trade history. Read the engagement count before reading the dollars: a
+    sweep over a handful of trades describes those trades, it does not estimate
+    a parameter.
+
+    Tightening this trail is NOT free. Below roughly a third of a stock's own
+    5-minute noise the level sits inside the bid/ask and normal wiggle, so it
+    stops behaving as a give-back cap and starts behaving as "sell at the first
+    pullback" — the same failure `OCA_EXIT_MIN_TRAIL_PCT` guards against on the
+    OCA path. The replay fills exactly at the level with no slippage, which
+    flatters tight settings, so treat the tightest rows as an upper bound.
+    """
+    out = [shipped_config(), shipped_proveit()]
+
+    for trail in (0.005, 0.0075, 0.010, 0.0125, 0.015, 0.020, 0.025, 0.030):
+        out.append(ExitConfig(
+            f"ProveIt SHIPPED + P2 ladder trail {trail * 100:.2f}%",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+            p2_ladder_trail=trail))
+
+    # Trail width and the gain at which it arms are not independent: a tighter
+    # trail is more defensible if it engages later, once the position has more
+    # cushion. Cross them so the sweep cannot recommend a width that only looks
+    # good at one arming gain.
+    for gain in (4.0, 5.0, 7.0):
+        for trail in (0.005, 0.010, 0.015):
+            out.append(ExitConfig(
+                f"ProveIt SHIPPED + P2 ladder >={gain:.0f}% @ {trail * 100:.1f}%",
+                proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+                p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+                p2_ladder_gain=gain, p2_ladder_trail=trail))
+
+    return out
+
+
 def report(results: list[dict], trades: list[Trade], top: int | None = None) -> None:
     losers = [t for t in trades if t.is_loser]
     total_loss = sum(t.profit_loss for t in losers)
@@ -876,6 +920,9 @@ def main() -> None:
     parser.add_argument("--day0", action="store_true",
                         help="compare day-0 Phase 1 enforcement: bot poll + arm "
                              "vs a resting broker stop")
+    parser.add_argument("--ladder", action="store_true",
+                        help="sweep the Phase 2 profit-lock give-back trail "
+                             "(TRAIL_PROFIT_TIERS width) and its arming gain")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -895,6 +942,8 @@ def main() -> None:
 
     if args.day0:
         configs = day0_configs()
+    elif args.ladder:
+        configs = ladder_configs()
     elif args.proveit:
         configs = proveit_configs()
     elif args.grid:
@@ -903,7 +952,7 @@ def main() -> None:
         configs = headline_configs()
     results = [score(trades, cfg) for cfg in configs]
     report(results, trades,
-           top=args.top if (args.grid or args.proveit) else None)
+           top=args.top if (args.grid or args.proveit or args.ladder) else None)
 
     if args.json:
         with open(args.json, "w") as fh:
