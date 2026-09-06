@@ -1,7 +1,7 @@
 # Decision: Backtester Accuracy Rewrite
 
 **Date:** 2026-07-23
-**Status:** Implemented (sizing corrected 2026-07-24) — **one claim below is now false, see erratum**
+**Status:** Implemented (sizing corrected 2026-07-24) — **two claims below are now false, see errata**
 
 > **Erratum, 2026-08-22.** The "Market filter" line below states that the
 > backtester's SPY `close > EMA-21` filter *"matches live"*. That is no longer
@@ -13,6 +13,20 @@
 > The backtester itself is unchanged and still uses SPY `close > EMA-21`, so
 > backtest results now model a **more permissive** market filter than the live bot
 > applies. Tracked as tech debt; every other decision in this ADR still holds.
+
+> **Erratum, 2026-09-06.** The "Files Changed" line below claiming
+> `backend/main.py` had `position_size` removed from "`BacktestRequest` **and call
+> site**" was **only half done**. The field was removed from the Pydantic model,
+> but the call site kept `position_size=req.position_size`. Because
+> `BacktestRequest` no longer declared that field, every request to
+> `POST /api/backtest` raised
+> `AttributeError: 'BacktestRequest' object has no attribute 'position_size'`,
+> which the endpoint's `except Exception` converted into an HTTP 500.
+>
+> **The dashboard backtester was therefore dead from 2026-07-23 until
+> 2026-09-06** — approximately six weeks — and this ADR asserted the opposite the
+> whole time. The stale argument has now been removed and the endpoint verified
+> end-to-end. Every other decision in this ADR still holds.
 
 ## Problem
 

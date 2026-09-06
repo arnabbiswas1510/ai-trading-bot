@@ -490,7 +490,6 @@ def run_backtest_simulation(req: BacktestRequest):
             stop_loss_pct=req.stop_loss_pct,
             profit_target_pct=req.profit_target_pct,  # passed through, ignored internally
             max_positions=req.max_positions,
-            position_size=req.position_size,
         )
         return results
     except Exception as e:

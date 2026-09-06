@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "backend/main.py": {
-    "mtime": 1788672070.6651597,
-    "ast_hash": "d786bee825fca975cba0a3476656a3c5",
+    "mtime": 1788717585.6165054,
+    "ast_hash": "693377a8555483425391e5e906496fa9",
     "semantic_hash": ""
   },
   "backend/screener.py": {
@@ -40,7 +40,7 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1788671985.8025193,
+    "mtime": 1788672426.6780806,
     "ast_hash": "278ded00e6eeeb5e0b6fcad53052f302",
     "semantic_hash": ""
   },
@@ -85,12 +85,12 @@
     "semantic_hash": ""
   },
   "frontend/src/components/DashboardView.jsx": {
-    "mtime": 1788672203.6785612,
+    "mtime": 1788672426.678596,
     "ast_hash": "5ab843bc0b2744ed74af2b07f21107c7",
     "semantic_hash": ""
   },
   "frontend/src/components/ReturnsView.jsx": {
-    "mtime": 1788672189.189375,
+    "mtime": 1788672426.6791258,
     "ast_hash": "ed27f919fc34d24db3cebda8d8d1894a",
     "semantic_hash": ""
   },
@@ -110,7 +110,7 @@
     "semantic_hash": ""
   },
   "frontend/src/components/TradesView.jsx": {
-    "mtime": 1788672164.1064076,
+    "mtime": 1788672426.6795244,
     "ast_hash": "7031603204615f2b9bec32fe06a73457",
     "semantic_hash": ""
   },
@@ -215,7 +215,7 @@
     "semantic_hash": ""
   },
   "migrations/enable_rls_all_tables.sql": {
-    "mtime": 1788672320.514115,
+    "mtime": 1788672426.6870537,
     "ast_hash": "d0617828d6c69745db1ca8492a24d38b",
     "semantic_hash": ""
   },
@@ -400,7 +400,7 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1788672351.842927,
+    "mtime": 1788672426.676912,
     "ast_hash": "440ccb6f04bdbf9f3bbba9dba231523c",
     "semantic_hash": ""
   },
@@ -415,7 +415,7 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788672367.3855224,
+    "mtime": 1788672426.6773305,
     "ast_hash": "9d8f60f0c4a03628d4029f301b3b5f3f",
     "semantic_hash": ""
   },
@@ -470,8 +470,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-07-23_backtester-accuracy-rewrite.md": {
-    "mtime": 1787434301.2068362,
-    "ast_hash": "14dc1b029c2f91ede981d4cf1b5e6353",
+    "mtime": 1788717722.045179,
+    "ast_hash": "853deee506ee3628cc9c96c85cf03082",
     "semantic_hash": ""
   },
   "requirements-dev.txt": {
@@ -775,7 +775,7 @@
     "semantic_hash": ""
   },
   "decisions/2026-08-13_reconcile-supabase-schema-drift.md": {
-    "mtime": 1788672307.310661,
+    "mtime": 1788672426.6758049,
     "ast_hash": "bed3b7adefd287f980068bfecb45dca2",
     "semantic_hash": ""
   },
@@ -925,7 +925,7 @@
     "semantic_hash": ""
   },
   "decisions/2026-08-21_weekly-supabase-backup.md": {
-    "mtime": 1788672300.9209833,
+    "mtime": 1788672426.6763022,
     "ast_hash": "5c0c9309f4d0c3e9b52feecd998640ad",
     "semantic_hash": ""
   },
@@ -1080,33 +1080,38 @@
     "semantic_hash": ""
   },
   "backend/commissions.py": {
-    "mtime": 1788672102.2848012,
+    "mtime": 1788672426.6748838,
     "ast_hash": "144116cc007363d0b9b5936e8e349c86",
     "semantic_hash": ""
   },
   "frontend/src/lib/commissions.js": {
-    "mtime": 1788672122.8101335,
+    "mtime": 1788672426.6797209,
     "ast_hash": "14eee9d915bb01d8b8290a9d6b4c0c54",
     "semantic_hash": ""
   },
   "migrations/add_commission_tracking.sql": {
-    "mtime": 1788671665.1022885,
+    "mtime": 1788672426.6867032,
     "ast_hash": "d9e22a7d0f7a9132c1141d69635b4cc1",
     "semantic_hash": ""
   },
   "migrations/fix_rls_missing_policies.sql": {
-    "mtime": 1788671814.6881857,
+    "mtime": 1788672426.687259,
     "ast_hash": "d01f509b8645334234882de410e513b7",
     "semantic_hash": ""
   },
   "tests/test_commissions.py": {
-    "mtime": 1788672092.0023463,
+    "mtime": 1788672426.6874793,
     "ast_hash": "7017a0388a5f4694f4bfe7760a3bc1ee",
     "semantic_hash": ""
   },
   "decisions/2026-09-06_commission-accounting.md": {
-    "mtime": 1788672277.5281928,
+    "mtime": 1788672426.67652,
     "ast_hash": "9e70d060afe9d3f89260033b38160829",
+    "semantic_hash": ""
+  },
+  "docs/backtesting.md": {
+    "mtime": 1788717778.258197,
+    "ast_hash": "17ba76ba86e61de9ba6717e12d10eee1",
     "semantic_hash": ""
   }
 }
