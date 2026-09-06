@@ -3,6 +3,13 @@ import useSortableTable from '../hooks/useSortableTable';
 import { History, TrendingUp, TrendingDown, Award, Calendar, AlertCircle, ShieldAlert, Sparkles, Activity, ChevronRight, ChevronDown } from 'lucide-react';
 import ExitDetailPanel from './ExitDetailPanel';
 import { classifyExit, toneToBadgeClass } from '../lib/exitDetails';
+import {
+  netPnL as tradeNetPnL,
+  netPnLTotal,
+  commissionOf,
+  isCommissionComplete,
+  PROVISIONAL_TITLE,
+} from '../lib/commissions';
 
 // ── Stable module-level sort-key functions ────────────────────────────────────
 // Must be defined outside the component: useSortableTable stores the key in
@@ -23,6 +30,11 @@ const sellDateKey = (t) => toTime(t.sell_date);
 // classifyExit() maps many raw reasons onto one label, so sorting the raw value
 // produced an order that did not match the visible column.
 const exitLabelKey = (t) => classifyExit(t.exit_reason).label;
+// P&L and commission sort on the value the cell renders. Sorting the gross
+// column while displaying net would order the table by a number that is not on
+// screen. Nulls (fee never reported) sort last via the hook.
+const netPnLKey = (t) => tradeNetPnL(t);
+const commissionKey = (t) => commissionOf(t);
 
 export default function TradesView({ trades }) {
   const { items: sortedTrades, requestSort, getSortIcon } = useSortableTable(trades, sellDateKey, 'desc');
@@ -53,9 +65,13 @@ export default function TradesView({ trades }) {
 
   // Stats from full trade history (history view)
   const totalTrades = trades.length;
-  const wins = trades.filter(t => t.profit_loss > 0).length;
+  const wins = trades.filter(t => tradeNetPnL(t) > 0).length;
   const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
-  const netPnL = trades.reduce((sum, t) => sum + t.profit_loss, 0);
+  // Headline is net of commissions. Where IBKR has not reported a fee the gross
+  // figure is used and the card is marked provisional, rather than assuming the
+  // trade was free.
+  const { total: netPnL, complete: commissionsComplete } = netPnLTotal(trades);
+  const totalCommission = trades.reduce((sum, t) => sum + (commissionOf(t) ?? 0), 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -72,7 +88,9 @@ export default function TradesView({ trades }) {
                 {formatCurrency(netPnL)}
               </div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                Closed trading performance
+                {commissionsComplete
+                  ? `Closed trading performance — net of ${formatCurrency(totalCommission)} commissions`
+                  : 'Closed trading performance — gross where IBKR fees are not yet recorded*'}
               </span>
             </div>
 
@@ -128,7 +146,8 @@ export default function TradesView({ trades }) {
                       <th onClick={() => requestSort(buyDateKey)} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>Buy Date{getSortIcon(buyDateKey)}</th>
                       <th onClick={() => requestSort('sell_price')} style={{ cursor: 'pointer' }}>Sell Price{getSortIcon('sell_price')}</th>
                       <th onClick={() => requestSort(sellDateKey)} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>Sell Date{getSortIcon(sellDateKey)}</th>
-                      <th onClick={() => requestSort('profit_loss')} style={{ cursor: 'pointer' }}>P&L ($){getSortIcon('profit_loss')}</th>
+                      <th onClick={() => requestSort(netPnLKey)} style={{ cursor: 'pointer' }}>Net P&L ($){getSortIcon(netPnLKey)}</th>
+                      <th onClick={() => requestSort(commissionKey)} style={{ cursor: 'pointer' }}>Commission{getSortIcon(commissionKey)}</th>
                       <th onClick={() => requestSort('percent_return')} style={{ cursor: 'pointer' }}>Return (%){getSortIcon('percent_return')}</th>
                       <th onClick={() => requestSort(exitLabelKey)} style={{ cursor: 'pointer' }}>Exit Reason{getSortIcon(exitLabelKey)}</th>
                     </tr>
@@ -172,15 +191,24 @@ export default function TradesView({ trades }) {
                                 <Calendar size={10} /> {sellDateStr}
                               </span>
                             </td>
-                            <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
-                              {trade.profit_loss >= 0 ? '+' : ''}{formatCurrency(trade.profit_loss)}
+                            <td style={{ fontWeight: 600, color: tradeNetPnL(trade) >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                              {tradeNetPnL(trade) >= 0 ? '+' : ''}{formatCurrency(tradeNetPnL(trade))}
+                              {!isCommissionComplete(trade) && (
+                                <span title={PROVISIONAL_TITLE}
+                                      style={{ color: 'var(--text-muted)', marginLeft: '0.2rem' }}>*</span>
+                              )}
                             </td>
-                            <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                            <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                              {isCommissionComplete(trade)
+                                ? `-${formatCurrency(commissionOf(trade))}`
+                                : <span title={PROVISIONAL_TITLE}>—</span>}
+                            </td>
+                            <td style={{ fontWeight: 600, color: tradeNetPnL(trade) >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                               {trade.percent_return.toFixed(2)}%
                             </td>
                             <td>
                               <span
-                                className={`badge ${toneToBadgeClass(exit.tone, trade.profit_loss)}`}
+                                className={`badge ${toneToBadgeClass(exit.tone, tradeNetPnL(trade))}`}
                                 title={`Sold by ${exit.executor.label} — click the row for the full breakdown`}
                               >
                                 {exit.label}
@@ -193,7 +221,7 @@ export default function TradesView({ trades }) {
 
                           {isOpen && (
                             <tr>
-                              <td colSpan={10} style={{ padding: 0 }}>
+                              <td colSpan={11} style={{ padding: 0 }}>
                                 <ExitDetailPanel trade={trade} />
                               </td>
                             </tr>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import useSortableTable from '../hooks/useSortableTable';
 import ExitDetailPanel from './ExitDetailPanel';
 import { classifyExit, toneToBadgeClass } from '../lib/exitDetails';
+import { netPnL, isCommissionComplete, PROVISIONAL_TITLE } from '../lib/commissions';
 import { estDaysToLock, PROFIT_LOCK_PCT } from '../lib/volatilityFit';
 import {
   evaluatePositionRules,
@@ -27,6 +28,10 @@ import {
   Zap,
   Calendar
 } from 'lucide-react';
+
+// Module-level so useSortableTable's identity comparison keeps the active
+// sort arrow visible (see the same note in TradesView).
+const netPnLKey = (t) => netPnL(t);
 
 // ── Constants mirrored from execution_agent.py env defaults ──────────────────
 // Fallback only — the agent writes the live per-position value into
@@ -1551,7 +1556,7 @@ export default function DashboardView({ data, marketData, trades }) {
                   <th onClick={() => requestSortTrades('sell_price')} style={{ cursor: 'pointer' }}>Sell Price{getSortIconTrades('sell_price')}</th>
                   <th onClick={() => requestSortTrades('buy_date')} style={{ cursor: 'pointer' }}>Buy Date{getSortIconTrades('buy_date')}</th>
                   <th onClick={() => requestSortTrades('sell_date')} style={{ cursor: 'pointer' }}>Sell Date{getSortIconTrades('sell_date')}</th>
-                  <th onClick={() => requestSortTrades('profit_loss')} style={{ cursor: 'pointer' }}>P&L ($){getSortIconTrades('profit_loss')}</th>
+                  <th onClick={() => requestSortTrades(netPnLKey)} style={{ cursor: 'pointer' }}>Net P&L ($){getSortIconTrades(netPnLKey)}</th>
                   <th onClick={() => requestSortTrades('percent_return')} style={{ cursor: 'pointer' }}>Return (%){getSortIconTrades('percent_return')}</th>
                   <th onClick={() => requestSortTrades('exit_reason')} style={{ cursor: 'pointer' }}>Exit Reason{getSortIconTrades('exit_reason')}</th>
                 </tr>
@@ -1584,15 +1589,18 @@ export default function DashboardView({ data, marketData, trades }) {
                     >
                       {formatDate(trade.sell_date)}
                     </td>
-                    <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
-                      {trade.profit_loss >= 0 ? '+' : ''}{formatCurrency(trade.profit_loss)}
+                    <td style={{ fontWeight: 600, color: netPnL(trade) >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                      {netPnL(trade) >= 0 ? '+' : ''}{formatCurrency(netPnL(trade))}
+                      {!isCommissionComplete(trade) && (
+                        <span title={PROVISIONAL_TITLE} style={{ color: 'var(--text-muted)', marginLeft: '0.2rem' }}>*</span>
+                      )}
                     </td>
-                    <td style={{ fontWeight: 600, color: trade.profit_loss >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                    <td style={{ fontWeight: 600, color: netPnL(trade) >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                       {trade.percent_return.toFixed(2)}%
                     </td>
                     <td>
                       <span
-                        className={`badge ${toneToBadgeClass(exit.tone, trade.profit_loss)}`}
+                        className={`badge ${toneToBadgeClass(exit.tone, netPnL(trade))}`}
                         title={`Sold by ${exit.executor.label} — click the row for the full breakdown`}
                       >
                         {exit.label}

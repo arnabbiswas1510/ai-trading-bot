@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "backend/main.py": {
-    "mtime": 1788587104.8999143,
-    "ast_hash": "0967c0d330a9fdc622b0ddfae29b4b42",
+    "mtime": 1788672070.6651597,
+    "ast_hash": "d786bee825fca975cba0a3476656a3c5",
     "semantic_hash": ""
   },
   "backend/screener.py": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1788559852.9623106,
-    "ast_hash": "d4e9b384e362da4d31b8e9292e7f7b7b",
+    "mtime": 1788671985.8025193,
+    "ast_hash": "278ded00e6eeeb5e0b6fcad53052f302",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -85,13 +85,13 @@
     "semantic_hash": ""
   },
   "frontend/src/components/DashboardView.jsx": {
-    "mtime": 1788560676.9553545,
-    "ast_hash": "b6ade335f46bb61799f8e30907e445f2",
+    "mtime": 1788672203.6785612,
+    "ast_hash": "5ab843bc0b2744ed74af2b07f21107c7",
     "semantic_hash": ""
   },
   "frontend/src/components/ReturnsView.jsx": {
-    "mtime": 1785202226.7693737,
-    "ast_hash": "843f2b669548486aaf7bd014c448ecfd",
+    "mtime": 1788672189.189375,
+    "ast_hash": "ed27f919fc34d24db3cebda8d8d1894a",
     "semantic_hash": ""
   },
   "frontend/src/components/ScreenerView.jsx": {
@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/TradesView.jsx": {
-    "mtime": 1788558649.5085604,
-    "ast_hash": "e4638a00248347c6424248633dd3b0b3",
+    "mtime": 1788672164.1064076,
+    "ast_hash": "7031603204615f2b9bec32fe06a73457",
     "semantic_hash": ""
   },
   "frontend/src/hooks/useSortableTable.js": {
@@ -215,8 +215,8 @@
     "semantic_hash": ""
   },
   "migrations/enable_rls_all_tables.sql": {
-    "mtime": 1785202226.804536,
-    "ast_hash": "6d27ed7ecec2167634d225bd17836219",
+    "mtime": 1788672320.514115,
+    "ast_hash": "d0617828d6c69745db1ca8492a24d38b",
     "semantic_hash": ""
   },
   "migrations/migration_retention_period.sql": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1788587287.6199765,
-    "ast_hash": "2792fa519e9d6c4eaa709f5ceed5dbb0",
+    "mtime": 1788672351.842927,
+    "ast_hash": "440ccb6f04bdbf9f3bbba9dba231523c",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788587240.5241408,
-    "ast_hash": "ef1d3b0e201bcd23ad92ea3a2ae7ba0f",
+    "mtime": 1788672367.3855224,
+    "ast_hash": "9d8f60f0c4a03628d4029f301b3b5f3f",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -775,8 +775,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-08-13_reconcile-supabase-schema-drift.md": {
-    "mtime": 1786829735.2166002,
-    "ast_hash": "d9983e26bfdf3c152262be14cc889f6c",
+    "mtime": 1788672307.310661,
+    "ast_hash": "bed3b7adefd287f980068bfecb45dca2",
     "semantic_hash": ""
   },
   "research/latch_bt.py": {
@@ -925,8 +925,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-08-21_weekly-supabase-backup.md": {
-    "mtime": 1787599185.2632847,
-    "ast_hash": "e13678b3746c883535027ef5d2a4aec8",
+    "mtime": 1788672300.9209833,
+    "ast_hash": "5c0c9309f4d0c3e9b52feecd998640ad",
     "semantic_hash": ""
   },
   "docs/backups.md": {
@@ -1077,6 +1077,36 @@
   "decisions/2026-09-05_ci-import-hygiene.md": {
     "mtime": 1788587272.420397,
     "ast_hash": "781c0bfc9bd2d188159e4575101a181b",
+    "semantic_hash": ""
+  },
+  "backend/commissions.py": {
+    "mtime": 1788672102.2848012,
+    "ast_hash": "144116cc007363d0b9b5936e8e349c86",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/commissions.js": {
+    "mtime": 1788672122.8101335,
+    "ast_hash": "14eee9d915bb01d8b8290a9d6b4c0c54",
+    "semantic_hash": ""
+  },
+  "migrations/add_commission_tracking.sql": {
+    "mtime": 1788671665.1022885,
+    "ast_hash": "d9e22a7d0f7a9132c1141d69635b4cc1",
+    "semantic_hash": ""
+  },
+  "migrations/fix_rls_missing_policies.sql": {
+    "mtime": 1788671814.6881857,
+    "ast_hash": "d01f509b8645334234882de410e513b7",
+    "semantic_hash": ""
+  },
+  "tests/test_commissions.py": {
+    "mtime": 1788672092.0023463,
+    "ast_hash": "7017a0388a5f4694f4bfe7760a3bc1ee",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-06_commission-accounting.md": {
+    "mtime": 1788672277.5281928,
+    "ast_hash": "9e70d060afe9d3f89260033b38160829",
     "semantic_hash": ""
   }
 }

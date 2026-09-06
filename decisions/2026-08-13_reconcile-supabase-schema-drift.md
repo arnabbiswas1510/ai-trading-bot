@@ -1,7 +1,20 @@
 # 2026-08-13 — Reconcile Supabase schema drift (7 unapplied migrations)
 
 ## Status
-Accepted
+Accepted — with one erratum (see below)
+
+> **Erratum, 2026-09-06.** The finding *"Applied and healthy (no action):
+> `cash_flows`, `ibkr_fills`, `breakout_learnings` …"* is **wrong for
+> `ibkr_fills` and `breakout_learnings`**. Both had RLS enabled with no policy,
+> so every INSERT was rejected with `42501` and both tables were permanently
+> empty.
+>
+> The audit method is what missed it: probing PostgREST establishes that a table
+> and its columns **exist**, which is a read. Writability is a separate property
+> and RLS can deny it while leaving the schema perfectly readable. **A schema
+> audit is not a write audit.** Any future drift check should attempt a write —
+> or at minimum query `pg_policies` for tables with RLS enabled and no policy.
+> See `decisions/2026-09-06_commission-accounting.md`.
 
 ## Context
 

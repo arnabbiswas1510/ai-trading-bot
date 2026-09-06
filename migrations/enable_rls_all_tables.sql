@@ -1,5 +1,21 @@
 -- Migration: Enable RLS on all trading bot tables
--- Safe to run: service role key bypasses RLS, so the bot is unaffected.
+--
+-- CORRECTED 2026-09-06. This header previously read:
+--   "Safe to run: service role key bypasses RLS, so the bot is unaffected."
+-- That is FALSE for this deployment. The bot authenticates with an anon-class
+-- publishable key (`sb_publishable_...`), which RLS applies to in full. Every
+-- table below is writable by the bot only because its policy is
+-- `FOR ALL USING (true) WITH CHECK (true)`, which admits anon.
+--
+-- Consequence: enabling RLS on a table WITHOUT also creating a permissive
+-- policy silently denies every write from the bot. That is exactly what
+-- happened to `ibkr_fills` and `breakout_learnings` — see
+-- migrations/fix_rls_missing_policies.sql and
+-- decisions/2026-09-06_commission-accounting.md.
+--
+-- RULE: never `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` without pairing it
+-- with a policy in the same migration.
+--
 -- Benefit: anon key cannot access live trading data even if accidentally exposed.
 
 -- account_balances

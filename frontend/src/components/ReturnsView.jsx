@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { netPnL, isCommissionComplete, PROVISIONAL_TITLE } from '../lib/commissions';
 import { 
   TrendingUp, 
   ArrowDownCircle, 
@@ -170,7 +171,10 @@ export default function ReturnsView({ trades }) {
     }
 
     const periodRoi = returnType === 'TWR' ? rangeTwr : rangeSimple;
-    const realizedPnL = trades ? trades.reduce((sum, t) => sum + parseFloat(t.profit_loss || 0), 0) : 0;
+    // Net of IBKR commissions. net_profit_loss falls back to the gross figure
+    // when a fee was never reported, so this is never inflated by a fee
+    // assumed to be zero -- see backend/commissions.py.
+    const realizedPnL = trades ? trades.reduce((sum, t) => sum + parseFloat(netPnL(t) || 0), 0) : 0;
 
     // ── Risk metrics from portfolio daily values ─────────────────────────────
     const dailyReturns = [];
@@ -655,8 +659,9 @@ export default function ReturnsView({ trades }) {
                   <tr key={i}>
                     <td>{new Date(t.sell_date).toLocaleDateString()}</td>
                     <td style={{ fontWeight: 600 }}>{t.ticker}</td>
-                    <td style={{ textAlign: 'right', color: t.profit_loss >= 0 ? 'var(--success-color)' : 'var(--danger-color)' }}>
-                      {t.profit_loss >= 0 ? '+' : ''}${parseFloat(t.profit_loss).toFixed(2)}
+                    <td style={{ textAlign: 'right', color: netPnL(t) >= 0 ? 'var(--success-color)' : 'var(--danger-color)' }}>
+                      {netPnL(t) >= 0 ? '+' : ''}${parseFloat(netPnL(t)).toFixed(2)}
+                      {!isCommissionComplete(t) && <span title={PROVISIONAL_TITLE}>*</span>}
                     </td>
                     <td style={{ textAlign: 'right', color: t.percent_return >= 0 ? 'var(--success-color)' : 'var(--danger-color)' }}>
                       {t.percent_return >= 0 ? '+' : ''}{parseFloat(t.percent_return).toFixed(2)}%

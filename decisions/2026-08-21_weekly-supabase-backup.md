@@ -1,7 +1,16 @@
 # Weekly Supabase backup to Parquet on the production server
 
 - **Date:** 2026-08-21
-- **Status:** Accepted
+- **Status:** Accepted — with one erratum (see below)
+
+> **Erratum, 2026-09-06.** This ADR treats `ibkr_fills` and `breakout_learnings`
+> being empty as an ordinary state to be represented honestly in the manifest.
+> They were empty because **every write to them was being rejected by an RLS
+> policy gap**, not because nothing had been recorded. The
+> `written: false, reason: "table is empty"` handling is still correct and still
+> the right design — but "empty" was a symptom here, not a fact about usage. Do
+> not cite this ADR as evidence that those tables were legitimately unused. See
+> `decisions/2026-09-06_commission-accounting.md`.
 
 ## Problem
 

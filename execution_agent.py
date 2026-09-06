@@ -1945,6 +1945,238 @@ def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
     return written
 
 
+# ── IBKR fill + commission capture ───────────────────────────────────────────
+# These are module-level (not closures inside main_loop) so they can be unit
+# tested without a live IB connection, and so the commission attribution used at
+# sell time is the same code path that wrote the rows.
+
+def extract_fill_commission(fill) -> float | None:
+    """
+    The commission on a Fill, or None if IBKR has not reported it yet.
+
+    IBKR sends execution details and the commission in SEPARATE messages.
+    ib_insync attaches a blank CommissionReport to the Fill when execDetails
+    arrives and populates it moments later from commissionReportEvent. So at
+    execDetails time this is almost always unreported.
+
+    Unreported arrives as 0.0, an unset attribute, or NaN. None of those is a
+    real fee, and all three must map to None rather than 0: a stored 0 is
+    indistinguishable from a genuinely free fill and would silently overstate
+    net P&L. IBKR stock commissions have a per-order minimum, so a true 0 does
+    not occur on this account.
+    """
+    report = getattr(fill, "commissionReport", None)
+    if report is None:
+        return None
+    raw = getattr(report, "commission", None)
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if value != value or value <= 0:   # NaN, or unreported/zero
+        return None
+    return round(value, 4)
+
+
+_FILL_SINK_ALERTED: set[str] = set()
+
+
+def _fill_sink_failure(sink: str, ticker: str, error: Exception) -> None:
+    """
+    Escalate a failed write to a sink nobody reads, exactly once per process.
+
+    ibkr_fills and breakout_learnings are write-only: no screen renders them, so
+    an empty table looks identical to a quiet week. Both were rejected by an RLS
+    policy on every single write for six weeks, and because the handlers only
+    print()ed, the sole trace was a log line nobody had reason to grep. Tier 1 of
+    the sell-price ladder was inert that entire time.
+
+    Alerting once per sink -- not once per fill -- keeps a partial outage from
+    turning into a Telegram flood while still guaranteeing the first failure is
+    seen.
+    """
+    print(f"   ⚠️  {sink}: failed to write {ticker}: {error}")
+    if sink in _FILL_SINK_ALERTED:
+        return
+    _FILL_SINK_ALERTED.add(sink)
+    try:
+        notifier.notify_error(
+            f"🚨 <b>{sink} writes are failing</b>\n"
+            f"First failure on {ticker}.\n"
+            f"<code>{str(error)[:300]}</code>\n\n"
+            f"This sink is not rendered anywhere, so it will look empty rather "
+            f"than broken. Further failures this run are suppressed."
+        )
+    except Exception:
+        pass
+
+
+def persist_fill(client: Client, fill) -> bool:
+    """
+    Upsert one IBKR fill into `ibkr_fills`. Returns True if the row was written.
+
+    This is Tier 1 of the sell-price ladder in reconcile_with_ibkr(): the only
+    fill record that survives an agent restart, a container restart or an IB
+    Gateway session reset. reqExecutions() (Tier 2) holds the current TWS
+    session only, which is what recorded RSI's sell price incorrectly on
+    2026-07-17.
+
+    Commission is written only when IBKR has actually reported it, so a later
+    commissionReportEvent can fill it in without this call clobbering it back
+    to zero -- see update_fill_commission().
+    """
+    execution = getattr(fill, "execution", None)
+    exec_id = getattr(execution, "execId", None) if execution else None
+    if not exec_id:
+        return False
+
+    payload = {
+        "exec_id":    exec_id,
+        "ticker":     fill.contract.symbol,
+        "side":       execution.side,              # 'BOT' or 'SLD'
+        "shares":     float(execution.shares),
+        "price":      float(execution.price),
+        "fill_time":  execution.time.isoformat(),
+        "order_id":   execution.orderId,
+        "account_id": execution.acctNumber,
+    }
+    commission = extract_fill_commission(fill)
+    if commission is not None:
+        payload["commission"] = commission
+
+    client.table("ibkr_fills").upsert(payload, on_conflict="exec_id").execute()
+    return True
+
+
+def update_fill_commission(client: Client, exec_id: str, commission: float) -> bool:
+    """
+    Attach a commission to an already-persisted fill.
+
+    Called from commissionReportEvent, which is the ONLY message that carries
+    the real figure. Without this handler the commission column would stay at
+    its default forever, which is how every P&L number in the dashboard came to
+    be gross.
+    """
+    if not exec_id or commission is None or commission <= 0:
+        return False
+    client.table("ibkr_fills") \
+        .update({"commission": round(float(commission), 4)}) \
+        .eq("exec_id", exec_id).execute()
+    return True
+
+
+def sum_fill_commission(client: Client, ticker: str, side: str,
+                        since: str | None = None) -> float | None:
+    """
+    Total commission IBKR charged for `ticker` on `side` ('BOT' or 'SLD').
+
+    Returns None -- never 0.0 -- when there are no matching fills, or when any
+    matching fill has no commission recorded. A partial sum would understate the
+    cost while looking authoritative; the caller stores NULL and the dashboard
+    labels the trade as provisional instead.
+    """
+    try:
+        query = client.table("ibkr_fills") \
+            .select("commission,fill_time") \
+            .eq("ticker", ticker).eq("side", side)
+        if since:
+            query = query.gte("fill_time", since)
+        rows = query.execute().data or []
+    except Exception as e:
+        print(f"   ⚠️  commission lookup failed for {ticker} {side}: {e}")
+        return None
+
+    if not rows:
+        return None
+    total = 0.0
+    for row in rows:
+        value = row.get("commission")
+        if value is None or float(value) <= 0:
+            return None        # incomplete -> unknown, not partial
+        total += float(value)
+    return round(total, 4)
+
+
+def trade_commission(ib, trade, wait_secs: float = 2.0) -> float | None:
+    """
+    Total commission across every fill of a completed Trade, or None.
+
+    Briefly waits for commissionReportEvent, which IBKR sends after the
+    execution report. Returns None unless EVERY fill has a reported commission:
+    a partial sum on a multi-fill order would understate the true cost while
+    looking exact.
+    """
+    deadline = time.time() + max(0.0, wait_secs)
+    while True:
+        fills = list(getattr(trade, "fills", []) or [])
+        if fills:
+            values = [extract_fill_commission(f) for f in fills]
+            if all(v is not None for v in values):
+                return round(sum(values), 4)
+        if time.time() >= deadline:
+            return None
+        try:
+            ib.sleep(0.25)
+        except Exception:
+            return None
+
+
+def record_buy_commission(client: Client, ib, ticker: str, trade) -> float | None:
+    """
+    Persist the entry commission onto an already-inserted position row.
+
+    Deliberately a SEPARATE update rather than a field on the initial insert.
+    The insert is the step that makes a filled position visible to the capacity
+    check; if `buy_commission` were part of it and the migration had not been
+    applied, PGRST204 would abort the whole insert and leave a position live at
+    IBKR but absent from Supabase -- the exact phantom-fill failure the
+    insert-before-stop ordering exists to prevent. A cost figure is never worth
+    that risk.
+    """
+    commission = trade_commission(ib, trade)
+    if commission is None:
+        return None
+    try:
+        client.table("portfolio_positions") \
+            .update({"buy_commission": commission}).eq("ticker", ticker).execute()
+        print(f"   🧾 Entry commission recorded for {ticker}: ${commission:.2f}")
+        return commission
+    except Exception as e:
+        print(f"   ⚠️  Could not store buy_commission for {ticker} "
+              f"(run migrations/add_commission_tracking.sql): {e}")
+        return None
+
+
+def record_trade_commissions(client: Client, trade_row_id,
+                             buy_commission, sell_commission) -> bool:
+    """
+    Attach both commission legs to a trade_history row after it is inserted.
+
+    Separate from the insert for the same reason as record_buy_commission(), but
+    the stakes are higher here: execute_sell() deletes the portfolio_positions
+    row BEFORE inserting into trade_history, so an insert that fails on an
+    unknown column would erase the position with no closing record at all. Only
+    keys with a real value are sent -- a NULL commission means "not reported by
+    IBKR", which is not the same as zero and must not be written as one.
+    """
+    payload = {}
+    if buy_commission is not None:
+        payload["buy_commission"] = round(float(buy_commission), 4)
+    if sell_commission is not None:
+        payload["sell_commission"] = round(float(sell_commission), 4)
+    if not payload or trade_row_id is None:
+        return False
+    try:
+        client.table("trade_history").update(payload).eq("id", trade_row_id).execute()
+        return True
+    except Exception as e:
+        print(f"   ⚠️  Could not store commissions on trade_history id={trade_row_id} "
+              f"(run migrations/add_commission_tracking.sql): {e}")
+        return False
+
+
 def reconcile_with_ibkr(ib: IB):
     """
     Full bidirectional reconciliation between IBKR actual positions and Supabase ledger.
@@ -2323,7 +2555,17 @@ def reconcile_with_ibkr(ib: IB):
             
             try:
                 # Then try to insert to trade_history
-                client.table("trade_history").insert(trade_log).execute()
+                _th_resp = client.table("trade_history").insert(trade_log).execute()
+                # This close happened outside the agent's session (manual close or
+                # an IBKR-side stop), so there is no Trade object to read. The fee
+                # comes from ibkr_fills -- which only started collecting rows once
+                # the RLS policy gap was fixed, so older closes stay NULL.
+                _th_id = ((_th_resp.data or [{}])[0] or {}).get("id")
+                record_trade_commissions(
+                    client, _th_id,
+                    pos.get("buy_commission") if isinstance(pos, dict) else None,
+                    sum_fill_commission(client, ticker, "SLD", buy_date),
+                )
                 print(f"        ✅ Logged to history. PnL: ${profit_loss:+.2f} ({percent_return:+.2f}%)")
                 _write_breakout_learning_row(
                     client=client,
@@ -3041,6 +3283,9 @@ def run_market_open_buys(ib: IB):
                 "hwm_price": fill_price,
             }
             client.table("portfolio_positions").insert(position_data).execute()
+            # Entry commission is written as a follow-up update, never as part of
+            # the insert above -- see record_buy_commission() for why.
+            record_buy_commission(client, ib, ticker, trade)
             print(f"✅ Successfully bought {actual_shares} shares of {ticker} at ${fill_price:.2f}.")
             print(f"   Stop-Loss: ${stop_loss_val} | Trail: {pos_stop_loss_pct*100:.2f}% (IBKR-managed)")
 
@@ -4277,8 +4522,12 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         }
         
         # Database transaction — only reached after confirmed IBKR fill
+        sell_commission = trade_commission(ib, trade)
+        buy_commission = pos_row.get("buy_commission") if isinstance(pos_row, dict) else None
         client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
-        client.table("trade_history").insert(trade_log).execute()
+        _th_resp = client.table("trade_history").insert(trade_log).execute()
+        _th_id = ((_th_resp.data or [{}])[0] or {}).get("id")
+        record_trade_commissions(client, _th_id, buy_commission, sell_commission)
 
         # ── Write to breakout_learnings for future screener feedback ─────────────
         _write_breakout_learning_row(
@@ -4333,32 +4582,48 @@ def main_loop():
             # This makes fills durable across session resets and container
             # restarts, eliminating the reqExecutions() session-cache problem
             # that caused RSI's sell price to be recorded incorrectly (2026-07-17).
+            #
+            # Two handlers are required, not one. IBKR sends the execution and
+            # its commission as separate messages: execDetailsEvent carries price
+            # and quantity, commissionReportEvent carries the fee. Registering
+            # only the first is why every commission stored here was zero and
+            # every P&L figure in the dashboard was gross.
             def _persist_fill_to_supabase(trade, fill):
                 """execDetailsEvent handler — persists each fill immediately."""
                 try:
-                    exec_id = fill.execution.execId
-                    if not exec_id:
-                        return
-                    supabase.table("ibkr_fills").upsert({
-                        "exec_id":    exec_id,
-                        "ticker":     fill.contract.symbol,
-                        "side":       fill.execution.side,    # 'BOT' or 'SLD'
-                        "shares":     fill.execution.shares,
-                        "price":      fill.execution.price,
-                        "commission": getattr(fill.commissionReport, 'commission', 0) or 0,
-                        "fill_time":  fill.execution.time.isoformat(),
-                        "order_id":   fill.execution.orderId,
-                        "account_id": fill.execution.acctNumber,
-                    }, on_conflict="exec_id").execute()
-                    print(f"   💾 Fill persisted: {fill.contract.symbol} "
-                          f"{fill.execution.side} {fill.execution.shares:.0f}sh "
-                          f"@ ${fill.execution.price:.4f} (execId: {exec_id})")
+                    if persist_fill(get_supabase_client(), fill):
+                        print(f"   💾 Fill persisted: {fill.contract.symbol} "
+                              f"{fill.execution.side} {fill.execution.shares:.0f}sh "
+                              f"@ ${fill.execution.price:.4f} "
+                              f"(execId: {fill.execution.execId})")
                 except Exception as _fe:
-                    # Non-fatal — don't crash the agent on a DB write error
-                    print(f"   ⚠️  fill_persist: failed to write {fill.contract.symbol} fill: {_fe}")
+                    # Non-fatal for trading — but NOT silent. This handler
+                    # print()ed and nothing else, so 62 consecutive RLS denials
+                    # left ibkr_fills empty for six weeks without a single alert
+                    # while Tier 1 of the sell-price ladder was inert. A write
+                    # sink nobody reads must escalate its own failures.
+                    _fill_sink_failure("ibkr_fills", fill.contract.symbol, _fe)
+
+            def _persist_commission_to_supabase(trade, fill, report):
+                """commissionReportEvent handler — the only source of the fee."""
+                try:
+                    commission = getattr(report, "commission", None)
+                    exec_id = getattr(report, "execId", None) \
+                        or getattr(getattr(fill, "execution", None), "execId", None)
+                    # The fill row may not exist yet if execDetails lost its race
+                    # or was rejected; upsert it first so the fee always lands.
+                    persist_fill(get_supabase_client(), fill)
+                    if update_fill_commission(get_supabase_client(), exec_id, commission):
+                        print(f"   🧾 Commission recorded: {fill.contract.symbol} "
+                              f"${float(commission):.2f} (execId: {exec_id})")
+                except Exception as _ce:
+                    _fill_sink_failure("ibkr_fills commission",
+                                       fill.contract.symbol, _ce)
 
             ib.execDetailsEvent += _persist_fill_to_supabase
-            print("   🔗 execDetailsEvent hook registered (fills will be persisted to ibkr_fills).")
+            ib.commissionReportEvent += _persist_commission_to_supabase
+            print("   🔗 execDetailsEvent + commissionReportEvent hooks registered "
+                  "(fills and commissions will be persisted to ibkr_fills).")
 
             # ── Schema assertion at boot ──────────────────────────────────────
             # Surface missing risk-rule columns immediately rather than waiting

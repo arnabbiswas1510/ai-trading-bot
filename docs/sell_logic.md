@@ -709,6 +709,28 @@ peak moved between the final 15-minute check and the fill, it is approximate.
 
 ---
 
+## Reported P&L is net of commissions
+
+Dashboard, Trade History and Performance all display **net** profit and loss —
+gross P&L minus the IBKR commission on both legs. Trade History carries a
+sortable `Commission` column, and every P&L column sorts on the net value it
+actually renders.
+
+`trade_history.profit_loss` itself remains **gross** and is not redefined.
+`research/exit_rule_replay.py` does not model commissions and every exit
+threshold in `decisions/` was measured gross, so changing the column's meaning
+would make past benchmarks silently non-comparable with future runs. Net is
+derived in `backend/commissions.py` and exposed as `net_profit_loss`.
+
+A commission IBKR has not reported is **unknown, not zero**. Those rows show the
+gross figure followed by `*` with a tooltip explaining it may overstate the
+result, and the "Net Realized P&L" card says so in its subtitle. Historical
+trades closed before 2026-09-06 are all in this state: `ibkr_fills` was blocked
+by an RLS policy gap and recorded nothing, so their fees were never captured.
+See `decisions/2026-09-06_commission-accounting.md`.
+
+---
+
 ## Manual tools
 
 | Script | Purpose | Agent must be stopped? | Speed |

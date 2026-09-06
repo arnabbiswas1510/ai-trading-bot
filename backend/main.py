@@ -13,6 +13,7 @@ import screener
 import backtester
 from fmp_client import FMPClient
 from pricing import resolve_position_price
+from commissions import enrich_trades, summarize_realized
 
 app = FastAPI(title="CAN SLIM Trading Bot API")
 
@@ -296,8 +297,14 @@ def get_portfolio():
                 "portfolio_value": round(portfolio_value, 2),
                 "invested_value": round(invested_value, 2),
                 "unrealized_pnl": round(unrealized_pnl, 2),
+                # total_pnl is derived from the live IBKR cash balance, so it is
+                # already NET of commissions, fees and dividends. The realized_*
+                # fields below come from trade_history, whose profit_loss column
+                # is GROSS. The two disagreeing by roughly the commission total
+                # is expected and is exactly what these fields make visible.
                 "total_pnl": round(total_pnl, 2),
                 "total_pnl_pct": round(total_pnl_pct, 2),
+                **summarize_realized(history),
                 "win_rate": round(win_rate, 2),
                 "total_trades": len(history)
             },
@@ -309,7 +316,7 @@ def get_portfolio():
 @app.get("/api/trades")
 def get_trades():
     try:
-        return db.get_trade_history()
+        return enrich_trades(db.get_trade_history())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

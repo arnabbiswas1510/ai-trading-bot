@@ -328,8 +328,10 @@ for why.
 | `watchlist_history` | Point-in-time fundamental snapshots, with sector |
 | `trigger_history` | Every trigger ever emitted, fully scored, plus forward-return outcomes |
 | `trigger_decisions` | Every buy and skip with a reason code — the control group |
-| `trade_history` | Closed trades |
+| `trade_history` | Closed trades. `profit_loss` is **gross** (no fee term); `buy_commission` / `sell_commission` hold the IBKR fees and generated columns `net_profit_loss` / `commission_complete` derive net (`migrations/add_commission_tracking.sql`) |
 | `cash_flows` | Deposits and withdrawals |
+| `ibkr_fills` | Every IBKR execution with its commission. Tier 1 of the sell-price ladder — the only fill record that survives an agent or Gateway restart |
+| `breakout_learnings` | Post-close outcome rows fed back into screener tuning |
 
 Key `portfolio_positions` columns driving exits: `hwm_price`, `hwm_date`, `stop_loss_pct`,
 `entry_atr_pct`, `closed_above_entry`, `power_hold`, `exit_armed*`, `breakout_verdict`,
@@ -349,6 +351,35 @@ marks to render, so it prices every open position from a live FMP quote labelled
 `FMP estimate — not broker` — or, where no quote is available, at cost basis labelled
 `Cost basis — no quote`. Trading behaviour is unaffected: no exit rule reads these
 columns, and the agent prices exits from `ib.portfolio()` directly.
+
+### Row Level Security: never enable without a policy
+
+The bot authenticates with an **anon-class publishable key** (`sb_publishable_…`),
+not a service role key. RLS therefore applies to it in full. Every table works only
+because its policy is `FOR ALL USING (true) WITH CHECK (true)`.
+
+Enabling RLS on a table **without** creating a policy denies every write from the
+bot with `42501`, while leaving the schema perfectly readable — so a
+schema/PostgREST probe still reports the table as healthy. `ibkr_fills` and
+`breakout_learnings` were in this state from creation until 2026-09-06 and were
+permanently empty as a result.
+
+`migrations/fix_rls_missing_policies.sql` repairs both and ships a query that lists
+any table with RLS enabled and no policy. Run it after adding any table. See
+`decisions/2026-09-06_commission-accounting.md`.
+
+### Commissions
+
+Until `add_commission_tracking.sql` is applied, commission columns do not exist.
+The agent degrades gracefully — commissions are written by a follow-up `UPDATE`,
+never inside the position or trade insert, so a missing column can never fail a
+buy or lose a closing record. The dashboard shows gross P&L marked `*` in that
+state.
+
+A commission that IBKR has not reported is stored as **NULL, never 0**. Zero is
+indistinguishable from a free fill and would overstate net P&L by exactly the
+amount that was missed. Any trade with an unknown fee on either leg renders with
+`*` and is excluded from "complete" totals.
 
 ---
 
