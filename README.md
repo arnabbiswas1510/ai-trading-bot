@@ -474,6 +474,14 @@ docker compose logs -f execution-agent
   `NO EXTERNAL NAMESERVERS DEFINED`. Recover with `docker compose up -d --force-recreate`;
   a plain `restart` is not enough, because Docker only regenerates the resolver config when
   the container is recreated.
+- **The dashboard fails loudly when Supabase is unreachable.** `/api/portfolio` and
+  `/api/trades` return **HTTP 503** (distinct from the 500 used for genuine application
+  errors), and the UI replaces the entire view with an error panel and a Retry button rather
+  than rendering figures. It previously showed `$0 invested / $100,000 cash / 0 positions`
+  in this situation — a plausible, internally consistent and entirely fictional account
+  state, indistinguishable from a liquidated portfolio. A genuinely empty database still
+  renders normally as zero positions; only an unreachable one raises.
+  See `decisions/2026-09-06_fail-loudly-on-unreachable-database.md` for why.
 
 ### Manual tools
 

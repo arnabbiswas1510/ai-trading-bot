@@ -26,6 +26,19 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 _supabase_client: Client = None
 
+
+class DataSourceUnavailable(RuntimeError):
+    """Raised when Supabase could not be reached or refused the query.
+
+    This exists to keep "the broker holds no positions" distinguishable from
+    "we could not find out". The accessors below used to swallow every
+    exception and return an empty list, which made an unreachable database
+    render as a pristine $100,000 / 0-positions dashboard — visually identical
+    to a liquidated account, and with no error anywhere on screen. Callers must
+    surface this as an explicit failure rather than as data.
+    """
+
+
 def get_supabase_client() -> Client:
     global _supabase_client
     if _supabase_client is None:
@@ -504,7 +517,9 @@ def get_positions():
         return positions
     except Exception as e:
         print(f"Error getting positions from Supabase: {e}")
-        return []
+        raise DataSourceUnavailable(
+            f"Could not read portfolio_positions from Supabase: {e}"
+        ) from e
 
 def get_trade_history():
     try:
@@ -528,7 +543,9 @@ def get_trade_history():
         return trades
     except Exception as e:
         print(f"Error getting trade history from Supabase: {e}")
-        return []
+        raise DataSourceUnavailable(
+            f"Could not read trade_history from Supabase: {e}"
+        ) from e
 
 def get_daily_triggers():
     try:

@@ -310,6 +310,11 @@ def get_portfolio():
             },
             "positions": updated_positions
         }
+    except db.DataSourceUnavailable as e:
+        # 503, not 500: the dashboard must be able to tell "the database is
+        # unreachable" apart from a genuine application error, and must never
+        # render an empty portfolio in this case.
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -317,6 +322,8 @@ def get_portfolio():
 def get_trades():
     try:
         return enrich_trades(db.get_trade_history())
+    except db.DataSourceUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

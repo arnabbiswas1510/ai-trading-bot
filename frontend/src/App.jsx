@@ -8,7 +8,8 @@ import {
   Cpu,
   History,
   Activity,
-  LineChart
+  LineChart,
+  AlertTriangle
 } from 'lucide-react';
 
 import DashboardView from './components/DashboardView';
@@ -18,6 +19,29 @@ import SettingsView from './components/SettingsView';
 import TradesView from './components/TradesView';
 import BreakoutsView from './components/BreakoutsView';
 import ReturnsView from './components/ReturnsView';
+
+/**
+ * Turn a failed API response into a message that says what is actually wrong.
+ *
+ * 503 is reserved by the backend for "the database could not be reached", which
+ * is the case that must never be rendered as an empty portfolio.
+ */
+async function describeApiFailure(res, what) {
+  let detail = '';
+  try {
+    const body = await res.json();
+    detail = body?.detail || '';
+  } catch {
+    /* non-JSON error body — the status alone still tells us enough */
+  }
+  if (res.status === 503) {
+    return `The backend could not reach its database, so ${what} could not be loaded. `
+      + `Your positions and trades are NOT lost — they simply could not be read. `
+      + `Do not treat any figure on this screen as your real account state.`
+      + (detail ? ` (${detail})` : '');
+  }
+  return `Failed to load ${what} (HTTP ${res.status}).${detail ? ` ${detail}` : ''}`;
+}
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -31,9 +55,16 @@ export default function App() {
   
   const [screenerLoading, setScreenerLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
+  // Non-null when the backend could not reach its database. Kept separate from
+  // `dataLoading` because the failure mode this guards against is not a slow
+  // load — it is the dashboard cheerfully rendering $100,000 / 0 positions when
+  // Supabase is unreachable, which is indistinguishable from a liquidated
+  // account. See decisions/2026-09-06_fail-loudly-on-unreachable-database.md.
+  const [dataError, setDataError] = useState(null);
 
   const fetchAllData = async () => {
     try {
+      setDataError(null);
       // Fetch market direction
       const marketRes = await fetch('/api/market');
       if (marketRes.ok) {
@@ -53,6 +84,8 @@ export default function App() {
       if (portfolioRes.ok) {
         const pData = await portfolioRes.json();
         setPortfolioData(pData);
+      } else {
+        throw new Error(await describeApiFailure(portfolioRes, 'portfolio'));
       }
 
       // Fetch completed trades
@@ -60,6 +93,8 @@ export default function App() {
       if (tradesRes.ok) {
         const tData = await tradesRes.json();
         setTradeHistory(tData);
+      } else {
+        throw new Error(await describeApiFailure(tradesRes, 'trade history'));
       }
 
       // Fetch breakouts
@@ -78,6 +113,7 @@ export default function App() {
       }
     } catch (e) {
       console.error("Failed to load initial REST API data: ", e);
+      setDataError(e.message || String(e));
     } finally {
       setDataLoading(false);
     }
@@ -131,6 +167,30 @@ export default function App() {
         <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', minHeight: '60vh' }}>
           <div className="spinner" style={{ width: '40px', height: '40px', borderTopColor: 'var(--accent-primary)' }}></div>
           <p style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Initializing Core Analytics Engine...</p>
+        </div>
+      );
+    }
+
+    if (dataError) {
+      // Deliberately replaces the whole view rather than sitting above it. A
+      // banner over a $100,000 / 0-positions dashboard is still a dashboard
+      // showing $100,000; the numbers are the danger, so they must not render.
+      return (
+        <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '2rem' }}>
+          <div style={{ maxWidth: '640px', border: '1px solid var(--danger, #ef4444)', borderRadius: '12px', padding: '2rem', background: 'rgba(239, 68, 68, 0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', color: 'var(--danger, #ef4444)' }}>
+              <AlertTriangle size={28} />
+              <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Portfolio data unavailable</h2>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 1.25rem' }}>{dataError}</p>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => { setDataLoading(true); fetchAllData(); }}
+            >
+              Retry
+            </button>
+          </div>
         </div>
       );
     }
