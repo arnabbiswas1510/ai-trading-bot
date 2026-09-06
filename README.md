@@ -463,6 +463,17 @@ docker compose logs -f execution-agent
   (`config.py`) by every module that *buys*. No exit rule derives a threshold from the slot
   count any more — `EFFECTIVE_POSITION_SLOTS` was deleted with the Early Dollar Stop that
   was its only consumer.
+- **Every container pins `dns: [1.1.1.1, 8.8.8.8]`** in `docker-compose.yml`. The host
+  resolves only via Tailscale MagicDNS (`100.100.100.100`), and Docker bakes the upstream
+  resolver list into a container at *create* time and never revisits it — so a cold boot
+  that creates containers before `tailscaled` is ready leaves them with no external
+  nameserver at all. Symptom: the dashboard renders a clean `$100,000 / 0 positions` slate
+  (Supabase is unreachable, not empty) and the execution agent cannot read triggers or write
+  fills. Diagnose with `docker exec can-slim-trading-bot cat /etc/resolv.conf` — a healthy
+  container shows `ExtServers: [1.1.1.1 8.8.8.8]`, a broken one shows
+  `NO EXTERNAL NAMESERVERS DEFINED`. Recover with `docker compose up -d --force-recreate`;
+  a plain `restart` is not enough, because Docker only regenerates the resolver config when
+  the container is recreated.
 
 ### Manual tools
 

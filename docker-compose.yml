@@ -1,5 +1,16 @@
 version: '3.8'
 
+# Every container pins its own external resolvers instead of inheriting the
+# host's. The host resolves via Tailscale MagicDNS (100.100.100.100) only, and
+# on a cold boot Docker can create the containers before tailscaled has
+# populated /etc/resolv.conf. Docker bakes the upstream list into the embedded
+# resolver at container-create time and never revisits it, so those containers
+# come up with "NO EXTERNAL NAMESERVERS DEFINED" and cannot resolve Supabase,
+# FMP or IBKR until they are force-recreated. Pinning removes the race.
+x-external-dns: &external-dns
+  - 1.1.1.1
+  - 8.8.8.8
+
 services:
   ib-gateway:
     image: heshiming/ibga@sha256:82bba0d8befb40720b4e70be604ca57cc234cc4930ddbaf5cc45ed6f41e586c9
@@ -22,6 +33,7 @@ services:
     volumes:
       - ib-gateway-program:/home/ibg
       - ib-gateway-settings:/home/ibg_settings
+    dns: *external-dns
     networks:
       - trading_bridge
 
@@ -43,6 +55,7 @@ services:
       options:
         max-size: "10m"   # Docker json-file capped for live `docker logs` tailing
         max-file: "3"
+    dns: *external-dns
     networks:
       - trading_bridge
 
@@ -64,6 +77,7 @@ services:
       - .env
     environment:
       - DB_PATH=/app/data/trading_bot.db
+    dns: *external-dns
     networks:
       - trading_bridge
 
