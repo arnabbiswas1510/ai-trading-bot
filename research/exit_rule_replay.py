@@ -146,6 +146,29 @@ class ExitConfig:
     p2_ladder_gain: float = 5.0
     p2_ladder_trail: float = 0.015
 
+    # ── End-of-day give-back variant ─────────────────────────────────────────
+    # When True the ladder rung stops being a resting intraday stop and becomes
+    # a once-a-day test on the CLOSE, evaluated on the final bar of the session.
+    # This is a different rule, not a tighter setting of the same one: a resting
+    # trail is triggered by the low of any 5-minute bar, so it is wick-sensitive
+    # and cannot be tightened far without firing on noise. A close-based test
+    # ignores wicks entirely, which is what makes a much tighter band arguable.
+    #
+    # The trade-off is real and must not be glossed: between two closes there is
+    # no ladder protection at all. `p2_eod_backstop` optionally keeps a wider
+    # resting stop underneath as a crash guard, which is the honest comparison —
+    # "0.5% at the close" and "0.5% at the close PLUS a 3% intraday backstop"
+    # are different risk profiles.
+    p2_eod: bool = False
+    p2_eod_trail: float = 0.005
+    # "intraday" anchors give-back to the highest HIGH seen (what the live
+    # high_water_mark column stores); "close" anchors to the highest CLOSE. The
+    # second is the internally consistent choice for a close-based rule — an
+    # intraday anchor measures a close against a price that only ever existed
+    # inside a wick, which reintroduces the wick sensitivity being removed.
+    p2_eod_anchor: str = "intraday"
+    p2_eod_backstop: float | None = None
+
     def describe(self) -> str:
         bits = []
         if self.proveit:
@@ -163,8 +186,15 @@ class ExitConfig:
                 if self.p1_hard_max_day is not None:
                     bits.append(f"hard<=d{self.p1_hard_max_day}")
             if self.p2_enabled:
-                bits.append(f"P2[arm>={self.p2_arm_gain}% floor=+{self.p2_floor_pct}% "
-                            f"ladder>={self.p2_ladder_gain}%@{self.p2_ladder_trail*100:.1f}%]")
+                if self.p2_eod:
+                    back = ("none" if self.p2_eod_backstop is None
+                            else f"{self.p2_eod_backstop * 100:.1f}%")
+                    bits.append(f"P2[arm>={self.p2_arm_gain}% floor=+{self.p2_floor_pct}% "
+                                f"EOD>={self.p2_ladder_gain}%@{self.p2_eod_trail * 100:.2f}% "
+                                f"anchor={self.p2_eod_anchor} backstop={back}]")
+                else:
+                    bits.append(f"P2[arm>={self.p2_arm_gain}% floor=+{self.p2_floor_pct}% "
+                                f"ladder>={self.p2_ladder_gain}%@{self.p2_ladder_trail*100:.1f}%]")
             bits.append(self.mode)
             return ", ".join(bits)
         if self.pct is not None:
@@ -474,6 +504,13 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
     stop_price: float | None = None
     day_bars: list[dict] = []
     current_date: str | None = None
+    # Final bar of each session, so the EOD variant can be evaluated without
+    # looking ahead: the agent at the close knows the whole session, and nothing
+    # after it.
+    last_bar_ts: dict[str, Any] = {}
+    for _b in trade.bars:
+        last_bar_ts[_b["date"]] = _b["ts"]
+    peak_close = entry
 
     for bar in trade.bars:
         # ── Resolve an armed Phase 1 exit before anything else ───────────────
@@ -495,6 +532,8 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
         if current_date != bar["date"]:
             if day_bars and day_bars[-1]["close"] > entry:
                 proven = True
+            if day_bars:
+                peak_close = max(peak_close, day_bars[-1]["close"])
             day_bars = []
             current_date = bar["date"]
         day_bars.append(bar)
@@ -509,10 +548,19 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
             # high and then filling on its low would be look-ahead.
             peak_gain = (peak / entry - 1) * 100.0
             candidate: float | None = None
+            floor_level = entry * (1 + cfg.p2_floor_pct / 100.0)
             if peak_gain >= cfg.p2_ladder_gain:
-                candidate = peak * (1 - cfg.p2_ladder_trail)
+                if cfg.p2_eod:
+                    # The ladder rung is no longer a resting stop. Keep the
+                    # breakeven floor, and optionally a wider crash backstop;
+                    # the give-back itself is tested on the close below.
+                    candidate = floor_level
+                    if cfg.p2_eod_backstop is not None:
+                        candidate = max(candidate, peak * (1 - cfg.p2_eod_backstop))
+                else:
+                    candidate = peak * (1 - cfg.p2_ladder_trail)
             elif peak_gain >= cfg.p2_arm_gain:
-                candidate = entry * (1 + cfg.p2_floor_pct / 100.0)
+                candidate = floor_level
             if candidate is not None:
                 stop_price = candidate if stop_price is None else max(stop_price, candidate)
 
@@ -521,6 +569,19 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     return {"price": bar["open"], "reason": "p2_gap"}
                 if bar["low"] <= stop_price:
                     return {"price": stop_price, "reason": "p2_floor"}
+
+            # ── EOD give-back test ───────────────────────────────────────────
+            # Evaluated only on the session's final bar, against the close. The
+            # anchor includes today's own action (the agent at 15:55 has seen
+            # it) but nothing beyond this bar, so there is no look-ahead.
+            if cfg.p2_eod and bar["ts"] == last_bar_ts.get(bar["date"]):
+                if cfg.p2_eod_anchor == "close":
+                    anchor = max(peak_close, bar["close"])
+                else:
+                    anchor = max(peak, bar["high"])
+                if (anchor / entry - 1) * 100.0 >= cfg.p2_ladder_gain:
+                    if bar["close"] <= anchor * (1 - cfg.p2_eod_trail):
+                        return {"price": bar["close"], "reason": "p2_eod"}
 
         elif not proven:
             pct = cfg.p1_pct_for_day(day)
@@ -858,6 +919,51 @@ def ladder_configs() -> list[ExitConfig]:
     return out
 
 
+def eod_configs() -> list[ExitConfig]:
+    """End-of-day give-back vs the shipped intraday trail.
+
+    These are NOT tighter settings of the shipped rule — they are a different
+    mechanism. The shipped 1.5% is a resting IBKR trail triggered by the LOW of
+    any bar, so it cannot be tightened far without firing on wicks. An EOD test
+    reads only the close, which is why a much tighter band is arguable at all.
+
+    What the sweep must expose, and why each arm is here:
+
+      * `anchor` — an EOD rule anchored to the highest intraday HIGH measures a
+        close against a price that may only have existed inside a wick, which
+        smuggles the wick sensitivity straight back in. Anchoring to the highest
+        CLOSE is the internally consistent choice. Both are run because the live
+        `high_water_mark` column stores the intraday high, so the intraday
+        anchor is what a naive implementation would actually ship.
+      * `backstop` — between two closes an EOD-only rule offers no ladder
+        protection whatsoever. A position can round-trip a 9% gain intraday and
+        the rule will not look. Rows with a backstop keep a wider resting stop
+        underneath; rows without show what the unprotected version really costs.
+
+    The shipped intraday ladder is included so every row is a like-for-like
+    comparison rather than a comparison against the raw realised exits.
+    """
+    out = [shipped_proveit(),
+           ExitConfig(
+               "INTRADAY ladder 1.5% (shipped rung)",
+               proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+               p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+               p2_ladder_trail=0.015)]
+
+    for anchor in ("close", "intraday"):
+        for trail in (0.005, 0.0075, 0.010, 0.015, 0.020):
+            for backstop in (None, 0.03):
+                back = "none" if backstop is None else f"{backstop * 100:.0f}%"
+                out.append(ExitConfig(
+                    f"EOD {trail * 100:.2f}% [{anchor} anchor, backstop {back}]",
+                    proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+                    p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+                    p2_eod=True, p2_eod_trail=trail, p2_eod_anchor=anchor,
+                    p2_eod_backstop=backstop))
+
+    return out
+
+
 def report(results: list[dict], trades: list[Trade], top: int | None = None) -> None:
     losers = [t for t in trades if t.is_loser]
     total_loss = sum(t.profit_loss for t in losers)
@@ -923,6 +1029,9 @@ def main() -> None:
     parser.add_argument("--ladder", action="store_true",
                         help="sweep the Phase 2 profit-lock give-back trail "
                              "(TRAIL_PROFIT_TIERS width) and its arming gain")
+    parser.add_argument("--eod", action="store_true",
+                        help="compare an end-of-day close-based give-back "
+                             "against the shipped intraday trail")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -942,6 +1051,8 @@ def main() -> None:
 
     if args.day0:
         configs = day0_configs()
+    elif args.eod:
+        configs = eod_configs()
     elif args.ladder:
         configs = ladder_configs()
     elif args.proveit:
@@ -952,7 +1063,8 @@ def main() -> None:
         configs = headline_configs()
     results = [score(trades, cfg) for cfg in configs]
     report(results, trades,
-           top=args.top if (args.grid or args.proveit or args.ladder) else None)
+           top=args.top if (args.grid or args.proveit or args.ladder
+                            or args.eod) else None)
 
     if args.json:
         with open(args.json, "w") as fh:

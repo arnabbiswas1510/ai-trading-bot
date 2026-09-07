@@ -89,6 +89,7 @@ set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
 python3 research/exit_rule_replay.py --insecure          # headline comparison
 python3 research/exit_rule_replay.py --insecure --grid   # full parameter sweep
 python3 research/exit_rule_replay.py --insecure --ladder # profit-lock give-back sweep
+python3 research/exit_rule_replay.py --insecure --eod    # EOD give-back vs intraday trail
 python3 research/exit_rule_replay.py --insecure --json out.json
 ```
 
@@ -114,6 +115,30 @@ Two mechanical caveats apply specifically to tight settings:
 - Below roughly a third of a stock's own 5-minute range the level stops acting
   as a give-back cap and starts acting as "sell at the first pullback" — the
   failure `OCA_EXIT_MIN_TRAIL_PCT` guards against on the OCA path.
+
+`--eod` answers a different question: should the give-back be checked *once a
+day on the close* instead of continuously? A close-based test ignores wicks, so
+a much tighter band is arguable. The sweep crosses the band (0.5%–2.0%) with the
+anchor (highest close vs highest intraday high) and with the presence of a wider
+intraday crash backstop.
+
+On the 30 closed trades available on 2026-09-06 **every EOD variant lost to the
+shipped intraday 1.5% trail**, the best by $1,647 and a 0.5% close-anchored band
+by $2,104. Against the intraday rule head-to-head, 7 of 7 affected trades were
+worse and none better. Two mechanisms, both visible in the data:
+
+- **It fires far too often.** The median session of these names closes 0.83%
+  below its own high, and 65% close more than 0.5% below it. A 0.5% EOD band is
+  therefore triggered by an ordinary session, so it exits winners almost as soon
+  as the rung arms rather than letting the peak keep rising.
+- **The fill is unbounded.** An intraday trail fills *at* peak × (1 − band). An
+  EOD rule fills at whatever the close happens to be, which is a mean 1.17%
+  below the high and has a long tail. It caps when you *look*, not what you
+  *give back* — so on the worst days it is the looser rule despite the tighter
+  number.
+
+Removing the intraday backstop cost a further ~$527 on losers, so an EOD-only
+give-back is also strictly worse on risk.
 
 Read the results with the four questions in `AGENTS.md` — report `n` first,
 check whether the shipped config still wins, check whether any result is carried
