@@ -1884,6 +1884,96 @@ def maybe_arm_power_hold(client: Client, pos: dict, calendar_days: int) -> bool:
     return True
 
 
+# ── Sell-state regime transitions (concise Telegram on change) ────────────────
+# Every cycle a position sits under exactly one GOVERNING exit regime. When that
+# regime changes we send one concise Telegram. State is latched in
+# portfolio_positions.sell_state, so it fires exactly once per transition and
+# survives restarts. See decisions/2026-09-08_sell-state-transitions.md.
+SELL_STATE_LABELS = {
+    "UNPROVEN":      "Unproven",
+    "PROVEN":        "Proven",
+    "PROVEN_FLOOR":  "Proven — floor armed",
+    "PROFIT_LOCKED": "Profit-locked",
+    "POWER_HOLD":    "Power Hold",
+    "EXITING":       "Exiting",
+}
+# Regimes that already have their own richer dedicated Telegram (the Prove-It
+# arm message and the power-hold arm message). We still LATCH these so entering
+# and leaving them is tracked coherently, but we do not re-announce them here.
+SELL_STATE_SUPPRESS_NOTIFY = {"EXITING", "POWER_HOLD"}
+
+
+def sell_state_code(pos: dict, prove_it_phase: str, power_held: bool,
+                    peak_pct: float) -> str | None:
+    """The single governing exit regime for a position this cycle.
+
+    Precedence follows the monitor loop: an armed exit governs everything, then
+    the power-hold widening, then the profit-lock ladder (peak >= the first
+    TRAIL_PROFIT_TIERS threshold), then the Prove-It phase. Returns None when no
+    regime applies (Prove-It disabled), so the caller tracks nothing.
+    """
+    if pos.get("exit_armed"):
+        return "EXITING"
+    if power_held:
+        return "POWER_HOLD"
+    if TRAIL_PROFIT_TIERS and peak_pct >= TRAIL_PROFIT_TIERS[0][0]:
+        return "PROFIT_LOCKED"
+    if prove_it_phase == "phase2":
+        return "PROVEN_FLOOR"
+    if prove_it_phase == "phase2-unarmed":
+        return "PROVEN"
+    if prove_it_phase == "phase1":
+        return "UNPROVEN"
+    return None
+
+
+def maybe_notify_sell_state(client: Client, pos: dict, ticker: str,
+                            new_code: str | None, *, prove_it_level: float | None,
+                            unrealized_pct: float, peak_pct: float,
+                            days_held: int) -> None:
+    """Latch the governing regime and Telegram a concise note on any change.
+
+    The first observation of a position (no prior sell_state) is recorded
+    SILENTLY — it is an initial state, not a transition, and the buy itself was
+    already announced. Transitions INTO a regime that has its own dedicated
+    message (SELL_STATE_SUPPRESS_NOTIFY) are latched but not re-announced.
+    """
+    if new_code is None:
+        return
+    prev = pos.get("sell_state")
+    if prev == new_code:
+        return
+
+    # Latch FIRST so a notify failure can never cause a re-fire next cycle.
+    try:
+        client.table("portfolio_positions").update(
+            {"sell_state": new_code}).eq("ticker", ticker).execute()
+    except Exception as e:
+        # PGRST204 = column missing (migration not yet run). Without the latch we
+        # cannot detect a change without spamming every cycle, so do NOT notify.
+        if "PGRST204" in str(e) or "sell_state" in str(e):
+            print(f"   ⚠️ {ticker}: sell_state column missing — run "
+                  f"migrations/add_sell_state_column.sql. Transition notices disabled.")
+            return
+        raise
+    pos["sell_state"] = new_code
+
+    if prev is None:                              # initial state, not a transition
+        return
+    if new_code in SELL_STATE_SUPPRESS_NOTIFY:    # has its own dedicated message
+        return
+    notifier.notify_sell_state_change(
+        ticker,
+        SELL_STATE_LABELS.get(prev, prev),
+        SELL_STATE_LABELS.get(new_code, new_code),
+        new_code,
+        prove_it_level=prove_it_level,
+        unrealized_pct=unrealized_pct,
+        peak_pct=peak_pct,
+        days_held=days_held,
+    )
+
+
 def cancel_ticker_sell_orders(ib: IB, ticker: str) -> int:
     """Cancels all active GTC SELL orders for *ticker* (OCA cleanup before explicit sells)."""
     cancelled = 0
@@ -4375,6 +4465,20 @@ def monitor_portfolio_intraday(ib: IB):
 
         # Trailing stop is fully managed by IBKR. reconcile_with_ibkr() (Case 1)
         # detects when it fires and archives the position to trade_history.
+
+        # ── Sell-state transition notice ─────────────────────────────────────────
+        # Telegram a concise note whenever the governing exit regime changes
+        # (Unproven → Proven, give-back floor arming, profit-lock engaging). The
+        # state is latched in portfolio_positions.sell_state so each transition
+        # fires exactly once and survives restarts; Exiting / Power Hold are
+        # tracked but announced by their own richer messages, not re-announced
+        # here. Armed and Smart-OCA positions already `continue`d above.
+        _state_code = sell_state_code(pos, prove_it_phase, power_held, highest_unrealized_pct)
+        maybe_notify_sell_state(
+            client, pos, ticker, _state_code,
+            prove_it_level=prove_it_level, unrealized_pct=unrealized_pct,
+            peak_pct=highest_unrealized_pct, days_held=days_held,
+        )
 
         # Position remained active
         active_positions.append(pos)

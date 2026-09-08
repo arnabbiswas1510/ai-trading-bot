@@ -617,6 +617,46 @@ tracking is lost.
 
 ---
 
+## Sell-state transition notifications
+
+**Source:** `sell_state_code()` + `maybe_notify_sell_state()` in `execution_agent.py`,
+called once per position at the end of `monitor_portfolio_intraday()`.
+
+Every cycle a position sits under exactly one **governing exit regime**. When it
+changes, the agent sends one concise Telegram and latches the new regime in
+`portfolio_positions.sell_state`, so each transition fires **exactly once** and
+survives restarts.
+
+| Regime (`sell_state`) | Meaning | Announced by this notifier? |
+|---|---|---|
+| `EXITING` | an exit is armed / selling | No — the Prove-It arm message already fires |
+| `POWER_HOLD` | O'Neil 8-week leader | No — the power-hold arm message already fires |
+| `PROFIT_LOCKED` | peak ≥ +5%, trail tightened to lock profit | **Yes** |
+| `PROVEN_FLOOR` | proven, peak ≥ +2%, give-back floor armed | **Yes** |
+| `PROVEN` | closed above entry, peak < +2% | **Yes** |
+| `UNPROVEN` | never closed above entry | Initial state only |
+
+The three currently-silent transitions this surfaces are **Unproven → Proven**
+(the breakout confirming itself on a daily close), the **give-back floor arming**,
+and the **profit-lock engaging**. `EXITING` and `POWER_HOLD` are **latched but not
+re-announced** here (they have their own richer messages), so *leaving* them —
+e.g. power hold expiring back to `PROFIT_LOCKED` — is still a clean announced
+transition.
+
+- **Silent first observation.** A position with no prior `sell_state` (just bought,
+  or the migration just landed) records its regime silently — an initial state is
+  not a transition, and the buy was already announced.
+- **Latch-first.** The column is written before the Telegram is sent, so a
+  notification failure can never cause a re-fire next cycle.
+- **Inert until migrated.** Gated on the `sell_state` column existing
+  (`migrations/add_sell_state_column.sql`). Without it the agent logs a one-line
+  notice and skips the notification (it cannot latch, so it cannot detect a
+  change). There is no env toggle — muting is done at the Telegram bot.
+
+See `decisions/2026-09-08_sell-state-transitions.md` for why.
+
+---
+
 ## Market direction filter
 
 `is_market_bullish()` evaluates the CANSLIM "M" gate at market open against

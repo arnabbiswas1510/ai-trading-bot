@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1788901117.5761151,
-    "ast_hash": "1f365bc3abd2a381a854fb847c8db05f",
+    "mtime": 1788902554.1616433,
+    "ast_hash": "d6a2abe403cec85850aaa119f01f0a76",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -255,8 +255,8 @@
     "semantic_hash": ""
   },
   "telegram_notifier.py": {
-    "mtime": 1788835383.4754727,
-    "ast_hash": "14935f5e5f1d058f001b6b6ebc023e41",
+    "mtime": 1788902546.358185,
+    "ast_hash": "3470e9e1a4fb96f85dd04dd18bf19682",
     "semantic_hash": ""
   },
   "tests/__init__.py": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788901205.8385751,
-    "ast_hash": "9e20985a1732c97a21f2f86962b73a60",
+    "mtime": 1788902668.660717,
+    "ast_hash": "e8a700006dcf6760922c66a4ba2e2ea6",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -1172,6 +1172,21 @@
   "decisions/2026-09-08_partial-scale-out.md": {
     "mtime": 1788901233.7890365,
     "ast_hash": "ec369b7546be6706c37c7b2e030a21b8",
+    "semantic_hash": ""
+  },
+  "migrations/add_sell_state_column.sql": {
+    "mtime": 1788902562.915594,
+    "ast_hash": "41fa7097ddbbced7218249a46e521307",
+    "semantic_hash": ""
+  },
+  "tests/test_sell_state.py": {
+    "mtime": 1788902590.710874,
+    "ast_hash": "c0f22513e30a4f7a19d7fc586b115b92",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-08_sell-state-transitions.md": {
+    "mtime": 1788902648.228092,
+    "ast_hash": "bf167db49904d008cb1a9c2bf0c08ecb",
     "semantic_hash": ""
   }
 }

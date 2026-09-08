@@ -296,6 +296,49 @@ class TelegramNotifier:
         except Exception:
             pass
 
+    def notify_sell_state_change(
+        self,
+        ticker: str,
+        from_label: str,
+        to_label: str,
+        code: str,
+        *,
+        prove_it_level: float | None = None,
+        unrealized_pct: float = 0.0,
+        peak_pct: float = 0.0,
+        days_held: int = 0,
+    ) -> None:
+        """Concise note when a position's governing exit regime changes.
+
+        Covers the transitions that otherwise happen silently: a breakout
+        proving itself (Unproven -> Proven), the give-back floor arming
+        (-> Proven — floor armed), and the profit lock engaging
+        (-> Profit-locked). Regimes with their own richer message (an armed
+        exit, power hold) are not routed here.
+        """
+        if not self._is_configured():
+            return
+        try:
+            detail = {
+                "PROVEN": "Closed above entry — the give-back floor arms once the peak tops +2%.",
+                "PROVEN_FLOOR": (
+                    f"Peak +{peak_pct:.1f}% armed the give-back floor"
+                    + (f" at <code>${prove_it_level:,.2f}</code>" if prove_it_level else "")
+                    + " — a trade that proved itself will not become a loss."
+                ),
+                "PROFIT_LOCKED": "Gain reached +5% — the trailing stop tightened to lock in profit.",
+            }.get(code, "")
+            msg = (
+                f"\U0001f504 <b>{ticker}</b> · {from_label} \u2192 <b>{to_label}</b>\n"
+                + (f"{detail}\n" if detail else "")
+                + f"  Now: <code>{unrealized_pct:+.1f}%</code> · peak "
+                  f"<code>+{peak_pct:.1f}%</code> · {days_held}d held\n"
+                + f"\U0001f552 {self._now_et()}"
+            )
+            self._send(msg)
+        except Exception:
+            pass
+
     def notify_breakout_verdict_fail(
         self,
         ticker: str,
