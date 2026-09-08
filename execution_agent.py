@@ -519,6 +519,36 @@ notifier = TelegramNotifier(
 )
 
 
+def _is_rth_now() -> bool:
+    """True if US regular trading hours (Mon–Fri, 09:30–16:00 ET) right now.
+
+    Cheap, dependency-free helper used only to colour the IBKR-disconnect alert:
+    a broker outage during RTH means exits are actively not firing, which is more
+    urgent than the same outage overnight. Does not account for market holidays —
+    a false positive on a holiday only makes the alert slightly louder, never
+    quieter, so it fails safe.
+    """
+    now = datetime.datetime.now(ZoneInfo("America/New_York"))
+    if now.weekday() >= 5:
+        return False
+    return (now.hour == 9 and now.minute >= 30) or (10 <= now.hour < 16)
+
+
+def _count_open_positions():
+    """Best-effort count of open positions for the disconnect alert.
+
+    Returns None (not 0) on any failure so the alert says "positions are
+    UNMONITORED" rather than falsely implying an empty book. Never raises: the
+    alert must fire even if Supabase is also unreachable.
+    """
+    try:
+        client = get_supabase_client()
+        res = client.table("portfolio_positions").select("ticker").execute()
+        return len(res.data or [])
+    except Exception:
+        return None
+
+
 # ── NYSE trading-day calendar ─────────────────────────────────────────────────
 def _nyse_holidays(year: int) -> set:
     """Return the set of NYSE market holidays for a given year.
@@ -1649,7 +1679,18 @@ def _compute_dynamic_trail_pct(
         return None
 
     new_pct = min(candidates)   # tighter of the two levers
-    return new_pct if new_pct < current_pct else None
+
+    # Compare at the precision IBKR actually places the order. place_trailing_stop
+    # submits trailingPercent = round(pct * 100, 2), so any decrease smaller than
+    # 0.01% yields a byte-identical resting order. Comparing the raw floats instead
+    # let the Prove-It floor lever — which recomputes a slightly different % every
+    # cycle as price ticks — clear `new_pct < current_pct` by a sub-basis-point
+    # margin on every pass, re-placing the same stop and firing a "4.9% → 4.9%"
+    # notification each time (the DHT churn/spam observed 2026-09-07). Only act
+    # when the placed value would genuinely change.
+    if round(new_pct * 100, 2) < round(current_pct * 100, 2):
+        return new_pct
+    return None
 
 
 def is_power_hold_active(pos: dict, calendar_days: int) -> bool:
@@ -4572,6 +4613,7 @@ def main_loop():
     _retry_delays = [30, 60, 120, 300]  # backoff schedule in seconds
     _attempt = 0
     _connect_silent_attempts = 0   # consecutive silent (pre-threshold) failures
+    _down_since = time.time()      # when the current outage started (for alert duration)
     while True:
         try:
             ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
@@ -4658,12 +4700,16 @@ def main_loop():
             _connect_silent_attempts += 1
             _attempt += 1
             if _connect_silent_attempts >= AUTOHEAL_ALERT_AFTER:
-                # Autoheal has had enough time to fix this — something is wrong
-                notifier.notify_exception(
-                    f"main_loop() — IB Gateway still unreachable after "
-                    f"{_connect_silent_attempts} attempts (~18 min). "
-                    f"Autoheal may have failed.",
-                    e,
+                # Autoheal has had enough time to fix this — something is wrong.
+                # Fire the loud, consequence-stating disconnect alert rather than a
+                # generic exception: exits/stops are not running while we cannot
+                # reach the gateway, and this must not read as a Telegram hiccup.
+                notifier.notify_ibkr_disconnected(
+                    attempts=_attempt,
+                    minutes=int((time.time() - _down_since) / 60),
+                    positions_unmonitored=_count_open_positions(),
+                    market_open=_is_rth_now(),
+                    error=e,
                 )
                 _connect_silent_attempts = 0   # reset so we don't spam every attempt after threshold
             else:
@@ -4755,6 +4801,8 @@ def main_loop():
         # Reconnection failsafe
         if not ib.isConnected():
             print("Reconnecting to IB Gateway...")
+            if _connect_silent_attempts == 0:
+                _down_since = time.time()   # mark the start of this outage
             try:
                 ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
                 ib.reqPositions()  # re-subscribe after reconnect
@@ -4765,11 +4813,16 @@ def main_loop():
                 _connect_silent_attempts += 1
                 print(f"Reconnection failed (attempt {_connect_silent_attempts}): {e}")
                 if _connect_silent_attempts >= AUTOHEAL_ALERT_AFTER:
-                    notifier.notify_exception(
-                        f"main_loop() -- reconnect -- gateway still down after "
-                        f"{_connect_silent_attempts} attempts (~18 min). "
-                        f"Autoheal may have failed.",
-                        e,
+                    # Loud disconnect alert — the broker link dropped mid-session
+                    # and did not come back, so exits/stops are offline for the
+                    # open book. See notify_ibkr_disconnected for why this is not
+                    # a generic notify_exception.
+                    notifier.notify_ibkr_disconnected(
+                        attempts=_connect_silent_attempts,
+                        minutes=int((time.time() - _down_since) / 60),
+                        positions_unmonitored=_count_open_positions(),
+                        market_open=_is_rth_now(),
+                        error=e,
                     )
                     _connect_silent_attempts = 0   # reset so we dont spam after each threshold
                 time.sleep(60)

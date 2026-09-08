@@ -72,3 +72,30 @@ class TestOneWayOnly:
     def test_never_loosens_a_manually_tightened_stop(self):
         result = _compute_dynamic_trail_pct(unrealized_pct=25.0, calendar_days=5, current_pct=0.01)
         assert result is None
+
+
+class TestNoSubQuantumChurn:
+    """Regression for the 2026-09-07 DHT '4.9% → 4.9%' notification spam.
+
+    The Prove-It floor lever recomputes a slightly different trail % each cycle as
+    price ticks. Because the resting order's trailingPercent is quantised to two
+    decimals, a decrease smaller than 0.01% produces a byte-identical order and
+    must be treated as no change — otherwise every cycle cancels + re-places the
+    same live stop and fires a redundant notification.
+    """
+
+    def test_sub_quantum_decrease_returns_none(self):
+        # Stored 4.90%; Prove-It lever nudges to 4.895% — same placed order.
+        result = _compute_dynamic_trail_pct(
+            unrealized_pct=4.1, calendar_days=4, current_pct=0.0490,
+            prove_it_pct=0.04895,
+        )
+        assert result is None
+
+    def test_real_change_at_quantum_still_tightens(self):
+        # A genuine 0.01%+ tightening must still be applied.
+        result = _compute_dynamic_trail_pct(
+            unrealized_pct=4.1, calendar_days=4, current_pct=0.0490,
+            prove_it_pct=0.0480,
+        )
+        assert result == pytest.approx(0.0480)

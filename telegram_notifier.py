@@ -36,6 +36,14 @@ ET = ZoneInfo("America/New_York")
 # error fires every monitoring cycle — e.g. gateway connection refused during restart)
 EXCEPTION_COOLDOWN_SECONDS = 3600  # 1 hour — reminder frequency, not silence
 
+# The IBKR-disconnect alert is deliberately NOT routed through notify_exception:
+# a broker outage means exits/stops are not running, which is far more serious
+# than a generic swallowed exception and must not be deduped away by unrelated
+# errors sharing the "TRADING BOT EXCEPTION" headline. It gets its own fixed
+# cache key so it keeps reminding on this cadence for as long as the gateway is
+# down, and a shorter window than EXCEPTION_COOLDOWN so a live outage nags.
+DISCONNECT_REMINDER_SECONDS = 1800  # 30 min — reminder cadence while IBKR is down
+
 
 class TelegramNotifier:
 
@@ -449,6 +457,88 @@ class TelegramNotifier:
             f"❌ Error:     <code>{type(error).__name__}: {error_str}</code>\n"
             f"\n"
             f"🔧 <i>The bot will attempt to continue. Check logs for details.</i>\n"
+            f"🕒 {self._now_et()}"
+        )
+        self._send(msg)
+
+    def notify_ibkr_disconnected(
+        self,
+        *,
+        attempts: int,
+        minutes: int,
+        positions_unmonitored=None,
+        market_open: bool = False,
+        error: Exception | None = None,
+    ) -> None:
+        """Loud, unambiguous alert that the agent cannot reach IB Gateway.
+
+        This is the alert for the 2026-09-07 silent-failure incident: the gateway
+        was stuck in a login loop all session, the agent never connected, and the
+        only alerts that fired were generic "TRADING BOT EXCEPTION / TimeoutError"
+        messages that read as a Telegram hiccup rather than "IBKR is down, your
+        stops are not running." This message names the consequence explicitly so
+        it can never be mistaken for noise.
+
+        Deliberately bypasses notify_exception's per-error dedup: it uses a single
+        fixed cache key so it reminds every DISCONNECT_REMINDER_SECONDS while the
+        outage persists, and is never suppressed by unrelated exceptions.
+
+        Args:
+            attempts:              consecutive failed (re)connection attempts.
+            minutes:               approx minutes the gateway has been unreachable.
+            positions_unmonitored: count of open positions (None if unknown).
+            market_open:           True if US regular trading hours right now.
+            error:                 the underlying connection error, if any.
+        """
+        now = time.time()
+        key = "ibkr_disconnected"
+        if now - self._exception_cache.get(key, 0) < DISCONNECT_REMINDER_SECONDS:
+            return  # already reminded within the window — avoid a storm
+        self._exception_cache[key] = now
+
+        if positions_unmonitored is None:
+            pos_line = "📉 Open positions are <b>UNMONITORED</b>."
+        elif positions_unmonitored == 0:
+            pos_line = "📉 No open positions (nothing to monitor)."
+        else:
+            pos_line = (
+                f"📉 <b>{positions_unmonitored} open position(s) are "
+                f"UNMONITORED</b>."
+            )
+
+        if market_open:
+            market_line = (
+                "🕒 Market is <b>OPEN</b> — exit rules are NOT firing right now."
+            )
+        else:
+            market_line = (
+                "🕒 Market is closed — the gateway must recover before the open."
+            )
+
+        err_line = ""
+        if error is not None:
+            err_str = html.escape(str(error)[:200]) or type(error).__name__
+            err_line = f"❌ <code>{type(error).__name__}: {err_str}</code>\n"
+
+        msg = (
+            f"🚨 <b>IBKR DISCONNECTED — RISK MANAGEMENT OFFLINE</b>\n"
+            f"\n"
+            f"The execution agent cannot reach IB Gateway "
+            f"(~{minutes} min, {attempts} attempts). Autoheal has not "
+            f"recovered it.\n"
+            f"{err_line}"
+            f"\n"
+            f"⛔ NOT running while disconnected:\n"
+            f"   • Trailing stops &amp; Prove-It Stop\n"
+            f"   • EMA-21 / plateau exits\n"
+            f"   • 15-min position monitoring\n"
+            f"   • Market-open buys\n"
+            f"\n"
+            f"{pos_line}\n"
+            f"{market_line}\n"
+            f"\n"
+            f"🔧 <i>Check IB Gateway login/TOTP on the prod box "
+            f"(docker restart ib-gateway).</i>\n"
             f"🕒 {self._now_et()}"
         )
         self._send(msg)

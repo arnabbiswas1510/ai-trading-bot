@@ -130,6 +130,43 @@ If both show normal operation, the TOTP automation is working end-to-end.
 
 ---
 
+## When the gateway does NOT recover — the loud disconnect alert
+
+If IB Gateway gets stuck (e.g. a login/TOTP loop with `connection error No
+Internet connection`, or the API port accepting TCP but never completing the
+handshake), the execution agent cannot connect. **While disconnected, none of
+the risk machinery runs** — trailing stops, the Prove-It Stop, EMA-21 / plateau
+exits, the 15-minute monitoring cycle, and market-open buys are all offline, and
+any open positions are unmonitored.
+
+The agent gives autoheal ~18 minutes (6 retries with backoff) to restart the
+container. If the gateway is still unreachable after that, it fires a dedicated
+Telegram alert:
+
+```
+🚨 IBKR DISCONNECTED — RISK MANAGEMENT OFFLINE
+```
+
+This alert is deliberately distinct from the generic `TRADING BOT EXCEPTION`
+message and names the consequence explicitly (which rules are offline, how many
+positions are unmonitored, and whether the market is currently open). It is not
+suppressed by unrelated exceptions, and it repeats every **30 minutes** for as
+long as the outage lasts (`DISCONNECT_REMINDER_SECONDS` in
+`telegram_notifier.py`) — a reminder cadence, not a one-shot.
+
+If you receive it, check the gateway on the prod box and restart it:
+
+```bash
+docker logs ib-gateway --tail 40
+docker restart ib-gateway
+docker logs execution-agent -f   # watch for "Connected to IBKR Gateway successfully!"
+```
+
+See `decisions/2026-09-07_loud-ibkr-disconnect-alert.md` for why this replaced
+the generic exception alert.
+
+---
+
 ## Summary — What Changes and What Doesn't
 
 | Item | Before | After |
