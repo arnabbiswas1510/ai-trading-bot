@@ -25,10 +25,10 @@
       "title": "Partial scale-out: sell 33% at +4% peak gain",
       "status": "active",
       "decided": "2026-09-08",
-      "implemented": false,
-      "decision": "APPROVED CONFIG, NOT YET SHIPPED. When we build partial scale-out, use: on an open position's peak gain first reaching +4%, sell 33% of the shares; the remaining 67% rides the unchanged Prove-It stop. Freed capital stays as reserve until a full slot opens (option a), then redeploys via the normal available_cash / remaining_slots sizing. The production code, ADR and docs are not written yet — the 50-trade review re-validates this config before/as it is built.",
+      "implemented": true,
+      "decision": "When an open position's PEAK gain first reaches +4%, sell 33% of the shares at market; the remaining ~67% rides the unchanged Prove-It stop. Fires once per position (scaled_out latch); suppressed for power-held leaders. Freed capital stays as reserve until a full slot opens, then redeploys via normal available_cash / remaining_slots sizing. Live in execute_scale_out() + monitor_portfolio_intraday(); ADR and docs shipped.",
       "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped — those are an entry-quality problem, tracked separately.",
-      "adr": null,
+      "adr": "decisions/2026-09-08_partial-scale-out.md",
       "revisit": {
         "min_closed_trades": 50,
         "not_before": "2026-11-20"

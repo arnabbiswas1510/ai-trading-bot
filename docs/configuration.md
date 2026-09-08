@@ -116,6 +116,21 @@ exit in Phase 1. Reducing it to 0 lets the broker fire first, which loses the ~$
 armed exit is worth across the sample. In Phase 2 the resting order is the floor, so the
 slack does not apply.
 
+### Partial scale-out
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SCALE_OUT_ENABLED` | `true` | Master switch for the partial scale-out rule |
+| `SCALE_OUT_TRIGGER_PCT` | `0.04` | Peak gain that triggers the one-time partial sell (+4%) |
+| `SCALE_OUT_FRACTION` | `0.33` | Fraction of shares sold at the trigger (33%) |
+
+The first time a position's **peak** gain reaches `SCALE_OUT_TRIGGER_PCT`, the agent sells
+`SCALE_OUT_FRACTION` of the shares at market and lets the remainder ride the unchanged
+Prove-It stop. Fires once per position; suppressed for power-held leaders. **PROVISIONAL**
+— +4%/33% was tuned on a 33-trade replay (net-free, lowest harmed count) and is logged in
+`decisions/provisional_decisions.json` for revisit at ≥50 trades. See
+`decisions/2026-09-08_partial-scale-out.md`.
+
 ### Armed exit
 
 | Variable | Default | Effect |

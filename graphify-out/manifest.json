@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1788835383.4661076,
-    "ast_hash": "bbc1e0a88c0df3fcdfe8aef00c4ce131",
+    "mtime": 1788901117.5761151,
+    "ast_hash": "1f365bc3abd2a381a854fb847c8db05f",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -380,8 +380,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1788835383.4633927,
-    "ast_hash": "177b5d6f9252ce9434421d267ab2117b",
+    "mtime": 1788900614.6955485,
+    "ast_hash": "d989c04b2b4f394c9cb99daf141edb55",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1788835383.4642725,
-    "ast_hash": "e1bcc51c0b35b9b7e3d39e6f41defe56",
+    "mtime": 1788900583.7516086,
+    "ast_hash": "b32287f3f4fe451b23fb2cd37c6d1e8a",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1788835383.4651635,
-    "ast_hash": "1f65d5c60dd88e1c5c328bc3571c21c6",
+    "mtime": 1788901205.8385751,
+    "ast_hash": "9e20985a1732c97a21f2f86962b73a60",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -800,8 +800,8 @@
     "semantic_hash": ""
   },
   "frontend/src/lib/positionRules.js": {
-    "mtime": 1788835383.4665954,
-    "ast_hash": "0897482147561fde8b1f3217afaba95f",
+    "mtime": 1788900700.1424642,
+    "ast_hash": "607be37c772db02ba9e2fab5e28940b0",
     "semantic_hash": ""
   },
   "decisions/2026-08-14_position-lifecycle-visibility.md": {
@@ -1145,18 +1145,33 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1788898636.166204,
-    "ast_hash": "22998abc1529b2a9e925f92595abbc13",
+    "mtime": 1788900627.4795842,
+    "ast_hash": "b33abad94465ea20b6aad51471dcf0c3",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
-    "mtime": 1788898512.842412,
-    "ast_hash": "1d7bf681702d14fe5f50684db72d34c3",
+    "mtime": 1788900760.8068762,
+    "ast_hash": "2c5ade76be11bd92eb5f461e0f7f2508",
     "semantic_hash": ""
   },
   ".github/workflows/decision_review.yml": {
     "mtime": 1788898566.8565874,
     "ast_hash": "9b8cd21edca5c15809e530446a16638b",
+    "semantic_hash": ""
+  },
+  "migrations/add_scale_out_columns.sql": {
+    "mtime": 1788900326.6643124,
+    "ast_hash": "d3c9b33432d33f28edf4aced7c1da21d",
+    "semantic_hash": ""
+  },
+  "tests/test_scale_out.py": {
+    "mtime": 1788901166.4959652,
+    "ast_hash": "447229e950b1ee2d9cde7f937b439164",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-08_partial-scale-out.md": {
+    "mtime": 1788901233.7890365,
+    "ast_hash": "ec369b7546be6706c37c7b2e030a21b8",
     "semantic_hash": ""
   }
 }

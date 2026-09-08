@@ -31,6 +31,7 @@ import argparse
 import datetime as dt
 import json
 import os
+from zoneinfo import ZoneInfo
 import sys
 import urllib3
 
@@ -138,7 +139,7 @@ def main() -> None:
 
     registry = load_registry()
     n_trades = closed_trade_count(verify_tls=not args.insecure)
-    today = dt.date.today()
+    today = dt.datetime.now(ZoneInfo("America/New_York")).date()
 
     due_items, pending_items = [], []
     for d in registry["decisions"]:

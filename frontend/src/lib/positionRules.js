@@ -15,6 +15,8 @@ export const RULES_CONFIG = {
   STOP_LOSS_PCT: 0.10,            // base trailing stop floor
   ATR_STOP_MAX_PCT: 0.12,         // cap on the ATR-derived stop
   MAX_LOSS_PCT: 0.07,             // static broker-side hard stop — disconnect-proof max loss
+  SCALE_OUT_TRIGGER_PCT: 0.04,    // peak gain that triggers the one-time partial sell (+4%)
+  SCALE_OUT_FRACTION: 0.33,       // fraction of shares sold at the trigger (33%)
   TRAIL_PROFIT_TIERS: [           // (min unrealised gain %, trail %) — tightening only
     [5.0, 0.015],
   ],
@@ -252,6 +254,41 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
               + `Unlike the trailing stop it holds its price even if the bot loses its IBKR connection.`,
       });
     }
+  }
+  // ── 2c. Partial scale-out (winner give-back reducer) ─────────────────────────
+  // Mirrors execute_scale_out(). The first time the PEAK gain reaches +4% the
+  // agent sells 33% of the shares and lets the rest ride the unchanged Prove-It
+  // stop. Fires once (scaled_out latch); suppressed for power-held leaders.
+  {
+    const trigPct = C.SCALE_OUT_TRIGGER_PCT * 100;
+    const done = !!pos.scaled_out;
+    let state, headline, detail;
+    const detailBase = `Books ${(C.SCALE_OUT_FRACTION * 100).toFixed(0)}% of the position at market once the `
+      + `peak gain first reaches +${trigPct.toFixed(0)}%, then lets the remainder ride the unchanged Prove-It stop. `
+      + 'Booking part of a winner is a realised profit a later fade cannot erase; the untouched stop means the '
+      + 'winners are not clipped. Fires once per position. PROVISIONAL — revisit at ≥50 trades.';
+    if (done) {
+      state = STATE.EXPIRED;
+      headline = `Already scaled out ${(C.SCALE_OUT_FRACTION * 100).toFixed(0)}% · remainder rides the Prove-It stop`;
+      detail = detailBase;
+    } else if (powerHold) {
+      state = STATE.SUPPRESSED;
+      headline = 'Suppressed by Power Hold — a leader is not trimmed';
+      detail = detailBase;
+    } else if (peakPct >= trigPct) {
+      state = STATE.TRIGGERED;
+      headline = `Peak +${peakPct.toFixed(2)}% ≥ +${trigPct.toFixed(0)}% — scales out on the next cycle`;
+      detail = detailBase;
+    } else {
+      const away = trigPct - peakPct;
+      state = away <= 1 ? STATE.WATCH : STATE.PENDING;
+      headline = `Peak is +${peakPct.toFixed(2)}% · triggers at +${trigPct.toFixed(0)}%`;
+      detail = detailBase;
+    }
+    rules.push({
+      id: 'scale_out', tier: 'EXIT', name: 'Partial Scale-Out',
+      state, headline, detail, window: 'Peak ≥ +4%, once',
+    });
   }
   // Replaces the Early Loss Kill-switch, Early Dollar Stop and Thesis Stop with
   // one rule and one question: has this position ever CLOSED above entry?

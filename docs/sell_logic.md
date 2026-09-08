@@ -101,8 +101,9 @@ for that cycle — an early `continue` means later rules are unreachable until t
 | 0 | **Smart OCA Managed Exit** | all | every cycle | **suspends rules 1–9 for that ticker** |
 | 1 | Armed-exit deadline | all | every cycle | force market sell |
 | 2 | HWM / peak metric update | all | every cycle | *(no exit)* |
-| 3 | Power-hold arming | all | every cycle | *(suppresses 5 and 8)* |
-| 4 | Trail tightening | all | every cycle | *(re-places broker order)* |
+| 3 | Power-hold arming | all | every cycle | *(suppresses 4a, 5 and 8)* |
+| 4a | **Partial scale-out** | all | every cycle, once | sell 33% at market, keep the rest |
+| 4b | Trail tightening | all | every cycle | *(re-places broker order)* |
 | 5 | **The Prove-It Stop** | all | every cycle | arm exit |
 | 6 | Trailing-stop self-heal | all | every cycle | *(no exit)* |
 | 7 | Day-3 breakout verdict | 3 | EOD, once | *(records verdict)* |
@@ -238,6 +239,65 @@ management/ratchet block and self-heal all use `place_protective_stops()`; only 
 still places a lone trailing order, because armed positions are managed separately.
 
 See `decisions/2026-09-07_static-hard-stop.md` for why.
+
+---
+
+## 1c. Partial scale-out — book a third of a winner at +4%
+
+**Source:** `execute_scale_out()`, called from `monitor_portfolio_intraday()`
+just after power-hold arming and before the Prove-It Stop.
+
+The winner→loser give-back reducer. The first time a position's **peak** gain
+(`highest_unrealized_pct`) reaches **`SCALE_OUT_TRIGGER_PCT` = +4%**, the agent
+sells **`SCALE_OUT_FRACTION` = 33%** of the shares at market and lets the
+remaining ~67% keep riding the **unchanged** Prove-It stop.
+
+Booking part of the gain is a realised profit a later fade cannot erase; leaving
+the stop on the remainder untouched means the genuine winners are **not** clipped.
+This works where a tighter stop level cannot: a stop level is symmetric and taxes
+the fat winners the book depends on, whereas trimming *quantity* is asymmetric.
+
+- **Fires exactly once** per position — a `scaled_out` boolean latch on
+  `portfolio_positions`.
+- **Suppressed for power-held leaders.** An O'Neil 8-week leader is precisely what
+  we do not want to trim, and power-hold requires a far larger peak
+  (`POWER_HOLD_GAIN_PCT` = +10%) than the scale trigger, so a normal winner scales
+  long before it could ever qualify.
+- **Never runs on OCA-managed or armed positions** — they `continue` earlier in
+  the loop.
+- **Never runs on OCA-managed, armed, or Prove-It-triggered positions** — they
+  `continue` earlier in the loop. Scale-out is evaluated *after* the Prove-It
+  firing check, so a winner that has already given back to its floor exits in
+  full rather than being trimmed and left for another cycle.
+- **Cancel-first ordering.** The full-size bracket is cancelled *before* the
+  market sell, so the resting trailing/hard legs can never fire alongside the
+  scale order and oversell into a short. The only exposure is a few seconds of an
+  unprotected long during the fill — a far more benign failure mode than an
+  accidental short, reachable only by an implausible instant move (the bracket
+  sat ~7% away). Protection is **always** restored: a right-sized bracket on
+  success, the original full-size bracket on any abort. Sold quantity and price
+  come from the order's own `trade.fills` (never a portfolio delta), so a
+  concurrent fill can never be mis-booked as part of the scale-out, and the
+  remainder's bracket is placed *before* any Supabase write so a DB failure
+  cannot leave a reduced, unprotected position.
+
+**Freed capital stays as reserve** until a full slot opens, then redeploys via the
+normal `available_cash / remaining_slots` sizing. Slots are counted by ticker
+existence, so a scaled position still occupies one of the `MAX_POSITIONS` slots —
+scale-out never creates a sixth name.
+
+**Accounting.** The partial sell writes its own `trade_history` row with its P&L
+realised immediately; the buy commission stays attributed to the final close so
+the total across both rows equals the real fees exactly. `reconcile_with_ibkr()`
+excludes the scale-out SLD fill from the final close's weighted-average price and
+commission via a `scaled_out_at` timestamp (passed as the existing `since` filter).
+
+**Chosen on the 33-trade `exit_rule_replay --scale` sweep:** +4%/33% was net-free
+vs shipped (−$64, noise), lowest harmed count, benefit spread over 3 trades. It
+rescues only faders that peak ≥ +4% — GNK (+2.85%) and FRO (+3.91%) peak lower and
+are an entry-quality problem tracked separately. **PROVISIONAL** (small sample):
+logged in `decisions/provisional_decisions.json` for revisit at ≥50 trades. See
+`decisions/2026-09-08_partial-scale-out.md`.
 
 ---
 

@@ -199,6 +199,22 @@ not: a 7% static floor is free in the 30-trade replay, while a 5% *trailing* bas
 −$1,941, all on winners. See
 [decisions/2026-09-07_static-hard-stop.md](decisions/2026-09-07_static-hard-stop.md).
 
+### Tier 0c — Partial scale-out (book a third of a winner at +4%)
+
+The first time a position's **peak** gain reaches **+4%** (`SCALE_OUT_TRIGGER_PCT`), the agent
+sells **33%** of the shares (`SCALE_OUT_FRACTION`) at market and lets the remaining ~67% ride
+the **unchanged** Prove-It stop. Booking part of the gain is a realised profit a later fade
+cannot erase; leaving the stop on the remainder untouched means the genuine winners are not
+clipped — which a tighter *stop level* cannot do, because a level is symmetric and taxes the
+fat winners the book depends on.
+
+Fires **once** per position (`scaled_out` latch), is **suppressed for power-held leaders**
+(we do not trim an 8-week leader), and freed capital stays as reserve until a full slot opens.
+Chosen on the 33-trade `exit_rule_replay --scale` sweep (+4%/33% was net-free, lowest harmed
+count, benefit spread over 3 trades). **PROVISIONAL** — revisit at ≥50 trades
+(`decisions/provisional_decisions.json`). See
+[decisions/2026-09-08_partial-scale-out.md](decisions/2026-09-08_partial-scale-out.md).
+
 ### Tier 1 — The Prove-It Stop (always live)
 
 The central rule, and the one most worth understanding. It replaced five separate exits and
@@ -318,6 +334,7 @@ the bot; in Phase 2 the resting order **is** the floor.
 |---|---|---|---|---|---|
 | 0 | Dynamic trailing stop | all | continuous (IBKR) | broker trail | — (widened by power hold) |
 | 0b | Static hard stop | all | continuous (IBKR) | broker STP (fixed price) | — (widened by power hold) |
+| 0c | Partial scale-out | all | every 15 min, once | sell 33% at market | power hold, already scaled |
 | 1 | **The Prove-It Stop** | **all** | every 15 min | armed exit | power hold, exit armed |
 | 2 | Staleness | 7+ | EOD, once daily | *(discounts tier 3)* | power hold |
 | 3 | Rank & Replace | 7+ | EOD, once daily | market | power hold |

@@ -379,6 +379,29 @@ PROVE_IT_P2_FLOOR_PCT      = float(os.getenv("PROVE_IT_P2_FLOOR_PCT",     -0.01)
 # enough to cap an overnight gap. Belt and braces, in that order.
 PROVE_IT_BACKSTOP_SLACK_PCT = float(os.getenv("PROVE_IT_BACKSTOP_SLACK_PCT", 0.01))
 
+# ── Partial Scale-Out (winner give-back reducer) ───────────────────────────────
+# The winner->loser problem: a position runs to +4-5%, then fades back through
+# entry before any stop fires, turning a green trade red. Every attempt to fix
+# this by moving the STOP LEVEL failed on the 33-trade replay — a tighter level
+# is symmetric and taxes the fat winners the book depends on.
+#
+# The fix changes QUANTITY, not level. When a position's PEAK gain first reaches
+# +SCALE_OUT_TRIGGER_PCT, sell SCALE_OUT_FRACTION of the shares at market and let
+# the remainder ride the UNCHANGED Prove-It stop. Booking part of the gain is a
+# guaranteed realised profit that a later fade cannot erase, while the untouched
+# stop on the remainder means the winners are not clipped.
+#
+# +4% / 33% was chosen on the 33-trade exit_rule_replay --scale sweep: net-free
+# vs shipped (-$64, deep in noise), lowest harmed count, benefit spread over 3
+# trades rather than carried by one. It rescues only the faders that peak >=+4%
+# (not GNK/FRO, which peak lower — an entry-quality problem tracked separately).
+# Small sample: this is a PROVISIONAL decision, logged in
+# decisions/provisional_decisions.json for revisit at >=50 trades.
+# See decisions/2026-09-08_partial-scale-out.md.
+SCALE_OUT_ENABLED       = os.getenv("SCALE_OUT_ENABLED", "true").lower() == "true"
+SCALE_OUT_TRIGGER_PCT   = float(os.getenv("SCALE_OUT_TRIGGER_PCT", 0.04))   # +4% peak gain
+SCALE_OUT_FRACTION      = float(os.getenv("SCALE_OUT_FRACTION",    0.33))   # sell 33%
+
 # ── Armed Trailing Exit (Day 0-6 loss-cutting) ─────────────────────────────────
 # When the Prove-It Stop fires, we do NOT sell instantly at the trigger price — that price is
 # often a local trough. Instead we "arm" the exit: place a tight IBKR native
@@ -2519,13 +2542,21 @@ def reconcile_with_ibkr(ib: IB):
         sell_date_fill    = None
         has_sld_fill      = False
 
+        # If this position was partially scaled out earlier, its scale-out SLD
+        # fill is in ibkr_fills too. Exclude everything up to and including that
+        # fill so the CLOSE is priced only from the fills that sold the remaining
+        # shares — the scale-out P&L is already booked in its own trade_history
+        # row. See execute_scale_out().
+        _close_since = pos.get("scaled_out_at") or pos.get("buy_date")
+
         # ── Tier 1: ibkr_fills (persistent Supabase table) ───────────────
         try:
-            sb_fills_res = client.table("ibkr_fills") \
+            _t1_query = client.table("ibkr_fills") \
                 .select("exec_id,shares,price,fill_time") \
-                .eq("ticker", ticker).eq("side", "SLD") \
-                .order("fill_time", desc=False) \
-                .execute()
+                .eq("ticker", ticker).eq("side", "SLD")
+            if pos.get("scaled_out_at"):
+                _t1_query = _t1_query.gt("fill_time", pos["scaled_out_at"])
+            sb_fills_res = _t1_query.order("fill_time", desc=False).execute()
             sb_fills = sb_fills_res.data or []
             if sb_fills:
                 total_qty  = sum(float(f["shares"]) for f in sb_fills)
@@ -2560,9 +2591,20 @@ def reconcile_with_ibkr(ib: IB):
         if not has_sld_fill:
             try:
                 session_fills = ib.reqExecutions()
+                # Exclude the scale-out SLD fill (if any) so the close is priced
+                # only from the fills that sold the remaining shares.
+                _scaled_at = None
+                if pos.get("scaled_out_at"):
+                    try:
+                        _scaled_at = datetime.datetime.fromisoformat(
+                            str(pos["scaled_out_at"]).replace("Z", "+00:00")
+                        )
+                    except Exception:
+                        _scaled_at = None
                 sell_fills = [
                     f for f in session_fills
                     if f.contract.symbol == ticker and f.execution.side == "SLD"
+                    and (_scaled_at is None or f.execution.time > _scaled_at)
                 ]
                 if sell_fills:
                     total_qty  = sum(f.execution.shares for f in sell_fills)
@@ -2701,7 +2743,7 @@ def reconcile_with_ibkr(ib: IB):
                 record_trade_commissions(
                     client, _th_id,
                     pos.get("buy_commission") if isinstance(pos, dict) else None,
-                    sum_fill_commission(client, ticker, "SLD", buy_date),
+                    sum_fill_commission(client, ticker, "SLD", _close_since),
                 )
                 print(f"        ✅ Logged to history. PnL: ${profit_loss:+.2f} ({percent_return:+.2f}%)")
                 _write_breakout_learning_row(
@@ -4147,6 +4189,44 @@ def monitor_portfolio_intraday(ib: IB):
             active_positions.append(pos)
             continue
 
+        # ── Partial Scale-Out (winner give-back reducer) ─────────────────────────
+        # Evaluated AFTER the Prove-It firing check above, so a position already
+        # through its give-back floor exits in full rather than being trimmed and
+        # left for another 15-minute cycle. Only a winner still holding above the
+        # floor reaches here.
+        #
+        # The first time this position's PEAK gain reaches +SCALE_OUT_TRIGGER_PCT,
+        # book SCALE_OUT_FRACTION of the shares at market and let the remainder
+        # ride the unchanged Prove-It stop. Booking part of the gain is a realised
+        # profit a later fade cannot erase; leaving the stop untouched means the
+        # winners are never clipped. Fires exactly once (scaled_out flag).
+        #
+        # Suppressed for power-held leaders — an O'Neil 8-week leader is precisely
+        # the position we do NOT want to trim. In practice power-hold requires a
+        # far larger peak (+POWER_HOLD_GAIN_PCT) than the scale trigger, so a
+        # normal winner scales long before it could ever qualify.
+        # PROVISIONAL (33-trade sample) — see decisions/2026-09-08_partial-scale-out.md
+        # and the register in decisions/provisional_decisions.json.
+        if (SCALE_OUT_ENABLED
+                and "scaled_out" in pos          # migration applied — flag can persist
+                and not power_held
+                and not pos.get("scaled_out")
+                and highest_unrealized_pct >= SCALE_OUT_TRIGGER_PCT * 100.0):
+            _scale_shares = int(shares * SCALE_OUT_FRACTION)
+            if _scale_shares >= 1 and (shares - _scale_shares) >= 1:
+                _did_scale = execute_scale_out(
+                    ib, client, pos, ticker, shares, _scale_shares,
+                    buy_price, buy_date, buy_reason, current_price,
+                    highest_unrealized_pct, pos_stop_loss_pct,
+                    hard_stop_price(pos, buy_price, highest_unrealized_pct, False),
+                )
+                if _did_scale:
+                    shares = pos["shares"]   # reduced remainder for the rest of the loop
+                    active_positions.append(pos)
+                    continue
+                # On failure the position's bracket has been restored; fall
+                # through to normal management this cycle.
+
         # While power-held the profit ladder is bypassed entirely: the HWM profit
         # lock would otherwise clamp the trail to 1.5% from the peak from +5% gain
         # onward, long before the POWER_HOLD_GAIN_PCT that arms this rule, which made the rule
@@ -4776,6 +4856,190 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
     except Exception as e:
         print(f"❌ Error executing sell order for {ticker}: {e}")
         notifier.notify_exception(f"execute_sell({ticker}) — execution_agent.py", e)
+        return False
+
+
+def execute_scale_out(ib: IB, client: Client, pos: dict, ticker: str,
+                      total_shares: int, scale_shares: int, buy_price: float,
+                      buy_date, buy_reason: str, current_price: float,
+                      highest_unrealized_pct: float, trail_pct: float,
+                      hard_price: float) -> bool:
+    """
+    Sells a FRACTION (scale_shares) of an open position at market to lock in part
+    of a winner's gain, keeping the position OPEN on the remaining shares.
+
+    This is the winner->loser give-back reducer: booking part of the gain is a
+    realised profit a later fade cannot erase, while the remainder keeps riding
+    the UNCHANGED Prove-It stop so the fat winners the book depends on are never
+    clipped. Freed capital stays as reserve until a full slot opens, then
+    redeploys via the normal available_cash / remaining_slots sizing.
+
+    Ordering is CANCEL-FIRST, matching execute_sell(): the full-size protective
+    bracket is cancelled before the market sell so the resting trailing/hard legs
+    can NEVER fire alongside our order and oversell into a short. The exposure is
+    a few seconds of an unprotected LONG during the market fill — a far more
+    benign failure mode than an accidental short, and only reachable by an
+    implausible instant move (the bracket sat ~7% away). Protection is ALWAYS
+    restored: a right-sized bracket on success, the original full bracket on any
+    abort.
+
+    Sold quantity and price come from trade.fills (our order's own executions),
+    never from a portfolio delta, so a concurrent fill can never be mis-booked as
+    part of the scale-out. The partial is booked in its own trade_history row now;
+    reconcile_with_ibkr() uses scaled_out_at to exclude it from the final close's
+    price and commission when the remainder is eventually sold.
+
+    Returns True only when the partial sell is confirmed filled at IBKR.
+    """
+    contract = Stock(ticker, 'SMART', 'USD')
+    account = get_ibkr_account(ib)
+
+    def _ibkr_qty() -> int | None:
+        for p in ib.portfolio():
+            if p.contract.symbol == ticker and p.contract.secType == "STK":
+                return int(p.position)
+        return None
+
+    def _restore_full_bracket(qty: int) -> None:
+        """Re-place the original full-size bracket after an aborted scale-out."""
+        try:
+            cancel_ticker_sell_orders(ib, ticker)
+            ib.sleep(1)
+            place_protective_stops(ib, contract, qty, trail_pct, hard_price, account)
+            print(f"   🛡️ {ticker}: protective bracket restored on {qty} shares after abort.")
+        except Exception as _re:
+            notifier.notify_exception(f"execute_scale_out({ticker}) bracket restore", _re)
+            print(f"   ⚠️ {ticker}: FAILED to restore bracket after abort: {_re}. "
+                  f"Self-heal will re-place next cycle.")
+
+    try:
+        ib.qualifyContracts(contract)
+
+        pre_qty = _ibkr_qty()
+        if pre_qty is None or pre_qty <= 0:
+            print(f"   ⚠️ {ticker}: not in IBKR portfolio — skipping scale-out.")
+            return False
+        # Never oversell: if IBKR holds fewer than we thought, resize down.
+        if pre_qty < total_shares:
+            scale_shares = int(pre_qty * SCALE_OUT_FRACTION)
+        if scale_shares < 1 or (pre_qty - scale_shares) < 1:
+            print(f"   ℹ️ {ticker}: too few shares ({pre_qty}) to scale out — skipping.")
+            return False
+
+        # ── Cancel the full-size bracket FIRST so it cannot oversell ───────────
+        cancel_ticker_sell_orders(ib, ticker)
+        ib.sleep(1)
+
+        order = MarketOrder('SELL', scale_shares)
+        order.account = account
+        trade = ib.placeOrder(contract, order)
+        print(f"   ✂️  Scale-out: selling {scale_shares}/{pre_qty} shares of {ticker} at market...")
+
+        for _ in range(30):
+            ib.sleep(2)
+            if trade.orderStatus.status == 'Filled':
+                break
+
+        # Cancel any unfilled remainder so no late fill lands after we account,
+        # then settle briefly for the terminal state.
+        if trade.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive'):
+            try:
+                ib.cancelOrder(trade.order)
+                ib.sleep(1)
+            except Exception:
+                pass
+
+        # ── Sold quantity/price come from OUR order's fills only ───────────────
+        filled = int(sum(f.execution.shares for f in getattr(trade, "fills", []) or []))
+        if filled <= 0:
+            print(f"   ⚠️  SCALE-OUT NOT FILLED: {ticker} (status {trade.orderStatus.status}). "
+                  f"Restoring full bracket.")
+            _restore_full_bracket(pre_qty)
+            return False
+
+        # Weighted-average fill price across our fills.
+        _num = sum(f.execution.shares * f.execution.price
+                   for f in trade.fills if f.execution.price > 0)
+        _den = sum(f.execution.shares for f in trade.fills if f.execution.price > 0)
+        fill_price = (_num / _den) if _den > 0 else (
+            trade.orderStatus.avgFillPrice or current_price)
+        if fill_price <= 0:
+            fill_price = current_price
+
+        scale_shares = filled
+        remaining = pre_qty - filled
+
+        # ── Protection FIRST: right-size the bracket for the remainder ─────────
+        # Done before any DB write so a Supabase failure below can never leave a
+        # reduced, unprotected position.
+        if remaining > 0:
+            try:
+                place_protective_stops(ib, contract, remaining, trail_pct, hard_price, account)
+            except Exception as _pe:
+                notifier.notify_exception(f"execute_scale_out({ticker}) bracket resize", _pe)
+                print(f"   ⚠️ {ticker}: bracket resize failed: {_pe}. Self-heal will re-place.")
+
+        now_ny = datetime.datetime.now(ZoneInfo("America/New_York"))
+        profit_loss    = round((fill_price - buy_price) * scale_shares, 2)
+        percent_return = round(((fill_price / buy_price) - 1.0) * 100.0, 2)
+        reason = (
+            f"Partial scale-out — sold {scale_shares}/{pre_qty} sh at "
+            f"+{highest_unrealized_pct:.2f}% peak (trigger +{SCALE_OUT_TRIGGER_PCT*100:.0f}%); "
+            f"remainder rides the Prove-It stop"
+        )
+
+        # ── Mark scaled + reduce shares FIRST (idempotency + ledger) ───────────
+        # The flag write precedes the trade_history insert so that even if the
+        # accounting insert fails, the rule cannot re-fire next cycle and trim
+        # the position a second time. The partial P&L remains recoverable from
+        # ibkr_fills, and scaled_out_at keeps it out of the final close.
+        client.table("portfolio_positions").update({
+            "shares":        remaining,
+            "scaled_out":    True,
+            "scaled_out_at": now_ny.isoformat(),
+        }).eq("ticker", ticker).execute()
+        pos["shares"]        = remaining
+        pos["scaled_out"]    = True
+        pos["scaled_out_at"] = now_ny.isoformat()
+
+        # ── Book the partial as its own trade_history row ──────────────────────
+        # The buy commission stays attributed to the FINAL close, so the total
+        # commission across the partial row + close row equals the real fees
+        # exactly — no double count.
+        trade_log = {
+            "ticker":         ticker,
+            "shares":         scale_shares,
+            "buy_price":      buy_price,
+            "buy_date":       buy_date.isoformat(),
+            "buy_reason":     buy_reason,
+            "sell_price":     fill_price,
+            "sell_reason":    reason,
+            "profit_loss":    profit_loss,
+            "percent_return": percent_return,
+        }
+        sell_commission = trade_commission(ib, trade)
+        _th_resp = client.table("trade_history").insert(trade_log).execute()
+        _th_id = ((_th_resp.data or [{}])[0] or {}).get("id")
+        record_trade_commissions(client, _th_id, None, sell_commission)
+
+        print(f"✅ Scaled out {scale_shares} of {pre_qty} {ticker} @ ${fill_price:.2f} "
+              f"(+{percent_return:.2f}%, ${profit_loss:+.2f}). {remaining} shares still open.")
+        notifier._send(
+            f"✂️ <b>{ticker}</b> partial scale-out\n"
+            f"  Sold: <code>{scale_shares}/{pre_qty}</code> sh @ <code>${fill_price:,.2f}</code>\n"
+            f"  Booked: <code>${profit_loss:+,.2f}  ({percent_return:+.2f}%)</code>\n"
+            f"  Peak gain: +{highest_unrealized_pct:.2f}% (trigger +{SCALE_OUT_TRIGGER_PCT*100:.0f}%)\n"
+            f"  {remaining} sh still open on the unchanged Prove-It stop."
+        )
+        return True
+
+    except Exception as e:
+        print(f"❌ Error executing scale-out for {ticker}: {e}")
+        notifier.notify_exception(f"execute_scale_out({ticker}) — execution_agent.py", e)
+        # Best-effort: make sure the position is not left without a bracket.
+        _q = _ibkr_qty()
+        if _q and _q > 0:
+            _restore_full_bracket(_q)
         return False
 
 
