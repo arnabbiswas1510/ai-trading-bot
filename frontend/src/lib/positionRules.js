@@ -14,6 +14,7 @@
 export const RULES_CONFIG = {
   STOP_LOSS_PCT: 0.10,            // base trailing stop floor
   ATR_STOP_MAX_PCT: 0.12,         // cap on the ATR-derived stop
+  MAX_LOSS_PCT: 0.07,             // static broker-side hard stop — disconnect-proof max loss
   TRAIL_PROFIT_TIERS: [           // (min unrealised gain %, trail %) — tightening only
     [5.0, 0.015],
   ],
@@ -214,12 +215,44 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
       distancePct: away,
       window: 'Always',
       detail: `Trails ${(effPct * 100).toFixed(2)}% below the running peak of $${hwm.toFixed(2)}. `
-            + `Ratchet rung: ${rung.label}. This is the only exit that survives the bot being offline.`
+            + `Ratchet rung: ${rung.label}. It survives the bot being offline, but as a trailing `
+            + `order it freezes at its last percentage on disconnect — the static hard stop holds the fixed floor.`
             + (powerHold ? '\nPower Hold has widened it to 30% so a genuine leader can complete its move.' : ''),
     });
   }
 
-  // ── 3. The Prove-It Stop ────────────────────────────────────────────────────
+  // ── 2b. Static hard stop (broker-side, disconnect-proof max-loss floor) ──────
+  // A native STP resting in the same OCA group as the trailing stop. Unlike the
+  // trailing stop it never chases the peak, so it can be tightened to the phase
+  // floor without ever clipping a winner — and because it is a static price at
+  // the broker it protects the position even while the bot is offline (the
+  // trailing stop freezes at its last-placed % on disconnect; this does not).
+  {
+    const hard = num(pos.hard_stop_price);
+    if (hard != null && hard > 0) {
+      const away = pctAway(price, hard);
+      const state = price <= hard ? STATE.TRIGGERED
+                  : (away != null && away <= 2) ? STATE.WATCH
+                  : STATE.ACTIVE;
+      const disaster = buy * (1 - C.MAX_LOSS_PCT);
+      const armed = hard > disaster + 0.005;
+      rules.push({
+        id: 'hard_stop', tier: 'STOP', name: 'Hard Stop (IBKR GTC · static)',
+        state,
+        headline: `Floor at $${hard.toFixed(2)}${away != null ? ` · ${away.toFixed(1)}% above` : ''}`,
+        level: hard, levelLabel: 'Hard floor at',
+        distancePct: away,
+        window: 'Always',
+        detail: (armed
+              ? `The give-back floor is armed: a static sell rests at $${hard.toFixed(2)}, one `
+                + `backstop slack (${(C.PROVE_IT_BACKSTOP_SLACK_PCT * 100).toFixed(0)}%) below the Prove-It floor. `
+              : `Pre-proof disaster floor: a static sell rests ${(C.MAX_LOSS_PCT * 100).toFixed(0)}% below the `
+                + `$${buy.toFixed(2)} entry, at $${hard.toFixed(2)}. `)
+              + `It ratchets up only and never trails the peak, so it cannot clip a winner. `
+              + `Unlike the trailing stop it holds its price even if the bot loses its IBKR connection.`,
+      });
+    }
+  }
   // Replaces the Early Loss Kill-switch, Early Dollar Stop and Thesis Stop with
   // one rule and one question: has this position ever CLOSED above entry?
   {

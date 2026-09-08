@@ -146,6 +146,18 @@ class ExitConfig:
     p2_ladder_gain: float = 5.0
     p2_ladder_trail: float = 0.015
 
+    # ── Always-on base/disaster trailing stop ────────────────────────────────
+    # Models the single GTC TrailingStopOrder that ALWAYS rests at the broker
+    # underneath every Prove-It phase (execution_agent.place_trailing_stop). It
+    # trails `base_trail` below the running HWM. Being broker-side it survives a
+    # bot disconnect — though the static hard stop (execution_agent.hard_stop_price,
+    # not modelled here) is the fixed-price disconnect floor. Live the base trail
+    # is the ATR base (10-12%); this knob exists to measure the NORMAL-OPERATION
+    # cost of tightening it — how often a tighter base trail would fire BEFORE the
+    # Prove-It floor and clip a winner. The disconnect-protection benefit is a
+    # reliability property this price-path replay cannot score; see the analysis notes.
+    base_trail: float | None = None
+
     # ── End-of-day give-back variant ─────────────────────────────────────────
     # When True the ladder rung stops being a resting intraday stop and becomes
     # a once-a-day test on the CLOSE, evaluated on the final bar of the session.
@@ -542,6 +554,11 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
             continue
         day = day_index[bar["date"]]
 
+        # HWM from bars BEFORE this one (this bar's high is folded in at the loop
+        # tail), so testing this bar's low/open against a peak-anchored level is
+        # not look-ahead.
+        base_level = peak * (1 - cfg.base_trail) if cfg.base_trail is not None else None
+
         if proven and cfg.p2_enabled:
             # Level is derived from the peak BEFORE this bar, then this bar's
             # low is tested against it. Raising the stop with the same bar's
@@ -561,6 +578,11 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     candidate = peak * (1 - cfg.p2_ladder_trail)
             elif peak_gain >= cfg.p2_arm_gain:
                 candidate = floor_level
+            # The always-on base trail rests underneath. max() keeps whichever
+            # is tighter, so it only BINDS in the unarmed window (candidate None)
+            # or when it is above the give-back floor.
+            if base_level is not None:
+                candidate = base_level if candidate is None else max(candidate, base_level)
             if candidate is not None:
                 stop_price = candidate if stop_price is None else max(stop_price, candidate)
 
@@ -610,6 +632,14 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     armed = {"at": bar["ts"], "peak": fill,
                              "first": True, "reason": "p1"}
                     continue
+
+            # The base trail also rests in Phase 1, beneath the entry band.
+            # Reached only when the band did not fire/arm on this bar.
+            if base_level is not None:
+                if bar["open"] <= base_level:
+                    return {"price": bar["open"], "reason": "base_gap"}
+                if bar["low"] <= base_level:
+                    return {"price": base_level, "reason": "base_trail"}
 
         peak = max(peak, bar["high"])
 
@@ -740,6 +770,31 @@ def headline_configs() -> list[ExitConfig]:
         ExitConfig("Dollar stop only ($500)", dollar=500.0),
         ExitConfig("Thesis stop only (1xATR)", atr_mult=1.0),
     ]
+
+
+def basetrail_configs() -> list[ExitConfig]:
+    """Cost of tightening the always-on base/disaster trailing stop.
+
+    Every row is the shipped Prove-It Stop with one extra thing: a GTC trailing
+    stop resting `base_trail` below the HWM underneath all phases — exactly the
+    order execution_agent.place_trailing_stop() keeps live. The `None` row is the
+    shipped behaviour as the harness models it today (no explicit base trail).
+    The 12% row is the live ATR cap; the 5% row is the proposal.
+
+    This measures ONLY the normal-operation cost: how often a tighter base trail
+    fires BEFORE the Prove-It floor and clips a trade. The disconnect-survival
+    benefit — the whole reason to tighten it — is a reliability property this
+    price-path replay cannot see, so a 5% row that merely matches the None row
+    here is a WIN (same P&L when connected, far better when disconnected).
+    """
+    from dataclasses import replace
+    base = shipped_proveit()
+    out = [replace(base, label="ProveIt SHIPPED (no explicit base trail)")]
+    for bt in (0.12, 0.10, 0.08, 0.07, 0.05):
+        out.append(replace(
+            base, base_trail=bt,
+            label=f"ProveIt SHIPPED + base trail {bt*100:.0f}% (always-on GTC)"))
+    return out
 
 
 def grid_configs() -> list[ExitConfig]:
@@ -1032,6 +1087,9 @@ def main() -> None:
     parser.add_argument("--eod", action="store_true",
                         help="compare an end-of-day close-based give-back "
                              "against the shipped intraday trail")
+    parser.add_argument("--basetrail", action="store_true",
+                        help="measure the normal-operation cost of tightening "
+                             "the always-on base/disaster trailing stop (12% vs 5%)")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -1051,6 +1109,8 @@ def main() -> None:
 
     if args.day0:
         configs = day0_configs()
+    elif args.basetrail:
+        configs = basetrail_configs()
     elif args.eod:
         configs = eod_configs()
     elif args.ladder:

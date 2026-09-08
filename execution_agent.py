@@ -150,7 +150,7 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 # handful of outlier trades (top-10 trades fall from 109% -> 92% of total P/L on
 # the growth universe, 98% -> 74% on the broad one). The CAGR/drawdown gaps
 # themselves are inside the noise floor; the concentration reduction is not.
-from config import MAX_POSITIONS, STOP_LOSS_PCT, COOLING_OFF_DAYS  # noqa: E402  (single source of truth; set via .env)
+from config import MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS  # noqa: E402  (single source of truth; set via .env)
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 # Base trailing stop, measured from the position's PEAK (not from entry — this
 # is not O'Neil's 7-8% hard stop from cost, it is much tighter in practice).
@@ -1026,6 +1026,102 @@ def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> 
         confirmed_trail_pct = stop_loss_pct
 
     print(f"   \U0001f6e1\ufe0f  IBKR trailing stop placed: {confirmed_trail_pct*100:.2f}% trail (confirmed)")
+    return group, confirmed_trail_pct
+
+
+def hard_stop_price(pos: dict, buy_price: float,
+                    highest_unrealized_pct: float,
+                    power_held: bool = False) -> float:
+    """
+    The absolute price a STATIC broker-side hard stop should rest at right now.
+
+    This is the disconnect-proof floor. Unlike the trailing stop — which freezes
+    at its last-placed % when the bot drops and then only trails from the HWM —
+    the hard stop is a static STP that does not move on its own, so a bot outage
+    cannot let a position bleed past it. It is placed in an OCA group with the
+    trailing stop (see place_protective_stops); whichever fills first cancels the
+    other.
+
+    Two levels, ratchet-UP only (never loosens, except under power-hold):
+
+      • Pre-proven / unarmed:  entry * (1 - MAX_LOSS_PCT). The 2026-09-07
+        --basetrail replay showed a 7% always-on base is free in normal
+        operation (the Prove-It floor fires first) while capping the worst case.
+      • Proven AND armed (peak >= +2%): the give-back floor, one backstop-slack
+        wider than the bot's own stop — entry * (1 + PROVE_IT_P2_FLOOR_PCT)
+        * (1 - PROVE_IT_BACKSTOP_SLACK_PCT) ~= entry * 0.98. A proven green
+        trade's floor becomes broker-GUARANTEED, not dependent on the bot being
+        online to re-pin the trail.
+
+    Because it is entry-anchored and static it can never chase the HWM up and
+    clip a winner — which is exactly why the replay let us tighten it for free
+    where a 5% *trailing* base could not.
+
+    Under power-hold the tight floor is suppressed back to the disaster level so
+    the widened trail (POWER_HOLD_TRAIL_PCT) can actually let the leader run —
+    the same single exception the trailing stop already makes.
+    """
+    disaster = buy_price * (1.0 - MAX_LOSS_PCT)
+    if power_held or buy_price <= 0:
+        return round(disaster, 2)
+    if (PROVE_IT_ENABLED
+            and prove_it_is_proven(pos, highest_unrealized_pct)
+            and highest_unrealized_pct >= PROVE_IT_P2_ARM_GAIN_PCT * 100.0):
+        floor = buy_price * (1.0 + PROVE_IT_P2_FLOOR_PCT)
+        armed_floor = floor * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
+        return round(max(disaster, armed_floor), 2)
+    return round(disaster, 2)
+
+
+def place_protective_stops(ib: IB, contract, shares: int, trail_pct: float,
+                           hard_price: float, account: str) -> tuple:
+    """
+    Places the two-leg protective bracket on an open position, in one OCA group:
+
+        leg 1  TRAIL SELL trail_pct   -- profit-locking base trail (from HWM)
+        leg 2  STP   SELL hard_price  -- static disconnect-proof max-loss floor
+
+    ocaType=1 (CANCEL_WITH_BLOCK) makes them one-cancels-the-other: a fill on
+    either leg cancels the sibling, so the same shares are never sold twice and
+    a partial fill reduces both legs. Both are GTC and survive a gateway restart.
+
+    Returns (oca_group, confirmed_trail_pct) mirroring place_trailing_stop, so
+    callers can persist the trailing percent IBKR echoed back.
+    """
+    group = f"PROT_{contract.symbol}_{int(time.time())}"
+
+    trail = TrailingStopOrder('SELL', shares,
+                              trailingPercent=round(trail_pct * 100, 2))
+    trail.tif      = 'GTC'
+    trail.account  = account
+    trail.ocaGroup = group
+    trail.ocaType  = 1
+    trail.transmit = True
+    trail_trade = ib.placeOrder(contract, trail)
+
+    hard = Order()
+    hard.action        = 'SELL'
+    hard.orderType     = 'STP'
+    hard.totalQuantity = shares
+    hard.auxPrice      = round(float(hard_price), 2)
+    hard.tif           = 'GTC'
+    hard.account       = account
+    hard.ocaGroup      = group
+    hard.ocaType       = 1
+    hard.transmit      = True
+    ib.placeOrder(contract, hard)
+
+    try:
+        confirmed_pct_raw = getattr(trail_trade.order, 'trailingPercent', None)
+        confirmed_trail_pct = (float(confirmed_pct_raw) / 100.0
+                               if confirmed_pct_raw and float(confirmed_pct_raw) > 0
+                               else trail_pct)
+    except Exception:
+        confirmed_trail_pct = trail_pct
+
+    ib.sleep(1)
+    print(f"   \U0001f6e1\ufe0f  Protective bracket placed: {confirmed_trail_pct*100:.2f}% trail "
+          f"+ static hard stop @ ${round(float(hard_price), 2):.2f} (OCA)")
     return group, confirmed_trail_pct
 
 
@@ -3324,6 +3420,17 @@ def run_market_open_buys(ib: IB):
                 "hwm_price": fill_price,
             }
             client.table("portfolio_positions").insert(position_data).execute()
+            # hard_stop_price is written as a best-effort follow-up (never in the
+            # insert above) so a lagging migration cannot fail the insert and
+            # leave a phantom-filled position. The static hard-stop ORDER is
+            # placed regardless below; this column only drives ratchet/display.
+            try:
+                client.table("portfolio_positions").update(
+                    {"hard_stop_price": round(fill_price * (1.0 - MAX_LOSS_PCT), 2)}
+                ).eq("ticker", ticker).execute()
+            except Exception as _hs_err:
+                if not ("PGRST204" in str(_hs_err) or "hard_stop_price" in str(_hs_err)):
+                    print(f"   ⚠️ {ticker}: could not persist hard_stop_price: {_hs_err}")
             # Entry commission is written as a follow-up update, never as part of
             # the insert above -- see record_buy_commission() for why.
             record_buy_commission(client, ib, ticker, trade)
@@ -3347,14 +3454,19 @@ def run_market_open_buys(ib: IB):
             holdings = portfolio_res.data or []
             slot_used = len(holdings)
 
-            # ── Attach Trailing Stop (isolated try/except) ────────────────────
-            # Wrapped separately so a stop-placement failure never prevents the
-            # position from being recorded above or the loop from continuing.
+            # ── Attach protective bracket (isolated try/except) ───────────────
+            # Trailing stop (profit-locking) + static hard stop (disconnect-proof
+            # max-loss floor) in one OCA group. Wrapped separately so a placement
+            # failure never prevents the position from being recorded above or
+            # the loop from continuing.
             try:
-                place_trailing_stop(ib, contract, actual_shares, pos_stop_loss_pct)
+                _entry_hard = round(fill_price * (1.0 - MAX_LOSS_PCT), 2)
+                place_protective_stops(ib, contract, actual_shares,
+                                       pos_stop_loss_pct, _entry_hard,
+                                       get_ibkr_account(ib))
             except Exception as stop_err:
-                print(f"   ⚠️ Trailing stop placement failed for {ticker}: {stop_err} — position recorded, manual stop required.")
-                notifier.notify_exception("place_trailing_stop() — execution_agent.py", stop_err)
+                print(f"   ⚠️ Protective stop placement failed for {ticker}: {stop_err} — position recorded, manual stop required.")
+                notifier.notify_exception("place_protective_stops() — execution_agent.py", stop_err)
 
             # Notify all configured Telegram recipients
             notifier.notify_buy(
@@ -4053,42 +4165,97 @@ def monitor_portfolio_intraday(ib: IB):
                     prove_it_level, current_price, prove_it_phase
                 ),
             )
-        if new_trail_pct is not None:
+        # ── Static hard-stop ratchet ─────────────────────────────────────────
+        # The disconnect-proof max-loss floor. Ratchets UP only (except under
+        # power-hold, which widens it back to the disaster level like the trail).
+        desired_hard = hard_stop_price(pos, buy_price, highest_unrealized_pct, power_held)
+        stored_hard  = float(pos.get("hard_stop_price") or 0.0)
+        if power_held:
+            hard_changed = abs(desired_hard - stored_hard) >= 0.01
+        else:
+            hard_changed = desired_hard > stored_hard + 0.005   # ratchet up only
+
+        # Re-place BOTH legs together whenever either changes, so the OCA pair
+        # stays consistent (cancel_ticker_sell_orders clears the whole group).
+        _bracket_replaced = False
+        if new_trail_pct is not None or hard_changed:
             prev_trail_pct = pos_stop_loss_pct
-            widened = new_trail_pct > prev_trail_pct
+            trail_to_place = new_trail_pct if new_trail_pct is not None else pos_stop_loss_pct
+            widened = new_trail_pct is not None and new_trail_pct > prev_trail_pct
             try:
                 _contract_tighten = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_contract_tighten)
                 cancel_ticker_sell_orders(ib, ticker)
                 ib.sleep(1)
-                _, confirmed_trail = place_trailing_stop(
-                    ib, _contract_tighten, shares, new_trail_pct
+                _, confirmed_trail = place_protective_stops(
+                    ib, _contract_tighten, shares, trail_to_place,
+                    desired_hard, get_ibkr_account(ib)
                 )
-                client.table("portfolio_positions").update(
-                    {"stop_loss_pct": confirmed_trail}
-                ).eq("ticker", ticker).execute()
+                _bracket_replaced = True
+                try:
+                    client.table("portfolio_positions").update(
+                        {"stop_loss_pct": confirmed_trail, "hard_stop_price": desired_hard}
+                    ).eq("ticker", ticker).execute()
+                except Exception as _upd_err:
+                    # Migration lag: hard_stop_price column absent. Still persist
+                    # the trail so profit-locking is not lost; the hard-stop ORDER
+                    # is already live at IBKR regardless.
+                    if "PGRST204" in str(_upd_err) or "hard_stop_price" in str(_upd_err):
+                        client.table("portfolio_positions").update(
+                            {"stop_loss_pct": confirmed_trail}
+                        ).eq("ticker", ticker).execute()
+                        print(f"   ⚠️ {ticker}: hard_stop_price column missing — "
+                              f"run migrations/add_hard_stop_price.sql.")
+                    else:
+                        raise
                 pos_stop_loss_pct = confirmed_trail   # update in-memory for self-heal below
-                verb = "widened (power hold)" if widened else "tightened"
-                icon = "\U0001f3c6" if widened else "\U0001f512"
-                msg = (
-                    f"{icon} <b>{ticker}</b> trail {verb}: "
-                    f"{prev_trail_pct * 100:.1f}% → {confirmed_trail * 100:.1f}%\n"
-                    f"Gain: +{unrealized_pct:.1f}% | Days held: {calendar_days}d\n"
-                    f"New stop floor: ${current_price * (1 - confirmed_trail):.2f}"
-                )
-                notifier._send(msg)
-                print(f"   {icon} {ticker}: trail {verb} "
-                      f"{prev_trail_pct * 100:.1f}% → {confirmed_trail * 100:.1f}% "
-                      f"(+{unrealized_pct:.1f}% gain, {calendar_days}d held)")
+                pos["hard_stop_price"] = desired_hard
+                if new_trail_pct is not None:
+                    verb = "widened (power hold)" if widened else "tightened"
+                    icon = "\U0001f3c6" if widened else "\U0001f512"
+                    msg = (
+                        f"{icon} <b>{ticker}</b> trail {verb}: "
+                        f"{prev_trail_pct * 100:.1f}% → {confirmed_trail * 100:.1f}%\n"
+                        f"Gain: +{unrealized_pct:.1f}% | Days held: {calendar_days}d\n"
+                        f"New stop floor: ${current_price * (1 - confirmed_trail):.2f}\n"
+                        f"Hard stop: ${desired_hard:.2f}"
+                    )
+                    notifier._send(msg)
+                    print(f"   {icon} {ticker}: trail {verb} "
+                          f"{prev_trail_pct * 100:.1f}% → {confirmed_trail * 100:.1f}% "
+                          f"(hard ${desired_hard:.2f}, +{unrealized_pct:.1f}% gain, {calendar_days}d)")
+                elif hard_changed and stored_hard > 0:
+                    # A genuine ratchet on a known prior value — worth announcing.
+                    # The very first write (stored_hard == 0, migration/init) is
+                    # logged silently to avoid a "$0.00 → $X" notification.
+                    hverb = "widened (power hold)" if desired_hard < stored_hard else "ratcheted up"
+                    notifier._send(
+                        f"\U0001f512 <b>{ticker}</b> hard stop {hverb}: "
+                        f"${stored_hard:.2f} → ${desired_hard:.2f}\n"
+                        f"Give-back floor now broker-guaranteed. "
+                        f"Gain: +{unrealized_pct:.1f}% | {calendar_days}d held"
+                    )
+                    print(f"   \U0001f512 {ticker}: hard stop {hverb} "
+                          f"${stored_hard:.2f} → ${desired_hard:.2f}")
+                else:
+                    print(f"   \U0001f512 {ticker}: hard stop initialised @ ${desired_hard:.2f}")
             except Exception as _tighten_err:
                 notifier.notify_exception(
-                    "monitor_portfolio_intraday() trail update", _tighten_err
+                    "monitor_portfolio_intraday() protective-stop update", _tighten_err
                 )
-                print(f"   ⚠️ {ticker}: trail update failed: {_tighten_err}")
+                print(f"   ⚠️ {ticker}: protective-stop update failed: {_tighten_err}")
 
-        # ── Self-healing: ensure trailing stop exists for this position ─────────
-        # GTC trailing stops survive IBKR gateway restarts, but may be absent for
-        # positions opened before this feature or after a full account reset.
+        # ── Self-healing: ensure the protective bracket exists ──────────────────
+        # A normal-state position (armed and Smart-OCA positions already
+        # `continue`d above) should carry TWO GTC sells: the base trailing stop
+        # and the static hard stop. GTC orders survive gateway restarts, but may
+        # be absent for positions opened before this feature or after a reset. If
+        # fewer than both legs are live, re-place the pair. A fired leg cancels
+        # its OCA sibling and closes the position, so a self-healed position is
+        # always one that is genuinely under-protected, not one mid-exit. If the
+        # management block above already re-placed a fresh pair this cycle
+        # (_bracket_replaced), skip — ib.openTrades() may not yet reflect the
+        # just-placed legs, and re-placing twice in one cycle is wasteful.
         _open_sells = [
             t for t in ib.openTrades()
             if t.contract.symbol == ticker
@@ -4096,15 +4263,32 @@ def monitor_portfolio_intraday(ib: IB):
             and t.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')
         ]
 
-        if len(_open_sells) < 1:
-            print(f"   🔧 {ticker}: No trailing stop in IBKR — re-placing (self-healing).")
+        if not _bracket_replaced and len(_open_sells) < 2:
+            print(f"   🔧 {ticker}: protective bracket incomplete "
+                  f"({len(_open_sells)}/2 legs) — re-placing (self-healing).")
             try:
                 cancel_ticker_sell_orders(ib, ticker)
                 ib.sleep(1)
                 _heal_contract = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_heal_contract)
-                # Anchor from current price — IBKR tracks HWM from here onward.
-                _grp, _confirmed = place_trailing_stop(ib, _heal_contract, shares, pos_stop_loss_pct)
+                _heal_hard = hard_stop_price(pos, buy_price, highest_unrealized_pct, power_held)
+                # Anchor the trail from current price — IBKR tracks HWM from here.
+                _grp, _confirmed = place_protective_stops(
+                    ib, _heal_contract, shares, pos_stop_loss_pct,
+                    _heal_hard, get_ibkr_account(ib)
+                )
+                try:
+                    client.table("portfolio_positions").update(
+                        {"stop_loss_pct": _confirmed, "hard_stop_price": _heal_hard}
+                    ).eq("ticker", ticker).execute()
+                except Exception as _upd_err:
+                    if "PGRST204" in str(_upd_err) or "hard_stop_price" in str(_upd_err):
+                        client.table("portfolio_positions").update(
+                            {"stop_loss_pct": _confirmed}
+                        ).eq("ticker", ticker).execute()
+                    else:
+                        raise
+                pos["hard_stop_price"] = _heal_hard
             except Exception as _heal_err:
                 notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", _heal_err)
                 print(f"   ⚠️ Self-healing failed for {ticker}: {_heal_err}")

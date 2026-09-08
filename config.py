@@ -45,6 +45,17 @@ MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 5))
 # 2.5 x entry ATR%)), so this acts as the floor of that band.
 STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.10))
 
+# Absolute broker-enforced maximum loss for the PRE-PROVEN / unarmed window.
+# A static STP hard stop rests at entry * (1 - MAX_LOSS_PCT) in an OCA group
+# with the base trailing stop, so a bot disconnect (which freezes the trailing
+# stop at its last-placed %) cannot let a fresh position bleed to the full ATR
+# base trail. Set to 7% because the 2026-09-07 exit_rule_replay --basetrail
+# sweep showed an always-on 7% base is FREE in normal operation (identical P&L
+# to shipped on 30 trades — the Prove-It floor always fires first) while 5%
+# clipped winners by ~$1,941. Once a position proves and arms (+2% peak) the
+# hard stop ratchets UP to the give-back floor; see hard_stop_price().
+MAX_LOSS_PCT = float(os.getenv("MAX_LOSS_PCT", 0.07))
+
 # Days a ticker is ineligible for re-entry after being sold. Widened 3 -> 7:
 # re-buying a name two days after it stopped out repeatedly re-entered the same
 # failing setup.

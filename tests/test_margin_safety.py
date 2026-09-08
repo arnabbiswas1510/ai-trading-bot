@@ -334,7 +334,8 @@ class TestNoBuysWithBorrowedMoney:
              patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.notifier"), \
              patch("execution_agent.execute_sell"), \
-             patch("execution_agent.place_trailing_stop"):
+             patch("execution_agent.place_trailing_stop"), \
+             patch("execution_agent.place_protective_stops"):
             execution_agent.run_market_open_buys(ib)
 
         ib.placeOrder.assert_called_once(), (
@@ -445,7 +446,8 @@ class TestMultiBuyCycleMarginSafety:
              patch("execution_agent.is_market_bullish", return_value=True), \
              patch("execution_agent.notifier"), \
              patch("execution_agent.execute_sell"), \
-             patch("execution_agent.place_trailing_stop"):
+             patch("execution_agent.place_trailing_stop"), \
+             patch("execution_agent.place_protective_stops"):
             execution_agent.run_market_open_buys(ib)
 
         assert ib.placeOrder.call_count == 2, f"Expected 2 buy orders, got {ib.placeOrder.call_count}"

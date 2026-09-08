@@ -157,8 +157,10 @@ falls back to `execute_sell()`. A triggered sell rule never executes nothing.
 
 ## 1. Dynamic trailing stop (IBKR-managed)
 
-A native GTC `TRAIL` order placed immediately after fill. Because it is broker-side, **it is
-the only exit that survives the bot being offline.**
+A native GTC `TRAIL` order placed immediately after fill. Because it is broker-side, it
+survives the bot being offline — but as a *trailing* order it freezes at its **last-placed
+percentage** on disconnect and keeps trailing the peak at that width; it cannot hold a fixed
+price. The fixed-price disconnect floor is the [static hard stop](#1b-static-hard-stop--the-disconnect-proof-floor) below.
 
 **Initial distance** is volatility-scaled from the trigger's ATR:
 
@@ -194,6 +196,48 @@ that turns a percentage trail into a fixed price floor — see
 
 The agent re-places the order when a tier is crossed, and self-heals a missing stop every
 cycle.
+
+---
+
+## 1b. Static hard stop — the disconnect-proof floor
+
+A second protective leg placed alongside the trailing stop, in the **same OCA group**
+(`ocaType=1`, cancel-with-block): a native GTC `STP` order at a **fixed price**. A fill on
+either leg cancels the other, so the same shares are never sold twice. Both are GTC, so both
+survive a gateway restart.
+
+Where the trailing stop can only express "a percentage below the running peak", this leg
+expresses "never below *this exact price*" — which is what makes it disconnect-proof. If the
+bot loses its IBKR connection, the trailing stop freezes at its last percentage, but this
+static floor keeps protecting the position at its resting price.
+
+**Its price (`hard_stop_price()`):**
+
+| Position state | Static floor |
+|---|---|
+| Pre-proof / unarmed (peak gain < +2%) | `entry × (1 − MAX_LOSS_PCT)` = **entry − 7%** |
+| Proven **and** armed (closed above entry, peak gain ≥ +2%) | ratchets up to `entry × (1 + PROVE_IT_P2_FLOOR_PCT) × (1 − PROVE_IT_BACKSTOP_SLACK_PCT)` ≈ **entry − 2%** |
+| Power Hold | widens back to the entry − 7% disaster floor |
+
+Two properties keep it from ever clipping a winner:
+
+1. **It is static and entry-anchored** — it never chases the high-water mark upward, so it
+   cannot rise into a winner and sell it on an ordinary pullback. (This is why it can be set
+   tight where an always-on *trailing* base could not: a 7% static floor is free in the
+   30-trade replay, while a 5% *trailing* base costs −$1,941, all on winners.)
+2. **It ratchets up only** — the sole exception being Power Hold, which widens it back to the
+   disaster floor so a genuine leader can run.
+
+The armed floor sits **one backstop slack (`PROVE_IT_BACKSTOP_SLACK_PCT`, 1%) wider** than the
+bot's own Prove-It floor, so in normal operation the bot's tighter, live exit always acts
+first — the static floor only *guarantees* the give-back floor when the bot is dark.
+
+It is re-placed together with the trailing leg whenever either changes, and self-heals as part
+of the two-leg bracket (a healthy position carries **both** legs). The new-buy path, the
+management/ratchet block and self-heal all use `place_protective_stops()`; only `arm_exit()`
+still places a lone trailing order, because armed positions are managed separately.
+
+See `decisions/2026-09-07_static-hard-stop.md` for why.
 
 ---
 
@@ -548,6 +592,7 @@ See `decisions/2026-08-22_market-direction-gate-spy-qqq.md` for why.
 |---|---|---|
 | `STOP_LOSS_PCT` | `0.10` | Base trailing stop |
 | `ATR_STOP_MAX_PCT` | `0.12` | Cap on ATR-derived stop |
+| `MAX_LOSS_PCT` | `0.07` | Static hard-stop disaster floor (entry − 7%) — the disconnect-proof max loss |
 | `PROVE_IT_ENABLED` | `true` | Prove-It Stop master switch |
 | `PROVE_IT_P1_DAY0_PCT` | `0.01` | Phase 1 band below entry, entry day |
 | `PROVE_IT_P1_LATER_PCT` | `0.03` | Phase 1 band below entry, day 1 onward |

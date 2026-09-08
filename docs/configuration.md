@@ -39,6 +39,7 @@ TradingView requires no credentials.
 | `PRICE_SAFETY_RESERVE` | `1000` | Withheld per order to absorb IBKR's 15–20 min quote lag |
 | `STOP_LOSS_PCT` | `0.10` | Base trailing stop from peak — the **floor** of the ATR band |
 | `ATR_STOP_MAX_PCT` | `0.12` | Ceiling of the ATR band |
+| `MAX_LOSS_PCT` | `0.07` | Static broker-side hard stop (entry − 7%) — the disconnect-proof max loss, in an OCA group with the trailing stop |
 | `COOLING_OFF_DAYS` | `7` | Re-entry block after a sale |
 
 **Sizing** is `available_cash / remaining_slots`, recomputed before each buy. The

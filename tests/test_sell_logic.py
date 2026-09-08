@@ -59,7 +59,8 @@ def _run_monitor(ib, supabase_mock, live_prices=None, is_eod=False, is_bullish=T
     with patch("execution_agent.supabase", supabase_mock), \
          patch("execution_agent.get_live_price", side_effect=_price), \
          patch("execution_agent.cancel_ticker_sell_orders"), \
-         patch("execution_agent.place_trailing_stop", return_value=("TS_MOCK", 0.07)) as mock_ts, \
+         patch("execution_agent.place_trailing_stop", return_value=("TS_MOCK", 0.07)), \
+         patch("execution_agent.place_protective_stops", return_value=("PROT_MOCK", 0.07)) as mock_ts, \
          patch("execution_agent.execute_sell") as mock_sell, \
          patch("execution_agent._compute_dynamic_trail_pct", return_value=None), \
          patch("execution_agent.datetime") as mock_datetime:
@@ -77,15 +78,19 @@ def _run_monitor(ib, supabase_mock, live_prices=None, is_eod=False, is_bullish=T
 
 class TestSelfHealingTrailingStop:
     """
-    If no open SELL orders exist for a position, monitor must re-place the
-    trailing stop (using place_trailing_stop, NOT place_oca_bracket).
+    A healthy position carries a TWO-leg protective bracket in IBKR: the base
+    trailing stop plus the static disconnect-proof hard stop, in one OCA group.
+    If fewer than two SELL legs are open, monitor must re-place the pair via
+    place_protective_stops (NOT place_oca_bracket). See
+    decisions/2026-09-07_static-hard-stop.md.
     """
 
     def test_self_healing_places_trailing_stop_when_no_sell_orders(self):
-        """No open SELL orders -> place_trailing_stop called for self-healing.
+        """No open SELL orders -> place_protective_stops called for self-healing.
         Use price=buy_price (0% gain) so the dynamic tightening tier doesn't fire,
         keeping the test focused purely on the self-heal path."""
         pos = make_position("NVDA", buy_price=100.0)
+        pos["hard_stop_price"] = round(100.0 * (1 - execution_agent.MAX_LOSS_PCT), 2)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["NVDA"])
         ib.openTrades.return_value = []  # No open sell orders
@@ -93,18 +98,22 @@ class TestSelfHealingTrailingStop:
         _, mock_ts = _run_monitor(ib, supabase, live_prices={"NVDA": 100.0})
         mock_ts.assert_called_once()
 
-    def test_self_healing_not_called_when_sell_order_exists(self):
-        """Trailing stop already in IBKR -> no self-healing.
+    def test_self_healing_not_called_when_both_legs_exist(self):
+        """Both protective legs already in IBKR -> no self-healing.
         Use price=buy_price (0% gain) so the dynamic tightening tier doesn't fire
         and the only possible call path is the self-heal block."""
         pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
+        pos["hard_stop_price"] = round(100.0 * (1 - execution_agent.MAX_LOSS_PCT), 2)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
-        mock_trade = MagicMock()
-        mock_trade.contract.symbol = "AAPL"
-        mock_trade.order.action = "SELL"
-        mock_trade.orderStatus.status = "Submitted"
-        ib.openTrades.return_value = [mock_trade]
+
+        def _leg():
+            t = MagicMock()
+            t.contract.symbol = "AAPL"
+            t.order.action = "SELL"
+            t.orderStatus.status = "Submitted"
+            return t
+        ib.openTrades.return_value = [_leg(), _leg()]  # trailing + hard stop
 
         _, mock_ts = _run_monitor(ib, supabase, live_prices={"AAPL": 100.0})
         mock_ts.assert_not_called()

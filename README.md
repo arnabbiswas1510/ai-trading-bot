@@ -138,8 +138,9 @@ At 09:30 ET the agent walks the scored triggers highest-first through a sequenti
 stack — capacity, freshness, duplicate, cooling-off, cash floor, score floor, AI veto,
 buy-zone bounds, share count. A trigger must clear **every** gate.
 
-On fill, a GTC trailing stop is registered with IBKR immediately, and the entry ATR is
-persisted — that value later parameterises the base trailing stop's ATR band.
+On fill, a two-leg GTC protective bracket is registered with IBKR immediately — a trailing
+stop plus a static hard stop in one OCA group — and the entry ATR is persisted; that value
+later parameterises the base trailing stop's ATR band.
 
 Full detail: [docs/buy_logic.md](docs/buy_logic.md)
 
@@ -175,8 +176,28 @@ improved net further by arming at +5% instead of +6% (+$4,720.53 vs +$3,335.40, 
 trail), so +5% is now shipped.
 See [decisions/2026-08-22_hwm-profit-lock-arm-5pct.md](decisions/2026-08-22_hwm-profit-lock-arm-5pct.md).
 
-Because it lives at the broker, this is the one protection that survives the bot being
-offline. Treat it as the disaster backstop, not the primary exit.
+Because it lives at the broker, this order survives the bot being offline — but as a
+*trailing* order it freezes at its **last-placed percentage** on disconnect and keeps trailing
+the peak at that width. It cannot hold a fixed price; that is Tier 0b's job.
+
+### Tier 0b — Static hard stop (always on, disconnect-proof)
+
+A second protective leg placed **in the same OCA group** as the trailing stop (cancel-with-
+block, so a fill on either cancels the other): a native GTC `STP` at a **fixed price**. Where
+the trailing stop can only say "a percentage below the peak", this says "never below *this
+exact price*" — which is what makes it genuinely disconnect-proof. Its price:
+
+| Position state | Static floor |
+|---|---|
+| Pre-proof / unarmed (peak gain < +2%) | `entry × (1 − MAX_LOSS_PCT)` = **entry − 7%** |
+| Proven **and** armed (closed above entry, peak gain ≥ +2%) | ratchets up to ≈ **entry − 2%** (one backstop slack wider than the Prove-It floor) |
+| Power Hold | widens back to the entry − 7% disaster floor |
+
+It is **static and entry-anchored** (it never chases the peak, so it cannot clip a winner) and
+**ratchets up only**. This is why it can be set tight where an always-on *trailing* base could
+not: a 7% static floor is free in the 30-trade replay, while a 5% *trailing* base costs
+−$1,941, all on winners. See
+[decisions/2026-09-07_static-hard-stop.md](decisions/2026-09-07_static-hard-stop.md).
 
 ### Tier 1 — The Prove-It Stop (always live)
 
@@ -296,6 +317,7 @@ the bot; in Phase 2 the resting order **is** the floor.
 | Tier | Rule | Days | Evaluated | Fires as | Suppressed by |
 |---|---|---|---|---|---|
 | 0 | Dynamic trailing stop | all | continuous (IBKR) | broker trail | — (widened by power hold) |
+| 0b | Static hard stop | all | continuous (IBKR) | broker STP (fixed price) | — (widened by power hold) |
 | 1 | **The Prove-It Stop** | **all** | every 15 min | armed exit | power hold, exit armed |
 | 2 | Staleness | 7+ | EOD, once daily | *(discounts tier 3)* | power hold |
 | 3 | Rank & Replace | 7+ | EOD, once daily | market | power hold |
