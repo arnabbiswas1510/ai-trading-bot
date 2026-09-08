@@ -174,9 +174,14 @@ The application uses a decoupled cloud screening and local execution environment
 * **America/New_York Sync**:
   All market-hours logic uses `zoneinfo` with `America/New_York` to avoid UTC mismatches.
 * **Portfolio Sizing**:
-  Capped at exactly **4 concurrent active positions**. Per-trade allocation:
+  Capped at exactly **5 concurrent active positions** (`MAX_POSITIONS`, config.py,
+  env-overridable; the book was migrated from 4 slots to 5 — see
+  `decisions/2026-08-04_backtest-noise-floor-and-slot-count.md` and
+  `decisions/2026-08-09_max-positions-single-source.md`). Per-trade allocation:
   `position_size = available_cash / remaining_slots`
   where `remaining_slots = MAX_POSITIONS - len(open_positions)`, recomputed at each buy.
+  A slot is counted by ticker existence (`len(holdings)`), not dollar size, so a
+  partially scaled-out position still occupies exactly one of the five slots.
 * **Risk Boundaries**:
   * **Trailing Stop**: 7% from the position's peak price (tightens dynamically with profit and age).
   * **EMA-21 Exit**: Close below EMA-21 × 0.99 triggers EOD sell (only after day 7 — breakout consolidation phase is protected).
@@ -724,10 +729,68 @@ corrected for, producing a fictitious −$11,650. The fixed harness reproduces t
 realised total exactly (−$6,547.59, matching the dashboard to the cent). Before
 citing any older number, re-run it.
 
-> **Note on mechanism:** this is a *passive* reminder — it fires when a session
-> reads this file, not on a calendar. If you want it to fire regardless of
-> whether we are working, the repo's existing pattern is a scheduled GitHub
-> Actions workflow posting to Telegram; ask and I will add one.
+> **Note on mechanism:** the schedule above is a *passive* reminder — it fires
+> when a session reads this file. It is now backed by an **active** system so a
+> review can never be silently missed: see **Provisional Decision Register**
+> below. New forward-looking parameter decisions go in the register, not in this
+> table; this table remains the record of the original 17-trade tuning.
+
+---
+
+## 🧭 MANDATORY: Provisional Decision Register (revisit-when-more-trades)
+
+> **Whenever we take a decision on a small trade sample that should be re-checked
+> once more trades exist, add an entry to `decisions/provisional_decisions.json`
+> in the same commit — never track it in prose.** This is the single source of
+> truth for "decisions to revisit", and it is wired to an active alarm.
+
+### Why this exists
+
+The exit-review schedule above only fires when a human opens this file. That is
+fine as a backstop but it is not bulletproof — a quiet month and a parked
+decision is forgotten, and an untested parameter ossifies into a "fact". The
+register removes that failure mode.
+
+### The three parts (all committed, all in the repo)
+
+1. **`decisions/provisional_decisions.json`** — the register. Each entry records
+   the decision, its rationale and *baseline numbers at decision time*, the ADR
+   link, the exact `review_command` that reproduces the measurement, the
+   `review_questions` the review must answer, and a `revisit` threshold
+   (`min_closed_trades` and/or `not_before`). `history` is an append-only log of
+   past reviews. The file's own `_README`/`_schema` document every field.
+2. **`research/decision_review.py`** — reads the register, queries the live
+   closed-trade count from Supabase, and reports which active decisions are DUE.
+   Exit `10` = something due, `0` = nothing due, `1` = error (fails LOUD; a
+   malformed register or unreachable Supabase must never be silently skipped).
+   Run locally: `python3 research/decision_review.py --insecure`.
+3. **`.github/workflows/decision_review.yml`** — a monthly cron (20th, 12:00 UTC)
+   that runs the script and, the instant a decision is due, opens a **persistent
+   GitHub issue** (idempotent by an `id` marker in the title, so it never
+   double-opens) and pings Telegram. The issue stays open until a human reviews
+   the decision and closes it — a scrolled-past Telegram message can be missed,
+   an open issue cannot.
+
+### When you must add an entry
+
+Any time a shipped number was chosen on a sample too small to trust and the honest
+statement is "this is provisional until we have more trades" — new exit trigger,
+fraction, threshold, gate, or default. If you would write "revisit when we have N
+trades" anywhere, that sentence belongs in the register instead.
+
+### When a review comes due (the loop that closes)
+
+1. Run the entry's `review_command` and answer its `review_questions`.
+2. Append a `{date, closed_trades, verdict, note}` row to that entry's `history`
+   and set `last_reviewed`.
+3. If the decision **still holds**, bump `revisit.min_closed_trades` to the next
+   milestone. If it **does not**, set `status` to `superseded`, refresh the ADR
+   and the docs (Doc Sync Rule), and log any deletion (`docs/retired_code.md`).
+4. Close the GitHub issue.
+
+> The register is the machine-readable companion to the ADRs: an ADR says *why*
+> a provisional decision was made; the register guarantees we come back and test
+> whether it was right.
 
 ---
 

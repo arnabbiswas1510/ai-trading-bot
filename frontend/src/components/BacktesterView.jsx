@@ -11,7 +11,7 @@ export default function BacktesterView() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [capital, setCapital] = useState(100000);
   const [stopLoss, setStopLoss] = useState(7.0);
-  const [maxPositions, setMaxPositions] = useState(4);  // matches live MAX_POSITIONS=4
+  const [maxPositions, setMaxPositions] = useState(5);  // matches live MAX_POSITIONS=5
   // No positionSize field — backtester uses available_cash / remaining_slots (matches live bot)
 
   const [results, setResults] = useState(null);
@@ -71,7 +71,7 @@ export default function BacktesterView() {
           Setup Backtest Parameters
         </h3>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-          Approximates the live bot: trailing stop from peak · cash/slots sizing · 4 positions · no profit target. Does not model the Prove-It Stop.
+          Approximates the live bot: trailing stop from peak · cash/slots sizing · 5 positions · no profit target. Does not model the Prove-It Stop.
         </p>
         <form onSubmit={handleRunBacktest}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>

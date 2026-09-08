@@ -1,0 +1,57 @@
+{
+  "_README": "PROVISIONAL DECISION REGISTER — the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else — add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process.",
+  "_schema": {
+    "id": "kebab-case unique key; also the GitHub-issue marker",
+    "title": "one-line human label",
+    "status": "active | resolved | superseded  (only 'active' is ever alerted on)",
+    "decided": "YYYY-MM-DD the decision was taken",
+    "implemented": "bool — true once the decision is live in production code; false = approved config still on the shelf",
+    "decision": "what we decided to do, stated as current fact",
+    "rationale": "why, and on how large a sample",
+    "adr": "path to the ADR that records the reasoning (may be null until written)",
+    "revisit": {
+      "min_closed_trades": "int | null — becomes due once trade_history has >= this many rows",
+      "not_before": "YYYY-MM-DD | null — a date floor; due only once BOTH this and min_closed_trades are satisfied"
+    },
+    "baseline": "the numbers measured at decision time, so a future review compares like-for-like",
+    "review_command": "the exact command that reproduces the measurement",
+    "review_questions": "the specific questions the review must answer",
+    "last_reviewed": "YYYY-MM-DD | null — set when a review is completed",
+    "history": "append-only log of {date, closed_trades, verdict, note} from each completed review"
+  },
+  "decisions": [
+    {
+      "id": "scaleout-4pct-33pct",
+      "title": "Partial scale-out: sell 33% at +4% peak gain",
+      "status": "active",
+      "decided": "2026-09-08",
+      "implemented": false,
+      "decision": "APPROVED CONFIG, NOT YET SHIPPED. When we build partial scale-out, use: on an open position's peak gain first reaching +4%, sell 33% of the shares; the remaining 67% rides the unchanged Prove-It stop. Freed capital stays as reserve until a full slot opens (option a), then redeploys via the normal available_cash / remaining_slots sizing. The production code, ADR and docs are not written yet — the 50-trade review re-validates this config before/as it is built.",
+      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped — those are an entry-quality problem, tracked separately.",
+      "adr": null,
+      "revisit": {
+        "min_closed_trades": 50,
+        "not_before": "2026-11-20"
+      },
+      "baseline": {
+        "closed_trades_at_decision": 33,
+        "net_vs_shipped_usd": -64,
+        "fader_delta_usd": 1106,
+        "faders_helped": 3,
+        "faders_total": 7,
+        "harmed": 6,
+        "worst_loss_usd": -1269
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --scale --top 40",
+      "review_questions": [
+        "Does +4%/33% still match or beat the SHIPPED net? (was -$64 = free)",
+        "Is the fader benefit still spread over >=3 trades, or is it now carried by one? (single-trade-carry check)",
+        "Has the winner-clip grown — is harmed or winners_hurt higher than the baseline 6?",
+        "Do enough faders now peak in the +4-5% band to justify the trigger, or has the fader distribution shifted (argue the trigger up/down with the new peaks)?",
+        "Would a different fraction (25% / 50%) now win, given the larger sample?"
+      ],
+      "last_reviewed": null,
+      "history": []
+    }
+  ]
+}

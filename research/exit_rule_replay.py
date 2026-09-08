@@ -69,7 +69,7 @@ import datetime as dt
 import json
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import requests
@@ -180,6 +180,23 @@ class ExitConfig:
     # inside a wick, which reintroduces the wick sensitivity being removed.
     p2_eod_anchor: str = "intraday"
     p2_eod_backstop: float | None = None
+
+    # ── Partial scale-out (profit-taking on strength) ────────────────────────
+    # A structurally different lever from every stop-LEVEL knob above. Instead of
+    # tightening the trail on the whole position (which trades winner-upside for
+    # loss-avoidance ~1:1 and loses on this book), it books a FRACTION of the
+    # position at a profit target and lets the remainder ride the unchanged rule.
+    # This breaks the symmetry: the give-back on a fader is capped on `scale_frac`
+    # of the shares, while the runner keeps full upside on `1 - scale_frac`.
+    #
+    # `scale_frac` = fraction sold at the target (None disables). `scale_trigger`
+    # = the gain % at which the limit sell rests. `scale_be_remainder` moves the
+    # remainder's Phase-2 floor to breakeven AFTER the scale fills (a "free
+    # trade"): only 1-frac shares are then exposed to the tighter floor, so the
+    # winner-clip cost is scaled down with the share count.
+    scale_frac: float | None = None
+    scale_trigger: float = 4.0
+    scale_be_remainder: bool = False
 
     def describe(self) -> str:
         bits = []
@@ -425,6 +442,59 @@ def _correct_split(trade: Trade) -> None:
 
 # ── The replay itself ─────────────────────────────────────────────────────────
 
+def simulate_scaleout(trade: Trade, cfg: ExitConfig) -> dict | None:
+    """Replay one trade with a partial scale-out plus a rule-driven remainder.
+
+    Returns a single BLENDED exit price so score()'s existing
+    (price - actual_sell) * shares delta works unchanged:
+
+        blended = frac * scale_fill + (1 - frac) * remainder_exit
+
+    The scale-out is a resting LIMIT sell at entry*(1+scale_trigger%). It fills
+    the first bar whose HIGH reaches the target (at the target, or at the open if
+    the bar gapped above it). If the peak never reaches the target, no scale-out
+    happens and the whole position follows the base rule — blended == remainder.
+
+    The remainder rides the SAME Prove-It config, except that when
+    scale_be_remainder is set AND the scale actually filled, the remainder's
+    Phase-2 floor is lifted to breakeven (p2_floor_pct = 0). Only 1-frac shares
+    are then exposed to that tighter floor.
+
+    LIMITATION (must be read with any result): the bars only extend to the trade's
+    ACTUAL sell date. For positions the live rules cut early, the remainder cannot
+    "run" past that date, so this UNDERSTATES scale-out's upside on exactly the
+    trades where letting a runner run matters most. Treat the net as a floor on
+    the strategy's value, not an estimate of it. Fills are slippage-free, which
+    flatters the scale leg slightly in the other direction.
+    """
+    frac = cfg.scale_frac or 0.0
+    target = trade.buy_price * (1 + cfg.scale_trigger / 100.0)
+
+    scale_fill: float | None = None
+    for bar in trade.bars:
+        if bar["ts"] < trade.buy_ts:
+            continue
+        if bar["high"] >= target:
+            scale_fill = bar["open"] if bar["open"] > target else target
+            break
+
+    # Remainder rule. If the scale filled and we want a "free trade", lift the
+    # remainder floor to breakeven for the remainder simulation only.
+    rem_cfg = cfg
+    if scale_fill is not None and cfg.scale_be_remainder:
+        rem_cfg = replace(cfg, p2_floor_pct=0.0)
+    rem = simulate_proveit(trade, rem_cfg)
+    remainder_exit = rem["price"] if rem is not None else trade.sell_price
+    reason = (rem["reason"] if rem is not None else "held") 
+
+    if scale_fill is None or frac <= 0.0:
+        return {"price": remainder_exit, "reason": reason}
+
+    blended = frac * scale_fill + (1 - frac) * remainder_exit
+    return {"price": round(blended, 4),
+            "reason": f"scale{int(frac*100)}@{cfg.scale_trigger:.0f}%+{reason}"}
+
+
 def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
     """Replay one trade. Returns the modelled exit, or None if nothing fired."""
     entry = trade.buy_price
@@ -665,7 +735,12 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
     over_500 = 0
 
     for trade in trades:
-        sim = simulate_proveit(trade, cfg) if cfg.proveit else simulate(trade, cfg)
+        if cfg.scale_frac is not None:
+            sim = simulate_scaleout(trade, cfg)
+        elif cfg.proveit:
+            sim = simulate_proveit(trade, cfg)
+        else:
+            sim = simulate(trade, cfg)
         delta = 0.0 if sim is None else round(
             (sim["price"] - trade.sell_price) * trade.shares, 2)
         # Resulting P&L for this trade under `cfg`. This is what answers "how
@@ -974,6 +1049,92 @@ def ladder_configs() -> list[ExitConfig]:
     return out
 
 
+def ratchet_configs() -> list[ExitConfig]:
+    """The GNK/NTRA give-back sweep — the +2% to +5% 'winner rounds to a loss' band.
+
+    Motivation: GNK peaked +2.85% and NTRA +4.59%, both BELOW the +5% profit-lock
+    arming gain, so the only Phase-2 protection either had was the give-back floor
+    sitting at entry-1% (a loss cap, by design below breakeven to avoid retest
+    flushing — see decisions/2026-09-04_prove-it-stop.md). Result: a real winner is
+    allowed to round-trip into a ~-1% loss.
+
+    Every row starts from the EXACT shipped Prove-It config (shipped_proveit) and
+    changes ONE give-back lever, so each gap is attributable to that number alone:
+
+      A. Raise the Phase-2 floor from entry-1% toward breakeven / above it.
+         This is the direct answer to "stop giving back below +5%", but it fights
+         the anti-retest-flush rationale, so winners_hurt is the number that
+         decides it.
+      B. Arm the tight 1.5% profit-lock ladder EARLIER (+5% -> +4% / +3%), so a
+         +3-4.6% peak engages a real trailing lock instead of only the loss floor.
+
+    Read `harmed` (losers_hurt + winners_hurt) and the per-trade deltas before the
+    net: a floor raised into normal noise pays for itself by shaking out trades
+    that would have recovered, and on ~30 trades one shaken-out winner can carry
+    the whole net.
+    """
+    out = [shipped_config(), shipped_proveit()]
+
+    # A. Give-back floor: entry-1% (shipped) -> -0.5% -> breakeven -> +0.5%.
+    for floor in (-1.0, -0.5, 0.0, 0.5):
+        out.append(ExitConfig(
+            f"Ratchet A: floor {floor:+.1f}% (arm2%, ladder>=5%)",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=floor))
+
+    # B. Earlier profit-lock: arm the tight 1.5% ladder at +3% / +4% instead of +5%.
+    for gain in (3.0, 4.0, 5.0):
+        out.append(ExitConfig(
+            f"Ratchet B: ladder>={gain:.0f}% @1.5% (floor-1%)",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+            p2_ladder_gain=gain, p2_ladder_trail=0.015))
+
+    # A+B combined: breakeven floor AND an earlier +3% ladder — the most
+    # aggressive winner-protection, most likely to clip. Measure it explicitly.
+    for gain in (3.0, 4.0):
+        out.append(ExitConfig(
+            f"Ratchet A+B: floor 0.0% + ladder>={gain:.0f}% @1.5%",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=0.0,
+            p2_ladder_gain=gain, p2_ladder_trail=0.015))
+
+    return out
+
+
+def scale_configs() -> list[ExitConfig]:
+    """Partial scale-out sweep — the one lever that can cut give-back WITHOUT the
+    winner-clip tax that sank every stop-level ratchet.
+
+    Baseline is the shipped Prove-It stop (whole position, no scale). Every scale
+    row books `frac` of the position at a +trigger% limit and lets the remainder
+    ride the SAME Prove-It rule; the `+be` rows additionally lift the remainder's
+    floor to breakeven once the scale has filled (a 'free trade' on the runner).
+
+    Read this against its own limitation (see simulate_scaleout): the remainder
+    cannot run past each trade's actual sell date, so the net UNDERSTATES the
+    runner's upside. If scale-out still holds net roughly level with SHIPPED here,
+    that is the floor of its value, and it is buying give-back protection on the
+    fraction for free. `harmed` and the per-trade deltas still decide it.
+    """
+    out = [shipped_proveit()]
+
+    for trigger in (3.0, 4.0, 5.0):
+        for frac in (0.25, 0.33, 0.50):
+            out.append(ExitConfig(
+                f"Scale {int(frac*100)}% @ +{trigger:.0f}% | remainder ProveIt",
+                proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+                p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+                scale_frac=frac, scale_trigger=trigger))
+            out.append(ExitConfig(
+                f"Scale {int(frac*100)}% @ +{trigger:.0f}% | remainder breakeven",
+                proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+                p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+                scale_frac=frac, scale_trigger=trigger, scale_be_remainder=True))
+
+    return out
+
+
 def eod_configs() -> list[ExitConfig]:
     """End-of-day give-back vs the shipped intraday trail.
 
@@ -1084,6 +1245,14 @@ def main() -> None:
     parser.add_argument("--ladder", action="store_true",
                         help="sweep the Phase 2 profit-lock give-back trail "
                              "(TRAIL_PROFIT_TIERS width) and its arming gain")
+    parser.add_argument("--ratchet", action="store_true",
+                        help="the GNK/NTRA +2-5%% give-back sweep: raise the "
+                             "Phase-2 floor toward breakeven and/or arm the "
+                             "profit-lock ladder earlier")
+    parser.add_argument("--scale", action="store_true",
+                        help="partial scale-out sweep: book a fraction at a "
+                             "profit target, let the remainder ride (cuts "
+                             "give-back without the winner-clip tax)")
     parser.add_argument("--eod", action="store_true",
                         help="compare an end-of-day close-based give-back "
                              "against the shipped intraday trail")
@@ -1115,6 +1284,10 @@ def main() -> None:
         configs = eod_configs()
     elif args.ladder:
         configs = ladder_configs()
+    elif args.ratchet:
+        configs = ratchet_configs()
+    elif args.scale:
+        configs = scale_configs()
     elif args.proveit:
         configs = proveit_configs()
     elif args.grid:
@@ -1124,7 +1297,7 @@ def main() -> None:
     results = [score(trades, cfg) for cfg in configs]
     report(results, trades,
            top=args.top if (args.grid or args.proveit or args.ladder
-                            or args.eod) else None)
+                            or args.ratchet or args.scale or args.eod) else None)
 
     if args.json:
         with open(args.json, "w") as fh:

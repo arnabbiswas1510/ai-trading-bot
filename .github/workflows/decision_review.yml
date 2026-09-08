@@ -1,0 +1,116 @@
+name: Provisional Decision Review
+
+# The ACTIVE half of the Provisional Decision Register (decisions/provisional_decisions.json).
+#
+# AGENTS.md carries a PASSIVE reminder that only fires when a human reads the file.
+# This job removes the "we forgot" failure mode: on a monthly cron it checks the
+# live closed-trade count against every active decision's revisit threshold and,
+# the moment one is due, opens a PERSISTENT GitHub issue (which stays open until a
+# human closes it) and pings Telegram. A scrolled-past Telegram message can be
+# missed; an open issue cannot.
+
+on:
+  schedule:
+    - cron: '0 12 20 * *'   # 20th of each month, 12:00 UTC — aligns with the exit-review cadence
+  workflow_dispatch:        # allow a manual run at any time
+
+permissions:
+  contents: read
+  issues: write             # required to open the tracking issue
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests urllib3
+
+      - name: Check the Provisional Decision Register
+        id: check
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        run: |
+          set +e
+          # TLS is clean in CI, so no --insecure. --telegram pings on due items.
+          python research/decision_review.py --json --telegram > review.json 2> review.err
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = "1" ]; then
+            echo "::error::decision_review.py failed — the register could not be evaluated."
+            cat review.err
+            exit 1
+          fi
+          echo "----- review.json -----"
+          cat review.json
+
+      - name: Open a tracking issue for each DUE decision
+        if: steps.check.outputs.exit_code == '10'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count=$(jq '.due | length' review.json)
+          echo "Due decisions: $count"
+          for i in $(seq 0 $((count - 1))); do
+            id=$(jq -r ".due[$i].id" review.json)
+            title=$(jq -r ".due[$i].title" review.json)
+            cmd=$(jq -r ".due[$i].review_command" review.json)
+            adr=$(jq -r ".due[$i].adr // \"—\"" review.json)
+            trades=$(jq -r ".closed_trades" review.json)
+            marker="decision-review:${id}"
+
+            # Idempotent: never open a second issue for a decision already tracked.
+            existing=$(gh issue list --state open --search "\"${marker}\" in:title" --json number --jq 'length')
+            if [ "$existing" != "0" ]; then
+              echo "Issue already open for ${id} — skipping."
+              continue
+            fi
+
+            questions=$(jq -r ".due[$i].review_questions[] | \"- [ ] \" + ." review.json)
+            body=$(cat <<EOF
+          **Provisional decision \`${id}\` is due for review.**
+
+          Closed trades now: **${trades}**. This decision was taken on a smaller sample
+          and parked here so it could be re-checked against real trades. See the
+          register entry in \`decisions/provisional_decisions.json\` and ADR \`${adr}\`.
+
+          ### Reproduce the measurement
+          \`\`\`bash
+          ${cmd}
+          \`\`\`
+
+          ### Questions this review must answer
+          ${questions}
+
+          ### When done
+          1. Record the outcome in the \`history\` array of this decision in
+             \`decisions/provisional_decisions.json\` and set \`last_reviewed\`.
+          2. If the decision still holds, bump \`revisit.min_closed_trades\` to the next
+             milestone. If it does not, change \`status\` to \`superseded\`, write/refresh
+             the ADR, and update the docs.
+          3. Close this issue.
+
+          _Opened automatically by \`.github/workflows/decision_review.yml\`._
+          EOF
+          )
+            gh issue create --title "⏰ Decision review due: ${title} [${marker}]" --body "$body"
+            echo "Opened tracking issue for ${id}."
+          done
+
+      - name: Report clean run
+        if: steps.check.outputs.exit_code == '0'
+        run: echo "Nothing due for review."
