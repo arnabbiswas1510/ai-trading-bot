@@ -73,6 +73,26 @@ class TestExitContextSuffix:
         assert "implied trigger" not in out
         assert "HWM $52.02" in out
 
+    def test_prove_it_floor_pin_does_not_fabricate_a_trigger_above_the_exit(self):
+        # Regression for the FIVE (2026-09-09) display bug. The Prove-It floor
+        # lever stores a trail measured from the re-anchor price, not the HWM, so
+        # hwm*(1-trail) lands ABOVE where the stop actually sat. A trailing stop
+        # can never trigger above its own fill, so the fabricated figure must be
+        # suppressed and the real re-anchored floor reported instead.
+        pos = dict(FULL_POSITION, hwm_price=256.09, stop_loss_pct=0.0018)
+        out = exit_context_suffix(pos, 248.85)
+        assert "implied trigger" not in out           # would have said $255.63
+        assert "floor re-anchored near $248.85" in out
+        assert "trail not HWM-relative" in out
+
+    def test_hwm_anchored_trigger_at_or_below_exit_is_still_shown(self):
+        # The guard must only suppress physically impossible triggers. A normal
+        # HWM-anchored trail whose implied trigger sits at/below the fill is real
+        # and must survive.
+        pos = dict(FULL_POSITION, hwm_price=52.025, stop_loss_pct=0.10)
+        out = exit_context_suffix(pos, 49.0)   # implied 46.82 < 49.0 → valid
+        assert "implied trigger $46.82" in out
+
     def test_records_hold_day_and_peak_excursion(self):
         out = exit_context_suffix(FULL_POSITION, 49.0)
         assert "day 2 of hold" in out

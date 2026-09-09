@@ -1,7 +1,15 @@
 # Exit detail panel, and the removal of fabricated exit reasons
 
 **Date:** 2026-08-23
-**Status:** Accepted
+**Status:** Accepted — the implied-trigger reconstruction is refined in part by
+`decisions/2026-09-09_reconcile-fill-window-and-trail-display.md`
+
+> **2026-09-09 update.** The claim below that the implied trigger is always
+> `HWM × (1 − trail)` holds only for HWM-anchored trails (base ATR, profit-lock
+> tiers). For a Prove-It floor pin — whose stored trail is measured from the
+> re-place price, not the HWM — that formula lands above the fill, so the agent
+> now suppresses it and records the re-anchored floor instead. The rest of this
+> ADR still stands.
 
 ## Context
 

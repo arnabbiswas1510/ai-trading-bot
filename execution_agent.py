@@ -2273,10 +2273,30 @@ def _exit_context_suffix(pos: dict, sell_price: float) -> str:
         hwm_date = pos.get("hwm_date")
         parts.append(f"HWM ${hwm:.2f}" + (f" set {hwm_date}" if hwm_date else ""))
         if trail_pct is not None:
-            # The price the resting order would have been sitting at. Labelled
-            # "implied" because the agent never observed the broker's actual
-            # trigger — it is reconstructed from the trail and the peak we know.
-            parts.append(f"implied trigger ${hwm * (1 - trail_pct):.2f}")
+            # The price the resting order would have been sitting at, IF the trail
+            # were anchored on the high-water mark. Labelled "implied" because the
+            # agent never observed the broker's actual trigger — it is
+            # reconstructed from the trail and the peak we know.
+            #
+            # But `stop_loss_pct` is not always HWM-anchored. The Prove-It floor
+            # lever (prove_it_trail_pct) stores a trail measured from the price at
+            # the moment the resting order was last re-placed — IBKR's trailing
+            # anchor RESETS on every cancel/re-place — so for a floor-pinned stop
+            # hwm*(1-trail) lands ABOVE where the order actually sat. FIVE
+            # (2026-09-09) is the proof: HWM $256.09, stored trail 0.18%, giving a
+            # bogus "implied trigger $255.63" while the stop in fact fired at
+            # $248.85. A real trailing stop can never trigger above its own fill,
+            # so when the reconstruction lands above the exit we know the anchor
+            # was not the HWM and report the re-anchored floor honestly instead of
+            # a fabricated trigger.
+            implied = hwm * (1 - trail_pct)
+            if sell_price and implied > float(sell_price) + 0.01:
+                parts.append(
+                    f"floor re-anchored near ${float(sell_price):.2f} "
+                    f"(trail not HWM-relative)"
+                )
+            else:
+                parts.append(f"implied trigger ${implied:.2f}")
 
     days_held = pos.get("days_held")
     if days_held is not None:
@@ -2842,8 +2862,18 @@ def reconcile_with_ibkr(ib: IB):
             _t1_query = client.table("ibkr_fills") \
                 .select("exec_id,shares,price,fill_time") \
                 .eq("ticker", ticker).eq("side", "SLD")
-            if pos.get("scaled_out_at"):
-                _t1_query = _t1_query.gt("fill_time", pos["scaled_out_at"])
+            # Floor the fill window at the CURRENT position's entry (or the
+            # scale-out instant if the runner was already trimmed). Without this,
+            # a ticker that was round-tripped earlier — bought, sold, then bought
+            # again — pulls the PRIOR round-trip's SLD fills into this close and
+            # averages them into the exit price. FIVE (2026-09-09) is the proof:
+            # a stale 84 sh @ $252.375 sell from earlier the same day was blended
+            # with the real 85 sh @ $248.85 exit, yielding a fictitious $250.60
+            # and understating the loss by ~$150. `_close_since` is
+            # `scaled_out_at or buy_date`, both stored as full ISO timestamps, so
+            # `.gt` cleanly excludes anything at or before this entry.
+            if _close_since:
+                _t1_query = _t1_query.gt("fill_time", _close_since)
             sb_fills_res = _t1_query.order("fill_time", desc=False).execute()
             sb_fills = sb_fills_res.data or []
             if sb_fills:
@@ -2879,13 +2909,17 @@ def reconcile_with_ibkr(ib: IB):
         if not has_sld_fill:
             try:
                 session_fills = ib.reqExecutions()
-                # Exclude the scale-out SLD fill (if any) so the close is priced
-                # only from the fills that sold the remaining shares.
+                # Exclude any SLD fill that belongs to a PRIOR round-trip or the
+                # scale-out trim — the close is priced only from fills that sold
+                # the remaining shares of THIS position. `_close_since` is the
+                # scale-out instant when present, otherwise this position's
+                # entry, so a re-bought ticker never inherits an earlier exit's
+                # price from the session cache (same defect fixed in Tier 1).
                 _scaled_at = None
-                if pos.get("scaled_out_at"):
+                if _close_since:
                     try:
                         _scaled_at = datetime.datetime.fromisoformat(
-                            str(pos["scaled_out_at"]).replace("Z", "+00:00")
+                            str(_close_since).replace("Z", "+00:00")
                         )
                     except Exception:
                         _scaled_at = None

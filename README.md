@@ -481,10 +481,13 @@ Each **closed** trade expands too, on both the Dashboard and Trade History scree
 **exit detail panel**: who actually executed the exit (the agent, a resting IBKR order, or a
 human), the trade economics, and the numbers the firing rule recorded — for a trailing stop
 that is the trail in force, the high-water mark it was anchored to and the implied trigger
-price. Anything the record does not contain is listed by name as *not recorded* rather than
+price (or, when the trail was a Prove-It floor pin measured from the re-place price rather
+than the HWM, the re-anchored floor the order actually sat on). Anything the record does not
+contain is listed by name as *not recorded* rather than
 left blank. Exit labels are read from the stored reason and are never inferred from the
 return: the bot has no fixed profit target and no flat 7% stop, so it never claims one.
-See `docs/sell_logic.md` and `decisions/2026-08-23_exit-detail-panel.md`.
+See `docs/sell_logic.md`, `decisions/2026-08-23_exit-detail-panel.md` and
+`decisions/2026-09-09_reconcile-fill-window-and-trail-display.md`.
 
 ```bash
 docker compose logs -f execution-agent

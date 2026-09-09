@@ -298,6 +298,19 @@ export function extractReasonFacts(raw) {
     });
   }
 
+  // A Prove-It floor pin trails from the price at the last re-placement, not the
+  // HWM, so the agent records where the floor actually sat rather than a bogus
+  // HWM-derived trigger (see _exit_context_suffix() in execution_agent.py). This
+  // is the real stop-trigger fact for those exits.
+  const reanchored = raw.match(/floor re-anchored near\s+\$([\d,]+(?:\.\d+)?)/i);
+  if (reanchored) {
+    facts.push({
+      label: 'Stop trigger (re-anchored floor)',
+      value: parseFloat(reanchored[1].replace(/,/g, '')),
+      kind: 'money',
+    });
+  }
+
   const dayOf = raw.match(/day\s+(\d+)\s+of hold/i);
   if (dayOf) facts.push({ label: 'Day of hold', value: parseInt(dayOf[1], 10), kind: 'int' });
 
@@ -340,7 +353,7 @@ export function unrecordedFields(trade, classification) {
     if (!present.has('High-water mark')) {
       missing.push('High-water mark the trail was anchored to');
     }
-    if (!present.has('Implied trigger')) {
+    if (!present.has('Implied trigger') && !present.has('Stop trigger (re-anchored floor)')) {
       missing.push('Stop trigger price');
     }
   }

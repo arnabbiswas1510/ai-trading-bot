@@ -322,6 +322,22 @@ def make_supabase_mock(
                 def _fills_eq2(col2, val2):
                     m2 = MagicMock()
                     filtered = [f for f in matching if f.get("side") == val2] if col2 == "side" else matching
+
+                    # Model the fill_time floor reconcile now applies so a prior
+                    # round-trip's SLD fill is excluded from the current close
+                    # (execution_agent.py Tier 1). Without this the mock would
+                    # silently pass the bug it is meant to catch.
+                    def _fills_gt(col3, floor):
+                        m3 = MagicMock()
+                        kept = (
+                            [f for f in filtered if str(f.get("fill_time", "")) > str(floor)]
+                            if col3 == "fill_time" else filtered
+                        )
+                        m3.order.return_value.execute.return_value.data = kept
+                        m3.execute.return_value.data = kept
+                        return m3
+
+                    m2.gt.side_effect = _fills_gt
                     m2.order.return_value.execute.return_value.data = filtered
                     m2.execute.return_value.data = filtered
                     return m2

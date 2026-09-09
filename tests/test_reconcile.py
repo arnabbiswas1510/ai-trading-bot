@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests.conftest import (
     make_supabase_mock, make_ib_mock, make_portfolio_item,
-    make_position, make_trigger
+    make_position, make_trigger, make_ibkr_fill
 )
 import execution_agent
 
@@ -477,3 +477,55 @@ class TestReconcileBuyPriceDriftGuard:
         # 108 high still clears the true 101.5 cost → proven, peak ~6.40%
         assert payload["closed_above_entry"] is True
         assert payload["highest_unrealized_pct"] == pytest.approx(6.4039, abs=1e-3)
+
+
+class TestReconcileSellPriceExcludesPriorRoundTrip:
+    """Case 1: the close price must be built only from THIS position's sell fills.
+
+    The FIVE incident (2026-09-09): FIVE was bought, sold, then bought again the
+    same session. The Tier-1 ibkr_fills lookup floored the fill window only by
+    scaled_out_at (absent here) and had NO buy_date floor, so it averaged the
+    PRIOR round-trip's sell (84 @ $252.375) into the current close (85 @ $248.85),
+    recording a fictitious $250.60 and understating the loss by ~$150. Reconcile
+    now floors the lookup at `scaled_out_at or buy_date`.
+    """
+
+    @staticmethod
+    def _logged_sell_price(supabase):
+        insert = supabase.table("trade_history").insert
+        assert insert.called, "trade_history.insert was never called"
+        return float(insert.call_args[0][0]["sell_price"])
+
+    def test_prior_round_trip_sell_is_excluded_from_the_close(self):
+        # This position: 85 sh bought at 15:48, closed the next day.
+        pos = make_position(
+            "FIVE", buy_price=251.02, shares=85,
+            buy_date="2026-09-08T15:48:33.150352+00:00",
+        )
+        fills = [
+            # PRIOR round-trip's exit — BEFORE this buy, must be excluded.
+            make_ibkr_fill("FIVE", price=252.375, shares=84, side="SLD",
+                           fill_date="2026-09-08", exec_id="prior-sld"),
+            # THIS position's real exit the next day.
+            make_ibkr_fill("FIVE", price=248.85, shares=31, side="SLD",
+                           fill_date="2026-09-09", exec_id="cur-sld-1"),
+            make_ibkr_fill("FIVE", price=248.8502, shares=54, side="SLD",
+                           fill_date="2026-09-09", exec_id="cur-sld-2"),
+        ]
+        supabase = make_supabase_mock(portfolio=[pos], ibkr_fills=fills)
+        # IBKR holds a DIFFERENT ticker so Guard 1 (empty portfolio) does not fire.
+        ib = make_ib_mock(symbols=["SPY"], avg_cost=500.0)
+        ib.reqExecutions.return_value = []
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.get_live_price", return_value=248.85), \
+             patch("execution_agent.get_own_cash", return_value=10_000.0), \
+             patch("execution_agent.get_margin_loan", return_value=0.0), \
+             patch("execution_agent.cancel_ticker_sell_orders"):
+            execution_agent.reconcile_with_ibkr(ib)
+
+        sell_price = self._logged_sell_price(supabase)
+        # Real weighted avg of the two 9/9 fills ≈ 248.85, NOT the contaminated
+        # 250.60 that blending in the prior 84 @ 252.375 would produce.
+        assert sell_price == pytest.approx(248.8501, abs=0.01)
+        assert sell_price < 249.0

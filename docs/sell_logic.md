@@ -336,8 +336,13 @@ scale-out never creates a sixth name.
 **Accounting.** The partial sell writes its own `trade_history` row with its P&L
 realised immediately; the buy commission stays attributed to the final close so
 the total across both rows equals the real fees exactly. `reconcile_with_ibkr()`
-excludes the scale-out SLD fill from the final close's weighted-average price and
-commission via a `scaled_out_at` timestamp (passed as the existing `since` filter).
+prices the final close from a weighted average of only **this position's** sell
+fills: the `ibkr_fills` lookup is floored at `scaled_out_at or buy_date`, so it
+excludes both an earlier scale-out trim and any **prior round-trip** of the same
+ticker. Without the `buy_date` floor a ticker bought, sold and re-bought in one
+session blended the previous exit's price into the new close — the FIVE incident
+(2026-09-09) recorded $250.60 instead of the real $248.85 and understated the
+loss by ~$150. See `decisions/2026-09-09_reconcile-fill-window-and-trail-display.md`.
 
 **Chosen on the 33-trade `exit_rule_replay --scale` sweep:** +4%/33% was net-free
 vs shipped (−$64, noise), lowest harmed count, benefit spread over 3 trades. It
@@ -892,6 +897,19 @@ implied trigger $46.82, day 2 of hold, peak +4.30%
 The trigger price is labelled **implied** because it is reconstructed from the
 trail and the last peak the agent observed, not read back from the broker. If the
 peak moved between the final 15-minute check and the fill, it is approximate.
+
+The reconstruction `HWM × (1 − trail)` is only valid when the trail is anchored on
+the high-water mark (the base ATR trail and the profit-lock tiers). The **Prove-It
+floor lever** instead stores a trail measured from the price at the moment the
+resting order was last re-placed — IBKR's trailing anchor resets on every
+cancel/re-place — so `HWM × (1 − trail)` for a floor-pinned stop lands *above*
+where the order actually sat. Because a trailing stop can never trigger above its
+own fill, the agent suppresses any reconstructed trigger that exceeds the exit
+price and instead records `floor re-anchored near $X (trail not HWM-relative)`,
+naming the real floor. FIVE (2026-09-09) is the proof: HWM $256.09 and a stored
+0.18% trail would imply a $255.63 trigger, yet it exited at $248.85 — so the
+re-anchored floor is reported, not the fiction. See
+`decisions/2026-09-09_reconcile-fill-window-and-trail-display.md`.
 
 > **Format contract.** The agent writes this suffix in `_exit_context_suffix()`
 > (`execution_agent.py`) and the dashboard parses it in `extractReasonFacts()`.

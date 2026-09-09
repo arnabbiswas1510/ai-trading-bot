@@ -165,6 +165,32 @@ check("context in the reason does not change who gets the credit", () => {
   eq(c.executor.key, "BROKER", "executor");
 });
 
+// ── Prove-It floor pin: re-anchored trail, not HWM-relative ──────────────────
+// When the stored trail is a floor pin (measured from the last re-place price,
+// not the HWM), the agent records the real floor instead of a fabricated trigger
+// above the fill. The parser must read it as the stop trigger, not "missing".
+const AGENT_REANCHOR_REASON =
+  "Trailing stop (IBKR GTC TRAIL order) — trail 0.18%, HWM $256.09 set 2026-09-08, " +
+  "floor re-anchored near $248.85 (trail not HWM-relative), day 0 of hold, peak +2.02%";
+
+check("a re-anchored floor pin is parsed as the stop trigger, not a fake HWM one", () => {
+  const byLabel = Object.fromEntries(extractReasonFacts(AGENT_REANCHOR_REASON).map((f) => [f.label, f.value]));
+  eq(byLabel["Trail in force"], 0.18, "trail");
+  eq(byLabel["High-water mark"], 256.09, "hwm");
+  eq(byLabel["Stop trigger (re-anchored floor)"], 248.85, "re-anchored trigger");
+  eq(byLabel["Implied trigger"], undefined, "no fabricated HWM trigger");
+  eq(byLabel["Peak unrealised"], 2.02, "peak");
+});
+
+check("a re-anchored floor exit reports nothing as missing", () => {
+  const trade = {
+    exit_reason: AGENT_REANCHOR_REASON,
+    buy_date: "2026-09-08T15:48:33Z",
+    sell_date: "2026-09-09T17:08:49Z",
+  };
+  eq(unrecordedFields(trade, classifyExit(trade.exit_reason)).length, 0);
+});
+
 check("a fully recorded broker exit reports nothing as missing", () => {
   const trade = {
     exit_reason: AGENT_TRAIL_REASON,
