@@ -5,40 +5,40 @@
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3402 nodes · 5363 edges · 305 communities (289 shown, 16 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 70 edges (avg confidence: 0.71)
+- 3409 nodes · 5355 edges · 306 communities (287 shown, 14 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 68 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d63d262a`
+- Built from commit: `177e6dcb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - compute_liquidity_score
-- datetime
+- patch
 - _AV
 - Re-audit of the 2026-07-29 performance analysis
 - positionRules.js
 - TelegramNotifier
-- make_ib_mock
+- conftest.py
 - _compute_dynamic_trail_pct
 - test_plateau_rotation.py
 - _trigger
 - _run
 - main.py
-- fetch_ibkr_delayed_price
+- _make_ib
 - package.json
-- test_telegram_notifier.py
+- force_buy.py
 - ExitDetailPanel.jsx
 - database.py
 - _pos
 - Decision: Repository-Wide Dead Code Cleanup
 - FMPClient
-- execution_agent.py
+- monitor_portfolio_intraday
 - breakout_bt.py
-- make_supabase_mock
-- patch
+- make_position
+- fetch_ibkr_delayed_price
 - Technical Triggers
 - compute_rs_score
 - FakeQuery
@@ -48,7 +48,7 @@
 - Buy Logic
 - Centralise STOP_LOSS_PCT and COOLING_OFF_DAYS in config.py
 - Backtest-corrected exit parameters; keep the entry tightening
-- make_trigger
+- make_supabase_mock
 - IBKR TOTP Setup Guide — Automated 2FA for Live Trading Bot
 - Decision: Early Loss Kill-switch + Day-2 Universal Intraday Minimiser
 - Sell Logic
@@ -56,7 +56,7 @@
 - Fundamental Screener
 - Slot count, and establishing the backtest's noise floor
 - TeeLogger
-- TestReconcileCase4
+- make_ib_mock
 - test_ci_import_hygiene.py
 - _run_queue
 - _triggers
@@ -267,15 +267,15 @@
 - 2026-09-04 — Prove-It Stop consolidation
 - Early Dollar Stop becomes slot-derived, not a flat dollar amount
 - test_reconcile_detects_short_positions
-- .notify_exception
+- Client
 - atr_rank_bt.py
 - _trade
 - Retune HWM profit-lock arm from +6% to +5%
 - Closed-loop learning from realised outcomes
 - compute_final_score
-- COHU
+- managed_exit.py
 - Source dashboard position values from IBKR, not FMP
-- CRM
+- BreakoutsView.jsx
 - Exit detail panel, and the removal of fabricated exit reasons
 - AMTM
 - technical_screener.py
@@ -289,27 +289,29 @@
 - bardata.py
 - compute_pre_breakout_quality_score
 - Sell-state transition notifications
-- flex_query_sync.py
+- trading_days_between
 - _make_df
-- restart_6am.sh
+- _get_week_start
+- TestReconcileCase2
 - 1. Strategy backtester
-- _fill_sink_failure
+- _run_monitor
 - Commission accounting, and the RLS policy gap that hid it
+- prove_it_stop_level
 - ._eod_monitor
 - ADR: Early Dollar Stop — $500 Hard Cap on Days 0–5
 - TestEnqueueSmartExit
-- RuntimeError
+- .test_hwm_date_not_updated_when_price_falls
 - test_datasource_unavailable.py
 - TestHardStopPrice
 - A static broker-side hard stop that survives disconnection
 - Partial Scale-Out — book a third of a winner at +4%
 - ET
 - Fail loudly when the database is unreachable
-- Exits
-- _FakeQuery
+- C
+- FDX
 - TestPreBreakoutCoilPass
 - Multi-account IBKR pricing: reqPnLSingle fallback + strict target-account scoping
-- compute_momentum_health_score
+- execution_agent.py
 - Evidence
 - _IBKRMark
 - CB
@@ -321,124 +323,124 @@
 3. `make_supabase_mock()` - 64 edges
 4. `make_position()` - 51 edges
 5. `_pos()` - 50 edges
-6. `monitor_portfolio_intraday()` - 37 edges
+6. `monitor_portfolio_intraday()` - 36 edges
 7. `make_trigger()` - 30 edges
-8. `TelegramNotifier` - 28 edges
-9. `FMPClient` - 27 edges
-10. `reconcile_with_ibkr()` - 25 edges
+8. `TelegramNotifier` - 25 edges
+9. `FMPClient` - 24 edges
+10. `reconcile_with_ibkr()` - 24 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `TeeLogger` --uses--> `TelegramNotifier`  [INFERRED]
-  execution_agent.py → telegram_notifier.py
-- `_MarkContract` --uses--> `TelegramNotifier`  [INFERRED]
-  execution_agent.py → telegram_notifier.py
-- `_IBKRMark` --uses--> `TelegramNotifier`  [INFERRED]
-  execution_agent.py → telegram_notifier.py
 - `make_supabase_mock()` --indirect_call--> `_table()`  [INFERRED]
   tests/conftest.py → research/bardata.py
 - `_queue_sb()` --indirect_call--> `_table()`  [INFERRED]
   tests/test_oca_managed_exit.py → research/bardata.py
+- `make_client()` --indirect_call--> `_table()`  [INFERRED]
+  tests/test_supabase_backup.py → research/bardata.py
+- `_format_trigger_block()` --calls--> `volatility_fit()`  [EXTRACTED]
+  ai_evaluator.py → scoring.py
+- `main()` --calls--> `compute_final_score()`  [EXTRACTED]
+  ai_evaluator.py → scoring.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (305 total, 16 thin omitted)
+## Communities (306 total, 14 thin omitted)
 
 ### Community 0 - "compute_liquidity_score"
 Cohesion: 0.13
-Nodes (10): compute_liquidity_score(), Penalises low-price, low-volume, and small-cap stocks (0-100).      Price tier, NVDA-like: $750, 42M avg vol, Large -> max score, Mid-tier stock: $35, 800K vol, Mid, SGHC-like: $8, 180K vol, Small -> very low, $15 exact -> price tier = 20, $14.99 -> price tier = 10, $50 exactly -> price tier = 40 (+2 more)
+Nodes (10): compute_liquidity_score(), Penalises low-price, low-volume, and small-cap stocks (0-100). Price tier (0-40…, NVDA-like: $750, 42M avg vol, Large -> max score, Mid-tier stock: $35, 800K vol, Mid, SGHC-like: $8, 180K vol, Small -> very low, $15 exact -> price tier = 20, $14.99 -> price tier = 10, $50 exactly -> price tier = 40 (+2 more)
 
-### Community 1 - "datetime"
-Cohesion: 0.12
-Nodes (17): _get_week_start(), datetime, Return UTC midnight of the Monday starting the ISO week containing dt., _monday(), datetime, Tests for watchlist weekly-snapshot logic.  Guards the following invariants:   1, get_screener_results must compute NEW/RETAINED/REMOVED correctly by ISO week., Tickers in current week but absent last week must have change_status='NEW'. (+9 more)
+### Community 1 - "patch"
+Cohesion: 0.09
+Nodes (23): _make_supabase_mock(), _monday(), datetime, patch, Tests for watchlist weekly-snapshot logic. Guards the following invariants: 1.…, save_screener_results must replace only the current week's rows., The delete call must use gte(week_start) and lt(week_end)., insert() must be called after delete() — ordering matters. (+15 more)
 
 ### Community 2 - "_AV"
 Cohesion: 0.07
-Nodes (29): _AV, _make_ib_with_account_values(), When TotalCashValue > 0, there is no margin loan — get_margin_loan returns 0., Edge case: TotalCashValue cannot exceed NetLiquidation in a real account., When TotalCashValue < 0, a margin loan is active.         get_own_cash must retu, get_margin_loan() must return the absolute value of a negative         TotalCash, Stress case: large margin loan (like the TRV incident ~$35K borrowed).         g, If IBKR returns no TotalCashValue tag at all (e.g. data feed lag),         get_o (+21 more)
+Nodes (30): _AV, _make_ib_with_account_values(), test_margin_safety.py — Tests for the margin-cash safety layer. Covers two…, When TotalCashValue > 0, there is no margin loan — get_margin_loan returns 0., Edge case: TotalCashValue cannot exceed NetLiquidation in a real account. If…, When TotalCashValue < 0, a margin loan is active. get_own_cash must return 0.0…, get_margin_loan() must return the absolute value of a negative TotalCashValue —…, Stress case: large margin loan (like the TRV incident ~$35K borrowed).… (+22 more)
 
 ### Community 3 - "Re-audit of the 2026-07-29 performance analysis"
 Cohesion: 0.11
 Nodes (17): Addendum — stop widened to 10% (user approved), Aggression: slot count was tested and 4 is correct, Audit result, Bug 2 — Day 3 verdict compared two stale volume bars (real defect), Consequences, Context, Fixed here, Follow-up (+9 more)
 
 ### Community 4 - "positionRules.js"
-Cohesion: 0.23
+Cohesion: 0.22
 Nodes (16): approxEq(), buildLifecycle(), evaluatePositionRules(), fmtDate(), fmtTime(), LIFECYCLE_TRACK, num(), pctAway() (+8 more)
 
 ### Community 5 - "TelegramNotifier"
-Cohesion: 0.14
-Nodes (13): Fires from ai_evaluator.py after all 5-component scores are computed.         Sh, Fires after a successful IBKR market buy order is filled and recorded., Fires when a buy order placement on IBKR fails., Fires when the buy loop is stopped after a failed order attempt.          Distin, Sent when the Prove-It Stop arms an exit.          Phase 1 fires on a breakout t, Concise note when a position's governing exit regime changes.          Covers th, Sent at EOD of Day 3 when a position fails the breakout verdict.         A FAIL, Fires after a successful IBKR market sell order is filled and logged. (+5 more)
-
-### Community 6 - "make_ib_mock"
 Cohesion: 0.07
-Nodes (26): build_ibkr_price_map(), get_position_price(), Return {symbol: mark} for the TARGET account's open positions only.      The bot, IBKR-first live price for an OPEN position, with FMP fallback.      Live trades, make_ib_mock(), make_portfolio_item(), Mimics an ib_insync PortfolioItem.     IMPORTANT: uses .averageCost (PortfolioIt, Creates a mock IB instance whose portfolio() always returns the given symbols. (+18 more)
+Nodes (32): Exception, Fires from ai_evaluator.py after all 5-component scores are computed. Shows…, Fires after a successful IBKR market buy order is filled and recorded., Fires when a buy order placement on IBKR fails., Fires when the buy loop is stopped after a failed order attempt. Distinct from…, Sent when the Prove-It Stop arms an exit. Phase 1 fires on a breakout that has…, Concise note when a position's governing exit regime changes. Covers the…, Sent at EOD of Day 3 when a position fails the breakout verdict. A FAIL verdict… (+24 more)
+
+### Community 6 - "conftest.py"
+Cohesion: 0.07
+Nodes (32): build_ibkr_price_map(), get_position_price(), Return {symbol: mark} for the TARGET account's open positions only. The bot…, IBKR-first live price for an OPEN position, with FMP fallback. Live trades are…, make_ibkr_fill(), make_ohlcv_data(), make_portfolio_item(), mock_ib() (+24 more)
 
 ### Community 7 - "_compute_dynamic_trail_pct"
 Cohesion: 0.15
-Nodes (9): _compute_dynamic_trail_pct(), Returns a tighter trailing stop % if the position has crossed a new tier,     ot, test_dynamic_trail.py - Tests for _compute_dynamic_trail_pct() and the dynamic t, The profit-lock must wait for the full +5% gain threshold. A merely green, Once locked to 1.5%, a dip in profit must not restore a wider trail., Regression for the 2026-09-07 DHT '4.9% → 4.9%' notification spam.      The Prov, TestNoSubQuantumChurn, TestOneWayOnly (+1 more)
+Nodes (9): _compute_dynamic_trail_pct(), Returns a tighter trailing stop % if the position has crossed a new tier,…, test_dynamic_trail.py - Tests for _compute_dynamic_trail_pct() and the dynamic…, The profit-lock must wait for the full +5% gain threshold. A merely green…, Once locked to 1.5%, a dip in profit must not restore a wider trail., Regression for the 2026-09-07 DHT '4.9% → 4.9%' notification spam. The Prove-It…, TestNoSubQuantumChurn, TestOneWayOnly (+1 more)
 
 ### Community 8 - "test_plateau_rotation.py"
 Cohesion: 0.12
-Nodes (22): _full_portfolio(), _hwm(), test_plateau_rotation.py — Tests for the simplified 2-rule plateau rotation stra, Even with large RS decay (>15 pts from HWM), RS_DECAY is never recommended., hwm_rs_score write was removed from EOD metrics loop — column stays dormant., Tests that hwm_rs_score is NOT written to the DB in any circumstance.     The co, days_since_hwm=0 (new HWM today) → hwm_rs_score must NOT be written (column dorm, days_since_hwm=3 (stalling) → hwm_rs_score must NOT be in any update payload. (+14 more)
+Nodes (22): _full_portfolio(), _hwm(), test_plateau_rotation.py — Tests for the simplified 2-rule plateau rotation…, Even with large RS decay (>15 pts from HWM), RS_DECAY is never recommended., hwm_rs_score write was removed from EOD metrics loop — column stays dormant., Tests that hwm_rs_score is NOT written to the DB in any circumstance. The…, days_since_hwm=0 (new HWM today) → hwm_rs_score must NOT be written (column…, days_since_hwm=3 (stalling) → hwm_rs_score must NOT be in any update payload. (+14 more)
 
 ### Community 9 - "_trigger"
 Cohesion: 0.08
-Nodes (21): _payloads(), tests/test_trigger_audit.py  Tests for the point-in-time trigger archive and the, PK includes trigger_type, so BREAKOUT and PRE_BREAKOUT coexist., Snapshotted rather than joined: the trigger row may be re-scored on a         la, A name skipped for lack of a slot says nothing about the quality         model b, A trigger can be re-evaluated on several days within the lookback         window, A failure here must never interrupt a live buy cycle., THE critical invariant, plus the subtler one about WHICH rows. (+13 more)
+Nodes (21): _payloads(), tests/test_trigger_audit.py Tests for the point-in-time trigger archive and the…, PK includes trigger_type, so BREAKOUT and PRE_BREAKOUT coexist., Snapshotted rather than joined: the trigger row may be re-scored on a later…, A name skipped for lack of a slot says nothing about the quality model but…, A trigger can be re-evaluated on several days within the lookback window and…, A failure here must never interrupt a live buy cycle., THE critical invariant, plus the subtler one about WHICH rows. (+13 more)
 
 ### Community 10 - "_run"
 Cohesion: 0.19
-Nodes (19): _make_ib(), _make_ohlcv(), _make_pos(), _make_sb(), tests/test_breakout_verdict.py  Tests for the Breakout Verdict (Day 3 EOD), Intr, Day 3 EOD: price +1.5% AND volume 1.2x avg -> PASS, no sell, no fail notify., Day 3 EOD: price only +0.5% (< 1%) -> FAIL written, notify sent., Day 3 EOD: price +2% but volume 0.5x avg -> FAIL. (+11 more)
+Nodes (19): _make_ib(), _make_ohlcv(), _make_pos(), _make_sb(), tests/test_breakout_verdict.py Tests for the Breakout Verdict (Day 3 EOD),…, Day 3 EOD: price +1.5% AND volume 1.2x avg -> PASS, no sell, no fail notify., Day 3 EOD: price only +0.5% (< 1%) -> FAIL written, notify sent., Day 3 EOD: price +2% but volume 0.5x avg -> FAIL. (+11 more)
 
 ### Community 11 - "main.py"
-Cohesion: 0.10
+Cohesion: 0.09
 Nodes (34): approve_rotation(), auto_generate_watchlist(), BacktestRequest, check_and_run_weekly_watchlist(), dismiss_rotation(), get_account_balances(), get_benchmark_returns(), get_breakouts() (+26 more)
 
-### Community 12 - "fetch_ibkr_delayed_price"
-Cohesion: 0.05
-Nodes (59): config.py — single source of truth for cross-module trading parameters.  Every v, fetch_ibkr_delayed_price(), Fetch the current price for a contract using IBKR delayed market data (type 3)., get_ibkr_price(), main(), _place_buy(), IB, force_buy.py — One-off manual buy trigger (bypasses 9:30 AM time gate).  Run thi (+51 more)
+### Community 12 - "_make_ib"
+Cohesion: 0.12
+Nodes (16): _make_ib(), _make_ticker(), tests/test_ibkr_delayed_price.py Unit tests for fetch_ibkr_delayed_price() --…, reqMarketDataType(1) must be the last call even on success., reqMarketDataType(1) must be called even when reqTickers raises., reqMarketDataType(3) must be called BEFORE reqTickers., Build a minimal ib_insync Ticker-like mock., Build an IB mock whose reqTickers() returns [ticker_mock] or raises. (+8 more)
 
 ### Community 13 - "package.json"
-Cohesion: 0.07
-Nodes (28): dependencies, lucide-react, react, react-dom, recharts, devDependencies, @types/react, @types/react-dom (+20 more)
+Cohesion: 0.08
+Nodes (25): dependencies, lucide-react, react, react-dom, recharts, devDependencies, @types/react, @types/react-dom (+17 more)
 
-### Community 14 - "test_telegram_notifier.py"
-Cohesion: 0.13
-Nodes (17): telegram_notifier.py — CANSLIM Trading Bot Telegram Notification Module  Fires r, notifier(), fixture, patch, Test that a non-200 HTTP response from the Telegram API is explicitly printed an, Test that a network exception (e.g. timeout) is explicitly printed and not swall, The IBKR-disconnect alert must be unmistakable: it names the outage and     the, When the position count cannot be fetched (Supabase also down), the alert     mu (+9 more)
+### Community 14 - "force_buy.py"
+Cohesion: 0.15
+Nodes (17): place_oca_exit(), place_protective_stops(), place_trailing_stop(), Factory for IBKR TRAIL order type. `ib_insync` 0.9.x does not export a…, Places a GTC Trailing Stop for an open stock position. Trails stop_loss_pct%…, Places the two-leg protective bracket on an open position, in one OCA group:…, Places the OCA exit pair on an open position: upper leg LMT SELL @ limit_price…, TrailingStopOrder() (+9 more)
 
 ### Community 15 - "ExitDetailPanel.jsx"
 Cohesion: 0.17
 Nodes (16): failures, EXECUTOR_COLOR, EXECUTOR_ICON, ExitDetailPanel(), formatFact(), money(), pct(), deriveTradeMath() (+8 more)
 
 ### Community 16 - "database.py"
-Cohesion: 0.16
-Nodes (20): _bg_update_fmp_cache(), DataSourceUnavailable, get_account_balances(), get_cash_flows(), get_daily_triggers(), get_db_connection(), get_positions(), get_screener_results() (+12 more)
+Cohesion: 0.12
+Nodes (28): _bg_update_fmp_cache(), DataSourceUnavailable, get_account_balances(), get_cash_flows(), get_daily_triggers(), get_db_connection(), get_positions(), get_screener_results() (+20 more)
 
 ### Community 17 - "_pos"
 Cohesion: 0.09
-Nodes (11): _pos(), PCT_FROM_PRICE is momentum-following by construction: re-anchoring to the     op, The upper leg must stay reachable however far underwater the position is.      B, The whole point: a deep loser gets the same target as a winner., On DELL, breakeven needed +5.85%; ATR_AUTO needs 3.8%., A bare `INSERT INTO exit_requests (ticker) VALUES (...)` path., Optimistic leg must be looser than the protective one, at any ATR., TestAtrAutoUpperLeg (+3 more)
+Nodes (11): _pos(), PCT_FROM_PRICE is momentum-following by construction: re-anchoring to the open…, The upper leg must stay reachable however far underwater the position is.…, The whole point: a deep loser gets the same target as a winner., On DELL, breakeven needed +5.85%; ATR_AUTO needs 3.8%., A bare `INSERT INTO exit_requests (ticker) VALUES (...)` path., Optimistic leg must be looser than the protective one, at any ATR., TestAtrAutoUpperLeg (+3 more)
 
 ### Community 18 - "Decision: Repository-Wide Dead Code Cleanup"
 Cohesion: 0.20
 Nodes (9): Bug found and fixed while investigating (tightly coupled — not a, Dead code removed from active files, Decision, Decision: Repository-Wide Dead Code Cleanup, Files changed, Files removed entirely (2,339 lines, zero references anywhere in the, Follow-up pass: one-off scripts not wired into the main programs, Problem (+1 more)
 
 ### Community 19 - "FMPClient"
-Cohesion: 0.11
-Nodes (16): FMPClient, DataFrame, Fetch annual balance sheets using stable endpoint., Calculate institutional holdings percentage.         Gracefully falls back to a, Query stable stock-screener to find active US growth equities.         Gracefull, Fetch current price, moving averages, volume, 52w range and shares outstanding u, Fetch historical daily prices and format as pandas DataFrame using stable EOD en, Fetch quarterly or annual income statements using stable endpoint. (+8 more)
+Cohesion: 0.16
+Nodes (8): FMPClient, DataFrame, Fetch annual balance sheets using stable endpoint., Calculate institutional holdings percentage. Gracefully falls back to a neutral…, Query stable stock-screener to find active US growth equities. Gracefully falls…, Fetch current price, moving averages, volume, 52w range and shares outstanding…, Fetch historical daily prices and format as pandas DataFrame using stable EOD…, Fetch quarterly or annual income statements using stable endpoint.
 
-### Community 20 - "execution_agent.py"
-Cohesion: 0.03
-Nodes (142): arm_exit(), assert_schema_ok(), _build_failed_params_snapshot(), calculate_ema(), calculate_sma(), cancel_ticker_sell_orders(), check_volume_distribution(), _close_exit_request() (+134 more)
+### Community 20 - "monitor_portfolio_intraday"
+Cohesion: 0.09
+Nodes (44): cancel_ticker_sell_orders(), _compute_ibkr_price_map(), _count_open_positions(), execute_scale_out(), execute_sell(), _fetch_current_rs(), get_available_cash(), _get_entry_rs() (+36 more)
 
 ### Community 21 - "breakout_bt.py"
 Cohesion: 0.16
-Nodes (18): daily(), Daily bars ascending by date, or None if the symbol is not in the dataset., daily(), dyn_trail(), find_breakouts(), indicators(), Breakout-population backtest.  Addresses a selection-bias problem: the exit para, Daily bars from the committed benchmark dataset — no network, no rate limit. (+10 more)
+Nodes (18): daily(), Daily bars ascending by date, or None if the symbol is not in the dataset.…, daily(), dyn_trail(), find_breakouts(), indicators(), Breakout-population backtest. Addresses a selection-bias problem: the exit…, Daily bars from the committed benchmark dataset — no network, no rate limit.… (+10 more)
 
-### Community 22 - "make_supabase_mock"
-Cohesion: 0.04
-Nodes (59): make_ibkr_fill(), make_ohlcv_data(), make_position(), make_supabase_mock(), mock_ib(), mock_supabase_empty(), fixture, Factory for a portfolio_positions Supabase row.      hwm_rs_score: RS score on t (+51 more)
+### Community 22 - "make_position"
+Cohesion: 0.09
+Nodes (25): make_position(), Factory for a portfolio_positions Supabase row. hwm_rs_score: RS score on the…, test_reconcile.py — Tests for reconcile_with_ibkr() four reconcile cases.…, Case 3: In both, share count differs → update Supabase., IBKR has 150 shares, Supabase says 100 → update Supabase to 150., Case 3: IBKR and Supabase both have 100 shares → no share-count write., The IBKR valuation columns are what let the read-only web container render the…, marketPrice/marketValue/unrealizedPNL are persisted verbatim from IBKR. (+17 more)
 
-### Community 23 - "patch"
-Cohesion: 0.19
-Nodes (11): _make_supabase_mock(), patch, save_screener_results must replace only the current week's rows., The delete call must use gte(week_start) and lt(week_end)., insert() must be called after delete() — ordering matters., After insert, rows older than 56 days must be pruned., The current-week delete must NOT use neq() which would wipe all rows., Empty screener results must not insert or delete anything. (+3 more)
+### Community 23 - "fetch_ibkr_delayed_price"
+Cohesion: 0.12
+Nodes (25): config.py — single source of truth for cross-module trading parameters. Every…, fetch_ibkr_delayed_price(), Fetch the current price for a contract using IBKR delayed market data (type 3).…, _cancel_existing_sells(), _get_portfolio(), main(), _notify(), _pick_from_menu() (+17 more)
 
 ### Community 25 - "Technical Triggers"
 Cohesion: 0.13
@@ -446,19 +448,19 @@ Nodes (15): `BREAKOUT` — the primary signal, Decision log, Forward-return outc
 
 ### Community 26 - "compute_rs_score"
 Cohesion: 0.14
-Nodes (11): compute_rs_score(), Relative Strength score (0-100) vs S&P 500 over the last 12 weeks.      Excess r, tests/test_score_components.py  Unit tests for the new 5-component scoring funct, Stock +20%, SPY +5% -> excess +15% -> 100, Excess exactly 10% -> 100, Excess 5% -> 50 + 5*5 = 75, Same return as SPY -> 50, Excess -5% -> 50 + (-5)*5 = 25 (+3 more)
+Nodes (11): compute_rs_score(), Relative Strength score (0-100) vs S&P 500 over the last 12 weeks. Excess…, tests/test_score_components.py Unit tests for the new 5-component scoring…, Stock +20%, SPY +5% -> excess +15% -> 100, Excess exactly 10% -> 100, Excess 5% -> 50 + 5*5 = 75, Same return as SPY -> 50, Excess -5% -> 50 + (-5)*5 = 25 (+3 more)
 
 ### Community 27 - "FakeQuery"
 Cohesion: 0.15
 Nodes (7): FakeQuery, FakeSupabaseClient, FakeTable, MockPosition, patch, test_smart_polling_fast_fill(), test_smart_polling_timeout()
 
 ### Community 28 - "Configuration Reference"
-Cohesion: 0.11
-Nodes (18): AI evaluator, Append-only research tables, Buy gating, Changing parameters safely, Commissions, Configuration Reference, Credentials, Database schema (+10 more)
+Cohesion: 0.07
+Nodes (27): AI evaluator, Append-only research tables, Armed exit, Buy gating, Changing parameters safely, Commissions, Configuration Reference, Credentials (+19 more)
 
 ### Community 29 - "_resolve"
 Cohesion: 0.18
-Nodes (9): parametrize, Guards the single-source-of-truth invariant for MAX_POSITIONS.  ADR 2026-08-04 m, A module that re-reads the env itself can drift on its default. Root         mod, Importing config.py is useless if the image does not contain it., Return each module's view of the shared constants under a given env value., Changing slot count must need a .env edit only — never a code change., _resolve(), TestNoLocalRedeclaration (+1 more)
+Nodes (9): parametrize, Guards the single-source-of-truth invariant for MAX_POSITIONS. ADR 2026-08-04…, A module that re-reads the env itself can drift on its default. Root modules…, Importing config.py is useless if the image does not contain it., Return each module's view of the shared constants under a given env value., Changing slot count must need a .env edit only — never a code change., _resolve(), TestNoLocalRedeclaration (+1 more)
 
 ### Community 30 - "Tech Debt & Functional Requirements Tracker"
 Cohesion: 0.25
@@ -476,9 +478,9 @@ Nodes (6): Alternatives considered, Centralise STOP_LOSS_PCT and COOLING_OFF_DAY
 Cohesion: 0.14
 Nodes (13): Backtest-corrected exit parameters; keep the entry tightening, Consequences, Context, Decision, Fidelity limits (important), Finding 1 — there was no right tail to protect, Finding 2 — ablation: only one of the four exit changes helps, Finding 3 — the early-loss reasoning was simply wrong (+5 more)
 
-### Community 34 - "make_trigger"
-Cohesion: 0.17
-Nodes (12): make_trigger(), Factory for a daily_triggers Supabase row.      final_score defaults to 75 (a no, Regression: ai_evaluator.py silently drops tickers from its batch         ("lost, adjusted_score (post-penalty) remains the primary gate input., Runs run_market_open_buys() with standard patches applied.     Returns the mock_, Gate 1: MAX_POSITIONS stock positions → portfolio full → no order placed., One slot short of MAX_POSITIONS → the trigger is bought., _run_buys() (+4 more)
+### Community 34 - "make_supabase_mock"
+Cohesion: 0.16
+Nodes (15): make_supabase_mock(), make_trigger(), Factory for a daily_triggers Supabase row. final_score defaults to 75 (a…, Returns a MagicMock Supabase client where each table's queries return realistic…, Regression: ai_evaluator.py silently drops tickers from its batch ("lost in the…, adjusted_score (post-penalty) remains the primary gate input., Runs run_market_open_buys() with standard patches applied. Returns the mock_ib…, Gate 1: MAX_POSITIONS stock positions → portfolio full → no order placed. (+7 more)
 
 ### Community 35 - "IBKR TOTP Setup Guide — Automated 2FA for Live Trading Bot"
 Cohesion: 0.11
@@ -505,24 +507,24 @@ Cohesion: 0.22
 Nodes (8): Context, Follow-up, Harness defects found and fixed, Notable observations, not acted on, Re-verification: both major decisions hold under the slot constraint, Slot count, Slot count, and establishing the backtest's noise floor, The noise floor — the most important result here
 
 ### Community 41 - "TeeLogger"
-Cohesion: 0.33
-Nodes (3): Mirrors stdout to a daily rotating log file without touching print() calls., Delete execution_YYYY-MM-DD.log files older than KEEP_DAYS.          Uses the da, TeeLogger
+Cohesion: 0.31
+Nodes (3): Mirrors stdout to a daily rotating log file without touching print() calls., Delete execution_YYYY-MM-DD.log files older than KEEP_DAYS. Uses the date…, TeeLogger
 
-### Community 42 - "TestReconcileCase4"
-Cohesion: 0.25
-Nodes (5): Case 4: Cash balance sync from IBKR to Supabase account_balances., Large change in cash → upsert to account_balances called., New logic: write daily snapshots for cash, positions_value, total_value., A cash jump > $500 inserts into cash_flows., TestReconcileCase4
+### Community 42 - "make_ib_mock"
+Cohesion: 0.11
+Nodes (12): make_ib_mock(), Creates a mock IB instance whose portfolio() always returns the given symbols.…, test_trailing_stop.py — Unit tests for place_trailing_stop() and the self-…, place_trailing_stop() places exactly ONE GTC TRAIL order. No LimitOrder (profit…, TestCancelTickerSellOrders, TestExecuteSellCancelsTrailingStopFirst, TestPlaceTrailingStop, Case 4: Cash balance sync from IBKR to Supabase account_balances. (+4 more)
 
 ### Community 43 - "test_ci_import_hygiene.py"
 Cohesion: 0.18
-Nodes (12): _module_level_imports(), parametrize, Path, Guards that the test suite stays runnable in CI's dependency environment.  The D, backend/pricing.py exists precisely so the pricing rules are testable     withou, Top-level import names only. Imports inside functions are lazy and safe., Pins the premise of the check below. If FastAPI is ever added to the root     re, A test must not import a backend module that needs the web stack.      Checked o (+4 more)
+Nodes (12): _module_level_imports(), parametrize, Path, Guards that the test suite stays runnable in CI's dependency environment. The…, backend/pricing.py exists precisely so the pricing rules are testable without…, Top-level import names only. Imports inside functions are lazy and safe., Pins the premise of the check below. If FastAPI is ever added to the root…, A test must not import a backend module that needs the web stack. Checked one… (+4 more)
 
 ### Community 44 - "_run_queue"
 Cohesion: 0.26
-Nodes (5): _pending(), End-to-end: a request queued tonight must price off tomorrow's settled     price, _run_queue(), TestNextMorningReanchor, TestQueuePending
+Nodes (5): _pending(), End-to-end: a request queued tonight must price off tomorrow's settled price,…, _run_queue(), TestNextMorningReanchor, TestQueuePending
 
 ### Community 45 - "_triggers"
 Cohesion: 0.16
-Nodes (6): Regression tests for the AI evaluator batching / completeness logic.  Background, Simulates the exact production failure: model drops middle entries., TestBatching, TestPromptCompleteness, TestTradeHistoryLearning, _triggers()
+Nodes (6): Regression tests for the AI evaluator batching / completeness logic.…, Simulates the exact production failure: model drops middle entries., TestBatching, TestPromptCompleteness, TestTradeHistoryLearning, _triggers()
 
 ### Community 46 - "Decision: Breakout Quality Floor + Quota Waterfall"
 Cohesion: 0.33
@@ -534,11 +536,11 @@ Nodes (5): Decision, Decision: Armed Trailing Exit for Day 0-6 Loss-Cutting Sign
 
 ### Community 48 - "trigger_audit.py"
 Cohesion: 0.27
-Nodes (10): trigger_audit.py  Point-in-time archive of breakout triggers and the buy/skip de, Record one buy/skip verdict against one trigger.      `decision` is BOUGHT or SK, Record the same verdict against many triggers.      Used when the portfolio is a, Chunked, idempotent, non-fatal upsert., Archive `daily_triggers` rows to the append-only `trigger_history`.      MUST be, record_decisions_bulk(), record_trigger_decision(), save_trigger_history() (+2 more)
+Nodes (10): trigger_audit.py Point-in-time archive of breakout triggers and the buy/skip…, Record one buy/skip verdict against one trigger. `decision` is BOUGHT or…, Record the same verdict against many triggers. Used when the portfolio is…, Chunked, idempotent, non-fatal upsert., Archive `daily_triggers` rows to the append-only `trigger_history`. MUST be…, record_decisions_bulk(), record_trigger_decision(), save_trigger_history() (+2 more)
 
 ### Community 49 - "backtester.py"
-Cohesion: 0.33
-Nodes (9): _cagr(), _ema(), _max_consecutive_losses(), _max_underwater_days(), backend/backtester.py  Runs a historical simulation of the CAN SLIM breakout tra, Exponential moving average (matches pandas ewm default, adjust=False)., Historical simulation of the CAN SLIM breakout strategy.      Position sizing ma, run_backtest() (+1 more)
+Cohesion: 0.31
+Nodes (9): _cagr(), _ema(), _max_consecutive_losses(), _max_underwater_days(), backend/backtester.py Runs a historical simulation of the CAN SLIM breakout…, Exponential moving average (matches pandas ewm default, adjust=False)., Historical simulation of the CAN SLIM breakout strategy. Position sizing…, run_backtest() (+1 more)
 
 ### Community 51 - "Keep the test suite importable with the root requirements alone"
 Cohesion: 0.29
@@ -554,7 +556,7 @@ Nodes (11): 1. Fail closed on un-vetted triggers (`execution_agent.py`), 2026-08
 
 ### Community 54 - "_pos"
 Cohesion: 0.09
-Nodes (20): is_power_hold_active(), maybe_arm_power_hold(), O'Neil 8-week hold rule.      True while a position is inside its protected wind, Persists the power-hold flag the first time a position qualifies.      Returns T, _client(), _pos(), test_power_hold.py - Tests for the O'Neil 8-week hold rule.  From "How to Make M, PGRST204 = migration not run yet. The rule must still apply in-memory for (+12 more)
+Nodes (20): is_power_hold_active(), maybe_arm_power_hold(), O'Neil 8-week hold rule. True while a position is inside its protected window:…, Persists the power-hold flag the first time a position qualifies. Returns True…, _client(), _pos(), test_power_hold.py - Tests for the O'Neil 8-week hold rule. From "How to Make…, PGRST204 = migration not run yet. The rule must still apply in-memory for this… (+12 more)
 
 ### Community 55 - "Plateau exit: optimise capital velocity, not per-trade expectancy"
 Cohesion: 0.18
@@ -566,7 +568,7 @@ Nodes (7): Consequences, Context, Decision, Managed exit tool: exit at the sessi
 
 ### Community 57 - "_reload"
 Cohesion: 0.13
-Nodes (10): fixture, test_screener_filters.py - Tests for the CAN SLIM fundamental gate in tv_api_scr, Re-import the screener module with the given env overrides applied., Regression: was 0, which admitted SWK on 0.6% revenue growth., Regression: was 15. O'Neil requires ~25%., Thresholds must be adjustable without a code change, for A/B and rollback., _reload(), screener() (+2 more)
+Nodes (10): fixture, test_screener_filters.py - Tests for the CAN SLIM fundamental gate in…, Re-import the screener module with the given env overrides applied., Regression: was 0, which admitted SWK on 0.6% revenue growth., Regression: was 15. O'Neil requires ~25%., Thresholds must be adjustable without a code change, for A/B and rollback., _reload(), screener() (+2 more)
 
 ### Community 58 - "ADR: Point-in-time trigger archive and buy/skip decision log"
 Cohesion: 0.20
@@ -586,7 +588,7 @@ Nodes (11): 1. The wide profit ladder wins on the real population, 2. The Intrad
 
 ### Community 63 - "._run_at"
 Cohesion: 0.33
-Nodes (4): The pivot check used to be a ceiling only: it rejected stocks extended too     f, The buy loop takes its price from fetch_ibkr_delayed_price, not         get_live, A 1% dip is noise around the pivot, not a failed breakout., TestPivotBuyZoneFloor
+Nodes (4): The pivot check used to be a ceiling only: it rejected stocks extended too far…, The buy loop takes its price from fetch_ibkr_delayed_price, not get_live_price,…, A 1% dip is noise around the pivot, not a failed breakout., TestPivotBuyZoneFloor
 
 ### Community 64 - "ai_evaluator.py"
 Cohesion: 0.13
@@ -614,7 +616,7 @@ Nodes (8): bar_interval, bytes, dataset, date_max, date_min, endpoint, file, gen
 
 ### Community 70 - "resolve_position_price"
 Cohesion: 0.13
-Nodes (16): Pure pricing helpers for the dashboard API.  Deliberately dependency-free: no Fa, Decide which price to display for an open position, and name the source.      IB, resolve_position_price(), make_pos(), parametrize, Price-source resolution for dashboard position values.  The dashboard cannot rea, No path may return an unlabelled price., IBKR is what orders fill against. Preferring a fresher third-party quote (+8 more)
+Nodes (16): Pure pricing helpers for the dashboard API. Deliberately dependency-free: no…, Decide which price to display for an open position, and name the source. IBKR…, resolve_position_price(), make_pos(), parametrize, Price-source resolution for dashboard position values. The dashboard cannot…, No path may return an unlabelled price., IBKR is what orders fill against. Preferring a fresher third-party quote is… (+8 more)
 
 ### Community 71 - "Commit a benchmark price dataset instead of re-fetching from FMP"
 Cohesion: 0.22
@@ -626,7 +628,7 @@ Nodes (7): Committed benchmark price dataset, Contents, Known limitations, Not y
 
 ### Community 73 - "_sb"
 Cohesion: 0.12
-Nodes (21): _extras(), tests/test_watchlist_history.py  Tests for the append-only point-in-time watchli, Directly testable as a buy gate: do names qualifying many runs         running o, A same-day re-run must overwrite, not duplicate., Append-only. A delete here would reintroduce the very data loss this         tab, A research feature must never be able to break live screening., THE critical invariant. `watchlist` is wiped every run; if the archive     ran a, Research extras must not leak into the `watchlist` insert — those         column (+13 more)
+Nodes (21): _extras(), tests/test_watchlist_history.py Tests for the append-only point-in-time…, Directly testable as a buy gate: do names qualifying many runs running…, A same-day re-run must overwrite, not duplicate., Append-only. A delete here would reintroduce the very data loss this table…, A research feature must never be able to break live screening., THE critical invariant. `watchlist` is wiped every run; if the archive ran…, Research extras must not leak into the `watchlist` insert — those columns do… (+13 more)
 
 ### Community 75 - "2026-08-14 — Surface every risk rule's live state in the dashboard"
 Cohesion: 0.22
@@ -634,7 +636,7 @@ Nodes (8): 2026-08-14 — Surface every risk rule's live state in the dashboard,
 
 ### Community 76 - "_make_pos"
 Cohesion: 0.08
-Nodes (25): _make_ib(), _make_pos(), _make_sb(), tests/test_prove_it_stop.py  Tests for the Prove-It Stop — the single loss rule, Unproven positions anchor to entry, and the band widens after day 0., The day-0 band must NOT still apply on day 1.          This is the regression th, Unlike every rule it replaced, Phase 1 has no day window.          The Thesis St, A proven position that reached the arming gain never becomes a real loss. (+17 more)
+Nodes (25): _make_ib(), _make_pos(), _make_sb(), tests/test_prove_it_stop.py Tests for the Prove-It Stop — the single loss rule…, Unproven positions anchor to entry, and the band widens after day 0., The day-0 band must NOT still apply on day 1. This is the regression the replay…, Unlike every rule it replaced, Phase 1 has no day window. The Thesis Stop…, A proven position that reached the arming gain never becomes a real loss. (+17 more)
 
 ### Community 77 - "AAPL"
 Cohesion: 0.50
@@ -645,8 +647,8 @@ Cohesion: 0.33
 Nodes (5): Alternatives considered, Consequences, Context, Decision, Reconcile `buy_price` against IBKR `averageCost`, and sum the dashboard headline from the rows
 
 ### Community 83 - "decision_review.py"
-Cohesion: 0.31
-Nodes (10): closed_trade_count(), _env(), is_due(), load_registry(), main(), _notify_telegram(), date, A decision is due only when EVERY threshold it declares is satisfied. (+2 more)
+Cohesion: 0.26
+Nodes (11): closed_trade_count(), _env(), is_due(), load_registry(), main(), _notify_telegram(), date, A decision is due only when EVERY threshold it declares is satisfied. (+3 more)
 
 ### Community 87 - "Decision: Breakout Verdict + Intraday Loss Minimiser"
 Cohesion: 0.29
@@ -682,7 +684,7 @@ Nodes (7): API Compatibility, Correction Note (2026-07-24), Decision, Decision: 
 
 ### Community 96 - "restart_and_health_check.py"
 Cohesion: 0.36
-Nodes (7): main(), now_et_str(), restart_and_health_check.py — 6:00 AM IB Gateway Health Check & Telegram Notifie, Send HTML Telegram message to all configured chat IDs., Connects to IB Gateway, verifies account U12941651, and checks own cash.     Ret, send_telegram(), verify_health()
+Nodes (7): main(), now_et_str(), restart_and_health_check.py — 6:00 AM IB Gateway Health Check & Telegram…, Send HTML Telegram message to all configured chat IDs., Connects to IB Gateway, verifies account U12941651, and checks own cash.…, send_telegram(), verify_health()
 
 ### Community 97 - "ABBV"
 Cohesion: 0.50
@@ -690,7 +692,7 @@ Nodes (4): end, rows, start, ABBV
 
 ### Community 98 - "test_scale_out.py"
 Cohesion: 0.16
-Nodes (18): _make_fill(), _make_ib(), _make_pos(), _make_sb(), _make_scale_ib(), tests/test_scale_out.py  Tests for the Partial Scale-Out rule — the winner->lose, A position whose peak reaches +4% is scaled out 33%., Peak, not current price, arms the rule — a prior +4% still scales. (+10 more)
+Nodes (18): _make_fill(), _make_ib(), _make_pos(), _make_sb(), _make_scale_ib(), tests/test_scale_out.py Tests for the Partial Scale-Out rule — the…, A position whose peak reaches +4% is scaled out 33%., Peak, not current price, arms the rule — a prior +4% still scales. (+10 more)
 
 ### Community 99 - "ABNB"
 Cohesion: 0.50
@@ -770,11 +772,11 @@ Nodes (4): end, rows, start, AMT
 
 ### Community 118 - "test_supabase_backup.py"
 Cohesion: 0.06
-Nodes (57): _coerce_column(), fetch_table(), main(), notify_failure(), DataFrame, Path, supabase_backup.py  Weekly point-in-time export of every Supabase table to flat, Return every row of `table`, paginated and deterministically ordered.      Raise (+49 more)
+Nodes (57): _coerce_column(), fetch_table(), main(), notify_failure(), DataFrame, Path, supabase_backup.py Weekly point-in-time export of every Supabase table to flat…, Return every row of `table`, paginated and deterministically ordered. Raises if… (+49 more)
 
 ### Community 119 - "make_history"
 Cohesion: 0.07
-Nodes (30): _default_config(), make_history(), make_response(), patch_fmp(), date, fixture, test_market_direction.py — Real unit tests for the CANSLIM "M" gate.  Before 202, Both above the buffer with rising SMA-200 → BULL. (+22 more)
+Nodes (30): _default_config(), make_history(), make_response(), patch_fmp(), date, fixture, test_market_direction.py — Real unit tests for the CANSLIM "M" gate. Before…, Both above the buffer with rising SMA-200 → BULL. (+22 more)
 
 ### Community 120 - "AON"
 Cohesion: 0.50
@@ -890,7 +892,7 @@ Nodes (4): end, rows, start, CAT
 
 ### Community 148 - "_bars"
 Cohesion: 0.05
-Nodes (29): compute_outcomes(), fetch_pending(), fetch_prices(), main(), _pct(), backfill_trigger_outcomes.py  Weekly job that links archived breakout triggers t, Forward returns measured from the first session AFTER triggered_at.      CONVENT, Triggers whose measurement window has fully elapsed and are unmeasured. (+21 more)
+Nodes (29): compute_outcomes(), fetch_pending(), fetch_prices(), main(), _pct(), backfill_trigger_outcomes.py Weekly job that links archived breakout triggers…, Forward returns measured from the first session AFTER triggered_at. CONVENTIONS…, Triggers whose measurement window has fully elapsed and are unmeasured. (+21 more)
 
 ### Community 149 - "CCEP"
 Cohesion: 0.50
@@ -1094,7 +1096,7 @@ Nodes (4): end, rows, start, ECO
 
 ### Community 199 - "increment_retention"
 Cohesion: 0.43
-Nodes (5): increment_retention(), get_rating_text(), Append this run's screener output to the append-only `watchlist_history`.      `, run_screener(), save_watchlist_history()
+Nodes (5): increment_retention(), get_rating_text(), Append this run's screener output to the append-only `watchlist_history`.…, run_screener(), save_watchlist_history()
 
 ### Community 200 - "EME"
 Cohesion: 0.50
@@ -1122,7 +1124,7 @@ Nodes (4): end, rows, start, ETR
 
 ### Community 206 - "TestExitContextSuffix"
 Cohesion: 0.08
-Nodes (7): _load_exit_context_suffix(), Tests for the exit-context recorded against a reconciled broker exit.  When an I, Mirrors the regexes in frontend/src/lib/exitDetails.js. If the agent's         f, The helper is worthless if the reconcile path stops calling it., Import the helper without importing execution_agent itself.      execution_agent, TestExitContextSuffix, TestReconcileUsesTheHelper
+Nodes (7): _load_exit_context_suffix(), Tests for the exit-context recorded against a reconciled broker exit. When an…, Mirrors the regexes in frontend/src/lib/exitDetails.js. If the agent's format…, The helper is worthless if the reconcile path stops calling it., Import the helper without importing execution_agent itself. execution_agent.py…, TestExitContextSuffix, TestReconcileUsesTheHelper
 
 ### Community 207 - "EXC"
 Cohesion: 0.50
@@ -1178,7 +1180,7 @@ Nodes (4): end, rows, start, COR
 
 ### Community 222 - "test_volatility_fit.py"
 Cohesion: 0.10
-Nodes (25): est_days_to_lock(), scoring.py — Pure scoring functions for the 5-component final_score system.  No, Trading days to reach the +5% profit lock at the average ATR pace.      Returns, Classify a candidate's ATR against the stop ladder it will actually trade., volatility_fit(), _prompt_source(), parametrize, test_volatility_fit.py — pins the volatility-fit classifier and the redefined `e (+17 more)
+Nodes (25): est_days_to_lock(), scoring.py — Pure scoring functions for the 5-component final_score system. No…, Trading days to reach the +5% profit lock at the average ATR pace. Returns the…, Classify a candidate's ATR against the stop ladder it will actually trade.…, volatility_fit(), _prompt_source(), parametrize, test_volatility_fit.py — pins the volatility-fit classifier and the redefined… (+17 more)
 
 ### Community 223 - "Forward-return backfill for trigger_history (and the prune we did NOT build)"
 Cohesion: 0.22
@@ -1202,19 +1204,19 @@ Nodes (4): end, rows, start, ELV
 
 ### Community 228 - "._run"
 Cohesion: 0.29
-Nodes (4): Regression guard for the volume-gate inversion.      `daily_triggers.volume_surg, The core inversion: 0.66x is a tight coil, the signal we want., The screener's own < 1.00 gate governs looseness, not this one., TestVolumeGateRespectsTriggerType
+Nodes (4): Regression guard for the volume-gate inversion. `daily_triggers.volume_surge`…, The core inversion: 0.66x is a tight coil, the signal we want., The screener's own < 1.00 gate governs looseness, not this one., TestVolumeGateRespectsTriggerType
 
 ### Community 229 - "App.jsx"
-Cohesion: 0.14
-Nodes (13): App(), describeApiFailure(), BacktesterView(), BreakoutDetailPanel(), BreakoutsView(), BreakoutTable(), sortByConviction(), ScreenerView() (+5 more)
+Cohesion: 0.21
+Nodes (10): App(), describeApiFailure(), BacktesterView(), BENCH_COLORS, ScreenerView(), SettingsView(), StockChart(), lucide-react (+2 more)
 
 ### Community 230 - "_client"
-Cohesion: 0.14
-Nodes (9): _client(), tests/test_schema_guard.py  Tests for the startup schema assertion.  Context: on, The add_ibkr_position_values.sql migration going unrun silently turned     Inves, The exact drift found in production must be reported as degraded., TestAdvisoryColumns, TestAdvisoryTables, TestCriticalColumns, TestNoClient (+1 more)
+Cohesion: 0.05
+Nodes (36): check_token_expiry(), fetch_cash_transactions(), _fetch_statement(), fetch_trade_confirms_for_ticker(), main(), _parse_cash_transactions(), _parse_trade_confirms(), Client (+28 more)
 
 ### Community 231 - "schema_guard.py"
-Cohesion: 0.24
-Nodes (6): check_schema(), _probe(), Startup schema assertion — fail LOUD when a risk rule's columns are missing.  WH, True if the table (and column, if given) is queryable., Probe every object a risk rule or archive depends on., SchemaReport
+Cohesion: 0.20
+Nodes (8): assert_schema_ok(), Verify risk-rule columns exist. Returns False when new buys must be blocked.…, check_schema(), _probe(), Startup schema assertion — fail LOUD when a risk rule's columns are missing.…, True if the table (and column, if given) is queryable., Probe every object a risk rule or archive depends on., SchemaReport
 
 ### Community 232 - "2026-08-14 — Schema guard: block new buys when a risk rule's columns are missing"
 Cohesion: 0.20
@@ -1226,19 +1228,19 @@ Nodes (11): 1. The window matters far more than the threshold, 2. Arming beats s
 
 ### Community 234 - "DashboardView.jsx"
 Cohesion: 0.18
-Nodes (20): activeProfitLockTier(), DashboardView(), daysHeld(), ExitConditionsPanel(), formatDate(), _getHolidays(), _holidayCache, LifecycleCell() (+12 more)
+Nodes (21): activeProfitLockTier(), DashboardView(), daysHeld(), ExitConditionsPanel(), formatDate(), _getHolidays(), _holidayCache, LifecycleCell() (+13 more)
 
 ### Community 235 - "TradesView.jsx"
-Cohesion: 0.21
-Nodes (15): BENCH_COLORS, ReturnsView(), buyDateKey(), commissionKey(), exitLabelKey(), netPnLKey(), sellDateKey(), toTime() (+7 more)
+Cohesion: 0.28
+Nodes (14): ReturnsView(), buyDateKey(), commissionKey(), exitLabelKey(), netPnLKey(), sellDateKey(), toTime(), TradesView() (+6 more)
 
 ### Community 236 - "_placed"
 Cohesion: 0.33
 Nodes (4): _placed(), _queue_sb(), Supabase mock that keeps exit_requests and portfolio_positions apart., TestQueueBackstops
 
 ### Community 237 - "request_exit.py"
-Cohesion: 0.48
-Nodes (6): _client(), cmd_cancel(), cmd_list(), main(), Best-effort reference price for the confirmation preview only., _ref_price()
+Cohesion: 0.39
+Nodes (7): _client(), cmd_cancel(), cmd_list(), main(), Best-effort reference price for the confirmation preview only., request_exit.py — Queue a Smart OCA Managed Exit for a held position. WHAT THIS…, _ref_price()
 
 ### Community 238 - "Decision: Route the discretionary Day 7+ exits through the Smart OCA queue — and only those"
 Cohesion: 0.29
@@ -1258,7 +1260,7 @@ Nodes (7): Consequences, Context, Dashboard consistency, Decision, Evidence, Fol
 
 ### Community 242 - "test_exit_timestamp.py"
 Cohesion: 0.09
-Nodes (11): Tests that a closed position records WHEN it closed, to the precision available., The behaviour all of the above exists to produce., A precise timestamp is worthless if it stops reaching the row., Tier 1 reads `ibkr_fills`, written from `execution.time.isoformat()`., Tier 2 reads ib_insync executions, whose `.time` is tz-aware UTC., Tier 3 is the one path that must NOT gain a time.      Flex `dateTime` has no ti, TestFlexStaysDateOnlyOnPurpose, TestHoldingPeriodIsNoLongerNegative (+3 more)
+Nodes (11): Tests that a closed position records WHEN it closed, to the precision…, The behaviour all of the above exists to produce., A precise timestamp is worthless if it stops reaching the row., Tier 1 reads `ibkr_fills`, written from `execution.time.isoformat()`., Tier 2 reads ib_insync executions, whose `.time` is tz-aware UTC., Tier 3 is the one path that must NOT gain a time. Flex `dateTime` has no…, TestFlexStaysDateOnlyOnPurpose, TestHoldingPeriodIsNoLongerNegative (+3 more)
 
 ### Community 244 - "Decision: Scope the volume surge gate to confirmed breakouts only"
 Cohesion: 0.29
@@ -1266,7 +1268,7 @@ Nodes (6): Consequences, Decision, Decision: Scope the volume surge gate to conf
 
 ### Community 245 - "_call"
 Cohesion: 0.16
-Nodes (5): _call(), _client_ok(), tests/test_sell_state.py  Tests for the sell-state transition notifier — a conci, TestMaybeNotifySellState, TestSellStateCode
+Nodes (5): _call(), _client_ok(), tests/test_sell_state.py Tests for the sell-state transition notifier — a…, TestMaybeNotifySellState, TestSellStateCode
 
 ### Community 246 - "Decision: Anchor the OCA upper leg to current price × ATR, not to the entry price"
 Cohesion: 0.29
@@ -1278,7 +1280,7 @@ Nodes (15): Addendum, 2026-09-04 — Phase 1 enforcement side, measured, Consequ
 
 ### Community 250 - "test_oca_managed_exit.py"
 Cohesion: 0.12
-Nodes (9): tests/test_oca_managed_exit.py — Smart OCA Managed Exit.  The dangerous property, A buy_date exactly `n` trading days before today, in New York.      Must be comp, Give a mock IB an account with readable NetLiquidation.      No live loss rule d, Which rules may use the queue is a risk decision, not a style one., TestLadderSuspension, TestQueueResilience, TestSmartExitRuleScoping, _trading_days_ago() (+1 more)
+Nodes (9): tests/test_oca_managed_exit.py — Smart OCA Managed Exit. The dangerous property…, A buy_date exactly `n` trading days before today, in New York. Must be…, Give a mock IB an account with readable NetLiquidation. No live loss rule…, Which rules may use the queue is a risk decision, not a style one., TestLadderSuspension, TestQueueResilience, TestSmartExitRuleScoping, _trading_days_ago() (+1 more)
 
 ### Community 251 - "HWM profit-lock after the first leg"
 Cohesion: 0.33
@@ -1300,9 +1302,9 @@ Nodes (11): 1. The measured problem, 2. The design flaw the parameter was hiding
 Cohesion: 0.50
 Nodes (3): patch, Test that reconcile_with_ibkr detects short positions and sends alert., test_reconcile_detects_short_positions()
 
-### Community 256 - ".notify_exception"
-Cohesion: 0.40
-Nodes (3): Exception, Rate-limited exception alert. Suppresses duplicate (same context + error type), Loud, unambiguous alert that the agent cannot reach IB Gateway.          This is
+### Community 256 - "Client"
+Cohesion: 0.08
+Nodes (26): arm_exit(), _close_exit_request(), enqueue_smart_exit(), extract_fill_commission(), get_oca_managed_tickers(), maybe_notify_sell_state(), persist_fill(), Client (+18 more)
 
 ### Community 257 - "atr_rank_bt.py"
 Cohesion: 0.10
@@ -1310,7 +1312,7 @@ Nodes (36): apply_ranking(), atr_pct_at(), build_with_atr(), describe(), entry_s
 
 ### Community 258 - "_trade"
 Cohesion: 0.14
-Nodes (15): enrich_trades(), Commission-aware P&L.  `trade_history.profit_loss` is and remains GROSS -- (sell, (total_commission, complete) for one closed trade.      `complete` is True only, (net_profit_loss, complete) for one closed trade.      When commissions are unkn, Attach `net_profit_loss` / `total_commission` / `commission_complete`., Portfolio-level realised P&L, gross and net, with an explicit count of how     m, summarize_realized(), _to_float() (+7 more)
+Nodes (15): enrich_trades(), Commission-aware P&L. `trade_history.profit_loss` is and remains GROSS -- (sell…, (total_commission, complete) for one closed trade. `complete` is True only when…, (net_profit_loss, complete) for one closed trade. When commissions are unknown…, Attach `net_profit_loss` / `total_commission` / `commission_complete`., Portfolio-level realised P&L, gross and net, with an explicit count of how many…, summarize_realized(), _to_float() (+7 more)
 
 ### Community 259 - "Retune HWM profit-lock arm from +6% to +5%"
 Cohesion: 0.29
@@ -1322,19 +1324,19 @@ Nodes (5): Closed-loop learning from realised outcomes, Consequences, Context, D
 
 ### Community 261 - "compute_final_score"
 Cohesion: 0.13
-Nodes (10): compute_final_score(), Weighted blend of 5 components (all 0-100) -> 0-100 final score.        Technica, TestPreBreakoutScoreBoost, NVDA-like scores -> should be around 80, SGHC-like scores -> should be around 40-50, Weighted formula: tech=100, rest=0 -> score = 30, liq=100, rest=0 -> score = 25, Score cannot exceed 100 (+2 more)
+Nodes (10): compute_final_score(), Weighted blend of 5 components (all 0-100) -> 0-100 final score. Technical 30%…, TestPreBreakoutScoreBoost, NVDA-like scores -> should be around 80, SGHC-like scores -> should be around 40-50, Weighted formula: tech=100, rest=0 -> score = 30, liq=100, rest=0 -> score = 25, Score cannot exceed 100 (+2 more)
 
-### Community 262 - "COHU"
-Cohesion: 0.50
-Nodes (4): end, rows, start, COHU
+### Community 262 - "managed_exit.py"
+Cohesion: 0.24
+Nodes (16): get_live_price(), Fetch current price of a ticker from FMP., archive(), cancel_sells(), current_price(), main(), market_exit(), _notify() (+8 more)
 
 ### Community 263 - "Source dashboard position values from IBKR, not FMP"
 Cohesion: 0.22
 Nodes (8): After hours, Agent side, Consequences, Context, Decision, Follow-up, Source dashboard position values from IBKR, not FMP, Web side
 
-### Community 264 - "CRM"
-Cohesion: 0.50
-Nodes (4): end, rows, start, CRM
+### Community 264 - "BreakoutsView.jsx"
+Cohesion: 0.17
+Nodes (10): BreakoutDetailPanel(), BreakoutsView(), BreakoutTable(), sortByConviction(), getValueByPath(), useSortableTable(), ATR_COMFORT_LOW, ATR_STOP_CAP_PCT (+2 more)
 
 ### Community 265 - "Exit detail panel, and the removal of fabricated exit reasons"
 Cohesion: 0.22
@@ -1350,15 +1352,15 @@ Nodes (12): check_technical_breakout(), _compute_failure_penalty(), compute_qual
 
 ### Community 268 - "rank_policy_bt.py"
 Cohesion: 0.27
-Nodes (12): build(), find_triggers(), _indicators(), per_type(), _rank_key(), Counterfactual replay: trigger-RANKING policy A (score-first) vs B (confirmed-fi, Point-in-time SPY 12-week (60 trading day) return, keyed by date., Replay BOTH screener detectors bar-by-bar, using production scoring.      Return (+4 more)
+Nodes (12): build(), find_triggers(), _indicators(), per_type(), _rank_key(), Counterfactual replay: trigger-RANKING policy A (score-first) vs B (confirmed-…, Point-in-time SPY 12-week (60 trading day) return, keyed by date., Replay BOTH screener detectors bar-by-bar, using production scoring. Returns… (+4 more)
 
 ### Community 269 - "CAH"
 Cohesion: 0.50
 Nodes (4): end, rows, start, CAH
 
 ### Community 270 - "paired_block_bootstrap"
-Cohesion: 0.27
-Nodes (12): cagr_from(), paired_block_bootstrap(), Corrected bootstrap for config comparisons.  THE BUG (boot.py):     diffs = cagr, Draw circular blocks with Geometric(1/mean_len) lengths until >= ndays., Return (median diff, 5th, 95th, P(a>b)) for CAGR_a - CAGR_b., Reproduces the ORIGINAL (buggy) method, for comparison only., RNG, single_ci() (+4 more)
+Cohesion: 0.26
+Nodes (12): cagr_from(), paired_block_bootstrap(), Corrected bootstrap for config comparisons. THE BUG (boot.py): diffs =…, Draw circular blocks with Geometric(1/mean_len) lengths until >= ndays., Return (median diff, 5th, 95th, P(a>b)) for CAGR_a - CAGR_b., Reproduces the ORIGINAL (buggy) method, for comparison only., RNG, single_ci() (+4 more)
 
 ### Community 271 - "Price live-position exit logic from IBKR, not FMP"
 Cohesion: 0.22
@@ -1370,7 +1372,7 @@ Nodes (5): Consequences, Context, Decision, Fail loudly on Telegram when the age
 
 ### Community 273 - "thesis_bt.py"
 Cohesion: 0.17
-Nodes (20): main(), Does an INTRADAY POKE above entry deserve to disarm the Thesis Stop?  THE QUESTI, build(), Collect all breakout signals and per-symbol bar data keyed by date., armed_fill(), atr_pct_series(), load(), Thesis stop + cooling-off backtest.  The thesis stop asks a different question f (+12 more)
+Nodes (20): main(), Does an INTRADAY POKE above entry deserve to disarm the Thesis Stop? THE…, build(), Collect all breakout signals and per-symbol bar data keyed by date., armed_fill(), atr_pct_series(), load(), Thesis stop + cooling-off backtest. The thesis stop asks a different question… (+12 more)
 
 ### Community 274 - "AI evaluator: replace the velocity ladder with volatility fit"
 Cohesion: 0.17
@@ -1378,55 +1380,67 @@ Nodes (11): AI evaluator: replace the velocity ladder with volatility fit, Conse
 
 ### Community 275 - "bardata.py"
 Cohesion: 0.36
-Nodes (7): coverage(), manifest(), Read-only loader for the committed benchmark price dataset.  The dataset lives i, Sorted union of dates across the given symbols (default: all)., symbols(), _table(), trading_days()
+Nodes (7): coverage(), manifest(), Read-only loader for the committed benchmark price dataset. The dataset lives…, Sorted union of dates across the given symbols (default: all)., symbols(), _table(), trading_days()
 
 ### Community 276 - "compute_pre_breakout_quality_score"
 Cohesion: 0.15
-Nodes (12): check_pre_breakout_coil(), compute_pre_breakout_quality_score(), Detects stocks coiling toward an imminent breakout (VCP / handle setup).      AL, Quality score 0-100 for a pre-breakout (coiling) trigger.      Weights:       Pi, _coil(), Within 1%, 0 vol ratio, 3/3 closes up -> score == 100., Within 1%, 0.5x vol, 3 closes up -> 40+20+20=80., Within 3%, 0.5x vol, 2 closes up -> 35+20+10=65. (+4 more)
+Nodes (12): check_pre_breakout_coil(), compute_pre_breakout_quality_score(), Detects stocks coiling toward an imminent breakout (VCP / handle setup). ALL…, Quality score 0-100 for a pre-breakout (coiling) trigger. Weights: Pivot…, _coil(), Within 1%, 0 vol ratio, 3/3 closes up -> score == 100., Within 1%, 0.5x vol, 3 closes up -> 40+20+20=80., Within 3%, 0.5x vol, 2 closes up -> 35+20+10=65. (+4 more)
 
 ### Community 277 - "Sell-state transition notifications"
 Cohesion: 0.25
 Nodes (7): Alternatives rejected, Consequences / known limitations, Context, Decision, Sell-state transition notifications, Silent first observation, Why persist the state instead of comparing in memory
 
-### Community 278 - "flex_query_sync.py"
-Cohesion: 0.16
-Nodes (17): check_token_expiry(), fetch_cash_transactions(), _fetch_statement(), main(), _parse_cash_transactions(), Client, flex_query_sync.py — IBKR Flex Query Cash Flow Sync  Fetches cash deposits and w, Step 1: Submit the query to IBKR and get a ReferenceCode.     Returns the Refere (+9 more)
+### Community 278 - "trading_days_between"
+Cohesion: 0.18
+Nodes (11): _build_failed_params_snapshot(), _infer_exit_type(), _nyse_holidays(), date, Classify an exit reason into the breakout_learnings exit_type bucket., Build a failure-parameter snapshot for breakout_learnings. Preferred source is…, Persist a single breakout_learnings row. Non-fatal by design., Return the set of NYSE market holidays for a given year. Computed… (+3 more)
 
 ### Community 279 - "_make_df"
 Cohesion: 0.20
-Nodes (8): _make_df(), 15% below 52w high -> beyond 8% proximity -> None., At or above 52w high -> confirmed breakout territory -> None., Close (77) below SMA-50 (~90) -> below trend -> None., Stock -5% vs SPY +15% -> low RS -> None., Recent 3d avg vol 1.1x 50d avg -> sellers still active -> None., Strictly descending then tiny uptick: must compare vs prior row.         Use all, TestPreBreakoutCoilFail
+Nodes (8): _make_df(), 15% below 52w high -> beyond 8% proximity -> None., At or above 52w high -> confirmed breakout territory -> None., Close (77) below SMA-50 (~90) -> below trend -> None., Stock -5% vs SPY +15% -> low RS -> None., Recent 3d avg vol 1.1x 50d avg -> sellers still active -> None., Strictly descending then tiny uptick: must compare vs prior row. Use all-…, TestPreBreakoutCoilFail
+
+### Community 280 - "_get_week_start"
+Cohesion: 0.29
+Nodes (5): _get_week_start(), datetime, Return UTC midnight of the Monday starting the ISO week containing dt., _get_week_start always returns the Monday 00:00:00 UTC of the same ISO week., TestGetWeekStart
+
+### Community 281 - "TestReconcileCase2"
+Cohesion: 0.20
+Nodes (6): Bug #5 related: PortfolioItem uses .averageCost (NOT .avgCost). The code must…, Case 2: averageCost = 0 → skip insert (prevents ghost $0 positions)., Case 2: no absolute stop_loss price is stored. The `stop_loss` column was a…, Case 2: In IBKR, NOT in Supabase → manual buy detected., Case 2 must set hwm_date = today (ISO string) when inserting a manually-opened…, TestReconcileCase2
 
 ### Community 283 - "1. Strategy backtester"
 Cohesion: 0.20
 Nodes (9): 1. Strategy backtester, 2. Exit replay — against your own real trades, 3. Research harnesses, Backtesting, Caveats that apply to all of them, From Python, From the API, From the dashboard (+1 more)
 
-### Community 284 - "_fill_sink_failure"
-Cohesion: 0.67
-Nodes (3): _fill_sink_failure(), Exception, Escalate a failed write to a sink nobody reads, exactly once per process.      i
+### Community 284 - "_run_monitor"
+Cohesion: 0.24
+Nodes (7): Both protective legs already in IBKR -> no self-healing. Use price=buy_price…, Even when price is below stop level, Python does NOT call execute_sell. IBKR…, Runs monitor_portfolio_intraday() with standard patches. live_prices: dict of…, A healthy position carries a TWO-leg protective bracket in IBKR: the base…, No open SELL orders -> place_protective_stops called for self-healing. Use…, _run_monitor(), TestSelfHealingTrailingStop
 
 ### Community 285 - "Commission accounting, and the RLS policy gap that hid it"
 Cohesion: 0.25
 Nodes (7): 1. `ibkr_fills` had been empty since the day it was created, 2. Reported P&L was gross, and the dashboard already knew, Commission accounting, and the RLS policy gap that hid it, Consequences, Context, Decision, Files
 
+### Community 286 - "prove_it_stop_level"
+Cohesion: 0.25
+Nodes (8): hard_stop_price(), prove_it_is_proven(), prove_it_p1_threshold_pct(), prove_it_stop_level(), The absolute price a STATIC broker-side hard stop should rest at right now.…, Has this position ever CLOSED above the price we paid? This single question…, Phase 1 band for a given day of the hold, as a positive fraction below entry.…, The price at which this position should be protected right now, and which phase…
+
 ### Community 287 - "._eod_monitor"
 Cohesion: 0.32
-Nodes (5): EOD plateau rotation: at 3:45-4pm, if portfolio is full AND fresh breakout     t, Helper: run monitor in EOD window., Days 3-6 position with decay is NOT swapped if no triggers exist., Days 3-6 position with decay is NOT swapped if portfolio has open slots (not ful, TestPlateauRotation
+Nodes (5): EOD plateau rotation: at 3:45-4pm, if portfolio is full AND fresh breakout…, Helper: run monitor in EOD window., Days 3-6 position with decay is NOT swapped if no triggers exist., Days 3-6 position with decay is NOT swapped if portfolio has open slots (not…, TestPlateauRotation
 
 ### Community 288 - "ADR: Early Dollar Stop — $500 Hard Cap on Days 0–5"
 Cohesion: 0.40
 Nodes (5): ADR: Early Dollar Stop — $500 Hard Cap on Days 0–5, Consequences, Context, Decision, Simulation
 
-### Community 290 - "RuntimeError"
-Cohesion: 0.29
-Nodes (3): RuntimeError, A monitoring concern must never become a trading outage., TestBuyGate
+### Community 290 - ".test_hwm_date_not_updated_when_price_falls"
+Cohesion: 0.33
+Nodes (4): hwm_date (date of last intraday high) is the only HWM data Python tracks. IBKR…, New intraday high (price > buy_price) -> hwm_date written to Supabase., Price does not exceed buy_price (or last seen peak) -> no hwm_date update., TestHwmDateTracking
 
 ### Community 291 - "test_datasource_unavailable.py"
 Cohesion: 0.15
-Nodes (10): _Boom, Exception, fixture, An unreachable database must not be reported as an empty portfolio.  On 2026-09-, Stands in for the DNS / transport failures Supabase surfaces., The operator needs the underlying error to diagnose it -- here, DNS., An empty database is legitimate and must still return [] -- the fix must     not, test_original_cause_is_preserved() (+2 more)
+Nodes (10): _Boom, Exception, fixture, An unreachable database must not be reported as an empty portfolio. On…, Stands in for the DNS / transport failures Supabase surfaces., The operator needs the underlying error to diagnose it -- here, DNS., An empty database is legitimate and must still return [] -- the fix must not…, test_original_cause_is_preserved() (+2 more)
 
 ### Community 292 - "TestHardStopPrice"
 Cohesion: 0.20
-Nodes (5): _armed_floor(), _disaster(), tests/test_hard_stop.py  Tests for the static broker-side hard stop — the discon, TestHardStopPrice, TestPlaceProtectiveStops
+Nodes (5): _armed_floor(), _disaster(), tests/test_hard_stop.py Tests for the static broker-side hard stop — the…, TestHardStopPrice, TestPlaceProtectiveStops
 
 ### Community 293 - "A static broker-side hard stop that survives disconnection"
 Cohesion: 0.20
@@ -1437,16 +1451,20 @@ Cohesion: 0.18
 Nodes (10): Alternatives rejected, Consequences / known limitations, Context, Decision, Order-execution safety, Partial Scale-Out — book a third of a winner at +4%, Provisional status, The insight (+2 more)
 
 ### Community 295 - "ET"
-Cohesion: 0.22
-Nodes (10): end, rows, start, ET, fetch_trade_confirms_for_ticker(), _parse_trade_confirms(), Query IBKR TradeConfirm Flex report (on-demand, same token as cash flows)     an, Like _request_reference_code() but accepts an explicit query ID. (+2 more)
+Cohesion: 0.50
+Nodes (4): end, rows, start, ET
 
 ### Community 296 - "Fail loudly when the database is unreachable"
 Cohesion: 0.33
 Nodes (5): Alternatives rejected, Consequences, Context, Decision, Fail loudly when the database is unreachable
 
-### Community 298 - "Exits"
-Cohesion: 0.22
-Nodes (9): Armed exit, Exits, Partial scale-out, Power Hold, Retired exit variables, Smart OCA managed exit, Staleness and rotation, The Prove-It Stop (+1 more)
+### Community 297 - "C"
+Cohesion: 0.50
+Nodes (4): end, rows, start, C
+
+### Community 298 - "FDX"
+Cohesion: 0.50
+Nodes (4): end, rows, start, FDX
 
 ### Community 301 - "TestPreBreakoutCoilPass"
 Cohesion: 0.29
@@ -1456,9 +1474,9 @@ Nodes (4): 5% below high, vol contracting, 3/3 closes up -> PRE_BREAKOUT., 2 of 
 Cohesion: 0.33
 Nodes (5): Alternatives rejected, Consequences, Context, Decision, Multi-account IBKR pricing: reqPnLSingle fallback + strict target-account scoping
 
-### Community 304 - "compute_momentum_health_score"
-Cohesion: 0.33
-Nodes (6): compute_momentum_health_score(), compute_rsi(), detect_candlestick_reversals(), Wilder's smoothed RSI from a list of closing prices.      Returns a list of RSI, Detect bearish reversal candles on the last 3 bars near the plateau zone.      R, Live Momentum Health Score Mₜ (0–100) for a held position.      Returns (score,
+### Community 304 - "execution_agent.py"
+Cohesion: 0.04
+Nodes (49): calculate_ema(), calculate_sma(), check_volume_distribution(), compute_momentum_health_score(), compute_rsi(), detect_candlestick_reversals(), _exit_context_suffix(), fetch_held_position_sentiment() (+41 more)
 
 ### Community 305 - "Evidence"
 Cohesion: 0.50
@@ -1466,7 +1484,7 @@ Nodes (4): Evidence, Phase 1 and Phase 2 are complementary, not additive, Why Ph
 
 ### Community 306 - "_IBKRMark"
 Cohesion: 0.33
-Nodes (4): _IBKRMark, _MarkContract, Minimal stand-in for an ib_insync Contract inside a synthesized mark., A PortfolioItem-shaped mark synthesized from reqPnLSingle().      Exposes the sa
+Nodes (4): _IBKRMark, _MarkContract, Minimal stand-in for an ib_insync Contract inside a synthesized mark., A PortfolioItem-shaped mark synthesized from reqPnLSingle(). Exposes the same…
 
 ### Community 308 - "CB"
 Cohesion: 0.50
@@ -1477,24 +1495,24 @@ Cohesion: 0.50
 Nodes (4): end, rows, start, EW
 
 ## Knowledge Gaps
-- **968 isolated node(s):** `bar_interval`, `bytes`, `dataset`, `date_max`, `date_min` (+963 more)
-  These have ≤1 connection - possible missing edges or undocumented components.
-- **16 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **975 isolated node(s):** `bar_interval`, `bytes`, `dataset`, `date_max`, `date_min` (+970 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1806 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **14 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `per_symbol` connect `per_symbol` to `BIRK`, `CMI`, `MANIFEST.json`, `AAPL`, `ABBV`, `ABNB`, `ABT`, `ACN`, `ADBE`, `ADI`, `ADP`, `ADSK`, `AEIS`, `AEP`, `AFL`, `AJG`, `ALAB`, `ALL`, `AMAT`, `AMD`, `AME`, `AMGN`, `AMKR`, `AMT`, `AON`, `APD`, `APH`, `APO`, `APP`, `ARM`, `ARW`, `AS`, `AVGO`, `AXP`, `BA`, `BABA`, `BAC`, `BAM`, `BDX`, `BE`, `BKNG`, `BKR`, `BMY`, `BN`, `BNY`, `AMZN`, `BX`, `CARR`, `CAT`, `CCEP`, `CDNA`, `CDNS`, `CEG`, `CELH`, `CF`, `CI`, `CIEN`, `CL`, `CMC`, `CMCL`, `CMCSA`, `CME`, `CMG`, `COCO`, `COF`, `BSX`, `CRH`, `CRWD`, `CSCO`, `CSX`, `CTAS`, `CTVA`, `CVNA`, `CVS`, `CVX`, `CXW`, `D`, `DAL`, `DASH`, `DDOG`, `DE`, `DELL`, `DHR`, `DIOD`, `DIS`, `DLR`, `DUK`, `DVN`, `DXCM`, `DY`, `EA`, `EBAY`, `ECL`, `ECO`, `EME`, `EMR`, `EOG`, `EPD`, `ETN`, `ETR`, `EXC`, `F`, `FANG`, `FAST`, `FCX`, `FERG`, `FITB`, `FLYW`, `COST`, `COP`, `ANET`, `COR`, `COHR`, `ELV`, `COHU`, `CRM`, `AMTM`, `CAH`, `ET`, `CB`, `EW`?**
-  _High betweenness centrality (0.178) - this node is a cross-community bridge._
-- **Why does `ET` connect `ET` to `per_symbol`, `flex_query_sync.py`?**
-  _High betweenness centrality (0.154) - this node is a cross-community bridge._
-- **Why does `main()` connect `ai_evaluator.py` to `compute_liquidity_score`, `RuntimeError`, `TelegramNotifier`, `compute_final_score`?**
-  _High betweenness centrality (0.055) - this node is a cross-community bridge._
+- **Why does `DataSourceUnavailable` connect `database.py` to `_client`?**
+  _High betweenness centrality (0.030) - this node is a cross-community bridge._
+- **Why does `main()` connect `ai_evaluator.py` to `compute_liquidity_score`, `TelegramNotifier`, `compute_final_score`, `_client`?**
+  _High betweenness centrality (0.029) - this node is a cross-community bridge._
+- **Why does `approve_rotation()` connect `main.py` to `_client`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 - **What connects `bar_interval`, `bytes`, `dataset` to the rest of the system?**
-  _968 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _975 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `compute_liquidity_score` be split into smaller, more focused modules?**
   _Cohesion score 0.12666666666666668 - nodes in this community are weakly interconnected._
-- **Should `datetime` be split into smaller, more focused modules?**
-  _Cohesion score 0.12169312169312169 - nodes in this community are weakly interconnected._
+- **Should `patch` be split into smaller, more focused modules?**
+  _Cohesion score 0.09365079365079365 - nodes in this community are weakly interconnected._
 - **Should `_AV` be split into smaller, more focused modules?**
-  _Cohesion score 0.0730804810360777 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07312925170068027 - nodes in this community are weakly interconnected._
