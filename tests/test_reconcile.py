@@ -416,3 +416,64 @@ class TestReconcileUsesPortfolioNotPositions:
 
         ib.portfolio.assert_called()
         ib.positions.assert_not_called()
+
+
+class TestReconcileBuyPriceDriftGuard:
+    """Case 3: buy_price drift guard.
+
+    IBKR's averageCost is the authoritative, commission-inclusive cost basis.
+    When the locally-stored buy_price drifts from it by more than
+    BUY_PRICE_DRIFT_TOLERANCE, reconcile adopts IBKR's number and resets the
+    derived peak/proven flags so both the dashboard P&L and every
+    buy_price-anchored exit rule price off the true basis. This is the NTRA
+    incident: stored 317.43 vs IBKR 331.70 (a real -1.1% shown as +3.3%).
+    """
+
+    @staticmethod
+    def _buy_price_updates(supabase):
+        return [
+            c.args[0]
+            for c in supabase.table("portfolio_positions").update.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "buy_price" in c.args[0]
+        ]
+
+    def test_corrects_buy_price_when_drift_exceeds_tolerance(self):
+        pos = make_position("AAPL", buy_price=100.0, shares=100)
+        pos["hwm_price"] = 105.0            # never reached the true 110 cost
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"], avg_cost=110.0)   # +10% drift
+
+        _reconcile(ib, supabase)
+
+        updates = self._buy_price_updates(supabase)
+        assert len(updates) == 1
+        payload = updates[0]
+        assert payload["buy_price"] == 110.0
+        # 105 high never cleared the true 110 cost → unproven, zero peak
+        assert payload["highest_unrealized_pct"] == 0.0
+        assert payload["closed_above_entry"] is False
+
+    def test_no_correction_within_tolerance(self):
+        pos = make_position("AAPL", buy_price=100.0, shares=100)
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.5)   # 0.5% < 1% tol
+
+        _reconcile(ib, supabase)
+
+        assert self._buy_price_updates(supabase) == []
+
+    def test_peak_and_proven_survive_when_hwm_clears_corrected_cost(self):
+        pos = make_position("AAPL", buy_price=100.0, shares=100)
+        pos["hwm_price"] = 108.0
+        supabase = make_supabase_mock(portfolio=[pos])
+        ib = make_ib_mock(symbols=["AAPL"], avg_cost=101.5)   # +1.5% drift
+
+        _reconcile(ib, supabase)
+
+        updates = self._buy_price_updates(supabase)
+        assert len(updates) == 1
+        payload = updates[0]
+        assert payload["buy_price"] == 101.5
+        # 108 high still clears the true 101.5 cost → proven, peak ~6.40%
+        assert payload["closed_above_entry"] is True
+        assert payload["highest_unrealized_pct"] == pytest.approx(6.4039, abs=1e-3)

@@ -280,7 +280,15 @@ def get_portfolio():
             )
             updated_positions.append(pos)
             
-        unrealized_pnl = portfolio_value - (cash + sum(pos['shares'] * pos['buy_price'] for pos in positions))
+        # Sum the SAME per-position pnl the rows display, so the headline can
+        # never disagree with the sum of its parts. Each pos['pnl'] already
+        # prefers IBKR's own unrealizedPNL (its average-cost basis) and only
+        # falls back to (value - shares*buy_price) when there is no broker mark.
+        # The previous formula recomputed everything off the locally-stored
+        # buy_price, which silently inflated the total whenever a stored
+        # buy_price drifted from IBKR's average cost (e.g. NTRA recorded at
+        # 317.43 vs IBKR's 331.70).
+        unrealized_pnl = sum(pos['pnl'] for pos in updated_positions)
         total_pnl = portfolio_value - initial
         total_pnl_pct = (portfolio_value / initial - 1.0) * 100.0
         invested_value = portfolio_value - cash

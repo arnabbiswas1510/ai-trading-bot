@@ -40,6 +40,7 @@ TradingView requires no credentials.
 | `STOP_LOSS_PCT` | `0.10` | Base trailing stop from peak — the **floor** of the ATR band |
 | `ATR_STOP_MAX_PCT` | `0.12` | Ceiling of the ATR band |
 | `MAX_LOSS_PCT` | `0.07` | Static broker-side hard stop (entry − 7%) — the disconnect-proof max loss, in an OCA group with the trailing stop |
+| `BUY_PRICE_DRIFT_TOLERANCE` | `0.01` | Reconcile adopts IBKR's `averageCost` as the true `buy_price` when the stored value drifts more than this (1%) from it, then resets the derived peak/proven flags and alerts. Guards against a fill price captured wrong at order time silently corrupting both the dashboard P&L and every `buy_price`-anchored exit rule. See [sell logic](sell_logic.md) and `decisions/2026-09-09_buy-price-drift-guard.md` |
 | `COOLING_OFF_DAYS` | `7` | Re-entry block after a sale |
 
 **Sizing** is `available_cash / remaining_slots`, recomputed before each buy. The

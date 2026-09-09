@@ -56,6 +56,16 @@ STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.10))
 # hard stop ratchets UP to the give-back floor; see hard_stop_price().
 MAX_LOSS_PCT = float(os.getenv("MAX_LOSS_PCT", 0.07))
 
+# Reconcile-time guard: if the locally-stored buy_price drifts from IBKR's own
+# averageCost by more than this fraction, reconcile treats IBKR as authoritative
+# and overwrites buy_price (resetting the derived peak/proven flags and alerting).
+# IBKR's averageCost is the true, commission-inclusive cost basis; a large drift
+# means the fill price captured at order time was wrong (e.g. NTRA stored at
+# 317.43 vs IBKR's 331.70), which silently corrupts both the dashboard P&L and
+# every buy_price-anchored exit rule. 1% is well outside normal commission/
+# rounding noise (the other four holdings agreed within ~0.05%).
+BUY_PRICE_DRIFT_TOLERANCE = float(os.getenv("BUY_PRICE_DRIFT_TOLERANCE", 0.01))
+
 # Days a ticker is ineligible for re-entry after being sold. Widened 3 -> 7:
 # re-buying a name two days after it stopped out repeatedly re-entered the same
 # failing setup.

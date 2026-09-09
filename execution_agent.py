@@ -150,7 +150,7 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 # handful of outlier trades (top-10 trades fall from 109% -> 92% of total P/L on
 # the growth universe, 98% -> 74% on the broad one). The CAGR/drawdown gaps
 # themselves are inside the noise floor; the concentration reduction is not.
-from config import MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS  # noqa: E402  (single source of truth; set via .env)
+from config import MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS, BUY_PRICE_DRIFT_TOLERANCE  # noqa: E402  (single source of truth; set via .env)
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 # Base trailing stop, measured from the position's PEAK (not from entry — this
 # is not O'Neil's 7-8% hard stop from cost, it is much tighter in practice).
@@ -996,6 +996,29 @@ def _matches_account(obj, target_account: str | None) -> bool:
     if acc is None or not isinstance(acc, str):
         return True
     return acc == target_account
+
+
+def _ibkr_avg_cost(obj) -> float | None:
+    """Per-share average cost from an IBKR position object, source-agnostic.
+
+    ib.portfolio() yields PortfolioItem (attribute ``averageCost``); the
+    multi-account positions() fallback yields Position (attribute ``avgCost``).
+    Both are commission-inclusive per-share cost for US stocks, and the two
+    attribute sets are mutually exclusive on the real objects — so prefer
+    ``averageCost`` and only consult ``avgCost`` when it is genuinely absent.
+    Returns None if the resolved value is not a usable positive float (e.g. a
+    zero-cost row, or a bare test mock).
+    """
+    raw = getattr(obj, "averageCost", None)
+    if raw is None:
+        raw = getattr(obj, "avgCost", None)
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if val != val or val <= 0:   # NaN-safe
+        return None
+    return val
 
 
 def get_own_cash(ib: IB, account: str = None) -> float:
@@ -3037,7 +3060,10 @@ def reconcile_with_ibkr(ib: IB):
     for ticker in ib_tickers - supabase_tickers:
         ib_pos = ib_map[ticker]
         shares = int(ib_pos.position)
-        avg_cost = round(float(ib_pos.averageCost), 2)   # PortfolioItem uses averageCost (Bug #5)
+        # averageCost (PortfolioItem) or avgCost (Position, multi-account
+        # fallback) — see _ibkr_avg_cost(). Reading .averageCost directly here
+        # would raise on the positions() fallback objects (Bug #5).
+        avg_cost = round(_ibkr_avg_cost(ib_pos) or 0.0, 2)
 
         if avg_cost <= 0:
             print(f"   ⚠️  {ticker}: in IBKR with zero avg cost — skipping.")
@@ -3081,6 +3107,62 @@ def reconcile_with_ibkr(ib: IB):
             except Exception as e:
                 notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
                 print(f"        ❌ DB error updating shares for {ticker}: {e}")
+
+        # ── buy_price drift guard ────────────────────────────────────────────
+        # IBKR's averageCost is the authoritative, commission-inclusive cost
+        # basis. The fill price captured at order time can be wrong (e.g. an
+        # avgFillPrice read before all child fills settled), and a wrong
+        # buy_price silently corrupts BOTH the dashboard P&L and every
+        # buy_price-anchored exit rule (prove-it band, give-back floor, hard
+        # stop). NTRA sat at a stored 317.43 against IBKR's 331.70 — a real
+        # −1.1% position shown as a +3.3% winner. When the drift exceeds
+        # BUY_PRICE_DRIFT_TOLERANCE, adopt IBKR's number and reset the derived
+        # peak/proven flags so the monitor loop re-derives them off the true
+        # basis; the hard stop and trail self-heal on the next cycle.
+        ib_avg = _ibkr_avg_cost(ib_map[ticker])
+        db_buy = float(supabase_map[ticker].get("buy_price") or 0.0)
+        if ib_avg and db_buy > 0 and abs(ib_avg - db_buy) / ib_avg > BUY_PRICE_DRIFT_TOLERANCE:
+            corrected = round(ib_avg, 2)
+            hwm = float(supabase_map[ticker].get("hwm_price") or corrected)
+            new_peak = round(max(0.0, (hwm / corrected - 1.0) * 100.0), 4)
+            new_closed_above = hwm > corrected
+            drift_pct = (db_buy - ib_avg) / ib_avg * 100.0
+            print(f"   ⚠️  {ticker}: buy_price drift — stored ${db_buy:.2f} vs "
+                  f"IBKR averageCost ${ib_avg:.2f} ({drift_pct:+.2f}%). Correcting to IBKR.")
+            try:
+                client.table("portfolio_positions").update({
+                    "buy_price":              corrected,
+                    "highest_unrealized_pct": new_peak,
+                    "closed_above_entry":     new_closed_above,
+                }).eq("ticker", ticker).execute()
+                supabase_map[ticker]["buy_price"] = corrected
+                changes += 1
+                print(f"        ✅ buy_price corrected to ${corrected:.2f} "
+                      f"(peak reset to {new_peak:.2f}%, proven={new_closed_above}).")
+                notifier.notify_error(
+                    f"🩹 {ticker}: buy_price corrected on reconcile\n"
+                    f"Stored ${db_buy:.2f} → IBKR averageCost ${corrected:.2f} "
+                    f"({drift_pct:+.2f}%).\n"
+                    f"Peak reset to {new_peak:.2f}%, proven={new_closed_above}. "
+                    f"P&L and exit rules now price off the true cost basis."
+                )
+            except Exception as e:
+                # Migration lag on the derived columns must not block the core
+                # buy_price correction — retry with buy_price alone.
+                if "PGRST204" in str(e) or "highest_unrealized_pct" in str(e) or "closed_above_entry" in str(e):
+                    try:
+                        client.table("portfolio_positions").update({"buy_price": corrected}) \
+                            .eq("ticker", ticker).execute()
+                        supabase_map[ticker]["buy_price"] = corrected
+                        changes += 1
+                        print(f"        ✅ buy_price corrected to ${corrected:.2f} "
+                              f"(derived columns absent — run migrations).")
+                    except Exception as _inner:
+                        notifier.notify_exception("reconcile_with_ibkr() buy_price drift — execution_agent.py", _inner)
+                        print(f"        ❌ DB error correcting buy_price for {ticker}: {_inner}")
+                else:
+                    notifier.notify_exception("reconcile_with_ibkr() buy_price drift — execution_agent.py", e)
+                    print(f"        ❌ DB error correcting buy_price for {ticker}: {e}")
 
     # ── Persist IBKR's own valuation for every position we agree exists ──────
     # Written after the share-count correction above so market_value is stored

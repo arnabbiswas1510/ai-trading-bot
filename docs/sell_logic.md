@@ -66,6 +66,34 @@ See `decisions/2026-09-04_labelled-fmp-dashboard-fallback.md` for why.
 FMP is **never written** into the `portfolio_positions` columns. The fallback is
 applied at render time only, so those columns remain purely broker-sourced.
 
+### The headline "Unrealized profit" sums the per-row P&L
+
+The dashboard's *Unrealized profit* card sums the **same** per-position P&L the
+rows display — each `pos['pnl']`, which prefers IBKR's own `unrealizedPNL`
+(IBKR's average-cost basis) and only falls back to `market_value − shares ×
+buy_price` when there is no broker mark. The headline therefore always equals
+the sum of its parts. It previously recomputed everything off the locally-stored
+`buy_price`, which silently inflated the total whenever a stored `buy_price` had
+drifted from IBKR's average cost. See
+`decisions/2026-09-09_buy-price-drift-guard.md` for why, and the drift guard
+below that stops that drift from arising.
+
+### `buy_price` is reconciled against IBKR's `averageCost`
+
+The fill price captured at order time can be wrong — e.g. `avgFillPrice` read
+before all child fills settled. A wrong `buy_price` corrupts **both** the
+dashboard P&L and every `buy_price`-anchored exit rule (the Prove-It band, the
+give-back floor, the hard stop). So `reconcile_with_ibkr()` treats IBKR's
+`averageCost` as authoritative: when the stored `buy_price` drifts more than
+`BUY_PRICE_DRIFT_TOLERANCE` (1%) from it, reconcile overwrites `buy_price` with
+IBKR's number, resets the derived peak (`highest_unrealized_pct`) and proven
+flag (`closed_above_entry`) so they re-derive off the true basis, and sends a
+Telegram alert. The hard stop and trail self-heal on the next monitor cycle.
+This is the NTRA incident: stored `$317.43` against IBKR's `$331.70` — a real
+−1.1% position shown as a +3.3% winner. See
+`decisions/2026-09-09_buy-price-drift-guard.md`.
+
+
 **These four columns require `migrations/add_ibkr_position_values.sql`.** Until
 it is run, every position is priced from FMP (or cost basis), and
 `schema_guard.py` lists the columns as missing *reporting* columns. It does
