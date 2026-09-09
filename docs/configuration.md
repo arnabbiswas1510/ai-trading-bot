@@ -22,7 +22,7 @@ parameter requires a code change.**
 | `FMP_API_KEY` | yes | Fundamental data, screening/research prices, and the **fallback** live price for held positions when IBKR has no mark (exit logic and dashboard price positions from IBKR first — see `decisions/2026-09-04_ibkr-first-live-pricing.md`) |
 | `OPENAI_API_KEY` | yes | Trigger evaluation; without it every trigger is rejected `NO_AI_SCORE` |
 | `IBKR_LIVE_USER` / `IBKR_LIVE_PASS` / `IBKR_TOTP_SECRET` | yes | Gateway login — see [IBKR TOTP setup](ibkr_totp_setup.md) |
-| `IBKR_ACCOUNT` | conditional | **Required if both live (`U…`) and paper (`DU…`) accounts are visible.** The agent refuses to guess |
+| `IBKR_ACCOUNT` | conditional | **Required if more than one account is visible under the login** — both live (`U…`) and paper (`DU…`), *or* two live accounts. The agent trades and prices this account only and ignores all others; with multiple accounts it refuses to guess. Setting it is also what lets pricing fall back to `reqPnLSingle` for the right account (see [sell logic](sell_logic.md)) |
 | `IBKR_FLEX_TOKEN` / `IBKR_FLEX_QUERY_ID` | optional | Cash-flow reconciliation. Token expires annually |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_IDS` | optional | Alerts |
 
@@ -366,7 +366,8 @@ Until `add_ibkr_position_values.sql` is applied, the dashboard has no persisted 
 marks to render, so it prices every open position from a live FMP quote labelled
 `FMP estimate — not broker` — or, where no quote is available, at cost basis labelled
 `Cost basis — no quote`. Trading behaviour is unaffected: no exit rule reads these
-columns, and the agent prices exits from `ib.portfolio()` directly.
+columns, and the agent prices exits from `build_ibkr_price_map()` directly
+(`ib.portfolio()`, or the `reqPnLSingle` fallback under a multi-account login).
 
 ### Row Level Security: never enable without a policy
 

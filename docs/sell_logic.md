@@ -11,14 +11,32 @@ Every exit rule in the live agent, in evaluation order.
 Every exit rule below prices the position from IBKR's own mark — the same
 `PortfolioItem.marketPrice` the dashboard shows and that live orders fill
 against — via `get_position_price(ib, ticker, ib_map)`. The map is built once
-per cycle by `build_ibkr_price_map(ib)` from the **non-blocking** `ib.portfolio()`
-account-update stream, so an entire monitoring pass is decided on one consistent
-broker snapshot. The per-position log line shows the source, e.g.
-`Current: $150.25 (ibkr)`.
+per cycle by `build_ibkr_price_map(ib)`, always scoped to the single configured
+account (`IBKR_ACCOUNT` / `get_ibkr_account`), so an entire monitoring pass is
+decided on one consistent broker snapshot. The per-position log line shows the
+source, e.g. `Current: $150.25 (ibkr)`.
+
+`build_ibkr_price_map()` resolves marks in this order, and the result is
+TTL-cached (~15 s) so the builders that run each cycle share one broker
+round-trip:
+
+1. **Fast path** — the **non-blocking** `ib.portfolio()` account-update stream,
+   filtered to the target account. This is served for **single-account** logins.
+2. **Fallback** — `reqPnLSingle` per target-account position, used when
+   `ib.portfolio()` carries no usable mark. This is the **multi-account** case:
+   `ib_insync` does not start the `updatePortfolio` stream when more than one
+   account is linked to the login, so `ib.portfolio()` is empty. `reqPnLSingle`
+   is computed server-side per account (like `NetLiquidation`), needs no
+   market-data line, and yields `marketPrice = value / shares`.
+
+Any account other than the configured one is **ignored everywhere**: pricing,
+holdings (`ibkr_target_positions()`, used for sell confirmation and share-count
+checks), valuation and account rollup all read the target account only. See
+`decisions/2026-09-09_multi-account-ibkr-pricing.md` for why.
 
 FMP (`get_live_price()`) is only a **fallback**, used when IBKR has no usable
-mark for a ticker (data farm down, or the position not yet in the account
-stream). This deliberately never uses `ib.reqTickers()`, which blocks
+mark for a ticker (both the portfolio and `reqPnLSingle` paths came back empty).
+This deliberately never uses `ib.reqTickers()`, which blocks
 indefinitely when the ushmds data farm is down — the reason FMP was originally
 the primary source. Screening and research still price non-held candidates from
 FMP, where broker parity is irrelevant. See
@@ -27,9 +45,10 @@ FMP, where broker parity is irrelevant. See
 ### The dashboard prices IBKR-first, then FMP, then cost basis
 
 The web container has no brokerage access by design, so it cannot call
-`ib.portfolio()`. It renders the `current_price` / `market_value` /
-`unrealized_pnl` / `ibkr_synced_at` columns that `reconcile_with_ibkr()` writes
-onto `portfolio_positions`, with an explicit "as of" timestamp.
+`ib.portfolio()` or `reqPnLSingle`. It renders the `current_price` /
+`market_value` / `unrealized_pnl` / `ibkr_synced_at` columns that
+`reconcile_with_ibkr()` writes onto `portfolio_positions`, with an explicit
+"as of" timestamp.
 
 When a position has no persisted broker mark, `resolve_position_price()` in
 `backend/pricing.py` falls back to a live **FMP** quote, and to **cost basis** only
@@ -50,8 +69,8 @@ applied at render time only, so those columns remain purely broker-sourced.
 **These four columns require `migrations/add_ibkr_position_values.sql`.** Until
 it is run, every position is priced from FMP (or cost basis), and
 `schema_guard.py` lists the columns as missing *reporting* columns. It does
-**not** block trading: exit rules price from `ib.portfolio()` directly and are
-unaffected.
+**not** block trading: exit rules price from `build_ibkr_price_map()`
+(`ib.portfolio()` or the `reqPnLSingle` fallback) directly and are unaffected.
 
 Values stay `NULL` until the agent's next reconcile cycle after the migration.
 There is no back-fill, deliberately — seeding them with `buy_price` would make a

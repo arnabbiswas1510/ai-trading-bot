@@ -493,8 +493,11 @@ docker compose logs -f execution-agent
 ### Operational notes
 
 - **`READ_ONLY_API=no`** must be set on the gateway or orders will be silently rejected.
-- If both live (`U…`) and paper (`DU…`) accounts are visible, set `IBKR_ACCOUNT` explicitly
-  — the agent refuses to guess.
+- If more than one account is visible under the login (live `U…` + paper `DU…`,
+  or two live accounts), set `IBKR_ACCOUNT` explicitly. The agent trades and
+  prices that account only and ignores any other. A second linked account also
+  disables the `ib.portfolio()` mark stream, so pricing falls back to
+  `reqPnLSingle` for the configured account — see [sell logic](docs/sell_logic.md).
 - All market-hours logic uses `America/New_York`. Never rely on the host clock.
 - Changing slot count is a `.env` edit plus a restart — but on a fully-invested book it does
   not take effect immediately: existing positions keep their original sizing and the book

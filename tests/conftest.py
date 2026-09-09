@@ -69,6 +69,17 @@ def make_ib_mock(symbols: list | None = None, avg_cost: float = 100.0) -> MagicM
         for s in (symbols or [])
     ]
     ib.portfolio.return_value = items
+    ib.positions.return_value = items          # ibkr_target_positions() reads this
+    ib.reqPositions.return_value = None
+    ib.managedAccounts.return_value = ["U12941651"]
+    # reqPnLSingle default models "no live mark" (NaN), so items with
+    # market_price=0.0 fall through build_ibkr_price_map() to the FMP fallback
+    # exactly as they did before the multi-account reqPnLSingle path existed.
+    _nan_pnl = MagicMock()
+    _nan_pnl.value = float("nan")
+    _nan_pnl.unrealizedPnL = float("nan")
+    ib.reqPnLSingle.return_value = _nan_pnl
+    ib.cancelPnLSingle.return_value = None
     ib.accountValues.return_value = []
     ib.sleep.return_value = None
     ib.qualifyContracts.return_value = None
@@ -77,6 +88,20 @@ def make_ib_mock(symbols: list | None = None, avg_cost: float = 100.0) -> MagicM
     ib.openTrades.return_value = []   # No open SELL orders by default
     ib.cancelOrder.return_value = None
     return ib
+
+
+@pytest.fixture(autouse=True)
+def _reset_ibkr_price_map_cache():
+    """Clear the module-level IBKR price-map TTL cache before every test.
+
+    build_ibkr_price_map() memoizes its result for a few seconds so a single
+    monitoring cycle makes one broker round-trip. That cache is global, so
+    without this reset one test's marks would leak into the next.
+    """
+    import execution_agent
+    execution_agent._IBKR_PRICE_MAP_CACHE.update({"ts": 0.0, "map": {}})
+    yield
+    execution_agent._IBKR_PRICE_MAP_CACHE.update({"ts": 0.0, "map": {}})
 
 
 # ── Supabase position / trigger factories ─────────────────────────────────────

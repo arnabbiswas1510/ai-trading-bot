@@ -51,7 +51,13 @@ def _make_ib(positions):
         item.marketPrice = 0.0   # no live IBKR mark -> FMP fallback (get_live_price)
         items.append(item)
     ib.portfolio.return_value = items
+    ib.positions.return_value = items
     ib.reqPositions.return_value = None
+    _nan_pnl = MagicMock()
+    _nan_pnl.value = float("nan")
+    _nan_pnl.unrealizedPnL = float("nan")
+    ib.reqPnLSingle.return_value = _nan_pnl
+    ib.cancelPnLSingle.return_value = None
     ib.openOrders.return_value = []
     ib.openTrades.return_value = []
     account = "DU1234567"
@@ -161,6 +167,8 @@ def _make_scale_ib(pre_qty, ticker="AAPL"):
     item.contract.secType = "STK"
     item.position = pre_qty
     ib.portfolio.return_value = [item]
+    ib.positions.return_value = [item]
+    ib.reqPositions.return_value = None
     ib.managedAccounts.return_value = ["DU1234567"]
     return ib
 

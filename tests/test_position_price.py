@@ -21,7 +21,7 @@ Covers:
 
 import sys
 import os
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -100,3 +100,89 @@ class TestBuildIbkrPriceMap:
         ib = make_ib_mock()
         ib.portfolio.side_effect = RuntimeError("gateway disconnected")
         assert build_ibkr_price_map(ib) == {}
+
+    def test_fast_path_ignores_other_account(self):
+        """A second linked account's portfolio items must never be priced."""
+        ib = make_ib_mock()
+        ib.managedAccounts.return_value = ["U12941651", "U13359115"]
+        mine = make_portfolio_item("NVDA", market_price=150.0)
+        mine.account = "U12941651"
+        other = make_portfolio_item("ZZZZ", market_price=99.0)
+        other.account = "U13359115"
+        ib.portfolio.return_value = [mine, other]
+        m = build_ibkr_price_map(ib)
+        assert set(m.keys()) == {"NVDA"}          # other account ignored
+        assert m["NVDA"].marketPrice == 150.0
+
+    def test_pnl_single_fallback_when_portfolio_empty(self):
+        """Multi-account login: portfolio() is empty, so marks come from
+        reqPnLSingle (value/shares), scoped to the target account only."""
+        ib = make_ib_mock()
+        ib.portfolio.return_value = []            # not served for multi-account
+        ib.managedAccounts.return_value = ["U12941651", "U13359115"]
+        ib.positions.return_value = [
+            _pos_mock("NVDA", "U12941651", shares=10, conId=1),
+            _pos_mock("ZZZZ", "U13359115", shares=5,  conId=2),   # other account
+        ]
+
+        def _pnl(account, model, conId):
+            s = MagicMock()
+            s.value = 1500.0 if conId == 1 else 777.0
+            s.unrealizedPnL = 200.0 if conId == 1 else 50.0
+            return s
+        ib.reqPnLSingle.side_effect = _pnl
+
+        m = build_ibkr_price_map(ib)
+        assert set(m.keys()) == {"NVDA"}          # other account never priced
+        assert m["NVDA"].marketPrice == 150.0     # 1500 / 10
+        assert m["NVDA"].marketValue == 1500.0
+        assert m["NVDA"].unrealizedPNL == 200.0
+
+    def test_pnl_single_nan_value_is_skipped(self):
+        """A NaN reqPnLSingle value must not fabricate a mark."""
+        ib = make_ib_mock()
+        ib.portfolio.return_value = []
+        ib.managedAccounts.return_value = ["U12941651", "U13359115"]
+        ib.positions.return_value = [_pos_mock("NVDA", "U12941651", 10, 1)]
+        nan_s = MagicMock()
+        nan_s.value = float("nan")
+        nan_s.unrealizedPnL = float("nan")
+        ib.reqPnLSingle.return_value = nan_s
+        assert build_ibkr_price_map(ib) == {}
+
+    def test_ttl_cache_reuses_snapshot_until_forced(self):
+        ib = make_ib_mock()
+        ib.portfolio.return_value = [make_portfolio_item("NVDA", market_price=150.0)]
+        first = build_ibkr_price_map(ib)
+        assert first["NVDA"].marketPrice == 150.0
+        # Change the underlying data; a cached call must NOT see it.
+        ib.portfolio.return_value = [make_portfolio_item("NVDA", market_price=999.0)]
+        assert build_ibkr_price_map(ib)["NVDA"].marketPrice == 150.0
+        # force=True bypasses the cache.
+        assert build_ibkr_price_map(ib, force=True)["NVDA"].marketPrice == 999.0
+
+
+def _pos_mock(symbol, account, shares, conId):
+    """Mimic an ib_insync Position (has .account, .position, no marketPrice)."""
+    p = MagicMock()
+    p.account = account
+    p.contract.symbol = symbol
+    p.contract.secType = "STK"
+    p.contract.conId = conId
+    p.position = shares
+    return p
+
+
+class TestIbkrTargetPositions:
+    """ibkr_target_positions() — the multi-account-safe holdings source."""
+
+    def test_filters_to_target_account_and_drops_zero(self):
+        from execution_agent import ibkr_target_positions
+        ib = make_ib_mock()
+        ib.managedAccounts.return_value = ["U12941651", "U13359115"]
+        ib.positions.return_value = [
+            _pos_mock("NVDA", "U12941651", shares=10, conId=1),
+            _pos_mock("ZZZZ", "U13359115", shares=5,  conId=2),   # other account
+            _pos_mock("SOLD", "U12941651", shares=0,  conId=3),   # closed
+        ]
+        assert ibkr_target_positions(ib) == {"NVDA": 10}

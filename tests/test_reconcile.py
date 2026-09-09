@@ -392,17 +392,25 @@ class TestReconcileCase4:
 
 class TestReconcileUsesPortfolioNotPositions:
     """
-    Critical: reconcile_with_ibkr() must use ib.portfolio() everywhere.
-    ib.positions() is a subscription-based call that may return empty, causing
-    false "in sync" and missed positions. (Bug #5)
+    Critical: when ib.portfolio() carries live marks (the single-account case),
+    reconcile_with_ibkr() must derive holdings from it and never fall back to
+    ib.positions() — a subscription call that can return empty and cause a false
+    "in sync". (Bug #5)
+
+    The one sanctioned exception is a MULTI-account login, where IBKR does not
+    serve portfolio() at all: build_ibkr_price_map() then reads ib.positions()
+    plus reqPnLSingle for marks. That path is covered separately; here we assert
+    the normal single-account case leaves positions() untouched.
     """
 
     def test_reconcile_calls_ib_portfolio_not_ib_positions(self):
         """
-        The reconcile function must ONLY call ib.portfolio(), never ib.positions().
+        With a populated portfolio() (live marks), reconcile must ONLY call
+        ib.portfolio(), never ib.positions().
         """
         supabase = make_supabase_mock(portfolio=[])
         ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.0)
+        ib.portfolio.return_value[0].marketPrice = 105.0   # live mark → fast path
 
         _reconcile(ib, supabase)
 

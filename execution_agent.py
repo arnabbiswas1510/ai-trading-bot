@@ -712,20 +712,193 @@ def get_live_price(ticker: str) -> float:
     return 0.0
 
 
-def build_ibkr_price_map(ib: IB) -> dict:
-    """Return {symbol: PortfolioItem} for the current account's open positions.
+class _MarkContract:
+    """Minimal stand-in for an ib_insync Contract inside a synthesized mark."""
+    __slots__ = ("symbol", "secType", "conId")
 
-    Reads ib.portfolio(), which is a NON-BLOCKING read of the in-memory account
-    update stream — deliberately NOT ib.reqTickers(), which blocks indefinitely
-    when the ushmds data farm is down. Safe to call once per monitoring cycle and
-    pass into get_position_price() so every position is priced from a single
-    consistent broker snapshot.
+    def __init__(self, symbol: str, conId=None):
+        self.symbol = symbol
+        self.secType = "STK"
+        self.conId = conId
+
+
+class _IBKRMark:
+    """A PortfolioItem-shaped mark synthesized from reqPnLSingle().
+
+    Exposes the same attributes reconcile/pricing read off a real PortfolioItem
+    (marketPrice, marketValue, unrealizedPNL, position, account, contract) so the
+    reqPnLSingle fallback is a drop-in for the ib.portfolio() fast path.
     """
+    __slots__ = ("contract", "account", "position",
+                 "marketPrice", "marketValue", "unrealizedPNL")
+
+    def __init__(self, symbol, account, position, marketPrice,
+                 marketValue, unrealizedPNL, conId=None):
+        self.contract      = _MarkContract(symbol, conId)
+        self.account       = account
+        self.position      = position
+        self.marketPrice   = marketPrice
+        self.marketValue   = marketValue
+        self.unrealizedPNL = unrealizedPNL
+
+
+# Marks change negligibly within a monitoring cycle, and every builder below can
+# fire several times per cycle (monitor, balance sync, reconcile, ad-hoc exits).
+# A short TTL collapses those into a single broker round-trip without ever
+# serving a stale-enough price to matter for a 15-minute loop.
+_IBKR_PRICE_MAP_CACHE = {"ts": 0.0, "map": {}}
+_IBKR_PRICE_MAP_TTL   = 15.0
+
+
+def build_ibkr_price_map(ib: IB, force: bool = False) -> dict:
+    """Return {symbol: mark} for the TARGET account's open positions only.
+
+    The bot trades exactly one IBKR account (``IBKR_ACCOUNT`` /
+    get_ibkr_account); any other account visible under the same login is ignored
+    everywhere. Marks come from, in order:
+
+    1. ``ib.portfolio()`` filtered to the target account — the non-blocking
+       in-memory account-update stream. This is served only for SINGLE-account
+       logins; ib_insync does not start it when several accounts are linked.
+    2. ``reqPnLSingle`` per target-account position — IBKR computes value and
+       unrealizedPnL server-side (like NetLiquidation), so it works for
+       MULTI-account logins and needs no market-data line. marketPrice is
+       derived as value / shares.
+
+    Neither path uses the blocking ``ib.reqTickers()``. Results are TTL-cached so
+    repeated calls within a cycle cost one round-trip. Pass ``force=True`` to
+    bypass the cache.
+    """
+    now   = time.monotonic()
+    cache = _IBKR_PRICE_MAP_CACHE
+    if not force and cache["map"] and (now - cache["ts"]) < _IBKR_PRICE_MAP_TTL:
+        return cache["map"]
+
+    price_map = _compute_ibkr_price_map(ib)
+    if price_map:
+        cache["ts"]  = now
+        cache["map"] = price_map
+    return price_map
+
+
+def _compute_ibkr_price_map(ib: IB) -> dict:
+    """Build the target-account price map (see build_ibkr_price_map)."""
     try:
-        return {p.contract.symbol: p for p in ib.portfolio()}
+        target = get_ibkr_account(ib)
+    except Exception as e:
+        print(f"   ⚠️ Could not determine IBKR account for pricing: {e}")
+        target = None
+
+    # Fast path: portfolio() marks for the target account (single-account logins).
+    try:
+        port = [p for p in ib.portfolio() if _matches_account(p, target)]
     except Exception as e:
         print(f"   ⚠️ Could not read IBKR portfolio for pricing: {e}")
+        port = []
+
+    fast = {}
+    for p in port:
+        mp = getattr(p, "marketPrice", None)
+        try:
+            mp = float(mp) if mp is not None else 0.0
+        except (TypeError, ValueError):
+            mp = 0.0
+        if (getattr(p.contract, "secType", "STK") == "STK"
+                and int(getattr(p, "position", 0)) > 0
+                and mp == mp and mp > 0):        # NaN-safe
+            fast[p.contract.symbol] = p
+    if fast:
+        return fast
+
+    # Fallback: multi-account login — portfolio() is not served for this login,
+    # so price the target account's positions off reqPnLSingle instead.
+    if target is None:
         return {}
+    return _pnl_single_price_map(ib, target)
+
+
+def _pnl_single_price_map(ib: IB, account: str) -> dict:
+    """Return {symbol: _IBKRMark} for the account's STK positions via reqPnLSingle.
+
+    Used when ib.portfolio() is empty because more than one account is linked to
+    the login. reqPnLSingle is server-computed and account-scoped, so it never
+    reads or reports on any account other than ``account``.
+    """
+    out = {}
+    try:
+        try:
+            ib.reqPositions()
+            ib.sleep(1)
+        except Exception:
+            pass
+
+        poss = [
+            p for p in ib.positions()
+            if _matches_account(p, account)
+            and p.contract.secType == "STK"
+            and p.position > 0
+        ]
+
+        subs = []
+        for p in poss:
+            try:
+                s = ib.reqPnLSingle(account, "", p.contract.conId)
+                subs.append((p, s))
+            except Exception as e:
+                print(f"   ⚠️ reqPnLSingle failed for {p.contract.symbol}: {e}")
+
+        # Wait (bounded) for the server to push value/unrealizedPnL for every sub.
+        for _ in range(6):
+            ib.sleep(0.5)
+            if all(s.value == s.value for _, s in subs):   # no NaNs remain
+                break
+
+        for p, s in subs:
+            val  = s.value
+            upnl = s.unrealizedPnL
+            if val == val and val and p.position:          # NaN-safe, non-zero
+                out[p.contract.symbol] = _IBKRMark(
+                    p.contract.symbol, account, p.position,
+                    val / float(p.position), val,
+                    upnl if upnl == upnl else 0.0,
+                    p.contract.conId,
+                )
+
+        for p, _ in subs:
+            try:
+                ib.cancelPnLSingle(account, "", p.contract.conId)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"   ⚠️ Could not build IBKR price map via reqPnLSingle: {e}")
+    return out
+
+
+def ibkr_target_positions(ib: IB, account: str | None = None) -> dict:
+    """Return {symbol: shares} for STK holdings in the TARGET account only.
+
+    Reads ib.positions() (primed by reqPositions), which — unlike ib.portfolio()
+    — IBKR serves for multi-account logins. This is the reliable holdings source
+    for sell confirmation and share-count checks, and it ignores every account
+    other than the configured one.
+    """
+    if account is None:
+        try:
+            account = get_ibkr_account(ib)
+        except Exception:
+            account = None
+    try:
+        ib.reqPositions()
+        ib.sleep(1)
+    except Exception:
+        pass
+    out = {}
+    for p in ib.positions():
+        if (p.contract.secType == "STK"
+                and _matches_account(p, account)
+                and int(p.position) > 0):
+            out[p.contract.symbol] = int(p.position)
+    return out
 
 
 def get_position_price(ib: IB, ticker: str, ib_map: dict | None = None) -> tuple:
@@ -738,8 +911,9 @@ def get_position_price(ib: IB, ticker: str, ib_map: dict | None = None) -> tuple
 
     FMP is retained ONLY as a fallback for when IBKR has no usable mark (data
     farm down, or the position has not yet appeared in the account-update
-    stream). This is safe because the IBKR read here is ib.portfolio() — a
-    non-blocking in-memory lookup — never the blocking ib.reqTickers() path.
+    stream). This is safe because the IBKR read here is build_ibkr_price_map() —
+    ib.portfolio() for single-account logins, else a reqPnLSingle snapshot —
+    never the blocking ib.reqTickers() path.
 
     Args:
         ib:      connected IB handle.
@@ -2136,9 +2310,10 @@ def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
     IBKR cash balance refreshed only once per agent cycle — mixing two vintages
     of data in one total.
 
-    Values come from ib.portfolio() PortfolioItem objects, which read the account
-    update stream. This deliberately does NOT use ib.reqTickers(), which blocks
-    indefinitely when the ushmds data farm is down.
+    Values come from build_ibkr_price_map(): ib.portfolio() PortfolioItem objects
+    for single-account logins, or a reqPnLSingle snapshot for multi-account
+    logins where portfolio() is not served. This deliberately does NOT use
+    ib.reqTickers(), which blocks indefinitely when the ushmds data farm is down.
 
     Degrades gracefully when migrations/add_ibkr_position_values.sql has not been
     applied: PGRST204 abandons this cycle rather than failing reconciliation, but
@@ -2737,7 +2912,8 @@ def reconcile_with_ibkr(ib: IB):
             ib.sleep(3)
             _ib_recheck = {
                 p.contract.symbol: p for p in ib.portfolio()
-                if p.contract.secType == "STK" and int(p.position) > 0
+                if _matches_account(p, target_account)
+                and p.contract.secType == "STK" and int(p.position) > 0
             }
             if ticker in _ib_recheck:
                 print(f"        ⚠️  {ticker} reappeared on double-check — skipping (transient IBKR glitch).")
@@ -2908,8 +3084,12 @@ def reconcile_with_ibkr(ib: IB):
 
     # ── Persist IBKR's own valuation for every position we agree exists ──────
     # Written after the share-count correction above so market_value is stored
-    # alongside a share count IBKR has already confirmed.
-    _sync_ibkr_position_values(client, ib_map, ib_tickers & supabase_tickers)
+    # alongside a share count IBKR has already confirmed. Marks come from
+    # build_ibkr_price_map (portfolio() or reqPnLSingle) so the valuation is
+    # populated even on multi-account logins where the inline ib_map above was
+    # built from bare positions() objects that carry no marketPrice.
+    _sync_ibkr_position_values(client, build_ibkr_price_map(ib),
+                               ib_tickers & supabase_tickers)
 
     if changes == 0:
         print("   ✅ Supabase and IBKR are in sync. No changes needed.")
@@ -4892,15 +5072,15 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
             if trade.orderStatus.status == 'Filled':
                 break
 
-        # ── CRITICAL: verify fill via ib.portfolio() BEFORE touching Supabase ──
+        # ── CRITICAL: verify fill via ib.positions() BEFORE touching Supabase ──
         # MarketOrders can be cancelled (e.g. paper-trading no live market data)
         # without raising a Python exception. We MUST confirm the position is
-        # actually gone from IBKR before removing it from Supabase.
-        ib_after = {
-            p.contract.symbol: p for p in ib.portfolio()
-            if p.contract.secType == "STK" and int(p.position) > 0
-        }
-        if ticker in ib_after:
+        # actually gone from IBKR before removing it from Supabase. Read
+        # ib.positions() (target account only) rather than ib.portfolio(): the
+        # latter is empty for multi-account logins, which would wrongly read as
+        # "position gone" and delete a Supabase row after a REJECTED sell.
+        held_after = ibkr_target_positions(ib)
+        if ticker in held_after:
             print(f"   ⚠️  SELL NOT CONFIRMED: {ticker} still in IBKR portfolio after sell attempt.")
             print(f"       Order status: {trade.orderStatus.status}. Cancelling order — Supabase record PRESERVED.")
             try:
@@ -4999,10 +5179,9 @@ def execute_scale_out(ib: IB, client: Client, pos: dict, ticker: str,
     account = get_ibkr_account(ib)
 
     def _ibkr_qty() -> int | None:
-        for p in ib.portfolio():
-            if p.contract.symbol == ticker and p.contract.secType == "STK":
-                return int(p.position)
-        return None
+        # positions() (target account) — ib.portfolio() is empty on multi-account
+        # logins, which would fabricate a None qty and abort every scale-out.
+        return ibkr_target_positions(ib, account).get(ticker)
 
     def _restore_full_bracket(qty: int) -> None:
         """Re-place the original full-size bracket after an aborted scale-out."""
