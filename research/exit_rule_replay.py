@@ -145,6 +145,16 @@ class ExitConfig:
     # Above this gain the existing tight ladder rung takes over instead.
     p2_ladder_gain: float = 5.0
     p2_ladder_trail: float = 0.015
+    # PROTECTION CLIFF FIX (candidate). Shipped behaviour leaves a position that
+    # has closed above entry but not yet reached `p2_arm_gain` with NO Prove-It
+    # level at all -- only the wide base trail. So a close a single cent above
+    # entry REMOVES the Phase 1 entry-anchored band and strictly WORSENS
+    # protection. NTRA (8/26-8/31) is the proof: it closed $0.27 above entry on
+    # 8/27, peaked at +1.40%, never armed, and its floor fell from 328.28 to the
+    # ~308 base trail; it exited at -5.2%.
+    # When True, the unarmed window keeps the Phase 1 band as its floor, so
+    # protection can never get worse as a result of good news.
+    p2_unarmed_keeps_p1: bool = False
 
     # ── Always-on base/disaster trailing stop ────────────────────────────────
     # Models the single GTC TrailingStopOrder that ALWAYS rests at the broker
@@ -648,6 +658,12 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     candidate = peak * (1 - cfg.p2_ladder_trail)
             elif peak_gain >= cfg.p2_arm_gain:
                 candidate = floor_level
+            elif cfg.p2_unarmed_keeps_p1:
+                # Proven but not yet armed: retain the Phase 1 entry-anchored
+                # band so a marginal green close cannot loosen the stop.
+                p1 = cfg.p1_pct_for_day(day)
+                if p1 is not None:
+                    candidate = entry * (1 - p1 / 100.0)
             # The always-on base trail rests underneath. max() keeps whichever
             # is tighter, so it only BINDS in the unarmed window (candidate None)
             # or when it is above the give-back floor.
@@ -905,6 +921,58 @@ def shipped_proveit() -> ExitConfig:
         "ProveIt SHIPPED (P1 1.0%/d0 then 3.0%, close+arm; P2 arm2% floor-1%)",
         proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
         p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0)
+
+
+def cliff_configs() -> list[ExitConfig]:
+    """The protection-cliff test: should a proven-but-unarmed position keep the
+    Phase 1 band?
+
+    Shipped, a position that closes above entry becomes "proven", which REMOVES
+    the Phase 1 entry-anchored band — but it gains no Phase 2 floor until its
+    peak reaches +2%. In that window the only protection is the wide base trail,
+    so a close one cent above entry strictly WORSENS protection.
+
+    NTRA (8/26 entry 338.43) is the live proof: it closed $0.27 above entry on
+    8/27, peaked at +1.40%, never armed, and exited at -5.2% on 8/31. Its floor
+    had fallen from 328.28 (Phase 1) to roughly 308 (base trail).
+
+    The risk of closing the hole is clipping winners that dip below the band
+    after a marginal green close but before running. `winners_hurt` is the
+    column that decides it.
+    """
+    out = [shipped_proveit()]
+
+    out.append(replace(
+        shipped_proveit(),
+        label="ProveIt + unarmed keeps P1 band (CLIFF FIX)",
+        p2_unarmed_keeps_p1=True))
+
+    # Does the fix depend on the base trail being present underneath?
+    for bt in (0.10, 0.07):
+        out.append(replace(
+            shipped_proveit(),
+            label=f"ProveIt SHIPPED + base trail {bt*100:.0f}%",
+            base_trail=bt))
+        out.append(replace(
+            shipped_proveit(),
+            label=f"ProveIt + unarmed keeps P1 + base trail {bt*100:.0f}% (CLIFF FIX)",
+            p2_unarmed_keeps_p1=True, base_trail=bt))
+
+    # Arming earlier is the alternative way to close the same hole: it shortens
+    # the unprotected window instead of flooring it.
+    for arm in (1.5, 1.0, 0.5):
+        out.append(replace(
+            shipped_proveit(),
+            label=f"ProveIt + P2 arms at +{arm}% peak (shorter unarmed window)",
+            p2_arm_gain=arm))
+
+    # Both levers together.
+    out.append(replace(
+        shipped_proveit(),
+        label="ProveIt + unarmed keeps P1 + arms at +1.0%",
+        p2_unarmed_keeps_p1=True, p2_arm_gain=1.0))
+
+    return out
 
 
 def day0_configs() -> list[ExitConfig]:
@@ -1239,6 +1307,9 @@ def main() -> None:
                         help="run the full parameter sweep instead of the headline set")
     parser.add_argument("--proveit", action="store_true",
                         help="run the two-phase Prove-It Stop sweep")
+    parser.add_argument("--cliff", action="store_true",
+                        help="test whether a proven-but-unarmed position should "
+                             "keep the Phase 1 band (the protection cliff)")
     parser.add_argument("--day0", action="store_true",
                         help="compare day-0 Phase 1 enforcement: bot poll + arm "
                              "vs a resting broker stop")
@@ -1276,7 +1347,9 @@ def main() -> None:
     if not trades:
         sys.exit("No trades with usable price history — nothing to replay.")
 
-    if args.day0:
+    if args.cliff:
+        configs = cliff_configs()
+    elif args.day0:
         configs = day0_configs()
     elif args.basetrail:
         configs = basetrail_configs()
@@ -1297,7 +1370,8 @@ def main() -> None:
     results = [score(trades, cfg) for cfg in configs]
     report(results, trades,
            top=args.top if (args.grid or args.proveit or args.ladder
-                            or args.ratchet or args.scale or args.eod) else None)
+                            or args.ratchet or args.scale or args.eod
+                            or args.cliff) else None)
 
     if args.json:
         with open(args.json, "w") as fh:

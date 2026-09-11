@@ -421,6 +421,27 @@ catching FRO and CDNA.
 Below the arming gain there is no floor, because a floor inside ±2% sits inside
 ordinary noise.
 
+#### The unarmed window is a known gap, and it is deliberate
+
+Becoming proven **removes** the Phase 1 band before the Phase 2 floor arms. A
+position that closes one cent above entry and then peaks below +2% is left with
+only the static hard stop at −7% (`MAX_LOSS_PCT`), where a moment earlier it had
+a 3% band. Protection genuinely gets looser as a result of good news.
+
+This is measured, not overlooked. Flooring the window at the Phase 1 band was
+implemented and replayed over all 39 closed trades: it costs **−$1,691**, raises
+trades losing more than $300 from 10 to 11, and rescues **$0** — the `losers`
+total is identical to the cent under both. The entire cost is one trade, DXCM,
+which the restored floor converts from a +$729 winner into a −$746 loser. Arming
+earlier than +2% behaves the same way.
+
+NTRA (26–31 Aug 2026, −$706.66) is the canonical victim: proven by a $0.27 close
+above entry on 8/27, peak +1.40%, exited −5.2% on an overnight gap. Its Phase 1
+band would have been 328.28 and it had 314.74 instead.
+
+Do not close this window without re-running `--cliff` on a larger sample.
+See `decisions/2026-09-10_prove-it-unarmed-window-measured-not-closed.md` for why.
+
 ### How it acts
 
 Both phases call **`arm_exit()`** — a tight 0.6% trailing exit with a 3.25h
