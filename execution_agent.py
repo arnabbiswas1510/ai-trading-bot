@@ -2567,6 +2567,95 @@ def sum_fill_commission(client: Client, ticker: str, side: str,
     return round(total, 4)
 
 
+# Widest gap tolerated between a position's recorded buy_date and the BOT fills
+# that opened it. Child fills of one market order land within seconds; a prior
+# round trip's entry is separated by far more. 15 minutes cleanly admits the
+# former and excludes the latter (NTRA's re-entry was 46 minutes after its
+# previous buy).
+LOT_FILL_LOOKBACK_MINUTES = 15
+
+
+def lot_buy_basis_from_fills(client: Client, ticker: str, buy_date: str | None,
+                             shares: int) -> tuple[float, str] | None:
+    """
+    Weighted-average BOT fill price for the lot that is currently open.
+
+    This is the authoritative answer to "what did THIS position cost" -- the
+    prices IBKR actually executed -- as opposed to ``averageCost``, which is an
+    account-level figure that folds realised P&L from earlier round trips of the
+    same symbol into the surviving lot (see the drift guard for the NTRA proof).
+
+    Walks BOT fills backwards from the position's ``buy_date`` and consumes only
+    as many as the position holds, so a ticker that was bought, sold and bought
+    again prices off the LAST entry alone. Returns None -- never a partial
+    answer -- when the fills cannot account for the full share count, so the
+    caller can fall back rather than act on an under-filled average.
+    """
+    if not buy_date or shares <= 0:
+        return None
+    try:
+        # +2 min of slack on the upper bound: buy_date is stamped by the DB when
+        # the position row is inserted, a beat AFTER the last child fill.
+        upper = _iso_shift_minutes(buy_date, +2)
+        lower = _iso_shift_minutes(buy_date, -LOT_FILL_LOOKBACK_MINUTES)
+        rows = client.table("ibkr_fills") \
+            .select("shares,price,fill_time,exec_id") \
+            .eq("ticker", ticker).eq("side", "BOT") \
+            .lte("fill_time", upper).gte("fill_time", lower) \
+            .order("fill_time", desc=True).execute().data or []
+    except Exception as e:
+        print(f"   ⚠️  BOT fill lookup failed for {ticker}: {e}")
+        return None
+
+    remaining, cost, used = float(shares), 0.0, []
+    for row in rows:
+        if remaining <= 0:
+            break
+        try:
+            qty, price = float(row["shares"]), float(row["price"])
+        except (TypeError, ValueError, KeyError):
+            return None
+        take = min(qty, remaining)
+        cost += take * price
+        remaining -= take
+        used.append(row.get("exec_id", "?"))
+
+    if remaining > 0 or not used:
+        return None        # fills don't cover the position -> unknown, not partial
+    return round(cost / float(shares), 4), f"{len(used)} BOT fill(s): {', '.join(used)}"
+
+
+def has_prior_round_trip(client: Client, ticker: str, buy_date: str | None) -> bool:
+    """
+    True if `ticker` was sold at any point BEFORE this position was opened.
+
+    IBKR's ``averageCost`` does not reliably reset to the new lot's price when a
+    symbol is round-tripped: for NTRA it reported (total buys - total sells) /
+    remaining shares, i.e. it buried two earlier realised losses inside the
+    surviving lot's basis. A prior sell is therefore the signal that
+    ``averageCost`` may be contaminated and must not overwrite a recorded price.
+    """
+    if not buy_date:
+        return False
+    try:
+        rows = client.table("ibkr_fills") \
+            .select("exec_id") \
+            .eq("ticker", ticker).eq("side", "SLD") \
+            .lt("fill_time", _iso_shift_minutes(buy_date, -LOT_FILL_LOOKBACK_MINUTES)) \
+            .limit(1).execute().data or []
+        return bool(rows)
+    except Exception:
+        return False       # unknown -> don't claim contamination
+
+
+def _iso_shift_minutes(iso_ts: str, minutes: int) -> str:
+    """Shift an ISO timestamp by `minutes`, preserving tz-awareness."""
+    dt = datetime.datetime.fromisoformat(str(iso_ts).replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return (dt + datetime.timedelta(minutes=minutes)).isoformat()
+
+
 def trade_commission(ib, trade, wait_secs: float = 2.0) -> float | None:
     """
     Total commission across every fill of a completed Trade, or None.
@@ -3143,26 +3232,50 @@ def reconcile_with_ibkr(ib: IB):
                 print(f"        ❌ DB error updating shares for {ticker}: {e}")
 
         # ── buy_price drift guard ────────────────────────────────────────────
-        # IBKR's averageCost is the authoritative, commission-inclusive cost
-        # basis. The fill price captured at order time can be wrong (e.g. an
-        # avgFillPrice read before all child fills settled), and a wrong
-        # buy_price silently corrupts BOTH the dashboard P&L and every
+        # A wrong buy_price silently corrupts BOTH the dashboard P&L and every
         # buy_price-anchored exit rule (prove-it band, give-back floor, hard
-        # stop). NTRA sat at a stored 317.43 against IBKR's 331.70 — a real
-        # −1.1% position shown as a +3.3% winner. When the drift exceeds
-        # BUY_PRICE_DRIFT_TOLERANCE, adopt IBKR's number and reset the derived
-        # peak/proven flags so the monitor loop re-derives them off the true
-        # basis; the hard stop and trail self-heal on the next cycle.
+        # stop), so it is worth correcting — but only against a source that
+        # actually knows what this lot cost.
+        #
+        # IBKR's averageCost is NOT that source after a round trip. On
+        # 2026-08-31 NTRA was bought 40 @ 338.43 (8/26), sold, re-bought
+        # 61 @ 320.49, sold again, and finally re-bought 61 @ 317.4295. IBKR
+        # then reported averageCost = 331.70, which is exactly
+        # (total buys + commissions − total sell proceeds) / 61 — the two
+        # earlier realised losses folded into the surviving lot. 331.70 was
+        # above NTRA's entire trading range that day, so no fill could have
+        # occurred there. This guard adopted it anyway, turning a +$220 winner
+        # into a phantom −$649.65 loss and mis-anchoring every exit rule for
+        # six days.
+        #
+        # Order of trust is therefore: (1) the BOT fills that opened this lot,
+        # (2) averageCost, but only when the symbol has NOT been round-tripped.
         ib_avg = _ibkr_avg_cost(ib_map[ticker])
         db_buy = float(supabase_map[ticker].get("buy_price") or 0.0)
-        if ib_avg and db_buy > 0 and abs(ib_avg - db_buy) / ib_avg > BUY_PRICE_DRIFT_TOLERANCE:
-            corrected = round(ib_avg, 2)
+        pos_buy_date = supabase_map[ticker].get("buy_date")
+
+        truth = lot_buy_basis_from_fills(client, ticker, pos_buy_date, ib_shares)
+        if truth:
+            true_basis, basis_source = truth
+        elif ib_avg and has_prior_round_trip(client, ticker, pos_buy_date):
+            # averageCost is the only candidate AND it is untrustworthy here.
+            if abs(ib_avg - db_buy) / ib_avg > BUY_PRICE_DRIFT_TOLERANCE:
+                print(f"   🛑 {ticker}: refusing buy_price 'correction' ${db_buy:.2f} → "
+                      f"${ib_avg:.2f} — averageCost is contaminated by an earlier "
+                      f"round trip and no BOT fills cover this lot.")
+            true_basis, basis_source = None, ""
+        else:
+            true_basis = round(ib_avg, 4) if ib_avg else None
+            basis_source = "IBKR averageCost (no round trip on record)"
+
+        if true_basis and db_buy > 0 and abs(true_basis - db_buy) / true_basis > BUY_PRICE_DRIFT_TOLERANCE:
+            corrected = round(true_basis, 2)
             hwm = float(supabase_map[ticker].get("hwm_price") or corrected)
             new_peak = round(max(0.0, (hwm / corrected - 1.0) * 100.0), 4)
             new_closed_above = hwm > corrected
-            drift_pct = (db_buy - ib_avg) / ib_avg * 100.0
+            drift_pct = (db_buy - true_basis) / true_basis * 100.0
             print(f"   ⚠️  {ticker}: buy_price drift — stored ${db_buy:.2f} vs "
-                  f"IBKR averageCost ${ib_avg:.2f} ({drift_pct:+.2f}%). Correcting to IBKR.")
+                  f"${true_basis:.2f} ({drift_pct:+.2f}%). Source: {basis_source}.")
             try:
                 client.table("portfolio_positions").update({
                     "buy_price":              corrected,
@@ -3175,8 +3288,8 @@ def reconcile_with_ibkr(ib: IB):
                       f"(peak reset to {new_peak:.2f}%, proven={new_closed_above}).")
                 notifier.notify_error(
                     f"🩹 {ticker}: buy_price corrected on reconcile\n"
-                    f"Stored ${db_buy:.2f} → IBKR averageCost ${corrected:.2f} "
-                    f"({drift_pct:+.2f}%).\n"
+                    f"Stored ${db_buy:.2f} → ${corrected:.2f} ({drift_pct:+.2f}%).\n"
+                    f"Source: {basis_source}.\n"
                     f"Peak reset to {new_peak:.2f}%, proven={new_closed_above}. "
                     f"P&L and exit rules now price off the true cost basis."
                 )
@@ -3509,16 +3622,37 @@ def run_market_open_buys(ib: IB):
                 detail="Already an open position")
             continue
 
-        # ── Cooling-off period: skip tickers sold within the last 3 days ────────
-        # Prevents re-buying a stock that was just stopped out (trailing stop)
+        # ── Cooling-off period: skip tickers sold within COOLING_OFF_DAYS ──────
+        # Prevents re-buying a stock that was just stopped out (trailing stop).
+        #
+        # Checked against TWO sources, because trade_history alone is not
+        # sufficient. trade_history is written by the bot's own sell path; when a
+        # resting IBKR stop fires while the agent is between cycles (or the
+        # write fails), no row appears and the gate goes blind. That is exactly
+        # what happened to NTRA on 2026-08-31: sold 61 sh at 10:26, re-bought 61
+        # sh at 10:32 — six minutes later — because the 10:26 exit never reached
+        # trade_history. ibkr_fills is written by the real-time fill hook the
+        # instant IBKR reports an execution, so it sees the sell regardless.
         try:
             cooling_cutoff = (today_ny - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
             recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
-            if recent_sell_res.data:
-                print(f"   ⏳ {ticker} sold within last {COOLING_OFF_DAYS} days — cooling-off period active. Skipping.")
+            blocker = "trade_history" if recent_sell_res.data else None
+
+            if not blocker:
+                fill_res = client.table("ibkr_fills") \
+                    .select("fill_time,price") \
+                    .eq("ticker", ticker).eq("side", "SLD") \
+                    .gte("fill_time", cooling_cutoff) \
+                    .order("fill_time", desc=True).limit(1).execute()
+                if fill_res.data:
+                    blocker = f"ibkr_fills SLD @ {fill_res.data[0].get('fill_time')}"
+
+            if blocker:
+                print(f"   ⏳ {ticker} sold within last {COOLING_OFF_DAYS} days "
+                      f"({blocker}) — cooling-off period active. Skipping.")
                 trigger_audit.record_trigger_decision(
                     client, trigger, "SKIPPED", trigger_audit.COOLING_OFF,
-                    detail=f"Sold within {COOLING_OFF_DAYS}d (cutoff {cooling_cutoff})")
+                    detail=f"Sold within {COOLING_OFF_DAYS}d (cutoff {cooling_cutoff}; source {blocker})")
                 continue
         except Exception as cool_err:
             notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", cool_err)

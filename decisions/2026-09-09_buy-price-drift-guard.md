@@ -1,7 +1,35 @@
 # Reconcile `buy_price` against IBKR `averageCost`, and sum the dashboard headline from the rows
 
 - **Date:** 2026-09-09
-- **Status:** Accepted
+- **Status:** **Superseded in part** by
+  [`2026-09-10_lot-basis-and-broker-aware-cooling-off.md`](2026-09-10_lot-basis-and-broker-aware-cooling-off.md)
+
+> **⚠️ Erratum (2026-09-10) — the NTRA premise below is backwards. Do not cite
+> the cost-basis reasoning or any NTRA figure on this page.**
+>
+> This ADR assumes the stored `buy_price = $317.43` was corrupt and IBKR's
+> `averageCost = $331.70` was the truth. IBKR's own TradeConfirm record proves
+> the reverse: **$317.4295 was the actual 8/31 10:32 execution price**, and
+> `$331.70` was never a traded price at all — it is above NTRA's entire trading
+> range that day. IBKR reported it because the symbol had been round-tripped
+> twice already, and after a round trip `averageCost` returns
+> `(total buys + commissions − total sell proceeds) / remaining shares`, which
+> buries earlier realised losses in the surviving lot.
+>
+> Consequences for this page:
+>
+> - **"IBKR's `averageCost` is the authoritative, commission-inclusive cost
+>   basis" is false** whenever the symbol has been round-tripped. Decision 2
+>   below has been narrowed to a guarded fallback; the lot is now priced from its
+>   own BOT fills.
+> - **NTRA was not "genuinely −$230.28 (−1.1%)".** It was a **+$220.85 gross /
+>   +$218.43 net winner**. Adopting `$331.70` is what later produced the phantom
+>   −$649.65 closed loss.
+> - The *dashboard* half of this ADR — summing the headline card from the same
+>   rows it displays (Decision 1) — **still stands**. It was correct for reasons
+>   independent of which cost basis is right.
+>
+> The body below is left unedited as the record of what was believed at the time.
 
 ## Context
 

@@ -421,12 +421,13 @@ class TestReconcileUsesPortfolioNotPositions:
 class TestReconcileBuyPriceDriftGuard:
     """Case 3: buy_price drift guard.
 
-    IBKR's averageCost is the authoritative, commission-inclusive cost basis.
-    When the locally-stored buy_price drifts from it by more than
-    BUY_PRICE_DRIFT_TOLERANCE, reconcile adopts IBKR's number and resets the
-    derived peak/proven flags so both the dashboard P&L and every
-    buy_price-anchored exit rule price off the true basis. This is the NTRA
-    incident: stored 317.43 vs IBKR 331.70 (a real -1.1% shown as +3.3%).
+    A stored buy_price that drifts from what the lot actually cost corrupts both
+    the dashboard P&L and every buy_price-anchored exit rule, so reconcile
+    corrects it — but only from a source that knows this lot's cost.
+
+    IBKR's averageCost is such a source ONLY while the symbol has not been
+    round-tripped. See TestAverageCostContamination for the NTRA case where it
+    was not.
     """
 
     @staticmethod
@@ -477,6 +478,137 @@ class TestReconcileBuyPriceDriftGuard:
         # 108 high still clears the true 101.5 cost → proven, peak ~6.40%
         assert payload["closed_above_entry"] is True
         assert payload["highest_unrealized_pct"] == pytest.approx(6.4039, abs=1e-3)
+
+
+class TestAverageCostContamination:
+    """The NTRA incident (2026-08-31 → 2026-09-10), reproduced exactly.
+
+    NTRA was round-tripped three times:
+        8/26 BUY  40 @ 338.4300
+        8/31 SELL 40 @ 320.8203
+        8/31 BUY  61 @ 320.4900   (09:46)
+        8/31 SELL 61 @ 317.8600   (10:26)
+        8/31 BUY  61 @ 317.4295   (10:32)  <- the lot actually held
+
+    IBKR then reported averageCost = 331.70, which is exactly
+    (total buys + commissions - total sell proceeds) / 61: the two earlier
+    realised losses buried inside the surviving lot's basis. 331.70 was above
+    NTRA's entire trading range that day, so no fill could have happened there.
+
+    The old guard adopted it, which turned a real +$220 winner into a phantom
+    -$649.65 loss and mis-anchored every exit rule for six days. buy_price must
+    come from the BOT fills that opened the lot, never from a contaminated
+    averageCost.
+    """
+
+    @staticmethod
+    def _buy_price_updates(supabase):
+        return [
+            c.args[0]
+            for c in supabase.table("portfolio_positions").update.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "buy_price" in c.args[0]
+        ]
+
+    @staticmethod
+    def _ntra_fills():
+        return [
+            make_ibkr_fill("NTRA", 338.4300, 40, side="BOT",
+                           fill_time="2026-08-26T15:32:15+00:00", exec_id="b1"),
+            make_ibkr_fill("NTRA", 320.8203, 40, side="SLD",
+                           fill_time="2026-08-31T13:35:56+00:00", exec_id="s1"),
+            make_ibkr_fill("NTRA", 320.4900, 61, side="BOT",
+                           fill_time="2026-08-31T13:46:14+00:00", exec_id="b2"),
+            make_ibkr_fill("NTRA", 317.8600, 61, side="SLD",
+                           fill_time="2026-08-31T14:26:13+00:00", exec_id="s2"),
+            make_ibkr_fill("NTRA", 317.4295, 61, side="BOT",
+                           fill_time="2026-08-31T14:32:05+00:00", exec_id="b3"),
+        ]
+
+    @staticmethod
+    def _ntra_ib(avg_cost=331.70):
+        """IBKR mock holding exactly the 61-share lot, reporting a contaminated avg."""
+        ib = make_ib_mock(symbols=[], avg_cost=avg_cost)
+        item = make_portfolio_item("NTRA", position=61, avg_cost=avg_cost,
+                                   market_price=0.0)
+        ib.portfolio.return_value = [item]
+        ib.positions.return_value = [item]
+        return ib
+
+    def test_contaminated_average_cost_never_overwrites_the_real_fill(self):
+        """The regression: 317.43 must survive IBKR's 331.70."""
+        pos = make_position("NTRA", buy_price=317.43, shares=61,
+                            buy_date="2026-08-31T14:32:06.863552+00:00")
+        supabase = make_supabase_mock(portfolio=[pos], ibkr_fills=self._ntra_fills())
+        ib = self._ntra_ib()
+
+        _reconcile(ib, supabase)
+
+        # The true basis is already stored — nothing to correct, and crucially
+        # 331.70 must never be written.
+        assert self._buy_price_updates(supabase) == []
+
+    def test_bot_fills_win_over_average_cost_when_stored_price_is_wrong(self):
+        """If buy_price IS wrong, it is corrected to the fill — not averageCost."""
+        pos = make_position("NTRA", buy_price=331.70, shares=61,
+                            buy_date="2026-08-31T14:32:06.863552+00:00")
+        supabase = make_supabase_mock(portfolio=[pos], ibkr_fills=self._ntra_fills())
+        ib = self._ntra_ib()
+
+        _reconcile(ib, supabase)
+
+        updates = self._buy_price_updates(supabase)
+        assert len(updates) == 1
+        assert updates[0]["buy_price"] == pytest.approx(317.43, abs=0.01)
+
+    def test_lot_basis_ignores_the_previous_round_trips_buy(self):
+        """Only the 10:32 entry prices the lot; the 09:46 buy is 46 min away."""
+        import execution_agent
+        supabase = make_supabase_mock(ibkr_fills=self._ntra_fills())
+
+        basis = execution_agent.lot_buy_basis_from_fills(
+            supabase, "NTRA", "2026-08-31T14:32:06.863552+00:00", 61)
+
+        assert basis is not None
+        price, source = basis
+        assert price == pytest.approx(317.4295, abs=1e-4)
+        assert "b3" in source and "b2" not in source
+
+    def test_refuses_average_cost_when_round_tripped_and_no_fills(self):
+        """No BOT fills + a prior sell → refuse to touch buy_price at all."""
+        pos = make_position("NTRA", buy_price=317.43, shares=61,
+                            buy_date="2026-08-31T14:32:06.863552+00:00")
+        sells_only = [f for f in self._ntra_fills() if f["side"] == "SLD"]
+        supabase = make_supabase_mock(portfolio=[pos], ibkr_fills=sells_only)
+        ib = make_ib_mock(symbols=["NTRA"], avg_cost=331.70)
+
+        _reconcile(ib, supabase)
+
+        assert self._buy_price_updates(supabase) == []
+
+    def test_partial_fill_coverage_is_rejected_rather_than_averaged(self):
+        """Fills covering only part of the lot must return None, not a partial."""
+        import execution_agent
+        partial = [make_ibkr_fill("NTRA", 317.4295, 20, side="BOT",
+                                  fill_time="2026-08-31T14:32:05+00:00", exec_id="b3")]
+        supabase = make_supabase_mock(ibkr_fills=partial)
+
+        assert execution_agent.lot_buy_basis_from_fills(
+            supabase, "NTRA", "2026-08-31T14:32:06.863552+00:00", 61) is None
+
+    def test_multiple_child_fills_are_share_weighted(self):
+        """One order filled in two children averages by share count."""
+        import execution_agent
+        children = [
+            make_ibkr_fill("AAPL", 100.0, 30, side="BOT",
+                           fill_time="2026-08-31T14:32:01+00:00", exec_id="c1"),
+            make_ibkr_fill("AAPL", 110.0, 70, side="BOT",
+                           fill_time="2026-08-31T14:32:04+00:00", exec_id="c2"),
+        ]
+        supabase = make_supabase_mock(ibkr_fills=children)
+
+        price, _ = execution_agent.lot_buy_basis_from_fills(
+            supabase, "AAPL", "2026-08-31T14:32:06+00:00", 100)
+        assert price == pytest.approx(107.0, abs=1e-6)   # (30*100 + 70*110)/100
 
 
 class TestReconcileSellPriceExcludesPriorRoundTrip:

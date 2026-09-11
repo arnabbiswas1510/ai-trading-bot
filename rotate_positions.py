@@ -172,10 +172,24 @@ def _select_buy_triggers(client, n: int, exclude_tickers: set) -> list[dict]:
         reverse=True,
     )
 
-    # Filter out what's already held / cooling off
+    # Filter out what's already held / cooling off.
+    #
+    # Two sources, because trade_history alone misses sells the bot's own sell
+    # path never recorded (a resting IBKR stop firing between cycles, or a
+    # failed write). ibkr_fills is written by the real-time fill hook, so it
+    # sees the exit regardless — see run_market_open_buys() and
+    # decisions/2026-09-10_lot-basis-and-broker-aware-cooling-off.md.
     recent_sells = client.table("trade_history").select("ticker,sell_date") \
                          .gte("sell_date", cooloff_date).execute().data or []
-    cooled = {r["ticker"] for r in recent_sells} - exclude_tickers  # sells being rotated are OK to re-buy
+    cooled = {r["ticker"] for r in recent_sells}
+    try:
+        recent_fills = client.table("ibkr_fills").select("ticker,fill_time") \
+                             .eq("side", "SLD") \
+                             .gte("fill_time", cooloff_date).execute().data or []
+        cooled |= {r["ticker"] for r in recent_fills}
+    except Exception as e:
+        print(f"⚠️  ibkr_fills cooling-off lookup failed: {e} — using trade_history only.")
+    cooled -= exclude_tickers   # sells being rotated are OK to re-buy
 
     eligible = [
         t for t in triggers

@@ -194,16 +194,22 @@ def make_trigger(ticker: str,
 
 def make_ibkr_fill(ticker: str, price: float, shares: float,
                    side: str = "SLD", fill_date: str = "2026-07-17",
-                   exec_id: str | None = None) -> dict:
-    """Factory for an ibkr_fills Supabase row."""
+                   exec_id: str | None = None,
+                   fill_time: str | None = None,
+                   commission: float = 0.0) -> dict:
+    """Factory for an ibkr_fills Supabase row.
+
+    fill_time: full ISO timestamp override. Needed by tests that exercise the
+               lot-window logic, where fills minutes apart must be told apart.
+    """
     return {
         "exec_id":    exec_id or f"test-{ticker}-{side}-{shares}",
         "ticker":     ticker,
         "side":       side,
         "shares":     shares,
         "price":      price,
-        "commission": 0.0,
-        "fill_time":  f"{fill_date}T13:30:00",
+        "commission": commission,
+        "fill_time":  fill_time or f"{fill_date}T13:30:00",
         "order_id":   1234,
         "account_id": "U12941651",
     }
@@ -310,45 +316,61 @@ def make_supabase_mock(
             t.insert.return_value.execute.return_value = MagicMock()
 
         elif name == "ibkr_fills":
-            # Support: .select(...).eq("ticker",x).eq("side","SLD").order(...).execute()
-            _fills_by_ticker: dict[str, list] = {}
-            for f in ibkr_fills_data:
-                _fills_by_ticker.setdefault(f["ticker"], []).append(f)
+            # A real (tiny) query builder rather than nested MagicMocks: the
+            # agent now filters fills with eq/gt/gte/lt/lte + order + limit in
+            # several different orders, and MagicMock's default truthy return
+            # would silently satisfy filters it never actually applied.
+            class _FillsQuery:
+                def __init__(self, rows):
+                    self._rows = list(rows)
+                    self._desc = False
+                    self._limit = None
 
-            def _fills_eq1(col1, val1):
-                m1 = MagicMock()
-                matching = _fills_by_ticker.get(val1, []) if col1 == "ticker" else ibkr_fills_data
+                def _cmp(self, col, val, op):
+                    def keep(f):
+                        left = f.get(col)
+                        if left is None:
+                            return False
+                        a, b = str(left), str(val)
+                        return op(a, b)
+                    return _FillsQuery([f for f in self._rows if keep(f)])
 
-                def _fills_eq2(col2, val2):
-                    m2 = MagicMock()
-                    filtered = [f for f in matching if f.get("side") == val2] if col2 == "side" else matching
+                def eq(self, col, val):
+                    return _FillsQuery([f for f in self._rows if f.get(col) == val])
 
-                    # Model the fill_time floor reconcile now applies so a prior
-                    # round-trip's SLD fill is excluded from the current close
-                    # (execution_agent.py Tier 1). Without this the mock would
-                    # silently pass the bug it is meant to catch.
-                    def _fills_gt(col3, floor):
-                        m3 = MagicMock()
-                        kept = (
-                            [f for f in filtered if str(f.get("fill_time", "")) > str(floor)]
-                            if col3 == "fill_time" else filtered
-                        )
-                        m3.order.return_value.execute.return_value.data = kept
-                        m3.execute.return_value.data = kept
-                        return m3
+                def gt(self, col, val):
+                    return self._cmp(col, val, lambda a, b: a > b)
 
-                    m2.gt.side_effect = _fills_gt
-                    m2.order.return_value.execute.return_value.data = filtered
-                    m2.execute.return_value.data = filtered
-                    return m2
+                def gte(self, col, val):
+                    return self._cmp(col, val, lambda a, b: a >= b)
 
-                m1.eq.side_effect = _fills_eq2
-                m1.order.return_value.execute.return_value.data = matching
-                m1.execute.return_value.data = matching
-                return m1
+                def lt(self, col, val):
+                    return self._cmp(col, val, lambda a, b: a < b)
 
-            t.select.return_value.eq.side_effect = _fills_eq1
+                def lte(self, col, val):
+                    return self._cmp(col, val, lambda a, b: a <= b)
+
+                def order(self, col, desc=False):
+                    q = _FillsQuery(
+                        sorted(self._rows, key=lambda f: str(f.get(col, "")), reverse=bool(desc))
+                    )
+                    q._limit = self._limit
+                    return q
+
+                def limit(self, n):
+                    q = _FillsQuery(self._rows)
+                    q._limit = n
+                    return q
+
+                def execute(self):
+                    rows = self._rows[: self._limit] if self._limit else self._rows
+                    res = MagicMock()
+                    res.data = rows
+                    return res
+
+            t.select.return_value = _FillsQuery(ibkr_fills_data)
             t.upsert.return_value.execute.return_value = MagicMock()
+            t.update.return_value.eq.return_value.execute.return_value = MagicMock()
 
         _cache[name] = t
         return t

@@ -71,7 +71,7 @@ code, which is what makes the buy model auditable after the fact.
 | # | Gate | Rejection condition | Reason code |
 |---|---|---|---|
 | 1 | Duplicate | Ticker already held | `ALREADY_HELD` |
-| 2 | Cooling-off | Sold within `COOLING_OFF_DAYS` (7) | `COOLING_OFF` |
+| 2 | Cooling-off | Sold within `COOLING_OFF_DAYS` (7), per `trade_history` **or** an `ibkr_fills` SLD fill | `COOLING_OFF` |
 | 3 | AI veto | `ai_grade == "D"` (conviction < 50) | `AI_VETO` |
 | 4 | Score present | `final_score` / `adjusted_score` is NULL | `NO_AI_SCORE` |
 | 5 | Score floor | Below the trigger-type minimum (`adjusted_score` when present) | `SCORE_FLOOR` |
@@ -89,6 +89,22 @@ code, which is what makes the buy model auditable after the fact.
 
 Capacity is re-checked **inside** the loop (gate 6) because an earlier fill in the same
 cycle may have consumed the last slot.
+
+### Cooling-off reads the broker, not just our own ledger
+
+Gate 2 blocks a re-entry when the ticker was sold within `COOLING_OFF_DAYS` (7).
+It checks **two** sources, because `trade_history` alone is not sufficient: that
+table is written by the bot's own sell path, so an exit that happened without it
+— a resting IBKR stop firing between monitor cycles, or a failed write — leaves
+no row and the gate goes blind. `ibkr_fills` is written by the real-time fill
+hook the instant IBKR reports an execution, so it sees the sell either way. A
+`SLD` fill inside the window blocks the buy on its own.
+
+NTRA on 2026-08-31 is why: the bot sold 61 shares at 10:26 and bought 61 shares
+of the same ticker back at **10:32, six minutes later**, because the 10:26 exit
+never reached `trade_history`. The same two-source check is applied in
+`rotate_positions.py`. See
+`decisions/2026-09-10_lot-basis-and-broker-aware-cooling-off.md`.
 
 ### ⚠️ `volume_surge` is an overloaded column
 

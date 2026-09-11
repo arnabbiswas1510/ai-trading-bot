@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests.conftest import (
     make_supabase_mock, make_ib_mock, make_portfolio_item,
-    make_position, make_trigger
+    make_position, make_trigger, make_ibkr_fill
 )
 import execution_agent
 
@@ -268,3 +268,78 @@ class TestVolumeGateRespectsTriggerType:
         """The screener's own < 1.00 gate governs looseness, not this one."""
         assert self._run(0.95, "PRE_BREAKOUT").placeOrder.called, \
             "The surge gate must not second-guess the screener's contraction gate"
+
+
+class TestCoolingOffSeesBrokerFills:
+    """Cooling-off must see sells that never reached trade_history.
+
+    NTRA, 2026-08-31: the bot sold 61 shares at 10:26 and bought 61 shares of
+    the same ticker back at 10:32 — six minutes later. trade_history never
+    received the 10:26 exit, so the cooling-off gate (which read only that
+    table) was blind and waved the re-entry through.
+
+    ibkr_fills is written by the real-time fill hook the instant IBKR reports an
+    execution, so it sees the sell whether or not the bot's own sell path ran.
+    """
+
+    @staticmethod
+    def _recent_day(days_ago: int) -> str:
+        ny = datetime.datetime.now(ZoneInfo("America/New_York")).date()
+        return (ny - datetime.timedelta(days=days_ago)).isoformat()
+
+    def test_sell_fill_alone_blocks_the_rebuy(self):
+        """The regression: a broker fill with no trade_history row still blocks."""
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[],          # the row that never got written
+            ibkr_fills=[make_ibkr_fill("NTRA", 317.86, 61, side="SLD",
+                                       fill_time=f"{self._recent_day(0)}T14:26:13+00:00")],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+
+        ib.placeOrder.assert_not_called()
+
+    def test_sell_fill_outside_the_window_does_not_block(self):
+        """A fill older than COOLING_OFF_DAYS must not block a legitimate entry."""
+        stale = self._recent_day(execution_agent.COOLING_OFF_DAYS + 5)
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[],
+            ibkr_fills=[make_ibkr_fill("NTRA", 317.86, 61, side="SLD",
+                                       fill_time=f"{stale}T14:26:13+00:00")],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+
+        ib.placeOrder.assert_called()
+
+    def test_buy_fill_does_not_block(self):
+        """Only SLD fills trigger cooling-off; a recent BOT fill must not."""
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[],
+            ibkr_fills=[make_ibkr_fill("NTRA", 317.86, 61, side="BOT",
+                                       fill_time=f"{self._recent_day(0)}T14:26:13+00:00")],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+
+        ib.placeOrder.assert_called()
+
+    def test_another_tickers_sell_does_not_block(self):
+        """Cooling-off is per-ticker."""
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[],
+            ibkr_fills=[make_ibkr_fill("AAPL", 200.0, 10, side="SLD",
+                                       fill_time=f"{self._recent_day(0)}T14:26:13+00:00")],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+
+        ib.placeOrder.assert_called()

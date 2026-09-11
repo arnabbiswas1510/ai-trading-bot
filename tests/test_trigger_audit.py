@@ -291,6 +291,11 @@ class TestDecisionsWiredIntoBuyLoop:
             elif name == "trade_history":
                 t.select.return_value.eq.return_value.gte.return_value.execute.return_value = \
                     MagicMock(data=[])
+            elif name == "ibkr_fills":
+                # No prior sells — cooling-off must not block these triggers.
+                t.select.return_value.eq.return_value.eq.return_value.gte.return_value \
+                    .order.return_value.limit.return_value.execute.return_value = \
+                    MagicMock(data=[])
             return t
 
         client.table.side_effect = _table
