@@ -106,3 +106,25 @@ def test_ibkr_disconnect_alert_not_deduped_by_other_exceptions(mock_post, notifi
     notifier.notify_ibkr_disconnected(attempts=6, minutes=18)
 
     assert mock_post.call_count == 2  # both fired; disconnect not swallowed
+
+
+@patch('requests.post')
+def test_sell_state_change_escapes_ticker_html(mock_post, notifier):
+    """Ticker text must be escaped before sending HTML parse_mode Telegram."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_post.return_value = mock_response
+
+    notifier.notify_sell_state_change(
+        "PSX <= trigger",
+        "Unproven",
+        "Exiting",
+        "EXITING",
+        unrealized_pct=-1.2,
+        peak_pct=0.0,
+        days_held=0,
+    )
+
+    sent = mock_post.call_args.kwargs["data"]["text"]
+    assert "PSX &lt;= trigger" in sent
+    assert "PSX <= trigger" not in sent

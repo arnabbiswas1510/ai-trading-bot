@@ -319,6 +319,7 @@ class TelegramNotifier:
         if not self._is_configured():
             return
         try:
+            ticker_html = html.escape(ticker)
             detail = {
                 "PROVEN": "Closed above entry — the give-back floor arms once the peak tops +2%.",
                 "PROVEN_FLOOR": (
@@ -329,7 +330,7 @@ class TelegramNotifier:
                 "PROFIT_LOCKED": "Gain reached +5% — the trailing stop tightened to lock in profit.",
             }.get(code, "")
             msg = (
-                f"\U0001f504 <b>{ticker}</b> · {from_label} \u2192 <b>{to_label}</b>\n"
+                f"\U0001f504 <b>{ticker_html}</b> · {from_label} \u2192 <b>{to_label}</b>\n"
                 + (f"{detail}\n" if detail else "")
                 + f"  Now: <code>{unrealized_pct:+.1f}%</code> · peak "
                   f"<code>+{peak_pct:.1f}%</code> · {days_held}d held\n"
