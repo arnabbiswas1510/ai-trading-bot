@@ -1,7 +1,22 @@
 # Centralise STOP_LOSS_PCT and COOLING_OFF_DAYS in config.py
 
 **Date:** 2026-08-09
-**Status:** Accepted
+**Status:** Superseded in part by
+  [`2026-09-15_cooling-off-three-days.md`](2026-09-15_cooling-off-three-days.md)
+
+> **2026-09-15 — the `COOLING_OFF_DAYS = 7` half of this decision is superseded.**
+> The centralisation into `config.py` stands, and so does `STOP_LOSS_PCT = 0.10`.
+> What does **not** stand is the value 7 and the reasoning for it below
+> ("re-buying a name two days after it stopped out repeatedly re-entered the same
+> failing setup"). That claim was asserted from the agent's pre-existing value,
+> not measured. Measured against live trades on 2026-09-15, **7 blocks 7 of the
+> bot's 9 genuine re-entries, worth +$1,736.67 net** — including NTRA's 4-day
+> re-entry of 2026-09-14 (+$575.44). The shipped value is now **3**.
+>
+> Note also that production never actually ran 7: a `.env` override held it at 3
+> throughout, so the "behaviour changes in production" claim below was only ever
+> true of `force_buy.py`/`force_sell.py`'s stop width, not of the cooling-off
+> window. **Do not cite the 7-session figure below as a live setting.**
 
 ## Context
 

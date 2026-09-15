@@ -51,7 +51,7 @@ VOL_SURGE, PIVOT_PROX = 1.50, 0.95
 RS_MIN_GATE = 50
 PRE_PROX, PRE_VOL_MAX, PRE_UPTREND_MIN = 0.08, 1.00, 2
 MIN_TRIGGER_SCORE, MIN_PRE_BREAKOUT_SCORE = 60, 65
-MAX_POSITIONS, COOLING_OFF_DAYS = 5, 7
+MAX_POSITIONS, COOLING_OFF_DAYS = 5, 3
 
 # AI + sentiment are unavailable historically. Constant => cancels out of the
 # within-day ordering, so policy comparison is unaffected by the value chosen.

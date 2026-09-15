@@ -41,7 +41,7 @@ TradingView requires no credentials.
 | `ATR_STOP_MAX_PCT` | `0.12` | Ceiling of the ATR band |
 | `MAX_LOSS_PCT` | `0.07` | Static broker-side hard stop (entry − 7%) — the disconnect-proof max loss, in an OCA group with the trailing stop |
 | `BUY_PRICE_DRIFT_TOLERANCE` | `0.01` | Reconcile overwrites the stored `buy_price` when it drifts more than this (1%) from what the lot actually cost, then resets the derived peak/proven flags and alerts. The basis comes from the **BOT fills that opened the lot**; IBKR's `averageCost` is only a fallback, and is refused outright when the symbol has been round-tripped (it then folds earlier realised losses into the open lot). Guards against a wrong fill price silently corrupting both the dashboard P&L and every `buy_price`-anchored exit rule. See [sell logic](sell_logic.md) and `decisions/2026-09-10_lot-basis-and-broker-aware-cooling-off.md` |
-| `COOLING_OFF_DAYS` | `7` | Re-entry block after a sale |
+| `COOLING_OFF_DAYS` | `3` | Re-entry block after a sale. 3 is a measured optimum, not a default: 7 blocks 7 of the bot's 9 genuine re-entries (+$1,736.67 net, including NTRA's +$575.44 on a 4-day gap), while 0 readmits names that are still falling — 62% of blocked re-entries break the Prove-It day-0 band on their first session. See `decisions/2026-09-15_cooling-off-three-days.md` |
 
 **Sizing** is `available_cash / remaining_slots`, recomputed before each buy. The
 per-position stop is `max(STOP_LOSS_PCT, min(ATR_STOP_MAX_PCT, 2.5 × entry_atr_pct))` — so

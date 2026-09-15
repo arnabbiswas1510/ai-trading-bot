@@ -87,7 +87,11 @@ class TestSingleSourceOfTruth:
             "Base trail was widened 7% -> 10%; 7% sat inside the normal daily "
             "range of the higher-ATR names the screener surfaces."
         )
-        assert vals["cooling_off_days"]["config"] == 7
+        assert vals["cooling_off_days"]["config"] == 3, (
+            "ADR 2026-09-15_cooling-off-three-days.md measured 3 against live "
+            "trades: 7 blocks 7 of 9 genuine re-entries (+$1,736.67 net), while "
+            "0 readmits names still falling (62% break the Prove-It day-0 band)."
+        )
 
     @pytest.mark.parametrize("value", [3, 4, 6, 7])
     def test_max_positions_env_drives_every_module(self, value):

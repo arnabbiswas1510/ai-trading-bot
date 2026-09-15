@@ -71,7 +71,19 @@ MAX_LOSS_PCT = float(os.getenv("MAX_LOSS_PCT", 0.07))
 # cooling-off.md. 1% is well outside normal commission/rounding noise.
 BUY_PRICE_DRIFT_TOLERANCE = float(os.getenv("BUY_PRICE_DRIFT_TOLERANCE", 0.01))
 
-# Days a ticker is ineligible for re-entry after being sold. Widened 3 -> 7:
-# re-buying a name two days after it stopped out repeatedly re-entered the same
-# failing setup.
-COOLING_OFF_DAYS = int(os.getenv("COOLING_OFF_DAYS", 7))
+# Days a ticker is ineligible for re-entry after being sold.
+#
+# 3, not 7, and not 0. Measured on live trades 2026-09-15:
+#   - 7 blocks 7 of the 9 genuine re-entries the bot has made, worth +$1,736.67
+#     net (4 winners / 3 losers; the winners are ~5x the losers). NTRA's 4-day
+#     re-entry of 2026-09-14 (+$575.44) is blocked at 7 and allowed at 3.
+#   - 0 is worse: of the 26 re-entries the 3-day gate blocked and for which
+#     forward bars exist, 16 (62%) break the Prove-It 1% day-0 band on the very
+#     first session. A name sold within 3 days is usually still falling, so the
+#     +2.17% mean 5-day return is unreachable - the bot exits on the band long
+#     before it. 0 also re-enables same-session churn (NTRA sold 10:26,
+#     re-bought 10:32) that corrupted the lot basis.
+# Production had run 3 via a .env override since before 2026-08-09 while this
+# default said 7; the override was the value actually earning money.
+# See decisions/2026-09-15_cooling-off-three-days.md.
+COOLING_OFF_DAYS = int(os.getenv("COOLING_OFF_DAYS", 3))

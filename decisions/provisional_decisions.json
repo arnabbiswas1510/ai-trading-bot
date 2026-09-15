@@ -1,22 +1,22 @@
 {
-  "_README": "PROVISIONAL DECISION REGISTER — the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else — add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process.",
+  "_README": "PROVISIONAL DECISION REGISTER \u2014 the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else \u2014 add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process.",
   "_schema": {
     "id": "kebab-case unique key; also the GitHub-issue marker",
     "title": "one-line human label",
     "status": "active | resolved | superseded  (only 'active' is ever alerted on)",
     "decided": "YYYY-MM-DD the decision was taken",
-    "implemented": "bool — true once the decision is live in production code; false = approved config still on the shelf",
+    "implemented": "bool \u2014 true once the decision is live in production code; false = approved config still on the shelf",
     "decision": "what we decided to do, stated as current fact",
     "rationale": "why, and on how large a sample",
     "adr": "path to the ADR that records the reasoning (may be null until written)",
     "revisit": {
-      "min_closed_trades": "int | null — becomes due once trade_history has >= this many rows",
-      "not_before": "YYYY-MM-DD | null — a date floor; due only once BOTH this and min_closed_trades are satisfied"
+      "min_closed_trades": "int | null \u2014 becomes due once trade_history has >= this many rows",
+      "not_before": "YYYY-MM-DD | null \u2014 a date floor; due only once BOTH this and min_closed_trades are satisfied"
     },
     "baseline": "the numbers measured at decision time, so a future review compares like-for-like",
     "review_command": "the exact command that reproduces the measurement",
     "review_questions": "the specific questions the review must answer",
-    "last_reviewed": "YYYY-MM-DD | null — set when a review is completed",
+    "last_reviewed": "YYYY-MM-DD | null \u2014 set when a review is completed",
     "history": "append-only log of {date, closed_trades, verdict, note} from each completed review"
   },
   "decisions": [
@@ -27,7 +27,7 @@
       "decided": "2026-09-08",
       "implemented": true,
       "decision": "When an open position's PEAK gain first reaches +4%, sell 33% of the shares at market; the remaining ~67% rides the unchanged Prove-It stop. Fires once per position (scaled_out latch); suppressed for power-held leaders. Freed capital stays as reserve until a full slot opens, then redeploys via normal available_cash / remaining_slots sizing. Live in execute_scale_out() + monitor_portfolio_intraday(); ADR and docs shipped.",
-      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped — those are an entry-quality problem, tracked separately.",
+      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped \u2014 those are an entry-quality problem, tracked separately.",
       "adr": "decisions/2026-09-08_partial-scale-out.md",
       "revisit": {
         "min_closed_trades": 50,
@@ -46,9 +46,46 @@
       "review_questions": [
         "Does +4%/33% still match or beat the SHIPPED net? (was -$64 = free)",
         "Is the fader benefit still spread over >=3 trades, or is it now carried by one? (single-trade-carry check)",
-        "Has the winner-clip grown — is harmed or winners_hurt higher than the baseline 6?",
+        "Has the winner-clip grown \u2014 is harmed or winners_hurt higher than the baseline 6?",
         "Do enough faders now peak in the +4-5% band to justify the trigger, or has the fader distribution shifted (argue the trigger up/down with the new peaks)?",
         "Would a different fraction (25% / 50%) now win, given the larger sample?"
+      ],
+      "last_reviewed": null,
+      "history": []
+    },
+    {
+      "id": "cooling-off-three-days",
+      "title": "Cooling-off re-entry block held at 3 days (not 7, not retired)",
+      "status": "active",
+      "decided": "2026-09-15",
+      "implemented": true,
+      "decision": "COOLING_OFF_DAYS defaults to 3 in config.py and .env.template, matching what production has run via a .env override since before 2026-08-09. Buy gate 2 continues to block re-entry for 3 days after a sale, checking BOTH trade_history and ibkr_fills SLD fills. The gate is NOT retired.",
+      "rationale": "Measured on 9 genuine re-entries (43 closed trades) plus a 26-trigger FMP counterfactual. 7 days blocks 7 of the 9 re-entries, worth +$1,736.67 net (4 winners / 3 losers, winners ~5x losers), including NTRA's 4-day re-entry of 2026-09-14 (+$575.44) \u2014 so 7 is measurably too wide, and its original justification in the 2026-08-09 ADR was asserted, never measured. But 0 is worse: of 26 blocked re-entries with forward bars, 16 (62%) break the Prove-It 1% day-0 band on their FIRST session, so the headline +2.17% mean 5-day return is unreachable \u2014 the bot exits on the band long before it. 0 also re-enables the same-session churn (NTRA sold 10:26, re-bought 10:32) that corrupted the lot basis. MAJOR CONFOUND: SLOTS_FULL accounts for 115 of 214 logged skips vs COOLING_OFF's 28, so capacity is the real binding constraint and +$1,736.67 is an UPPER BOUND on what 7 costs, not realised foregone profit. Sample is one month, entirely inside a BULL regime.",
+      "adr": "decisions/2026-09-15_cooling-off-three-days.md",
+      "revisit": {
+        "min_closed_trades": 75,
+        "not_before": "2026-11-20"
+      },
+      "baseline": {
+        "closed_trades_at_decision": 43,
+        "genuine_reentries_at_decision": 9,
+        "blocked_by_7d_count": 7,
+        "blocked_by_7d_net_usd": 1736.67,
+        "cooling_off_skips_logged": 28,
+        "blocked_triggers_with_fwd_bars": 26,
+        "pct_breaking_day0_band": 62,
+        "mean_fwd_5d_pct": 2.17,
+        "mean_max_drawdown_pct": -3.12,
+        "slots_full_skips": 115
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure && python3 research/decision_review.py --insecure",
+      "review_questions": [
+        "How many GENUINE re-entries now exist? (was 9; exclude split-fill duplicates sharing a buy timestamp, e.g. the TRV 2026-07-21 pair.) Below ~25 the comparison is still noise \u2014 report n FIRST.",
+        "Would a 7-day rule still be net-negative? (was -$1,736.67 across 7 blocked re-entries.) Is that result still spread across several trades, or is it now carried by one outlier like LPG's +$882?",
+        "Does the 62% day-0-band break rate still hold for triggers the 3-day gate blocks? If it has fallen well below ~40%, retirement becomes arguable and should be swept properly.",
+        "Sweep 2, 3, 4 and 5 days \u2014 not just 3 vs 7 vs 0. Adjacent values were never discriminated because the sample was too small.",
+        "Has the bot traded through a non-BULL regime yet? The entire decision sample sits inside one bull window; a corrective tape is the real test of whether fast re-entry is safe.",
+        "Has the SLOTS_FULL confound shrunk? If capacity is still the binding constraint (was 115 of 214 skips), the dollar figures remain an upper bound and should be quoted as such."
       ],
       "last_reviewed": null,
       "history": []
