@@ -1,7 +1,49 @@
 # Price the lot from its own fills, and make cooling-off broker-aware
 
 **Date:** 2026-09-10
-**Status:** Accepted — supersedes in part `decisions/2026-09-09_buy-price-drift-guard.md`
+**Status:** Accepted — with one decision **not yet in effect in production**
+(see the erratum below) — supersedes in part
+`decisions/2026-09-09_buy-price-drift-guard.md`
+
+> **⚠️ Erratum (2026-09-15) — Decision 4 describes an intent, not the live state.
+> `migrations/backfill_ntra_round_trips.sql` has NEVER been applied to the
+> production Supabase.**
+>
+> Verified against live `trade_history` on 2026-09-15: NTRA still exists as **one
+> contaminated composite row** — 61 shares, `buy_price = 331.70`, sold 9/10 at
+> 321.05, `net_profit_loss = −651.07`. The three separate round trips this ADR
+> says were restored (RT1 −$706.66, RT2 −$162.84, RT3 **+$218.43**) are **not**
+> in the table. RT1 and RT2 remain absent entirely.
+>
+> What is still true: the *code* half of this ADR (Decisions 1–3) **is deployed
+> and provably working.** The execution-agent image running in production
+> (built 2026-09-13) contains `lot_buy_basis_from_fills()`,
+> `has_prior_round_trip()` and the `ibkr_fills` cooling-off lookup, and every
+> one of the 8 trades opened since `ibkr_fills` began recording reconciles to
+> its own BOT fills to within 0.02%. The contamination mechanism is closed.
+>
+> What is still false until the migration runs:
+>
+> - The phantom **−$651.07** NTRA loss is still the single worst-looking recent
+>   trade in the book, and it was really a **+$218.43 winner**.
+> - `breakout_learnings` carries a matching `exit_type = stop_loss`, `pnl_pct =
+>   −3.21` lesson for NTRA with `rs_score`, `volume_surge`, `technical_score`
+>   and `pivot_distance_pct` all flagged `failed: true`. The closed-loop
+>   learning of `decisions/2026-08-22_closed-loop-learning-from-trade-history.md`
+>   is therefore penalising the entry criteria of a **winning** trade.
+> - Every replay/backtest figure involving NTRA remains contaminated, including
+>   the `--cliff` sweep that rejected a Phase 2 unarmed floor.
+>
+> **Open question 2 below is now answered, and the answer is worse than the
+> question assumed.** It asked how many other closed trades carry a basis
+> corrupted by the same mechanism. It is **unanswerable for 35 of the 43 closed
+> trades**: `ibkr_fills` contains no row earlier than **2026-09-08**, so no
+> independent record of the opening fills exists for anything bought before that
+> date — which is every trade in the all-time top-10 loss list (NBIX, CDNA, HWM,
+> RSI, FRO, DELL, APH, OII, FROG, PTGX). Those basis figures cannot be verified,
+> only trusted. Only the 8 post-09-08 trades are provably clean.
+>
+> The body below is left unedited as the record of what was decided.
 
 ## Context
 
@@ -85,6 +127,9 @@ it sees exits regardless of whether the bot's own sell path ran. Applied in both
 three real round trips. The aggregate is preserved **exactly** — this changes
 which trade made or lost the money, not how much:
 
+> **NOT YET APPLIED IN PRODUCTION as of 2026-09-15 — see the erratum at the top
+> of this file. The table below is the intended end state, not the live ledger.**
+
 | Round trip | Shares | Entry → Exit | Net |
 |---|---|---|---|
 | 8/26 → 8/31 | 40 | 338.4300 → 320.8203 | −$706.66 |
@@ -122,6 +167,10 @@ body is left intact as the record of what was believed at the time.
 
 - Why did the 10:26 exit fire ~40 minutes after entry? The re-entry is now
   blocked, but the exit that preceded it is unexplained.
-- How many other closed trades have a `buy_price` contaminated by the same
-  mechanism? Any symbol round-tripped while held is a candidate, and each one
-  distorts the replay harness that validates every exit parameter.
+- ~~How many other closed trades have a `buy_price` contaminated by the same
+  mechanism?~~ **Answered 2026-09-15, unfavourably: it cannot be determined.**
+  `ibkr_fills` has no row before 2026-09-08, so 35 of 43 closed trades — every
+  trade in the all-time top-10 loss list — have no independent record of their
+  opening fills to check against. The 8 trades since are all clean (max drift
+  0.02%). Treat any pre-09-08 per-trade figure as unverifiable, including every
+  number the exit-parameter replay derives from them.

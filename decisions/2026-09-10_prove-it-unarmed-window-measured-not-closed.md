@@ -1,7 +1,8 @@
 # Prove-It unarmed window: measured, and deliberately left open
 
 - **Date:** 2026-09-10
-- **Status:** Accepted
+- **Status:** Accepted — its stated re-test precondition is **still unmet**
+  (see the 2026-09-15 note in the caveat below)
 - **Supersedes:** nothing. Records a hypothesis that was tested and **rejected**.
 
 ## Context
@@ -144,3 +145,13 @@ between a −3% exit and the −5.2% realised (~$300) still leaves it net −$1,
 the conclusion holds; but this should be re-tested once round trips are recorded
 individually and the sample has grown. Added to the scheduled exit-parameter
 review.
+
+> **Note (2026-09-15) — the re-test precondition is still unmet.** "Once round
+> trips are recorded individually" requires
+> `migrations/backfill_ntra_round_trips.sql`, which has **never been applied to
+> production**. Live `trade_history` still holds the single contaminated NTRA
+> composite, so RT1 (−$706.66) remains invisible and this sweep cannot yet be
+> re-run against a corrected sample. The rejection stands on the reasoning above,
+> not on new evidence. Apply the migration before the next `--cliff` run, or the
+> review will silently re-measure the same contaminated data and report a false
+> confirmation.
