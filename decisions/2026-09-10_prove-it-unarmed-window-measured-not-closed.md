@@ -1,8 +1,8 @@
 # Prove-It unarmed window: measured, and deliberately left open
 
 - **Date:** 2026-09-10
-- **Status:** Accepted — its stated re-test precondition is **still unmet**
-  (see the 2026-09-15 note in the caveat below)
+- **Status:** Accepted — **its re-test precondition was met on 2026-09-15**;
+  the `--cliff` re-run is now owed (see the 2026-09-15 note in the caveat below)
 - **Supersedes:** nothing. Records a hypothesis that was tested and **rejected**.
 
 ## Context
@@ -146,12 +146,26 @@ the conclusion holds; but this should be re-tested once round trips are recorded
 individually and the sample has grown. Added to the scheduled exit-parameter
 review.
 
-> **Note (2026-09-15) — the re-test precondition is still unmet.** "Once round
-> trips are recorded individually" requires
-> `migrations/backfill_ntra_round_trips.sql`, which has **never been applied to
-> production**. Live `trade_history` still holds the single contaminated NTRA
-> composite, so RT1 (−$706.66) remains invisible and this sweep cannot yet be
-> re-run against a corrected sample. The rejection stands on the reasoning above,
-> not on new evidence. Apply the migration before the next `--cliff` run, or the
-> review will silently re-measure the same contaminated data and report a false
-> confirmation.
+
+> **2026-09-15 update — the blocker is cleared, the re-test is now owed.**
+>
+> The note above said a `--cliff` re-run would re-measure contaminated data
+> because NTRA RT1 (−$706.66) had never reached `trade_history`. That is no
+> longer true: `migrations/backfill_ntra_round_trips.sql` was applied on
+> 2026-09-15 and RT1 now exists as row id 59, with RT2 (−$162.84) as id 60 and
+> RT3 corrected to **+$218.43**.
+>
+> **The rejection recorded in this ADR was therefore measured on a sample that
+> did not contain the very trade that motivated the hypothesis.** It should not
+> be treated as settled. Re-run:
+>
+> ```bash
+> set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
+> python3 research/exit_rule_replay.py --insecure --cliff
+> ```
+>
+> A second, independent reason to re-run: NBIX id 29 was re-priced on the same
+> date from $152.74 to $158.5043 (loss −$2,260.55 → −$1,424.72). NBIX was the
+> largest loss in the replay sample, so **every dollar figure produced by the
+> harness before 2026-09-15 is stale**, not merely the `--cliff` ones. See
+> `decisions/2026-09-15_nbix-reconstructed-sell-price.md`.

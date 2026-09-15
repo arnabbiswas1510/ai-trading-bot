@@ -1,6 +1,17 @@
 -- ============================================================================
 -- backfill_ntra_round_trips.sql
 --
+-- *** ALREADY APPLIED TO PRODUCTION on 2026-09-15 (written 2026-09-10, but not
+-- *** run until then). Kept as the record of what was done. Re-running is a
+-- *** safe no-op: the UPDATE guard requires buy_price = 331.7 and both INSERTs
+-- *** are NOT EXISTS-guarded.
+--
+-- *** SCHEMA CONSTRAINTS -- net_profit_loss and commission_complete are
+-- *** GENERATED columns and CANNOT be written (SQLSTATE 428C9); they are derived
+-- *** from profit_loss and the two commission columns. sell_reason is
+-- *** varchar(200), so it must be replaced, not appended to. The statements
+-- *** below were corrected accordingly on 2026-09-15.
+--
 -- Repairs the NTRA (2026-08-26 → 2026-09-10) accounting damage caused by the
 -- contaminated-averageCost bug in reconcile_with_ibkr().
 --
@@ -59,13 +70,11 @@ SET buy_price           = 317.4295,
     buy_commission      = 1.000183,
     sell_commission     = 1.4155,
     profit_loss         = 220.85,
-    net_profit_loss     = 218.43,
     percent_return      = 1.14,
-    commission_complete = true,
-    sell_reason         = sell_reason ||
-        ' [corrected 2026-09-10: buy_price was 331.70, a contaminated IBKR '
-        'averageCost that folded in two earlier NTRA round trips; true fill '
-        'was 317.4295 — this trade was a +$218 winner]'
+    sell_reason         = 'Trailing stop (IBKR GTC TRAIL), day 6. Basis corrected '
+                       || '2026-09-15: was 331.70, a contaminated averageCost '
+                       || 'folding in 2 earlier round trips; true fill 317.4295. '
+                       || 'This lot was a +$218 WINNER.'
 WHERE id = 53
   AND ticker = 'NTRA'
   AND buy_price = 331.7;
@@ -73,15 +82,15 @@ WHERE id = 53
 -- ── 2. Backfill round trip 1: 8/26 buy 40 → 8/31 sell 40 ────────────────────
 INSERT INTO trade_history (
     ticker, shares, buy_price, sell_price, buy_date, sell_date,
-    buy_commission, sell_commission, commission_complete,
-    profit_loss, net_profit_loss, percent_return, buy_reason, sell_reason
+    buy_commission, sell_commission,
+    profit_loss, percent_return, buy_reason, sell_reason
 )
 SELECT 'NTRA', 40, 338.4300, 320.8203,
        '2026-08-26T15:32:15+00:00', '2026-08-31T13:35:56+00:00',
-       1.00012, 1.272276, true,
-       -704.39, -706.66, -5.20,
+       1.00012, 1.272276,
+       -704.39, -5.20,
        'CANSLIM Breakout [daily_triggers]',
-       'Backfilled 2026-09-10 from IBKR TradeConfirm — this exit was never '
+       'Backfilled 2026-09-15 from IBKR TradeConfirm — this exit was never '
        'written to trade_history; its loss was silently absorbed into row 53 '
        'via a contaminated averageCost.'
 WHERE NOT EXISTS (
@@ -94,15 +103,15 @@ WHERE NOT EXISTS (
 -- re-bought 10:32.
 INSERT INTO trade_history (
     ticker, shares, buy_price, sell_price, buy_date, sell_date,
-    buy_commission, sell_commission, commission_complete,
-    profit_loss, net_profit_loss, percent_return, buy_reason, sell_reason
+    buy_commission, sell_commission,
+    profit_loss, percent_return, buy_reason, sell_reason
 )
 SELECT 'NTRA', 61, 320.4900, 317.8600,
        '2026-08-31T13:46:14+00:00', '2026-08-31T14:26:13+00:00',
-       1.000183, 1.411501, true,
-       -160.43, -162.84, -0.82,
+       1.000183, 1.411501,
+       -160.43, -0.82,
        'CANSLIM Breakout [daily_triggers]',
-       'Backfilled 2026-09-10 from IBKR TradeConfirm — same-day round trip '
+       'Backfilled 2026-09-15 from IBKR TradeConfirm — same-day round trip '
        'never written to trade_history, which left the cooling-off gate blind '
        'and allowed a re-entry six minutes later.'
 WHERE NOT EXISTS (
