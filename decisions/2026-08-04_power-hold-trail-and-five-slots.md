@@ -117,7 +117,7 @@ disaster backstop, because the upside is concentrated in very few trades (top-5 
 
 ## Consequences
 
-- `migrations/add_power_hold.sql` is now **required**, not optional. Without the
+- `migrations/20260804_add_power_hold.sql` is now **required**, not optional. Without the
   column the flag cannot persist, so `is_power_hold_active()` falls back to a
   check bounded by `POWER_HOLD_TRIGGER_DAYS` and the rule silently expires at day
   21 instead of day 56 — discarding most of the benefit above.

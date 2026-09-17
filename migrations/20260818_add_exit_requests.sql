@@ -1,4 +1,4 @@
--- migrations/add_exit_requests.sql
+-- migrations/20260818_add_exit_requests.sql
 --
 -- Smart OCA Managed Exit queue.
 --

@@ -373,6 +373,72 @@ yes, the update is not finished.
 
 ---
 
+## 🗓️ MANDATORY: Name Every Migration `YYYYMMDD_slug.sql`
+
+> **Every file in `migrations/` MUST be named `YYYYMMDD_short_slug.sql`, using the
+> date the migration is written. No exceptions, no other prefix, no bare
+> `add_thing.sql`.**
+
+```
+migrations/20260917_add_rs_percentile.sql     ✅
+migrations/add_rs_percentile.sql              ❌ undated
+migrations/2026-09-17_add_rs_percentile.sql   ❌ dashes break the sort alignment
+migrations/09172026_add_rs_percentile.sql     ❌ not sortable
+```
+
+### Why this exact format
+
+`YYYYMMDD` is the only common date format where **lexical order equals
+chronological order**. That single property is what makes `ls migrations/`,
+`ls -r migrations/`, a file-tree pane and a `git diff --stat` all agree on what
+happened when, with no tooling and no metadata.
+
+It matters here specifically because nothing in this repo *runs* migrations.
+They are applied by hand in the Supabase SQL Editor, so the filename is the only
+record of sequence that exists. When the order is invisible, the question "has
+this one been applied yet, and what did it assume was already there?" becomes
+unanswerable — which is exactly the condition that produced
+`20260813_apply_missing_migrations.sql`, a whole consolidated patch written to
+recover from schema drift after migrations were applied out of order or not at
+all.
+
+### Which date to use
+
+Use the date you **write** the migration — the same date as the ADR and the
+commit. Do not back-date to when the underlying feature was conceived, and do not
+forward-date to a planned deployment. If a migration is written on one day and
+applied weeks later, the filename still records the former; the latter belongs in
+the commit history.
+
+Same-day migrations simply sort alphabetically within the day. That is fine —
+never invent a fake time or a sequence number to break the tie.
+
+### When renaming an existing migration
+
+The filename is referenced from code, docs and ADRs — `schema_guard.py` names
+migrations in the repair messages it prints to the operator, and
+`REPAIR_SCRIPT` hard-codes one. So a rename is a **cross-cutting change**:
+
+1. `git mv` the file so history follows it.
+2. Grep the **whole repo** for the old basename and update every hit — `.py`,
+   `.md`, `.sql`, `.yml`, `.json`, `.template`, `.jsx`. Exclude `node_modules`,
+   `graphify-out`, `frontend/dist` and `*.patch`.
+3. Guard against double-prefixing. Match with a negative lookbehind
+   (`(?<!\d{8}_)add_thing\.sql`) so a name that is *already* dated is not
+   prefixed a second time.
+4. **Do not hand-edit `.graphify_ast.json` / `.graphify_detect.json`.** They are
+   generated; revert any incidental edits and let `graphify update .` rebuild
+   them.
+5. Hits inside `decisions/` **are** in scope — an ADR that points at a filename
+   which no longer exists is a broken instruction, not a historical record. This
+   is a path correction, not a rewrite of the decision, so the
+   "never edit an ADR body" rule does not apply.
+
+All 39 existing migrations were normalised to this convention on 2026-09-17; see
+`decisions/2026-09-17_migration-naming-convention.md`.
+
+---
+
 ## 🗄️ MANDATORY: Log Every Deletion in `docs/retired_code.md`
 
 > **Before deleting any rule, constant, function or code path, record it in
@@ -623,12 +689,24 @@ parameters are corrected by evidence rather than left to ossify.
 
 ```bash
 set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
+
+# START HERE. --cliff is the only mode whose table contains the CURRENTLY
+# SHIPPED Prove-It stack, so it is the one that answers "does shipped still win?"
+python3 research/exit_rule_replay.py --insecure --cliff
+
 python3 research/exit_rule_replay.py --insecure            # headline comparison
 python3 research/exit_rule_replay.py --insecure --grid     # full sweep
 python3 research/exit_rule_replay.py --insecure --proveit  # Prove-It parameter sweep
 python3 research/exit_rule_replay.py --insecure --day0     # Phase 1: bot-enforced vs broker-resting
-python3 research/exit_rule_replay.py --insecure --cliff    # proven-but-unarmed protection window
 ```
+
+> ⚠️ **Do not use `--proveit` to ask "is the shipped config still best?"** Every
+> row in that sweep uses a **breakeven** Phase 2 floor and a 1.5%/2.0% Phase 1
+> band, whereas the live rule floors at **−1%** with a **3.0%** later band — so
+> none of its rows is the shipped configuration. It also seeds the table with the
+> *pre-2026-09-04* stack and then hides that row behind the default `--top 25`.
+> `--cliff` puts the real shipped rule first. This tripped up the 2026-09-17
+> review; see `decisions/2026-09-17_exit-review-48-trades.md`.
 
 `research/exit_rule_replay.py` replays the bot's **own** closed trades on
 5-minute bars, reproducing the live mechanics (15-minute checks, `arm_exit()`
@@ -640,7 +718,7 @@ is working.
 
 | Due | Trades needed to be meaningful | Status |
 |---|---|---|
-| **2026-09-20** (+1 month) | ~22 | ☐ not run |
+| **2026-09-20** (+1 month) | ~22 | ☑ **run 2026-09-17**, n=48 — SHIPPED wins at **+$10,673**, no challenger beats it, **0 winners harmed**. Cliff fix rejected again (−$1,393). No change made. |
 | **2026-10-20** (+2 months) | ~28 | ☐ not run |
 | **2026-11-20** (+3 months) | ~35 | ☐ not run |
 | **2026-12-20** (+4 months) | ~42 | ☐ not run |
@@ -672,8 +750,8 @@ change something.
 | `PROVE_IT_P1_DAY0_PCT` | `0.01` | 0.75% scored $70 better on the earlier 17-trade sample — inside noise. Either could be right. |
 | `PROVE_IT_P1_LATER_PCT` | `0.03` | Chosen because CPAY's day-1 close of −2.24% (low −2.88%) sits just inside it. That is **one trade** defining a threshold. |
 | `PROVE_IT_P1_DAY0_LAST_DAY` | `0` | The day-1 damage rests largely on that same winner. |
-| `PROVE_IT_P2_ARM_GAIN_PCT` | `0.02` | Swept 2026-09-10 via `--cliff` on 39 trades. Arming at +1.5% is break-even (−$29) but harms one more trade; +1.0% and +0.5% give back winners. 2% stands. |
-| `phase2-unarmed` (no floor below the arm gain) | open by design | Flooring it at the Phase 1 band was measured 2026-09-10 and **rejected**: −$1,691, `>300` 10→11, and **$0** rescued across 23 losers. Entire cost is DXCM. **Caveat: the trade that motivated it (NTRA RT1, −$706.66) was absent from the sample that rejected it.** The backfill migration was applied on 2026-09-15, so RT1 (id 59) and RT2 (id 60) now exist as individual rows and RT3 is booked as a +$218.43 winner. **The `--cliff` re-run is owed and this rejection is not settled.** Re-run it before citing this result. See `decisions/2026-09-10_prove-it-unarmed-window-measured-not-closed.md`. |
+| `PROVE_IT_P2_ARM_GAIN_PCT` | `0.02` | Re-swept **2026-09-17 via `--cliff` on 48 trades** (was 39): arming at +1.5% is still break-even (−$29) and still harms one more trade; +1.0% (−$655) and +0.5% (−$1,240) give back winners. 2% stands, now on a larger and corrected sample. |
+| `phase2-unarmed` (no floor below the arm gain) | open by design | Flooring it at the Phase 1 band is **rejected, and as of 2026-09-17 the rejection is settled.** Re-run via `--cliff` on the corrected 48-trade sample that now DOES contain NTRA RT1 (−$706.66) — the trade that motivated the hypothesis and whose absence made the earlier 2026-09-10 rejection provisional. The fix scores **−$1,393 vs shipped** (+$9,280 vs +$10,673) and raises `>300` from 11 to 12, so it is worse on the larger sample than it was on the smaller one. The owed re-run is **done**; no caveat remains. See `decisions/2026-09-10_prove-it-unarmed-window-measured-not-closed.md` and `decisions/2026-09-17_exit-review-48-trades.md`. |
 | `PROVE_IT_P2_FLOOR_PCT` | `-0.01` | The 1% of slack is worth +$1,189 on CPAY alone. Whether 1% is the *right* slack, or merely enough for CPAY, is unresolved. |
 | `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | Not measured. Set wide enough that the resting order provably cannot front-run the bot; no sweep supports the exact value. **Re-test with `--day0`:** a broker-hard Phase 1 wins by +$187 on the current sample, but the entire net is APH alone — recheck once more overnight-gap trades exist. |
 | `TRAIL_PROFIT_TIERS` | `+5% → 1.5%` | 2026-08-22 replay on 17 trades outperformed +6% by +$1,385 with no harmed trades; still under review due to sample size. |
@@ -696,25 +774,45 @@ rules were replaced by the Prove-It Stop
 Early Dollar Stop and the Thesis Stop are moot — both rules are retired, having
 fired **zero** times in 30 closed trades.
 
-The measurement that replaced them, over all 30 closed trades:
+The measurement that replaced them, **re-run 2026-09-17 on all 48 closed trades**
+(26 losers, 22 winners) after the 2026-09-15 NBIX/NTRA repairs:
 
-| | Net |
-|---|---|
-| What actually happened | −$6,548 |
-| The rules shipped before 2026-09-04 | −$4,069 |
-| **Prove-It (shipped)** | **+$5,410** |
+| Configuration | NET vs the exits that actually happened | winners | harmed | >300 |
+|---|---|---|---|---|
+| **Prove-It (SHIPPED)** | **+$10,673** | +$5,222 | 8 | 11 |
+| + P2 arms at +1.5% peak | +$10,644 (−$29) | +$5,222 | 9 | 11 |
+| + P2 arms at +1.0% peak | +$10,018 (−$655) | +$4,028 | 10 | 10 |
+| Cliff fix (unarmed keeps P1 band) | +$9,280 (−$1,393) | +$3,531 | 9 | 12 |
 
-> ⚠️ **These three figures are STALE as of 2026-09-15 — do not cite them.** Two
-> `trade_history` repairs landed that day and both change the replay input:
-> **NBIX** id 29 was re-priced from a wrong-day FMP estimate of $152.74 to the
-> real fill of $158.5043 (−$2,260.55 → −$1,424.72) — it was the **largest loss in
-> the sample**; and the **NTRA** backfill split one contaminated composite row
-> into three real round trips, turning a phantom −$651.07 loss into RT1 −$706.66,
-> RT2 −$162.84 and RT3 **+$218.43**. Book net moved −$4,722.99 → −$3,887.17 over
-> 45 rows. Re-run `--proveit` before the 2026-09-20 review and replace this
-> table. See `decisions/2026-09-15_nbix-reconstructed-sell-price.md`.
+Deltas, not absolute P&L: a positive net means the configuration would have made
+that much more than the bot actually did. For reference the 48 trades contain
+**−$15,054 of realised losses** across the 26 losers.
 
-Reproduce with `python3 research/exit_rule_replay.py --insecure --proveit`.
+**The shipped stack ranks first and nothing beats it.** The result is not carried
+by one trade: 23 trades improve against 8 harmed, and **seven** contribute more
+than $1,000 each (CDNA +$1,795, FR +$1,269, NBIX +$1,216, RSI +$1,188, NBIX
++$1,180, FRO +$1,030, HWM +$1,016). Dropping the single largest contributor still
+leaves **+$8,878**.
+
+**Zero winners were harmed.** All 8 harmed trades (TTWO, CHRD, INCY, SGHC, APH,
+DXCM, GE, LPG) were already losers; the rule makes a few losses somewhat larger
+while rescuing far more. This is the column that matters most and it is clean.
+
+> **Erratum — the pre-2026-09-17 version of this table is superseded.** It read
+> −$6,548 actual / −$4,069 old rules / +$5,410 Prove-It on **30** trades, and was
+> already marked stale because of two `trade_history` repairs: **NBIX** id 29 was
+> re-priced from a wrong-day FMP estimate of $152.74 to the real fill of
+> $158.5043 (−$2,260.55 → −$1,424.72), and the **NTRA** backfill split one
+> contaminated composite row into RT1 −$706.66, RT2 −$162.84 and RT3 **+$218.43**.
+> Do not cite the old figures. See
+> `decisions/2026-09-15_nbix-reconstructed-sell-price.md`.
+
+Reproduce the shipped baseline with
+`python3 research/exit_rule_replay.py --insecure --cliff` — **not** `--proveit`.
+`--proveit` is a parameter *sweep*: its rows all use a breakeven Phase 2 floor
+(`floor+0.0`) and none of them is the live configuration, whose floor is −1%. Its
+top-25 cut also hides the baseline row entirely. `--cliff` places the true shipped
+config first, which is why it is the right command for "does shipped still win?".
 
 **The three questions this leaves open:**
 
@@ -748,11 +846,29 @@ corrected for, producing a fictitious −$11,650. The fixed harness reproduces t
 realised total exactly (−$6,547.59, matching the dashboard to the cent). Before
 citing any older number, re-run it.
 
-> **Note on mechanism:** the schedule above is a *passive* reminder — it fires
-> when a session reads this file. It is now backed by an **active** system so a
-> review can never be silently missed: see **Provisional Decision Register**
-> below. New forward-looking parameter decisions go in the register, not in this
-> table; this table remains the record of the original 17-trade tuning.
+> **Note on mechanism — this schedule is now ACTIVE, not passive.** Until
+> 2026-09-17 the table above was a *passive* reminder: it only fired when a
+> session happened to read this file, so a review could be missed in silence.
+> That gap is closed. The exit review is now registered in
+> `decisions/provisional_decisions.json` as **`exit-parameters-proveit`**, so the
+> monthly `decision_review.yml` cron opens a **persistent GitHub issue** and pings
+> Telegram the moment it comes due — the same mechanism that guards every other
+> provisional decision.
+>
+> Its `revisit.min_closed_trades` is deliberately **null**: this review is
+> *date*-driven, and gating it on a trade count would let a slow month stall it
+> indefinitely, recreating the very failure mode being removed. It fires on the
+> date even if not a single new trade has closed; the review itself reports `n`
+> first and may legitimately conclude "sample barely moved, skip".
+>
+> **When a review is completed, update BOTH:** tick the box in the table above,
+> *and* append to the register entry's `history` / bump its `revisit.not_before`
+> to the next checkpoint. Ticking only the table leaves the cron firing on a date
+> that has already been handled.
+>
+> New forward-looking parameter decisions go in the register, not in this table;
+> this table remains the record of the original 17-trade tuning and the log of
+> each checkpoint.
 
 ---
 

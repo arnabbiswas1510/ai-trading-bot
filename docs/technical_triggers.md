@@ -83,7 +83,7 @@ rather than assumed — the available evidence at the time of writing pointed th
 *opposite* way to the obvious fix, with higher relative strength associated with
 *worse* forward returns inside this already-momentum-filtered universe.
 
-The columns are populated by `migrations/add_rs_percentile.sql`. If that migration
+The columns are populated by `migrations/20260917_add_rs_percentile.sql`. If that migration
 has not been applied, the screener detects the rejected insert, prints a warning
 and retries without them — live screening is never interrupted, only the research
 annotation is lost. `schema_guard` reports the absence as **advisory**, never as a
@@ -323,5 +323,5 @@ Manual run: `python3 backfill_trigger_outcomes.py --dry-run [--limit N]`
 
 ## Setup
 
-Run `migrations/add_trigger_history.sql`, then `migrations/add_trigger_outcomes.sql`. Both
+Run `migrations/20260809_add_trigger_history.sql`, then `migrations/20260809_add_trigger_outcomes.sql`. Both
 are additive; the first self-seeds from the current `daily_triggers`.

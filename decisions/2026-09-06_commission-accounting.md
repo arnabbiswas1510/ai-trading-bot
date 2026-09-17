@@ -24,8 +24,8 @@ The production logs give the reason directly:
 
 16 such failures on 2026-09-03 alone; 62 in the retained window. `ibkr_fills` had
 RLS **enabled** but **no policy at all**, which in Postgres denies everything.
-`add_ibkr_fills.sql` left its `ENABLE` line commented out, and
-`enable_rls_all_tables.sql` — the file that pairs every `ENABLE` with a
+`20260801_add_ibkr_fills.sql` left its `ENABLE` line commented out, and
+`20260708_enable_rls_all_tables.sql` — the file that pairs every `ENABLE` with a
 permissive policy — does not list the table.
 
 That file's header states the assumption that made this invisible:
@@ -69,7 +69,7 @@ either fix to be worth anything.
 
 ## Decision
 
-**1. Add the missing RLS policies** (`migrations/fix_rls_missing_policies.sql`)
+**1. Add the missing RLS policies** (`migrations/20260906_fix_rls_missing_policies.sql`)
 for `ibkr_fills` and `breakout_learnings`, matching the `FOR ALL USING (true)`
 shape every working table already uses. The migration also ships a verification
 query that audits for *any* table with RLS enabled and no policy, so the next
@@ -130,8 +130,8 @@ figure is never worth that risk.**
 
 ## Files
 
-- `migrations/fix_rls_missing_policies.sql` (new)
-- `migrations/add_commission_tracking.sql` (new)
+- `migrations/20260906_fix_rls_missing_policies.sql` (new)
+- `migrations/20260906_add_commission_tracking.sql` (new)
 - `backend/commissions.py` (new), `tests/test_commissions.py` (new)
 - `frontend/src/lib/commissions.js` (new)
 - `execution_agent.py` — `_fill_sink_failure`, `persist_fill`,

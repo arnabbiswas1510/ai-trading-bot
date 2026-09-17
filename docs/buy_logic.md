@@ -49,7 +49,7 @@ Analytics archives (`trigger_history`, `trigger_decisions`, `watchlist_history`)
 **advisory** — their absence warns but never blocks trading.
 
 The check re-runs every buy cycle, so applying
-`migrations/2026-08-13_apply_missing_migrations.sql` clears the block automatically
+`migrations/20260813_apply_missing_migrations.sql` clears the block automatically
 without restarting the container. Telegram receives one alert when the degradation is
 detected and one when it is resolved — not one per 15-minute cycle.
 See `decisions/2026-08-14_schema-guard-fail-loud.md` for why.

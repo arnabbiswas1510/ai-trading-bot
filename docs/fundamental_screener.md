@@ -102,7 +102,7 @@ screen believed **on the day it believed it**.
 The archive call must precede the truncate. Reversing them captures nothing, silently —
 there is no error, just an empty history. A test enforces the ordering.
 
-Setup: run `migrations/add_watchlist_history.sql` once. It self-seeds from the current
+Setup: run `migrations/20260809_add_watchlist_history.sql` once. It self-seeds from the current
 watchlist.
 
 ---

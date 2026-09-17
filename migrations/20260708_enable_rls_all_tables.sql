@@ -10,7 +10,7 @@
 -- Consequence: enabling RLS on a table WITHOUT also creating a permissive
 -- policy silently denies every write from the bot. That is exactly what
 -- happened to `ibkr_fills` and `breakout_learnings` — see
--- migrations/fix_rls_missing_policies.sql and
+-- migrations/20260906_fix_rls_missing_policies.sql and
 -- decisions/2026-09-06_commission-accounting.md.
 --
 -- RULE: never `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` without pairing it

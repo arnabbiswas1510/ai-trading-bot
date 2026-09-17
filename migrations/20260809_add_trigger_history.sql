@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS trigger_history (
 
 COMMENT ON TABLE trigger_history IS
   'Append-only point-in-time record of breakout triggers, including those never '
-  'bought. Never pruned. See migrations/add_trigger_history.sql.';
+  'bought. Never pruned. See migrations/20260809_add_trigger_history.sql.';
 
 CREATE INDEX IF NOT EXISTS idx_trigger_history_date
     ON trigger_history (triggered_at DESC);

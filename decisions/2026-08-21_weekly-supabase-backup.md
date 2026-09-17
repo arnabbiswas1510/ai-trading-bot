@@ -179,7 +179,7 @@ the backup would go unverified in CI.
 - **No retention/pruning.** Nothing is ever deleted. Correct at ~180KB/week, but
   it will need revisiting if table volumes grow by orders of magnitude.
 - **Reads use the publishable Supabase key**, which today can read everything
-  because the RLS policies in `migrations/enable_rls_all_tables.sql` are
+  because the RLS policies in `migrations/20260708_enable_rls_all_tables.sql` are
   `FOR ALL USING (true)`. That works, but a backup job holding broad read access
   on a publishable key is worth tightening. Tracked as FU-009.
 - **Restore is untested.** The path is documented in the generated README but no

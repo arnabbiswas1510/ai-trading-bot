@@ -65,7 +65,7 @@ not a transition, and the buy was already announced. Only subsequent changes pin
 ## Consequences / known limitations
 
 - **Inert until migrated.** The rule is gated on the `sell_state` column
-  existing. Before `migrations/add_sell_state_column.sql` is applied, the agent
+  existing. Before `migrations/20260908_add_sell_state_column.sql` is applied, the agent
   logs a one-line notice and skips the notification rather than spamming every
   cycle (it cannot latch, so it cannot detect a *change*).
 - **Latch-first ordering.** The column is written *before* the Telegram is sent,

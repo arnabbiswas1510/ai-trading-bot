@@ -110,7 +110,7 @@ every exit rule for six days. See
 `decisions/2026-09-10_lot-basis-and-broker-aware-cooling-off.md`.
 
 
-**These four columns require `migrations/add_ibkr_position_values.sql`.** Until
+**These four columns require `migrations/20260904_add_ibkr_position_values.sql`.** Until
 it is run, every position is priced from FMP (or cost basis), and
 `schema_guard.py` lists the columns as missing *reporting* columns. It does
 **not** block trading: exit rules price from `build_ibkr_price_map()`
@@ -738,7 +738,7 @@ transition.
 - **Latch-first.** The column is written before the Telegram is sent, so a
   notification failure can never cause a re-fire next cycle.
 - **Inert until migrated.** Gated on the `sell_state` column existing
-  (`migrations/add_sell_state_column.sql`). Without it the agent logs a one-line
+  (`migrations/20260908_add_sell_state_column.sql`). Without it the agent logs a one-line
   notice and skips the notification (it cannot latch, so it cannot detect a
   change). There is no env toggle — muting is done at the Telegram bot.
 
@@ -1184,7 +1184,7 @@ python request_exit.py --list           # in-flight requests
 python request_exit.py --cancel DELL    # withdraw
 ```
 
-Requires `migrations/add_exit_requests.sql`. At most one active request per
+Requires `migrations/20260818_add_exit_requests.sql`. At most one active request per
 ticker is permitted — two OCA groups on the same shares would be rejected by a
 cash account, and the second would cancel the first's protection.
 

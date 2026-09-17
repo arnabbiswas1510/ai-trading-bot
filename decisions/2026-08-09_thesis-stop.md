@@ -186,7 +186,7 @@ noise floor, and `n` barely moved — the window rarely binds in practice.
   being disjoint and by `tests/test_thesis_stop.py`.
 
 **Migration dependency**
-`migrations/add_closed_above_entry.sql` must be applied. Until then the code
+`migrations/20260809_add_closed_above_entry.sql` must be applied. Until then the code
 **fails safe**: a missing column reads as `None`, and the fallback treats *any*
 evidence of trading above entry (`highest_unrealized_pct > 0`, `hwm_price >
 buy_price`, or `intraday_high_today > buy_price`) as follow-through. That is
@@ -212,6 +212,6 @@ full magnitude to a point-in-time universe.
 
 - `execution_agent.py` — config block; Thesis Stop in `monitor_portfolio_intraday()`; `closed_above_entry` latch + PGRST204 fallback in the EOD block
 - `telegram_notifier.py` — `notify_thesis_stop()`
-- `migrations/add_closed_above_entry.sql` — latch column + backfill
+- `migrations/20260809_add_closed_above_entry.sql` — latch column + backfill
 - `tests/test_thesis_stop.py` — 15 tests
 - `research/thesis_bt.py`, `research/entry_bt.py` — backtest harnesses

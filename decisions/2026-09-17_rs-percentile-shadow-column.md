@@ -105,7 +105,7 @@ opens a GitHub issue rather than relying on anyone remembering.
   unclipped so the archive can be re-ranked later under a scheme nobody has
   thought of yet. Storing only the percentile would lock in today's guess about
   which transformation matters.
-- **The insert cannot brick the screener.** If `migrations/add_rs_percentile.sql`
+- **The insert cannot brick the screener.** If `migrations/20260917_add_rs_percentile.sql`
   has not been applied, `write_triggers_to_supabase` catches the rejection,
   prints a loud warning and retries with the three columns stripped. Losing a
   research annotation is survivable; losing a morning's buy candidates is not.
@@ -120,7 +120,7 @@ opens a GitHub issue rather than relying on anyone remembering.
 
 - **No change to what the bot trades.** That is the point.
 - One extra FMP-free computation per trigger (both inputs are already fetched).
-- `migrations/add_rs_percentile.sql` must be applied in the Supabase SQL Editor.
+- `migrations/20260917_add_rs_percentile.sql` must be applied in the Supabase SQL Editor.
   Until then the shadow columns are silently dropped and nothing else changes.
 - The 2026-10-19 review can give a *negative* answer, and that is a real
   outcome: evidence that high relative strength predicts worse forward returns

@@ -126,6 +126,55 @@
       ],
       "last_reviewed": null,
       "history": []
+    },
+    {
+      "id": "exit-parameters-proveit",
+      "title": "Exit-parameter review: the whole Prove-It stack, re-measured as trades accumulate",
+      "status": "active",
+      "decided": "2026-09-04",
+      "implemented": true,
+      "decision": "The shipped exit stack (Prove-It Phase 1 1.0%/day-0 then 3.0%; Phase 2 arms at a +2% peak and floors at -1% of entry; profit ladder +5% -> 1.5% trail) stands unchanged. Confirmed 2026-09-17 on 48 closed trades: SHIPPED ranks first at +$10,673 against the exits that actually happened, no challenger beats it, and ZERO winners are harmed. This entry exists to force that measurement to be repeated on a schedule rather than assumed.",
+      "rationale": "Every exit threshold was originally tuned on SEVENTEEN closed trades, and every ADR behind them says that is too few to trust. This entry is the ACTIVE half of the review schedule in AGENTS.md, which is otherwise passive: a date in a markdown table only fires if a human happens to read the file, so a review can be missed silently and a provisional number can ossify into a 'fact'. min_closed_trades is deliberately NULL: this review is DATE-driven, and gating it on a trade count would let a slow month stall it indefinitely - which is precisely the failure mode being removed. The review itself reports n first and may legitimately conclude 'sample barely moved, skip'. The dates are a prompt, not an obligation to change something.",
+      "adr": "decisions/2026-09-17_exit-review-48-trades.md",
+      "revisit": {
+        "min_closed_trades": null,
+        "not_before": "2026-10-20"
+      },
+      "baseline": {
+        "closed_trades_at_decision": 48,
+        "losers": 26,
+        "winners": 22,
+        "realised_losses_usd": -15054,
+        "shipped_net_vs_actual_usd": 10673,
+        "shipped_winners_usd": 5222,
+        "shipped_harmed": 8,
+        "shipped_winners_harmed": 0,
+        "shipped_over_300": 11,
+        "runner_up_label": "P2 arms at +1.5% peak",
+        "runner_up_delta_usd": -29,
+        "cliff_fix_delta_usd": -1393,
+        "net_without_largest_contributor_usd": 8878,
+        "trades_contributing_over_1000_usd": 7
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --cliff",
+      "review_questions": [
+        "How many closed trades now? Report n FIRST, every time. Below ~30 the differences are noise. If n has barely moved since the last review, say so and SKIP rather than re-reading noise.",
+        "Does the shipped configuration still win? It is the 'ProveIt SHIPPED' row, which --cliff places first. Baseline 2026-09-17: +$10,673 on 48 trades. A challenger must beat it by more than ~$500 AND spread that gain over 3+ trades to be a real candidate.",
+        "Is any result carried by a single trade? Per-trade deltas are printed for exactly this reason. At the 48-trade baseline the shipped result survived removal of its largest contributor (+$10,673 -> +$8,878), with 7 trades each worth over $1,000. Re-check that it still does.",
+        "Has anything started harming WINNERS? This is the column that matters most and the one that sank the days-0-1 kill-switch. At the 48-trade baseline all 8 harmed trades were already losers and winners_harmed was ZERO. If a winner starts being clipped, that outweighs loss-cutting gains.",
+        "Use --cliff, NOT --proveit, to answer 'does shipped still win'. --proveit is a parameter sweep whose rows all use a breakeven Phase 2 floor and 1.5%/2.0% Phase 1 bands; none of them is the live rule (floor -1%, later band 3.0%), and its default --top 25 hides the baseline row entirely.",
+        "Still open and NOT answered by --cliff: is PROVE_IT_P1_LATER_PCT = 3% correct or CPAY-shaped, and does the Phase 2 floor need a full 1% of slack? Both need a dedicated single-variable sweep - the --proveit rows vary two things at once.",
+        "Is POWER_HOLD_GAIN_PCT = 10% reachable yet? It was lowered from 20% only because 20% was never reached. If no trade has hit +10% within 21 days, the rule is still dormant and the number is still a guess."
+      ],
+      "last_reviewed": "2026-09-17",
+      "history": [
+        {
+          "date": "2026-09-17",
+          "closed_trades": 48,
+          "verdict": "holds",
+          "note": "2026-09-20 checkpoint, run 3 days early. SHIPPED first at +$10,673; runner-up (arm +1.5%) -$29 and harms one more trade. Cliff fix rejected again at -$1,393 with >300 rising 11->12, on the corrected sample that now CONTAINS NTRA RT1 - the owed re-run is discharged and that caveat is closed. Zero winners harmed; all 8 harmed trades were already losers. Result robust to dropping its largest contributor. No change made. Also replaced the stale 30-trade baseline table in AGENTS.md and corrected it to cite --cliff rather than --proveit."
+        }
+      ]
     }
   ]
 }

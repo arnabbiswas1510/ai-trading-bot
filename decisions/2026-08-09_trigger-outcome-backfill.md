@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Context
 
-`add_trigger_history.sql` and `trigger_decisions` now preserve every breakout
+`20260809_add_trigger_history.sql` and `trigger_decisions` now preserve every breakout
 trigger and every buy/skip decision instead of truncating them. That fixes the
 *input* side of the research problem, but a stored trigger on its own answers
 nothing. To ask "is the AI score predictive?" or "is the fundamental screen
@@ -97,8 +97,8 @@ undo. Deleting research data to save megabytes is the expensive choice.
   unanswerable: does `ai_rating` correlate with `fwd_20d_pct`; do skipped
   candidates outperform bought ones; does `ever_above_entry` on day 1-2 predict
   eventual failure (the user's original observation about RSI and HWM).
-- Adds `migrations/add_trigger_outcomes.sql` (additive; columns default NULL).
-  Requires `migrations/add_trigger_history.sql` to be applied first — the new
+- Adds `migrations/20260809_add_trigger_outcomes.sql` (additive; columns default NULL).
+  Requires `migrations/20260809_add_trigger_history.sql` to be applied first — the new
   columns hang off that table.
 - FMP is now a weekly dependency of the research pipeline, not just live pricing.
 

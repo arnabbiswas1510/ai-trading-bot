@@ -8,7 +8,7 @@
 > ADR is live.**
 >
 > An earlier erratum on this date recorded that
-> `migrations/backfill_ntra_round_trips.sql` had never been run against
+> `migrations/20260910_backfill_ntra_round_trips.sql` had never been run against
 > production. It has now been applied, together with the `breakout_learnings`
 > repair it implied. Live `trade_history` now holds three NTRA rows for the
 > 8/26–9/10 sequence:
@@ -111,7 +111,7 @@ it sees exits regardless of whether the bot's own sell path ran. Applied in both
 `run_market_open_buys()` and `rotate_positions.py`.
 
 **4. The NTRA ledger is repaired.**
-`migrations/backfill_ntra_round_trips.sql` splits the contaminated row into the
+`migrations/20260910_backfill_ntra_round_trips.sql` splits the contaminated row into the
 three real round trips. The aggregate is preserved **exactly** — this changes
 which trade made or lost the money, not how much:
 

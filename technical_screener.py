@@ -530,14 +530,14 @@ def write_triggers_to_supabase(triggers):
             client.table("daily_triggers").insert(triggers).execute()
         except Exception as _ie:
             # The shadow columns are the only new schema this code depends on,
-            # and they are research-only. If migrations/add_rs_percentile.sql has
+            # and they are research-only. If migrations/20260917_add_rs_percentile.sql has
             # not been applied yet, the screener must still publish its triggers
             # — losing a research annotation is survivable, losing the morning's
             # buy candidates is not. Retry once without them, loudly.
             if not any(c in str(_ie) for c in RS_SHADOW_COLUMNS):
                 raise
             print(f"⚠️ daily_triggers rejected the shadow RS columns ({_ie}).")
-            print("   Run migrations/add_rs_percentile.sql. Retrying WITHOUT them "
+            print("   Run migrations/20260917_add_rs_percentile.sql. Retrying WITHOUT them "
                   "so live screening is unaffected.")
             stripped = [{k: v for k, v in t.items() if k not in RS_SHADOW_COLUMNS}
                         for t in triggers]

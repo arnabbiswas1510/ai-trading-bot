@@ -203,7 +203,7 @@ class TestNonFatal:
         sb.table.return_value.upsert.return_value.execute.side_effect = \
             Exception('relation "watchlist_history" does not exist')
         tv_api_screener.save_watchlist_history(sb, [_row()], _extras())
-        assert "add_watchlist_history.sql" in capsys.readouterr().out
+        assert "20260809_add_watchlist_history.sql" in capsys.readouterr().out
 
     def test_empty_rows_writes_nothing(self):
         sb = _sb()

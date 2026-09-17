@@ -110,7 +110,7 @@ rediscovered from scratch.
 
 ## Files
 
-- `migrations/add_watchlist_history.sql` — table, indexes, comments, seed
+- `migrations/20260809_add_watchlist_history.sql` — table, indexes, comments, seed
 - `tv_api_screener.py` — `save_watchlist_history()`; `sector` column; research
   extras carried in a parallel map so they cannot leak into the `watchlist`
   insert (an unknown column there fails the run with PGRST204)

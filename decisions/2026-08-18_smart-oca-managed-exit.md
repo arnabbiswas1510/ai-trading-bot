@@ -190,7 +190,7 @@ limit had any chance.
 
 ## References
 
-- `migrations/add_exit_requests.sql`
+- `migrations/20260818_add_exit_requests.sql`
 - `execution_agent.py` — `process_exit_requests()`, `place_oca_exit()`,
   `get_oca_managed_tickers()`
 - `request_exit.py` — the queueing CLI

@@ -165,7 +165,7 @@ Two further points recorded for whoever touches this next:
 
 ## Follow-up
 
-1. Apply `migrations/add_power_hold.sql`.
+1. Apply `migrations/20260804_add_power_hold.sql`.
 2. Re-run the replay after ~20 further closed trades, this time against trades
    the current code actually produced.
 3. Watch specifically for any position reaching +20%. The first time that

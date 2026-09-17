@@ -412,7 +412,7 @@ SCALE_OUT_FRACTION      = float(os.getenv("SCALE_OUT_FRACTION",    0.33))   # se
 ARMED_EXIT_TRAIL_PCT      = float(os.getenv("ARMED_EXIT_TRAIL_PCT",      0.006))  # 0.6%
 ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25))   # ~half a trading day
 
-# ── Smart OCA Managed Exit (queue-driven, see migrations/add_exit_requests.sql) ─
+# ── Smart OCA Managed Exit (queue-driven, see migrations/20260818_add_exit_requests.sql) ─
 # A row in `exit_requests` asks the agent to exit a named position via an IBKR
 # OCA pair rather than a market dump:
 #     upper leg = LMT sell at an optimistic recovery target
@@ -1377,9 +1377,9 @@ def arm_exit(ib: IB, client: Client, ticker: str, shares: int, current_price: fl
             # PGRST204 = column missing in schema cache (migration not yet run).
             # The tight IBKR trailing stop is already placed and will still
             # protect the position; only the deadline bookkeeping is degraded
-            # until migrations/add_armed_exit_columns.sql is applied.
+            # until migrations/20260803_add_armed_exit_columns.sql is applied.
             if "PGRST204" in str(db_err) or "exit_armed" in str(db_err):
-                print(f"   ⚠️ {ticker}: exit_armed columns missing — run migrations/add_armed_exit_columns.sql. "
+                print(f"   ⚠️ {ticker}: exit_armed columns missing — run migrations/20260803_add_armed_exit_columns.sql. "
                       f"Trailing stop placed but deadline won't be tracked.")
             else:
                 raise
@@ -1580,7 +1580,7 @@ def enqueue_smart_exit(client: Client, ticker: str, reason: str,
             print(f"   🎯 {ticker}: exit request already in flight — leaving it to the queue.")
             return True
         if "42P01" in msg or "PGRST205" in msg:
-            print(f"   ⚠️ exit_requests table missing — run migrations/add_exit_requests.sql. "
+            print(f"   ⚠️ exit_requests table missing — run migrations/20260818_add_exit_requests.sql. "
                   f"Falling back to a market sell for {ticker}.")
             return False
         notifier.notify_exception(f"enqueue_smart_exit({ticker}) — execution_agent.py", e)
@@ -1616,7 +1616,7 @@ def process_exit_requests(ib: IB) -> None:
         # every other risk rule still needs to run this cycle.
         msg = str(e)
         if "42P01" in msg or "exit_requests" in msg or "PGRST205" in msg:
-            print("   ⚠️ exit_requests table missing — run migrations/add_exit_requests.sql")
+            print("   ⚠️ exit_requests table missing — run migrations/20260818_add_exit_requests.sql")
         else:
             notifier.notify_exception("process_exit_requests() — execution_agent.py", e)
         return
@@ -2021,7 +2021,7 @@ def is_power_hold_active(pos: dict, calendar_days: int) -> bool:
     trailing stop to POWER_HOLD_TRAIL_PCT. The trailing stop is never suspended,
     so a protected position can still be stopped out if it genuinely breaks down.
 
-    NOTE: the `power_hold` column must be migrated (migrations/add_power_hold.sql).
+    NOTE: the `power_hold` column must be migrated (migrations/20260804_add_power_hold.sql).
     Without it the flag cannot persist, so the fallback below only holds while
     calendar_days <= POWER_HOLD_TRIGGER_DAYS — the rule would silently expire at
     day 21 instead of day 56, losing most of its intended effect.
@@ -2150,7 +2150,7 @@ def maybe_notify_sell_state(client: Client, pos: dict, ticker: str,
         # cannot detect a change without spamming every cycle, so do NOT notify.
         if "PGRST204" in str(e) or "sell_state" in str(e):
             print(f"   ⚠️ {ticker}: sell_state column missing — run "
-                  f"migrations/add_sell_state_column.sql. Transition notices disabled.")
+                  f"migrations/20260908_add_sell_state_column.sql. Transition notices disabled.")
             return
         raise
     pos["sell_state"] = new_code
@@ -2358,7 +2358,7 @@ def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
     logins where portfolio() is not served. This deliberately does NOT use
     ib.reqTickers(), which blocks indefinitely when the ushmds data farm is down.
 
-    Degrades gracefully when migrations/add_ibkr_position_values.sql has not been
+    Degrades gracefully when migrations/20260904_add_ibkr_position_values.sql has not been
     applied: PGRST204 abandons this cycle rather than failing reconciliation, but
     the next cycle retries, so applying the migration takes effect without a
     restart.
@@ -2397,7 +2397,7 @@ def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
                 if not _IBKR_VALUATION_WARNING_SHOWN:
                     _IBKR_VALUATION_WARNING_SHOWN = True
                     print("   ⚠️  IBKR valuation columns missing — run "
-                          "migrations/add_ibkr_position_values.sql. Dashboard will show "
+                          "migrations/20260904_add_ibkr_position_values.sql. Dashboard will show "
                           "cost basis until then. Retrying each cycle; no restart needed "
                           "once applied.")
                 return written
@@ -2702,7 +2702,7 @@ def record_buy_commission(client: Client, ib, ticker: str, trade) -> float | Non
         return commission
     except Exception as e:
         print(f"   ⚠️  Could not store buy_commission for {ticker} "
-              f"(run migrations/add_commission_tracking.sql): {e}")
+              f"(run migrations/20260906_add_commission_tracking.sql): {e}")
         return None
 
 
@@ -2730,7 +2730,7 @@ def record_trade_commissions(client: Client, trade_row_id,
         return True
     except Exception as e:
         print(f"   ⚠️  Could not store commissions on trade_history id={trade_row_id} "
-              f"(run migrations/add_commission_tracking.sql): {e}")
+              f"(run migrations/20260906_add_commission_tracking.sql): {e}")
         return False
 
 
@@ -4805,7 +4805,7 @@ def monitor_portfolio_intraday(ib: IB):
                             {"stop_loss_pct": confirmed_trail}
                         ).eq("ticker", ticker).execute()
                         print(f"   ⚠️ {ticker}: hard_stop_price column missing — "
-                              f"run migrations/add_hard_stop_price.sql.")
+                              f"run migrations/20260907_add_hard_stop_price.sql.")
                     else:
                         raise
                 pos_stop_loss_pct = confirmed_trail   # update in-memory for self-heal below
@@ -5086,7 +5086,7 @@ def monitor_portfolio_intraday(ib: IB):
                 # Retry without it so the rest of the EOD metrics still persist.
                 if "PGRST204" in str(_me) or "closed_above_entry" in str(_me):
                     print(f"   ⚠️ {ticker_m}: closed_above_entry column missing — run "
-                          f"migrations/add_closed_above_entry.sql. Writing other metrics.")
+                          f"migrations/20260809_add_closed_above_entry.sql. Writing other metrics.")
                     try:
                         update_payload.pop("closed_above_entry", None)
                         client.table("portfolio_positions").update(

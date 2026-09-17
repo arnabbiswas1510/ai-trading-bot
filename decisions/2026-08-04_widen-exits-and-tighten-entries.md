@@ -186,7 +186,7 @@ against live results after a meaningful number of trades.
 
 ## Follow-up
 
-1. Apply `migrations/add_power_hold.sql`.
+1. Apply `migrations/20260804_add_power_hold.sql`.
 2. Re-measure win rate, average win, average loss and payoff ratio after ~20
    further closed trades.
 3. If the payoff ratio clears 1.5:1, consider raising `MIN_REVENUE_GROWTH`

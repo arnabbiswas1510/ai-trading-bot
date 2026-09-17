@@ -1,4 +1,4 @@
--- migrations/add_exit_requests_atr_default.sql
+-- migrations/20260819_add_exit_requests_atr_default.sql
 --
 -- Make a bare insert do the right thing:
 --

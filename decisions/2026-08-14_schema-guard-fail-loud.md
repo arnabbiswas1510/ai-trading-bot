@@ -77,7 +77,7 @@ Supporting properties:
 ## Related change: the migration backfill was itself unsafe
 
 While implementing this, the backfill in
-`migrations/2026-08-13_apply_missing_migrations.sql` was found to reproduce the
+`migrations/20260813_apply_missing_migrations.sql` was found to reproduce the
 very defect it repairs:
 
 ```sql
@@ -123,7 +123,7 @@ DELL (moves ~1 trade; far too thin to act on).
 - `execution_agent.py` — `assert_schema_ok()`; buy-path block; boot-time report
 - `Dockerfile.agent` — packages `schema_guard.py` (omitting it would reproduce the
   `trigger_audit` crash loop of 2026-08-13)
-- `migrations/2026-08-13_apply_missing_migrations.sql` — corrected backfill
+- `migrations/20260813_apply_missing_migrations.sql` — corrected backfill
 - `research/latch_bt.py`, `research/thesis_bt.py` — latch-definition evidence
 - `tests/test_schema_guard.py` — 15 tests
 - `docs/buy_logic.md`, `docs/sell_logic.md` — updated per the Doc Sync Rule

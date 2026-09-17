@@ -59,7 +59,7 @@ The dashboard was the odd one out.
 
 **FMP is never written into the `portfolio_positions` columns.** The fallback is
 applied at render time only. The column comments in
-`migrations/add_ibkr_position_values.sql` — *"Never write an FMP price here"* —
+`migrations/20260904_add_ibkr_position_values.sql` — *"Never write an FMP price here"* —
 remain correct and unchanged.
 
 ## Why labelling is what makes this acceptable

@@ -60,9 +60,9 @@ disable.
 
 ## Consequences
 
-- Requires `exit_armed*` columns (`migrations/add_armed_exit_columns.sql`), which
+- Requires `exit_armed*` columns (`migrations/20260803_add_armed_exit_columns.sql`), which
   were found to be unapplied in production during this work and have now been
-  run alongside `add_power_hold.sql`.
+  run alongside `20260804_add_power_hold.sql`.
 - Inherits the `force_sell.py` constraint: sells must use `clientId=1` or IBKR
   treats them as opening a short, so the execution-agent must be stopped first.
   It would otherwise also compete with this script for control of the stops.

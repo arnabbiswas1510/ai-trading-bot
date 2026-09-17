@@ -48,5 +48,5 @@ uptrend momentum (20%).
 - `technical_screener.py` — `compute_pre_breakout_quality_score()`
 - `ai_evaluator.py` — +10pt PRE_BREAKOUT bonus
 - `telegram_notifier.py` — badge per trigger type
-- `migrations/add_trigger_type.sql` — `trigger_type` column, default `'BREAKOUT'`
+- `migrations/20260721_add_trigger_type.sql` — `trigger_type` column, default `'BREAKOUT'`
 - `tests/test_pre_breakout.py` — 18 tests covering all 5 gates + quality score + boost

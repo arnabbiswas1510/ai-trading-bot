@@ -55,14 +55,14 @@ in-line — *"a write sink nobody reads must escalate its own failures."*
 Re-price row 29 from the authoritative fills: `sell_price = 158.5043448276`,
 `sell_date = 2026-08-12`, `profit_loss = −1424.72`, `percent_return = −5.84`.
 
-Unlike `backfill_ntra_round_trips.sql`, **this changes the book total**, because
+Unlike `20260910_backfill_ntra_round_trips.sql`, **this changes the book total**, because
 the recorded price was simply wrong rather than misattributed:
 
 - Book net: **−$4,722.99 → −$3,887.17** (+$835.82)
 - NBIX is no longer the largest loss in the book. CDNA (−$1,539.37) takes that
   place; NBIX falls to third.
 
-Applied via `migrations/fix_nbix_reconstructed_sell.sql`.
+Applied via `migrations/20260915_fix_nbix_reconstructed_sell.sql`.
 
 ## Consequences
 
@@ -96,7 +96,7 @@ script must account for them:
 - `commission_complete` is **generated** from whether both commissions are present.
 - `sell_reason` is `varchar(200)`. The pre-existing NBIX reason was already at
   exactly 200 characters, so an append-style correction of the kind used in
-  `backfill_ntra_round_trips.sql` would have silently overflowed.
+  `20260910_backfill_ntra_round_trips.sql` would have silently overflowed.
 
 ## Open questions
 

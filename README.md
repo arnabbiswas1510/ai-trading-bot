@@ -458,7 +458,14 @@ git clone <repo> && cd ai-trading-bot
 cp .env.template .env        # populate credentials and strategy parameters
 ```
 
-Apply the SQL in `migrations/` to your Supabase project, then:
+Apply the SQL in `migrations/` to your Supabase project **in filename order**,
+then:
+
+> Migrations are named `YYYYMMDD_slug.sql`, so a plain alphabetical sort is also
+> chronological order. There is no migration runner — they are applied by hand in
+> the Supabase SQL Editor, which is why the date prefix is mandatory for new ones.
+> See `decisions/2026-09-17_migration-naming-convention.md`.
+
 
 ```bash
 docker compose up -d

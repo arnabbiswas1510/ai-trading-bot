@@ -12,12 +12,12 @@
 --
 -- CAUSE
 --   Row Level Security is ENABLED on ibkr_fills but no policy was ever created
---   for it. migrations/add_ibkr_fills.sql left the ENABLE statement commented
---   out, and migrations/enable_rls_all_tables.sql -- which pairs every
+--   for it. migrations/20260801_add_ibkr_fills.sql left the ENABLE statement commented
+--   out, and migrations/20260708_enable_rls_all_tables.sql -- which pairs every
 --   ENABLE with a permissive policy -- does not list ibkr_fills. So the table
 --   ended up with RLS on and zero policies, which denies everything.
 --
---   The header of enable_rls_all_tables.sql assumes "service role key bypasses
+--   The header of 20260708_enable_rls_all_tables.sql assumes "service role key bypasses
 --   RLS, so the bot is unaffected". That assumption does not hold here: this
 --   deployment authenticates with a PUBLISHABLE (anon-class) key, which RLS
 --   applies to in full. Every other table works only because its policy is

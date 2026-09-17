@@ -213,7 +213,7 @@ class TestDecisionLog:
             Exception('relation "trigger_decisions" does not exist')
         trigger_audit.record_trigger_decision(sb, _trigger(), "BOUGHT",
                                               trigger_audit.BOUGHT)
-        assert "add_trigger_history.sql" in capsys.readouterr().out
+        assert "20260809_add_trigger_history.sql" in capsys.readouterr().out
 
 
 class TestArchiveOrderingInScreener:

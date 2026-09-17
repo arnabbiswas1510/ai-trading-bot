@@ -83,7 +83,7 @@ _HISTORY_COLUMNS = (
     # Shadow RS ranking — research only, read by no live rule. Archived here so
     # backfill_trigger_outcomes.py can pair the percentile with forward returns,
     # which is the whole point of carrying it. Rows written before
-    # migrations/add_rs_percentile.sql was applied simply carry NULL.
+    # migrations/20260917_add_rs_percentile.sql was applied simply carry NULL.
     # See decisions/2026-09-17_rs-percentile-shadow-column.md.
     "rs_12w_return", "rs_excess_return", "rs_percentile",
 )
@@ -124,7 +124,7 @@ def save_trigger_history(client, triggers, archived_at=None):
 
     return _upsert(client, "trigger_history", payload,
                    "triggered_at,ticker,trigger_type",
-                   "migrations/add_trigger_history.sql")
+                   "migrations/20260809_add_trigger_history.sql")
 
 
 def record_trigger_decision(client, trigger, decision, reason_code, detail=None,
@@ -184,7 +184,7 @@ def record_decisions_bulk(client, triggers, decision, reason_code, detail=None,
 
     return _upsert(client, "trigger_decisions", payload,
                    "decision_date,ticker,trigger_type",
-                   "migrations/add_trigger_history.sql")
+                   "migrations/20260809_add_trigger_history.sql")
 
 
 def _upsert(client, table, payload, on_conflict, migration_hint):

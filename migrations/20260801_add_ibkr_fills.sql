@@ -1,4 +1,4 @@
--- migrations/add_ibkr_fills.sql
+-- migrations/20260801_add_ibkr_fills.sql
 --
 -- Persistent fill store: every IBKR execution is written here in real-time
 -- by the execDetailsEvent hook in execution_agent.py.

@@ -102,7 +102,7 @@ class TestCriticalColumns:
 
 
 class TestAdvisoryColumns:
-    """The add_ibkr_position_values.sql migration going unrun silently turned
+    """The 20260904_add_ibkr_position_values.sql migration going unrun silently turned
     Invested Portfolio Value into cost basis and Unrealized P&L into $0.00.
     Nothing detected it, because these columns feed reporting rather than a
     risk rule. They must warn without ever blocking trading."""
@@ -129,7 +129,7 @@ class TestAdvisoryColumns:
         r = schema_guard.check_schema(_client(missing_cols=self.IBKR_COLS))
         out = r.summary()
         assert "current_price" in out
-        assert "add_ibkr_position_values.sql" in out
+        assert "20260904_add_ibkr_position_values.sql" in out
         # The operator-visible symptom must be named, not just the column.
         assert "COST BASIS" in out or "cost basis" in out
         assert "$0.00" in out

@@ -14,15 +14,15 @@
 -- is deliberately NOT repeated here.
 --
 -- MISSING TABLES  (4)
---   trigger_history      <- add_trigger_history.sql
---   trigger_decisions    <- add_trigger_history.sql
---   trigger_outcomes*    <- add_trigger_outcomes.sql   (*columns on trigger_history)
---   watchlist_history    <- add_watchlist_history.sql
+--   trigger_history      <- 20260809_add_trigger_history.sql
+--   trigger_decisions    <- 20260809_add_trigger_history.sql
+--   trigger_outcomes*    <- 20260809_add_trigger_outcomes.sql   (*columns on trigger_history)
+--   watchlist_history    <- 20260809_add_watchlist_history.sql
 --
 -- MISSING COLUMNS (3, all on portfolio_positions)
---   closed_above_entry   <- add_closed_above_entry.sql
---   highest_rs_score     <- add_highest_rs_score.sql
---   hwm_rs_score         <- add_hwm_rs_score.sql
+--   closed_above_entry   <- 20260809_add_closed_above_entry.sql
+--   highest_rs_score     <- 20260719_add_highest_rs_score.sql
+--   hwm_rs_score         <- 20260716_add_hwm_rs_score.sql
 --
 -- IMPACT OF THE GAP
 -- -----------------
@@ -42,7 +42,7 @@
 
 
 -- =============================================================================
--- 1. trigger_history + trigger_decisions      (from add_trigger_history.sql)
+-- 1. trigger_history + trigger_decisions      (from 20260809_add_trigger_history.sql)
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS trigger_history (
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS trigger_history (
     PRIMARY KEY (triggered_at, ticker, trigger_type)
 );
 
-COMMENT ON TABLE trigger_history IS 'Append-only point-in-time record of breakout triggers, including those never bought. Never pruned. See migrations/add_trigger_history.sql.';
+COMMENT ON TABLE trigger_history IS 'Append-only point-in-time record of breakout triggers, including those never bought. Never pruned. See migrations/20260809_add_trigger_history.sql.';
 
 CREATE INDEX IF NOT EXISTS idx_trigger_history_date
     ON trigger_history (triggered_at DESC);
@@ -119,7 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_trigger_decisions_ticker
 
 -- =============================================================================
 -- 2. forward-return outcome columns on trigger_history
---                                             (from add_trigger_outcomes.sql)
+--                                             (from 20260809_add_trigger_outcomes.sql)
 -- Populated weekly by backfill_trigger_outcomes.py.
 -- =============================================================================
 
@@ -153,7 +153,7 @@ CREATE INDEX IF NOT EXISTS idx_trigger_history_pending_outcomes
 
 
 -- =============================================================================
--- 3. watchlist_history                       (from add_watchlist_history.sql)
+-- 3. watchlist_history                       (from 20260809_add_watchlist_history.sql)
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS watchlist_history (
@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS watchlist_history (
     PRIMARY KEY (snapshot_date, ticker)
 );
 
-COMMENT ON TABLE watchlist_history IS 'Append-only point-in-time record of fundamental screener output. One row per ticker per snapshot date, never pruned. Exists so the screen itself can be backtested without survivorship bias -- see migrations/add_watchlist_history.sql.';
+COMMENT ON TABLE watchlist_history IS 'Append-only point-in-time record of fundamental screener output. One row per ticker per snapshot date, never pruned. Exists so the screen itself can be backtested without survivorship bias -- see migrations/20260809_add_watchlist_history.sql.';
 
 COMMENT ON COLUMN watchlist_history.snapshot_date IS 'Date the screener returned this ticker. Half of the primary key, so a re-run on the same day overwrites rather than duplicating.';
 
@@ -190,7 +190,7 @@ CREATE INDEX IF NOT EXISTS idx_watchlist_history_ticker
 
 
 -- =============================================================================
--- 4. portfolio_positions: Thesis Stop latch   (from add_closed_above_entry.sql)
+-- 4. portfolio_positions: Thesis Stop latch   (from 20260809_add_closed_above_entry.sql)
 -- NBIX post-mortem: without this the Thesis Stop cannot confine itself to
 -- breakouts that never followed through.
 -- =============================================================================
@@ -226,7 +226,7 @@ UPDATE portfolio_positions
 
 -- =============================================================================
 -- 5. portfolio_positions: RS decay anchors
---                  (from add_highest_rs_score.sql + add_hwm_rs_score.sql)
+--                  (from 20260719_add_highest_rs_score.sql + 20260716_add_hwm_rs_score.sql)
 -- Rule 1 (RS Decay) is inert until both of these exist.
 -- =============================================================================
 
@@ -242,7 +242,7 @@ COMMENT ON COLUMN portfolio_positions.hwm_rs_score IS 'RS score on the day the p
 
 
 -- =============================================================================
--- 5b. IBKR-sourced position values (from migrations/add_ibkr_position_values.sql)
+-- 5b. IBKR-sourced position values (from migrations/20260904_add_ibkr_position_values.sql)
 -- Not a trading dependency -- the agent prices positions from ib.portfolio()
 -- directly. But without these the dashboard has nothing to report and silently
 -- falls back to COST BASIS, which makes Invested Portfolio Value read as what
@@ -278,7 +278,7 @@ COMMENT ON COLUMN portfolio_positions.ibkr_synced_at IS
 
 -- =============================================================================
 -- 6. Row Level Security on the new tables
--- Matches the convention in enable_rls_all_tables.sql. The service role key the
+-- Matches the convention in 20260708_enable_rls_all_tables.sql. The service role key the
 -- bot uses bypasses RLS, so this does not affect the pipeline; it stops the anon
 -- key reading live trading data if it is ever exposed.
 -- =============================================================================

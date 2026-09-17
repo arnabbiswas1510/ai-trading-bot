@@ -76,7 +76,7 @@ period ends.
   Loss Minimiser (Day <7 branch only) to call `arm_exit()` instead of
   `execute_sell()`; added the Armed Exit deadline check in
   `monitor_portfolio_intraday()`.
-- `migrations/add_armed_exit_columns.sql`: new `exit_armed`, `exit_armed_at`,
+- `migrations/20260803_add_armed_exit_columns.sql`: new `exit_armed`, `exit_armed_at`,
   `exit_armed_reason`, `exit_armed_price` columns on `portfolio_positions`.
 - `tests/test_breakout_verdict.py`: updated Day 0-6 trigger tests to assert
   `arm_exit()` is called instead of `execute_sell()`; added

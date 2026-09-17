@@ -64,7 +64,7 @@ number that was never true at any single instant.
 always rendered a fresh-looking price with no indication of when — or whether —
 the broker had last agreed with it. The failure mode was invisible.
 
-A migration describing the fix (`migrations/add_ibkr_position_values.sql`) was
+A migration describing the fix (`migrations/20260904_add_ibkr_position_values.sql`) was
 drafted on 2026-08-24 but never committed, and the ADR it referenced was never
 written. No code read or wrote the columns; `backend/database.update_position_price()`
 had been a no-op stub since the FMP path was introduced. This ADR completes the
@@ -134,7 +134,7 @@ the original defect in a less detectable form.
 
 - Prices do not move after 16:00 ET. This is a reporting change, not a
   behavioural one — no sell rule reads these columns.
-- Until `migrations/add_ibkr_position_values.sql` is applied, every position
+- Until `migrations/20260904_add_ibkr_position_values.sql` is applied, every position
   renders at cost basis. The write degrades gracefully on PGRST204 and warns
   once per process rather than every cycle.
 - A position opened between two reconcile cycles shows cost basis briefly.
@@ -146,5 +146,5 @@ and is deliberately out of scope here.
 
 ## Follow-up
 
-1. Apply `migrations/add_ibkr_position_values.sql` in the Supabase SQL editor.
+1. Apply `migrations/20260904_add_ibkr_position_values.sql` in the Supabase SQL editor.
 2. Confirm the dashboard shows `IBKR as of HH:MM` after the next agent cycle.

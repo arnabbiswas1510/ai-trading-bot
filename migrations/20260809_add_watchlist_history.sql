@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS watchlist_history (
 COMMENT ON TABLE watchlist_history IS
   'Append-only point-in-time record of fundamental screener output. One row per '
   'ticker per snapshot date, never pruned. Exists so the screen itself can be '
-  'backtested without survivorship bias -- see migrations/add_watchlist_history.sql.';
+  'backtested without survivorship bias -- see migrations/20260809_add_watchlist_history.sql.';
 
 COMMENT ON COLUMN watchlist_history.snapshot_date IS
   'Date the screener returned this ticker. Half of the primary key, so a re-run '

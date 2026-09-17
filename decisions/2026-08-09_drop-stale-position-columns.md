@@ -59,7 +59,7 @@ screener retrospectively.
 
 ## Implementation
 
-- `migrations/drop_stale_position_columns.sql` — the DROP statements, wrapped in
+- `migrations/20260809_drop_stale_position_columns.sql` — the DROP statements, wrapped in
   a transaction, with a backup command in the header. **Not auto-applied.**
 - `execution_agent.py` — stop writing `stop_loss` in the buy path and the
   reconcile path; the reconcile log line now prints the trail % instead of a

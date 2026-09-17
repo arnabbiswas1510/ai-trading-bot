@@ -1,5 +1,5 @@
 -- ============================================================================
--- fix_nbix_reconstructed_sell.sql
+-- 20260915_fix_nbix_reconstructed_sell.sql
 --
 -- *** ALREADY APPLIED TO PRODUCTION on 2026-09-15. Kept as the record of what
 -- *** was done. Re-running is a safe no-op: the guard requires the old 152.74
@@ -51,7 +51,7 @@
 --
 -- WHAT THIS MIGRATION DOES
 -- ------------------------
--- Re-prices the exit from the real fills. Unlike backfill_ntra_round_trips.sql,
+-- Re-prices the exit from the real fills. Unlike 20260910_backfill_ntra_round_trips.sql,
 -- this DOES change the book total, because the recorded price was simply wrong:
 --
 --                    sell_price   proceeds     P&L        pct

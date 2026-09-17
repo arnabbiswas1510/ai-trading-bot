@@ -4,7 +4,7 @@ THE QUESTION
 ------------
 The Thesis Stop only fires while a position has never followed through above
 entry. Production currently decides "followed through" using the FALLBACK in
-execution_agent.py L2680-2686, because migrations/add_closed_above_entry.sql was
+execution_agent.py L2680-2686, because migrations/20260809_add_closed_above_entry.sql was
 never applied:
 
     highest_unrealized_pct > 0  OR  hwm_price > buy_price  OR

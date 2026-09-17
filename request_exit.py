@@ -328,7 +328,7 @@ def main():
     except Exception as e:
         if "42P01" in str(e) or "PGRST205" in str(e):
             print("\n✗ exit_requests table not found.")
-            print("  Apply migrations/add_exit_requests.sql in the Supabase SQL editor first.")
+            print("  Apply migrations/20260818_add_exit_requests.sql in the Supabase SQL editor first.")
             sys.exit(1)
         raise
 

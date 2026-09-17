@@ -64,7 +64,7 @@ codebase, docs, workflows, or Dockerfiles)
 - **`backend/database.py`**: unused `get_position()`, `buy_position()`,
   `sell_position()`, `get_historical_triggers()` — a legacy manual-trade
   Web UI flow (writing `profit_target` / `is_power_hold`, both already
-  slated for removal per `migrations/add_hwm_date.sql`) fully superseded by
+  slated for removal per `migrations/20260708_add_hwm_date.sql`) fully superseded by
   the IBKR-driven execution agent. The active app uses `get_positions()`
   (plural) instead.
 

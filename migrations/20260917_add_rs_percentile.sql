@@ -1,5 +1,5 @@
 -- Migration: shadow relative-strength ranking columns
--- Run once in Supabase SQL Editor. Requires add_trigger_history.sql first.
+-- Run once in Supabase SQL Editor. Requires 20260809_add_trigger_history.sql first.
 --
 -- WHY THIS EXISTS
 -- ---------------

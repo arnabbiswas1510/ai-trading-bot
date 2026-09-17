@@ -100,7 +100,7 @@ python3 research/exit_rule_replay.py --insecure --basetrail
 
 - A new `MAX_LOSS_PCT` env var / `config.py` constant (default `0.07`).
 - A new nullable `portfolio_positions.hard_stop_price` column
-  (`migrations/add_hard_stop_price.sql`). All DB writes are PGRST204-tolerant so
+  (`migrations/20260907_add_hard_stop_price.sql`). All DB writes are PGRST204-tolerant so
   a lagging migration degrades gracefully (the hard-stop *order* is live at IBKR
   regardless; only the persisted mirror is skipped).
 - Self-heal now expects **two** legs, not one; the `_bracket_replaced` guard

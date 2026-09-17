@@ -125,7 +125,7 @@ def save_watchlist_history(supabase, rows, research_extras=None, snapshot_date=N
     except Exception as e:
         if "watchlist_history" in str(e) or "PGRST" in str(e) or "42P01" in str(e):
             print("[!] watchlist_history table missing — run "
-                  "migrations/add_watchlist_history.sql. Screener run continues.")
+                  "migrations/20260809_add_watchlist_history.sql. Screener run continues.")
         else:
             print(f"[!] Could not archive watchlist_history (non-fatal): {e}")
         return written
@@ -311,7 +311,7 @@ def run_screener():
         inserts.append(r)
 
     # 2. Append this run to the append-only point-in-time history BEFORE the
-    #    truncate below destroys it. See migrations/add_watchlist_history.sql.
+    #    truncate below destroys it. See migrations/20260809_add_watchlist_history.sql.
     save_watchlist_history(supabase, inserts, research_extras)
 
     # 3. Truncate table

@@ -7,7 +7,7 @@ import datetime
 # test_short_position_fix_parent_order_id and test_power_hold_race_condition_fix
 # were testing place_oca_bracket() which has been eliminated in the simplified
 # exit strategy refactor (HWM-Based Plateau Rotation). They are removed.
-# See: migrations/add_hwm_date.sql and the implementation plan.
+# See: migrations/20260708_add_hwm_date.sql and the implementation plan.
 
 @patch("execution_agent.notifier.notify_error")
 def test_reconcile_detects_short_positions(mock_notify):

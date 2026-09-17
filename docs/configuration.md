@@ -142,7 +142,7 @@ Prove-It stop. Fires once per position; suppressed for power-held leaders. **PRO
 ### Smart OCA managed exit
 
 Drives `process_exit_requests()` — the queue-driven OCA exit fed by
-`request_exit.py`. Requires `migrations/add_exit_requests.sql`.
+`request_exit.py`. Requires `migrations/20260818_add_exit_requests.sql`.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -265,7 +265,7 @@ Hard-coded floors: price > $15, 30-day average volume > 250,000, market cap > $3
 `daily_triggers` and archived to `trigger_history` purely for research. They have
 no configuration knobs because nothing reads them at runtime: no buy gate, sort
 order, position size or exit rule consumes them, and `final_score` is unchanged.
-Apply `migrations/add_rs_percentile.sql` to enable them; without it the screener
+Apply `migrations/20260917_add_rs_percentile.sql` to enable them; without it the screener
 strips them on insert with a warning and continues normally, and `schema_guard`
 reports the gap as advisory only. Reviewed 2026-10-19 — see
 `decisions/2026-09-17_rs-percentile-shadow-column.md`.
@@ -344,9 +344,9 @@ for why.
 |---|---|
 | `watchlist` | Current fundamental survivors. **Truncated and rewritten daily** |
 | `daily_triggers` | Today's technical triggers, enriched with scores. **Truncated daily** |
-| `portfolio_positions` | Open positions and all exit-rule state. Also carries IBKR's own valuation (`current_price`, `market_value`, `unrealized_pnl`, `ibkr_synced_at`) written by `reconcile_with_ibkr()` — these are broker marks, never FMP quotes (`migrations/add_ibkr_position_values.sql`) |
+| `portfolio_positions` | Open positions and all exit-rule state. Also carries IBKR's own valuation (`current_price`, `market_value`, `unrealized_pnl`, `ibkr_synced_at`) written by `reconcile_with_ibkr()` — these are broker marks, never FMP quotes (`migrations/20260904_add_ibkr_position_values.sql`) |
 | `account_balances` | IBKR cash and equity snapshots |
-| `exit_requests` | Smart OCA managed-exit queue. Outlives the position it refers to, so it doubles as the exit audit trail (`migrations/add_exit_requests.sql`) |
+| `exit_requests` | Smart OCA managed-exit queue. Outlives the position it refers to, so it doubles as the exit audit trail (`migrations/20260818_add_exit_requests.sql`) |
 
 ### Append-only research tables
 
@@ -355,7 +355,7 @@ for why.
 | `watchlist_history` | Point-in-time fundamental snapshots, with sector |
 | `trigger_history` | Every trigger ever emitted, fully scored, plus forward-return outcomes |
 | `trigger_decisions` | Every buy and skip with a reason code — the control group |
-| `trade_history` | Closed trades. `profit_loss` is **gross** (no fee term); `buy_commission` / `sell_commission` hold the IBKR fees and generated columns `net_profit_loss` / `commission_complete` derive net (`migrations/add_commission_tracking.sql`) |
+| `trade_history` | Closed trades. `profit_loss` is **gross** (no fee term); `buy_commission` / `sell_commission` hold the IBKR fees and generated columns `net_profit_loss` / `commission_complete` derive net (`migrations/20260906_add_commission_tracking.sql`) |
 | `cash_flows` | Deposits and withdrawals |
 | `ibkr_fills` | Every IBKR execution with its commission. Tier 1 of the sell-price ladder — the only fill record that survives an agent or Gateway restart |
 | `breakout_learnings` | Post-close outcome rows fed back into screener tuning |
@@ -368,12 +368,12 @@ Key `portfolio_positions` columns driving exits: `hwm_price`, `hwm_date`, `stop_
 
 Apply the SQL in `migrations/` before first run. Several rules degrade gracefully but
 **operate below design strength** until their migration is applied — most notably
-`add_closed_above_entry.sql`, without which the Prove-It Stop cannot tell a proven breakout
+`20260809_add_closed_above_entry.sql`, without which the Prove-It Stop cannot tell a proven breakout
 from an unproven one. It fails safe by treating almost every position as *proven*, which
 effectively disables Phase 1 — the tight entry-anchored band that is the whole point of the
 rule. `schema_guard.py` warns loudly about this.
 
-Until `add_ibkr_position_values.sql` is applied, the dashboard has no persisted broker
+Until `20260904_add_ibkr_position_values.sql` is applied, the dashboard has no persisted broker
 marks to render, so it prices every open position from a live FMP quote labelled
 `FMP estimate — not broker` — or, where no quote is available, at cost basis labelled
 `Cost basis — no quote`. Trading behaviour is unaffected: no exit rule reads these
@@ -392,13 +392,13 @@ schema/PostgREST probe still reports the table as healthy. `ibkr_fills` and
 `breakout_learnings` were in this state from creation until 2026-09-06 and were
 permanently empty as a result.
 
-`migrations/fix_rls_missing_policies.sql` repairs both and ships a query that lists
+`migrations/20260906_fix_rls_missing_policies.sql` repairs both and ships a query that lists
 any table with RLS enabled and no policy. Run it after adding any table. See
 `decisions/2026-09-06_commission-accounting.md`.
 
 ### Commissions
 
-Until `add_commission_tracking.sql` is applied, commission columns do not exist.
+Until `20260906_add_commission_tracking.sql` is applied, commission columns do not exist.
 The agent degrades gracefully — commissions are written by a follow-up `UPDATE`,
 never inside the position or trade insert, so a missing column can never fail a
 buy or lose a closing record. The dashboard shows gross P&L marked `*` in that

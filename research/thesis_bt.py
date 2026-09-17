@@ -142,7 +142,7 @@ def simulate(cfg, sig, bars, emas, dix, alldates, atrs, collect_exits=False):
             # Follow-through latch. Default "close" is the shipped design and the
             # definition the +18.8 dCAGR result in decisions/2026-08-09_thesis-stop.md
             # was measured on. "high" models the production FALLBACK that is active
-            # while migrations/add_closed_above_entry.sql is unapplied (an intraday
+            # while migrations/20260809_add_closed_above_entry.sql is unapplied (an intraday
             # poke disarms the rule). "none" removes the gate entirely.
             latch = cfg.get("latch", "close")
             if latch == "close":

@@ -49,7 +49,7 @@ PRIMARY = "alpha_20d_pct"
 # more decimal places.
 MIN_DISTINCT_DATES = 5
 
-# Columns added by migrations/add_rs_percentile.sql. Used only to turn a raw
+# Columns added by migrations/20260917_add_rs_percentile.sql. Used only to turn a raw
 # PostgREST 400 into an instruction a human can act on a month from now.
 SHADOW_COLS = ("rs_percentile", "rs_excess_return", "rs_12w_return")
 
@@ -86,7 +86,7 @@ def fetch_rows(insecure: bool) -> list:
                 sys.exit(
                     "error: trigger_history has no rs_percentile/rs_excess_return "
                     "columns yet.\n"
-                    "       Apply migrations/add_rs_percentile.sql in the Supabase "
+                    "       Apply migrations/20260917_add_rs_percentile.sql in the Supabase "
                     "SQL Editor, then wait for\n"
                     "       the screener to write a few cohorts before reviewing.\n"
                     f"       (server said: {body.strip()[:200]})")

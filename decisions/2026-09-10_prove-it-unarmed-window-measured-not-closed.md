@@ -1,9 +1,21 @@
 # Prove-It unarmed window: measured, and deliberately left open
 
 - **Date:** 2026-09-10
-- **Status:** Accepted — **its re-test precondition was met on 2026-09-15**;
-  the `--cliff` re-run is now owed (see the 2026-09-15 note in the caveat below)
+- **Status:** Accepted — **confirmed on 2026-09-17.** The owed `--cliff` re-run
+  was performed on the corrected 48-trade sample that now contains NTRA RT1, and
+  the rejection **held and widened** (−$1,393 vs shipped, `>300` 11→12). No
+  caveat remains; the window stays open by design.
+  See `decisions/2026-09-17_exit-review-48-trades.md`.
 - **Supersedes:** nothing. Records a hypothesis that was tested and **rejected**.
+
+> **2026-09-17 update — the precondition has been discharged.** The body below
+> correctly records that this rejection was provisional because NTRA RT1
+> (−$706.66), the trade that motivated the hypothesis, was missing from the
+> sample. That gap is now closed: the backfill landed 2026-09-15 and the re-run
+> on 48 trades scores the fix at **+$9,280 against the shipped +$10,673**, i.e.
+> **−$1,393**, while raising trades losing more than $300 from 11 to 12. The
+> original measurement (−$1,691 on 39 trades) is superseded as a *figure* but
+> was correct in its *direction*. Nothing in the reasoning below needs revising.
 
 ## Context
 
@@ -151,7 +163,7 @@ review.
 >
 > The note above said a `--cliff` re-run would re-measure contaminated data
 > because NTRA RT1 (−$706.66) had never reached `trade_history`. That is no
-> longer true: `migrations/backfill_ntra_round_trips.sql` was applied on
+> longer true: `migrations/20260910_backfill_ntra_round_trips.sql` was applied on
 > 2026-09-15 and RT1 now exists as row id 59, with RT2 (−$162.84) as id 60 and
 > RT3 corrected to **+$218.43**.
 >

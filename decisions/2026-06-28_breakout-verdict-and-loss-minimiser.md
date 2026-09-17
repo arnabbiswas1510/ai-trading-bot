@@ -46,5 +46,5 @@ could trigger on Days 3–6 — removed).
 ## Files changed
 
 - `execution_agent.py` — `check_breakout_verdict()`, `intraday_loss_minimiser()`
-- `migrations/add_breakout_verdict.sql`
+- `migrations/20260721_add_breakout_verdict.sql`
 - `tests/test_breakout_verdict.py` — 10 tests

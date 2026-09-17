@@ -327,7 +327,7 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
       detail = 'The `closed_above_entry` column is missing, so the phase is being guessed from '
         + 'intraday highs. This position never CLOSED above its $' + buy.toFixed(2) + ' entry, but a '
         + 'poke above it has promoted it to Phase 2 — the tight Phase 1 band is not protecting it. '
-        + 'Apply migrations/add_closed_above_entry.sql.\n' + base + mechanism;
+        + 'Apply migrations/20260809_add_closed_above_entry.sql.\n' + base + mechanism;
     } else if (powerHold) {
       state = STATE.SUPPRESSED;
       headline = 'Suppressed by Power Hold';

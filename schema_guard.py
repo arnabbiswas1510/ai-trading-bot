@@ -46,13 +46,13 @@ CRITICAL_COLUMNS: dict[str, dict[str, str]] = {
             "Prove-It Stop phase discriminator — without it the stop fails safe to "
             "an intraday-poke test, which treats almost every position as proven "
             "and effectively disables Phase 1 "
-            "(migrations/add_closed_above_entry.sql)",
+            "(migrations/20260809_add_closed_above_entry.sql)",
         "hwm_rs_score":
             "Rule 1 (RS Decay) anchor — without it RS breakdown never triggers an "
-            "exit (migrations/add_hwm_rs_score.sql)",
+            "exit (migrations/20260716_add_hwm_rs_score.sql)",
         "highest_rs_score":
             "Rule 1 (RS Decay) peak tracker "
-            "(migrations/add_highest_rs_score.sql)",
+            "(migrations/20260719_add_highest_rs_score.sql)",
     },
 }
 
@@ -66,17 +66,17 @@ ADVISORY_COLUMNS: dict[str, dict[str, str]] = {
             "IBKR mark used for dashboard position values — without it the "
             "dashboard falls back to COST BASIS, so Invested Portfolio Value "
             "shows what you paid and Unrealized P&L shows $0.00 "
-            "(migrations/add_ibkr_position_values.sql)",
+            "(migrations/20260904_add_ibkr_position_values.sql)",
         "market_value":
             "IBKR PortfolioItem.marketValue for dashboard totals "
-            "(migrations/add_ibkr_position_values.sql)",
+            "(migrations/20260904_add_ibkr_position_values.sql)",
         "unrealized_pnl":
             "IBKR PortfolioItem.unrealizedPNL for dashboard totals "
-            "(migrations/add_ibkr_position_values.sql)",
+            "(migrations/20260904_add_ibkr_position_values.sql)",
         "ibkr_synced_at":
             "'as of' timestamp for the three columns above — without it the "
             "dashboard cannot distinguish a stale broker mark from a "
-            "never-synced position (migrations/add_ibkr_position_values.sql)",
+            "never-synced position (migrations/20260904_add_ibkr_position_values.sql)",
     },
     "trigger_history": {
         # One probe stands for all three shadow columns — they ship in the same
@@ -95,7 +95,7 @@ ADVISORY_COLUMNS: dict[str, dict[str, str]] = {
             "rs_12w_return) — without it the saturated rs_score cannot be "
             "evaluated and decisions/provisional_decisions.json entry "
             "'rs-percentile-shadow' has no data to review "
-            "(migrations/add_rs_percentile.sql)",
+            "(migrations/20260917_add_rs_percentile.sql)",
     },
 }
 
@@ -104,19 +104,19 @@ ADVISORY_TABLES: dict[str, str] = {
     "trigger_history":
         "point-in-time trigger archive — without it the screener truncates daily "
         "and the rejected-candidate control group is destroyed "
-        "(migrations/add_trigger_history.sql)",
+        "(migrations/20260809_add_trigger_history.sql)",
     "trigger_decisions":
-        "buy/skip audit log (migrations/add_trigger_history.sql)",
+        "buy/skip audit log (migrations/20260809_add_trigger_history.sql)",
     "watchlist_history":
         "point-in-time fundamental screen archive "
-        "(migrations/add_watchlist_history.sql)",
+        "(migrations/20260809_add_watchlist_history.sql)",
     "exit_requests":
         "Smart OCA managed-exit queue — without it request_exit.py cannot queue "
         "an exit and the agent falls back to the automated ladder only "
-        "(migrations/add_exit_requests.sql)",
+        "(migrations/20260818_add_exit_requests.sql)",
 }
 
-REPAIR_SCRIPT = "migrations/2026-08-13_apply_missing_migrations.sql"
+REPAIR_SCRIPT = "migrations/20260813_apply_missing_migrations.sql"
 
 
 @dataclass

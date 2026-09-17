@@ -205,8 +205,8 @@ def run(dry_run=False, limit=None, force=False):
         pending = fetch_pending(client, limit=limit, force=force)
     except Exception as e:
         if "trigger_history" in str(e) or "PGRST" in str(e):
-            print("❌ trigger_history missing — run migrations/add_trigger_history.sql "
-                  "and migrations/add_trigger_outcomes.sql.")
+            print("❌ trigger_history missing — run migrations/20260809_add_trigger_history.sql "
+                  "and migrations/20260809_add_trigger_outcomes.sql.")
             return 1
         print(f"❌ Could not read trigger_history: {e}")
         return 1

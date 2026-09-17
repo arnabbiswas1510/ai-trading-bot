@@ -45,18 +45,18 @@ Missing — 4 tables:
 
 | object | source migration |
 |---|---|
-| `trigger_history` | `add_trigger_history.sql` |
-| `trigger_decisions` | `add_trigger_history.sql` |
-| `trigger_history` outcome columns | `add_trigger_outcomes.sql` |
-| `watchlist_history` | `add_watchlist_history.sql` |
+| `trigger_history` | `20260809_add_trigger_history.sql` |
+| `trigger_decisions` | `20260809_add_trigger_history.sql` |
+| `trigger_history` outcome columns | `20260809_add_trigger_outcomes.sql` |
+| `watchlist_history` | `20260809_add_watchlist_history.sql` |
 
 Missing — 3 columns, all on `portfolio_positions`:
 
 | column | source migration |
 |---|---|
-| `closed_above_entry` | `add_closed_above_entry.sql` |
-| `highest_rs_score` | `add_highest_rs_score.sql` |
-| `hwm_rs_score` | `add_hwm_rs_score.sql` |
+| `closed_above_entry` | `20260809_add_closed_above_entry.sql` |
+| `highest_rs_score` | `20260719_add_highest_rs_score.sql` |
+| `hwm_rs_score` | `20260716_add_hwm_rs_score.sql` |
 
 ## Why this mattered operationally
 
@@ -86,7 +86,7 @@ a fallback path rather than failing loudly, so the drift produced no alert.
 ## Decision
 
 Ship a single consolidated, idempotent repair script:
-`migrations/2026-08-13_apply_missing_migrations.sql`.
+`migrations/20260813_apply_missing_migrations.sql`.
 
 Design choices:
 
@@ -95,9 +95,9 @@ Design choices:
   live trading database.
 - **Fully idempotent** — `IF NOT EXISTS` on every create, `ON CONFLICT DO
   NOTHING` on both seeds, guarded `UPDATE`, and the `pg_policies` existence
-  check used by `enable_rls_all_tables.sql`. Safe to re-run.
+  check used by `20260708_enable_rls_all_tables.sql`. Safe to re-run.
 - **Ordered by dependency** — `trigger_history` is created before the
-  `add_trigger_outcomes.sql` columns are added to it.
+  `20260809_add_trigger_outcomes.sql` columns are added to it.
 - **Seeds run last** so a data problem cannot block the schema changes.
 - **Backfills preserve existing semantics** — `closed_above_entry` is latched
   TRUE for any position with a positive peak, so currently-open positions are
@@ -132,6 +132,6 @@ scoped to the schema repair.
 
 ## How to apply
 
-Paste `migrations/2026-08-13_apply_missing_migrations.sql` into the Supabase SQL
+Paste `migrations/20260813_apply_missing_migrations.sql` into the Supabase SQL
 Editor for project `yhaynfrmsjzbybbehfjs` and run it. Confirm the final
 verification query returns `OK` for all eight object rows.

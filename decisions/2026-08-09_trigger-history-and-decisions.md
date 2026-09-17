@@ -119,7 +119,7 @@ whose history did not exist. It will exist now.
 
 - `trigger_audit.py` (new) — `save_trigger_history()`,
   `record_trigger_decision()`, `record_decisions_bulk()`, reason-code constants
-- `migrations/add_trigger_history.sql` — both tables, indexes, seed from
+- `migrations/20260809_add_trigger_history.sql` — both tables, indexes, seed from
   `daily_triggers`
 - `technical_screener.py` — SELECT existing rows, archive, then truncate
 - `execution_agent.py` — decision logging at every gate and on successful fill
