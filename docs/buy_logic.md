@@ -74,8 +74,7 @@ code, which is what makes the buy model auditable after the fact.
 | 2 | Cooling-off | Sold within `COOLING_OFF_DAYS` (3), per `trade_history` **or** an `ibkr_fills` SLD fill | `COOLING_OFF` |
 | 3 | AI veto | `ai_grade == "D"` (conviction < 50) | `AI_VETO` |
 | 4 | Score present | `final_score` / `adjusted_score` is NULL | `NO_AI_SCORE` |
-| 5 | Score floor | Below the trigger-type minimum (`adjusted_score` when present) | `SCORE_FLOOR` |
-| 6 | Capacity (in-loop) | Slots filled by an earlier buy this cycle | `SLOTS_FULL` |
+| 5 | Score floor | Below the trigger-type minimum (`adjusted_score` when present) | `SCORE_FLOOR` || 6 | Capacity (in-loop) | Slots filled by an earlier buy this cycle | `SLOTS_FULL` |
 | 7 | Cash floor | `available_cash < MIN_POSITION_SIZE` ($5,000) | `INSUFFICIENT_CASH` |
 | 8 | Volume surge | **`BREAKOUT` only:** `volume_surge < MIN_VOL_SURGE_GATE` (0.75×) | `SCORE_FLOOR` |
 | 9 | PRE_BREAKOUT 52W distance | PRE_BREAKOUT > `MAX_PRE_BREAKOUT_PIVOT_DIST` (5%) below 52W high | `BELOW_PIVOT` |
@@ -89,6 +88,23 @@ code, which is what makes the buy model auditable after the fact.
 
 Capacity is re-checked **inside** the loop (gate 6) because an earlier fill in the same
 cycle may have consumed the last slot.
+
+### Gate 5 scores on `final_score` — the failure penalty is off
+
+`adjusted_score = final_score − failure_penalty − history_penalty`. The breakout
+`failure_penalty` ships **disabled** (`FAILURE_PENALTY_MAX_POINTS = 0`), so
+`adjusted_score` equals `final_score` for every trigger and gate 5 compares the
+AI-evaluated score directly against the floor (60 for `BREAKOUT`, 65 for
+`PRE_BREAKOUT`, 58 for `PRE_BREAKOUT_RELAXED`).
+
+The penalty was measured on 2026-09-17 and found to score **every** past trade
+at the cap — all 10 winners and all 6 losers identically — so it removed good
+and bad candidates at the same rate. On that day it rejected six BREAKOUT
+triggers, five of them AI grade **A**, including DHT (`final_score` 77 → 57).
+See `decisions/2026-09-17_failure-penalty-disabled.md` for the measurement.
+
+The `history_penalty` (per-ticker recent-loss penalty, `HISTORY_LEARNING_MAX_PENALTY`)
+is unaffected and still applies.
 
 ### Cooling-off reads the broker, not just our own ledger
 

@@ -186,3 +186,66 @@ threshold discount: a stale position swaps on a `RANK_REPLACE_FAIL_THRESHOLD` (5
 Same capital-velocity intent, but it can only fire when there is somewhere better
 to put the money. `STALE_EXIT_DAYS` and `STALE_EXIT_MIN_DAYS_HELD` survive in
 that role; only `STALE_EXIT_ENABLED` and the standalone exit block are gone.
+
+### 8. Breakout Failure Penalty (`failure_penalty`)
+
+| | |
+|---|---|
+| **Constants** | `FAILURE_PENALTY_MAX_POINTS` (new, default `0`); cap was a hard-coded `20` |
+| **Identifiers** | `_compute_failure_penalty`, `failure_penalty`, `penalty_reason` |
+| **Location** | `technical_screener.py` (`_compute_failure_penalty`, Phase 2 block); consumed in `ai_evaluator.py` → `adjusted_score`; surfaced on `daily_triggers` / `trigger_history` |
+| **Status when retired** | **Active and firing in live trading.** On 2026-09-17 it rejected six BREAKOUT triggers, five of them AI grade **A**. |
+| **ADR** | `decisions/2026-09-17_failure-penalty-disabled.md` |
+
+**Disabled, not deleted.** The function, its columns and its stored values all
+remain. Only the cap moved to `FAILURE_PENALTY_MAX_POINTS`, which ships at `0`.
+Re-enabling is a one-variable change — which is precisely why the evidence below
+must stay attached to it.
+
+**What it did.** Compared each new trigger's `volume_surge`, `rs_score`,
+`technical_score` and `pivot_distance_pct` against the entry values of losing
+breakouts in `breakout_learnings`, within tolerances of ±0.5, ±10, ±10 and ±2.
+Each match scored 2 points, weighted 3× inside 30 days and 2× beyond, capped at
+20. The total was subtracted from `final_score` to give `adjusted_score`, which
+the buy loop's score floor then tested.
+
+**Why retired.** It had **zero** discriminative power. Replayed over all 16
+`breakout_learnings` rows using each trade's own entry parameters, it returned
+the maximum penalty for every single one:
+
+```
+mean penalty on WINNERS: 20.0  (n=10)
+mean penalty on LOSERS : 20.0  (n=6)
+winners that would be blocked: 10/10
+```
+
+LPG (+6.47%), ECO (+5.35%) and DHT (+3.47%) all scored exactly what CHRD
+(−1.62%) scored. DHT's rejected candidate and DHT's own winning trade were
+penalised identically. The cause is that each match tolerance is **wider than
+the winner/loser separation on that parameter** (Δ0.15, Δ2.1, Δ4.5, Δ0.33), so a
+match was guaranteed rather than informative. The cap also concealed the scale
+of the problem: DHT's uncapped penalty was 78, and others reached 120.
+
+Two further defects, documented so they are not rediscovered the hard way:
+
+- It applied to **BREAKOUT only**. All 16 learning rows are BREAKOUT-tagged and
+  the `_meta.trigger_type` filter exempted everything else — 196/196
+  PRE_BREAKOUT rows in `trigger_history` scored 0.
+- A loss flagged **all four** parameters as failed
+  (`failed = percent_return < 0` in `_build_failed_params_snapshot`), so there
+  was never any per-parameter attribution.
+
+**Restore path.** Set `FAILURE_PENALTY_MAX_POINTS` to a non-zero value. The
+pre-change code — with the hard-coded cap of 20 — is at
+`git show c0876cd:technical_screener.py`.
+
+**What would have to be true to bring it back.** The tolerances would need to be
+re-fitted to real forward outcomes and shown to separate winners from losers on
+held-out data. That requires `trigger_history` outcome columns, of which only
+16/233 rows are currently populated and **none** are BREAKOUT. Tracked in
+`decisions/provisional_decisions.json` as `failure-penalty-tolerances`.
+
+**Related, still live.** The per-ticker `history_penalty`
+(`HISTORY_LEARNING_MAX_PENALTY`, `compute_trade_history_penalty` in
+`ai_evaluator.py`) is a **different** rule and is unaffected — it penalises a
+ticker for its own recent losses rather than for resembling other tickers.

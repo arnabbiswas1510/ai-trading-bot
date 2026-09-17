@@ -61,6 +61,18 @@ RELAXED_PRE_BREAKOUT_UPTREND_MIN = int(os.environ.get("RELAXED_PRE_BREAKOUT_UPTR
 RELAXED_RS_MIN_GATE             = int(os.environ.get("RELAXED_RS_MIN_GATE", 50))
 LEARNING_MIN_ROWS               = int(os.environ.get("LEARNING_MIN_ROWS", 3))
 LEARNING_LOOKBACK_DAYS          = int(os.environ.get("LEARNING_LOOKBACK_DAYS", 90))
+# Hard cap on the breakout failure penalty, in score points. DEFAULT 0 = OFF.
+#
+# The penalty was measured on 2026-09-17 against all 16 breakout_learnings rows
+# and found to have zero discriminative power: replaying it over each past
+# trade's own entry parameters scored EVERY trade at exactly the cap -- all 10
+# winners (LPG +6.47%, ECO +5.35%, DHT +3.47%) and all 6 losers alike. It cannot
+# separate good entries from bad, so any non-zero value only removes candidates
+# at random while appearing principled.
+#
+# Set >0 to re-enable once trigger_history carries enough forward outcomes to
+# retune the tolerances. See decisions/2026-09-17_failure-penalty-disabled.md.
+FAILURE_PENALTY_MAX_POINTS      = int(os.environ.get("FAILURE_PENALTY_MAX_POINTS", 0))
 
 
 def compute_quality_score(volume_surge_ratio: float, pivot_dist_pct: float,
@@ -476,7 +488,7 @@ def write_triggers_to_supabase(triggers):
         except Exception:
             learning_count = 0
 
-        if learning_count >= LEARNING_MIN_ROWS:
+        if learning_count >= LEARNING_MIN_ROWS and FAILURE_PENALTY_MAX_POINTS > 0:
             print(f"📚 Phase 2 active: {learning_count} breakout learnings — computing failure penalties...")
             cutoff = (datetime.datetime.now(datetime.timezone.utc).date()
                       - datetime.timedelta(days=LEARNING_LOOKBACK_DAYS)).isoformat()
@@ -500,7 +512,15 @@ def write_triggers_to_supabase(triggers):
                 if penalty > 0:
                     print(f"  ⚠️ {t['ticker']}: penalty −{penalty}pts → adjusted={t['adjusted_score']} ({reason})")
         else:
-            print(f"📚 Phase 2 inactive ({learning_count}/{LEARNING_MIN_ROWS} learnings). Using final_score as-is.")
+            if FAILURE_PENALTY_MAX_POINTS <= 0:
+                # Not a "not enough data yet" state: the penalty is off because
+                # it was measured and found inert. Say so, so nobody reads this
+                # as a threshold waiting to be crossed.
+                print("📚 Failure penalty DISABLED (FAILURE_PENALTY_MAX_POINTS=0) — "
+                      "measured 2026-09-17 as non-discriminative (scored every "
+                      "winner and loser identically). Using final_score as-is.")
+            else:
+                print(f"📚 Phase 2 inactive ({learning_count}/{LEARNING_MIN_ROWS} learnings). Using final_score as-is.")
             for t in triggers:
                 t["adjusted_score"]  = t.get("final_score")
                 t["failure_penalty"] = 0
@@ -559,7 +579,16 @@ def _compute_failure_penalty(trigger: dict, learnings: list) -> tuple[int, str]:
         exit_date in last 30–90d:   2× weight
         (older rows are filtered by LEARNING_LOOKBACK_DAYS upstream)
 
-    Penalty = weighted_match_count × 2 pts, capped at 20 pts.
+    Penalty = weighted_match_count × 2 pts, capped at FAILURE_PENALTY_MAX_POINTS.
+
+    NOTE (2026-09-17): this function is retained but INERT by default -- the cap
+    ships at 0. It was replayed over all 16 breakout_learnings rows using each
+    trade's own entry parameters and returned the maximum penalty for every one
+    of them, winners and losers alike. The cause is that the match tolerances
+    below (±0.5, ±10, ±10, ±2) are each WIDER than the observed winner/loser
+    separation on that parameter (Δ0.15, Δ2.1, Δ4.5, Δ0.33), so a "match" is
+    guaranteed rather than informative. Do not re-enable without first narrowing
+    the tolerances against real forward outcomes in trigger_history.
 
     Returns:
         (penalty_points: int, reason_string: str)
@@ -608,7 +637,7 @@ def _compute_failure_penalty(trigger: dict, learnings: list) -> tuple[int, str]:
             except (TypeError, ValueError):
                 pass
 
-    penalty = min(20, int(weighted_matches * 2))
+    penalty = min(FAILURE_PENALTY_MAX_POINTS, int(weighted_matches * 2))
     reason  = (f"Similar to {len(matched_params)} failed param(s): {', '.join(matched_params)}"
                if matched_params else "")
     return penalty, reason

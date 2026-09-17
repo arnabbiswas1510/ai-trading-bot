@@ -257,8 +257,26 @@ Hard-coded floors: price > $15, 30-day average volume > 250,000, market cap > $3
 | `RELAXED_PRE_BREAKOUT_VOL_MAX` | `1.10` | Quota-fill variant |
 | `RELAXED_PRE_BREAKOUT_UPTREND_MIN` | `2` | Quota-fill variant |
 | `RELAXED_RS_MIN_GATE` | `50` | Quota-fill variant |
-| `LEARNING_MIN_ROWS` | `3` | Minimum `breakout_learnings` rows before Phase-2 penalty activates |
+| `LEARNING_MIN_ROWS` | `3` | Minimum `breakout_learnings` rows before the Phase-2 penalty would activate (moot while the penalty is off) |
 | `LEARNING_LOOKBACK_DAYS` | `90` | Recency window for failure-penalty learnings |
+| `FAILURE_PENALTY_MAX_POINTS` | `0` | **Hard cap on the breakout failure penalty. `0` disables it.** |
+
+**The breakout failure penalty ships DISABLED.** `FAILURE_PENALTY_MAX_POINTS`
+defaults to `0`, so `adjusted_score` equals `final_score` for every trigger and
+the score floors apply to the AI-evaluated score directly.
+
+It was measured on 2026-09-17 by replaying `_compute_failure_penalty` over all
+16 `breakout_learnings` rows using each trade's own entry parameters. It
+returned the maximum penalty for **every** trade — all 10 winners (LPG +6.47%,
+ECO +5.35%, DHT +3.47%) and all 6 losers alike. The match tolerances (±0.5, ±10,
+±10, ±2) are each wider than the observed winner/loser separation on that
+parameter (Δ0.15, Δ2.1, Δ4.5, Δ0.33), so a match is guaranteed rather than
+informative.
+
+Setting this above `0` re-enables the penalty and will suppress high-scoring
+BREAKOUT candidates. Do not do so without first narrowing the tolerances against
+real forward outcomes in `trigger_history`. See
+`decisions/2026-09-17_failure-penalty-disabled.md`.
 
 **Shadow relative-strength columns (no env vars, no behavioural effect).**
 `rs_12w_return`, `rs_excess_return` and `rs_percentile` are written to
