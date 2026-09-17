@@ -971,10 +971,38 @@ derived in `backend/commissions.py` and exposed as `net_profit_loss`.
 
 A commission IBKR has not reported is **unknown, not zero**. Those rows show the
 gross figure followed by `*` with a tooltip explaining it may overstate the
-result, and the "Net Realized P&L" card says so in its subtitle. Historical
-trades closed before 2026-09-06 are all in this state: `ibkr_fills` was blocked
-by an RLS policy gap and recorded nothing, so their fees were never captured.
-See `decisions/2026-09-06_commission-accounting.md`.
+result, and the "Net Realized P&L (All Time)" card says so in its subtitle.
+Historical trades closed before 2026-09-06 are all in this state: `ibkr_fills`
+was blocked by an RLS policy gap and recorded nothing, so their fees were never
+captured. See `decisions/2026-09-06_commission-accounting.md`.
+
+`database.get_trade_history()` must project `buy_commission` and
+`sell_commission` through to the API. It builds an explicit per-row dict rather
+than returning the raw Supabase record, so a column absent from that projection
+is invisible to `enrich_trades()` — which then computes a zero fee for every
+trade and reports the gross total as though it were net. Pass the two columns
+through **unconverted**: `None` must survive as `None`, because coercing it to
+`0.0` makes an unreported fee indistinguishable from a genuinely free trade and
+flips `commission_complete` to true for the whole book.
+
+### Realised P&L by period
+
+Trade History shows four calendar windows beneath the headline cards: **This
+Week** (Monday to date), **Last Week** (complete Mon–Sun), **This Month** (MTD)
+and **Last Month** (complete). Each reports net realised P&L and the number of
+positions closed.
+
+Trades are attributed to the period in which they **closed** (`sell_date`), not
+the one in which they were opened — that is what "realised" means, and it is the
+only attribution under which the windows reconcile to the all-time total.
+Windows are half-open `[start, end)`, so adjacent periods never double-count a
+Monday close. Boundaries are computed in the browser's local timezone; weeks
+start Monday. Any window containing a trade with unreported fees is marked
+provisional with `*`.
+
+The bucketing lives in `frontend/src/lib/realizedPeriods.js` and is pinned by
+`frontend/scripts/test-realized-periods.mjs`, which runs as part of
+`npm run build`.
 
 ---
 

@@ -1513,7 +1513,29 @@ export default function DashboardView({ data, marketData, trades }) {
                         </td>
                         {/* Lifecycle / risk tiers */}
                         <LifecycleCell pos={pos} openPositions={positions.length} equity={summary.portfolio_value} />
-                        <td style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
+                        <td
+                          style={{ fontWeight: 600, color: pos.pnl >= 0 ? 'var(--color-up)' : 'var(--color-down)', cursor: 'help' }}
+                          title={(() => {
+                            const px = pos.current_price || pos.buy_price;
+                            const cost = pos.buy_price * pos.shares;
+                            const value = px * pos.shares;
+                            const pct = cost ? (pos.pnl / cost) * 100 : 0;
+                            const verb = pos.pnl >= 0 ? 'Gain' : 'Loss';
+                            return [
+                              `${pos.ticker} — unrealised ${verb.toLowerCase()}`,
+                              '',
+                              `Cost basis    ${pos.shares} x ${formatCurrency(pos.buy_price)} = ${formatCurrency(cost)}`,
+                              `Market value  ${pos.shares} x ${formatCurrency(px)} = ${formatCurrency(value)}`,
+                              `${verb}          ${pos.pnl >= 0 ? '+' : ''}${formatCurrency(pos.pnl)}  (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`,
+                              `Per share     ${pos.pnl >= 0 ? '+' : ''}${formatCurrency(px - pos.buy_price)}`,
+                              '',
+                              // Naming the price source is required: an unlabelled
+                              // third-party quote mixed into a broker-sourced figure
+                              // is exactly what the pricing rules forbid.
+                              `Priced from ${pos.price_source || 'COST_BASIS'}${pos.current_price ? '' : ' (no live quote — shows $0.00)'}`,
+                            ].join('\n');
+                          })()}
+                        >
                           {pos.pnl >= 0 ? '+' : ''}{formatCurrency(pos.pnl)}
                         </td>
                         <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -1576,7 +1598,11 @@ export default function DashboardView({ data, marketData, trades }) {
                     <td style={{ color: 'var(--text-muted)', paddingRight: 0 }}>
                       {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </td>
-                    <td style={{ fontWeight: 700, fontFamily: 'var(--font-display)' }}>{trade.ticker}</td>
+                    <td style={{
+                      fontWeight: 700,
+                      fontFamily: 'var(--font-display)',
+                      color: netPnL(trade) >= 0 ? 'var(--color-up)' : 'var(--color-down)',
+                    }}>{trade.ticker}</td>
                     <td>{trade.shares}</td>
                     <td>{formatCurrency(trade.buy_price)}</td>
                     <td>{formatCurrency(trade.sell_price)}</td>

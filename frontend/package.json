@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/test-exit-details.mjs && vite build && node scripts/verify-build.mjs",
-    "verify": "node scripts/test-exit-details.mjs && node scripts/verify-build.mjs",
-    "test": "node scripts/test-exit-details.mjs",
+    "build": "node scripts/test-exit-details.mjs && node scripts/test-realized-periods.mjs && vite build && node scripts/verify-build.mjs",
+    "verify": "node scripts/test-exit-details.mjs && node scripts/test-realized-periods.mjs && node scripts/verify-build.mjs",
+    "test": "node scripts/test-exit-details.mjs && node scripts/test-realized-periods.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

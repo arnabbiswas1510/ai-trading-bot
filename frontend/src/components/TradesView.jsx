@@ -10,6 +10,7 @@ import {
   isCommissionComplete,
   PROVISIONAL_TITLE,
 } from '../lib/commissions';
+import { realizedByPeriod, realizedBreakdown } from '../lib/realizedPeriods';
 
 // ── Stable module-level sort-key functions ────────────────────────────────────
 // Must be defined outside the component: useSortableTable stores the key in
@@ -73,13 +74,33 @@ export default function TradesView({ trades }) {
   const { total: netPnL, complete: commissionsComplete } = netPnLTotal(trades);
   const totalCommission = trades.reduce((sum, t) => sum + (commissionOf(t) ?? 0), 0);
 
+  // Gross / fee / net split and the four calendar windows. Both are derived from
+  // the same `trades` array the table renders, so the cards can never disagree
+  // with the rows beneath them.
+  const breakdown = realizedBreakdown(trades);
+  const periods = realizedByPeriod(trades);
+
+  // The headline tooltip. Kept out of the card body deliberately — the fee
+  // detail matters when you go looking for it and is noise the rest of the time.
+  const netTooltip = [
+    `Gross realised        ${formatCurrency(breakdown.gross)}`,
+    `Commissions recorded  ${formatCurrency(breakdown.commission)}`,
+    `Net realised          ${formatCurrency(breakdown.net)}`,
+    '',
+    `Closed trades: ${totalTrades}`,
+    breakdown.complete
+      ? 'All IBKR fees recorded — this figure is final.'
+      : `${breakdown.feeLegsMissing} of ${breakdown.feeLegsTotal} fee legs not yet reported by IBKR, ` +
+        'so the true net is slightly worse than shown.',
+  ].join('\n');
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           {/* Summary Metrics */}
           <div className="metrics-grid">
-            <div className="card metric-card">
+            <div className="card metric-card" title={netTooltip} style={{ cursor: 'help' }}>
               <div className="metric-header">
-                <span>Net Realized P&L</span>
+                <span>Net Realized P&L (All Time)</span>
                 <div className="metric-icon-wrap" style={{ color: netPnL >= 0 ? 'var(--color-up)' : 'var(--color-down)' }}>
                   {netPnL >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
                 </div>
@@ -89,8 +110,8 @@ export default function TradesView({ trades }) {
               </div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                 {commissionsComplete
-                  ? `Closed trading performance — net of ${formatCurrency(totalCommission)} commissions`
-                  : 'Closed trading performance — gross where IBKR fees are not yet recorded*'}
+                  ? `After ${formatCurrency(totalCommission)} fees — hover for breakdown`
+                  : `After ${formatCurrency(totalCommission)} fees so far — ${breakdown.feeLegsMissing} legs pending*`}
               </span>
             </div>
 
@@ -118,6 +139,76 @@ export default function TradesView({ trades }) {
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                 Positions closed in Supabase
               </span>
+            </div>
+          </div>
+
+          {/* Realised P&L by calendar window.
+              One thin strip rather than four more metric cards: these are
+              secondary to the all-time figure and four full-height cards would
+              dominate a page whose real content is the table below. */}
+          <div className="card" style={{ padding: '1rem 1.25rem' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)',
+              marginBottom: '0.85rem',
+            }}>
+              <Calendar size={14} color="var(--accent-secondary)" />
+              Net Realized by Period
+              <span
+                style={{ color: 'var(--text-muted)', fontWeight: 400, cursor: 'help' }}
+                title={'Counted by SELL date — a position is booked to the period it CLOSED in,\n' +
+                       'regardless of when it was opened.\n\n' +
+                       'Weeks run Monday to Sunday. "This Week" and "This Month" are\n' +
+                       'to date; "Last Week" and "Last Month" are complete periods.'}
+              >
+                (?)
+              </span>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              gap: '0.75rem',
+            }}>
+              {periods.map((p) => {
+                const tone = p.count === 0
+                  ? 'var(--text-muted)'
+                  : (p.total >= 0 ? 'var(--color-up)' : 'var(--color-down)');
+                return (
+                  <div
+                    key={p.key}
+                    title={p.count === 0
+                      ? `No positions closed ${p.label.toLowerCase()}.`
+                      : `${p.label} (${p.sub})\n` +
+                        `${p.count} trade${p.count === 1 ? '' : 's'} closed\n` +
+                        `Net realised: ${formatCurrency(p.total)}` +
+                        (p.complete ? '' : '\n\nProvisional — some IBKR fees not yet reported.')}
+                    style={{
+                      cursor: 'help',
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: '8px',
+                      background: 'var(--bg-elevated, rgba(255,255,255,0.03))',
+                      border: '1px solid var(--border-subtle, rgba(255,255,255,0.06))',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                      {p.label} <span style={{ opacity: 0.65 }}>· {p.sub}</span>
+                    </div>
+                    <div style={{
+                      fontFamily: 'var(--font-display)', fontWeight: 700,
+                      fontSize: '1.15rem', color: tone,
+                    }}>
+                      {p.count === 0 ? '—' : `${p.total >= 0 ? '+' : ''}${formatCurrency(p.total)}`}
+                      {!p.complete && p.count > 0 && (
+                        <span title={PROVISIONAL_TITLE} style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>*</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                      {p.count} trade{p.count === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

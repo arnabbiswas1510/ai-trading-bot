@@ -538,6 +538,13 @@ def get_trade_history():
                 "sell_date": row["sell_date"],
                 "profit_loss": float(row["profit_loss"]),
                 "percent_return": float(row["percent_return"]),
+                # Passed through unconverted: None means "IBKR never reported
+                # this leg", which is NOT the same as a zero fee. enrich_trades()
+                # relies on that distinction to decide whether the net figure is
+                # final or provisional, so coercing None to 0.0 here would make
+                # every trade look fee-complete and silently overstate results.
+                "buy_commission": row.get("buy_commission"),
+                "sell_commission": row.get("sell_commission"),
                 "exit_reason": row.get("sell_reason", "Manual Close")
             })
         return trades

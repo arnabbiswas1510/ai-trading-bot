@@ -113,3 +113,90 @@ class TestEnrichTrades:
             "sell_commission": "1.0",
         }])[0]
         assert enriched["net_profit_loss"] == 98.0
+
+
+class TestGetTradeHistoryProjection:
+    """
+    The API-layer regression that made the whole commission feature inert.
+
+    `database.get_trade_history()` does `select("*")` but then rebuilds each row
+    as an explicit dict. `buy_commission` / `sell_commission` were missing from
+    that projection, so they never reached `enrich_trades()` -- which computed a
+    zero fee for all 48 trades and published the GROSS book total under a card
+    labelled "Net Realized P&L". The data was in Supabase the whole time.
+
+    This asserts the contract at the seam, which is where it broke: whatever
+    shape the row arrives in, both fee columns must survive the projection, and
+    a missing fee must survive as None rather than being coerced to 0.0.
+    """
+
+    def _project(self, row):
+        """Mirror of the projection in database.get_trade_history()."""
+        import database
+
+        class _Res:
+            data = [row]
+
+        class _Table:
+            def select(self, *a, **k):
+                return self
+
+            def order(self, *a, **k):
+                return self
+
+            def execute(self):
+                return _Res()
+
+        class _Client:
+            def table(self, *a, **k):
+                return _Table()
+
+        original = database.get_supabase_client
+        database.get_supabase_client = lambda: _Client()
+        try:
+            return database.get_trade_history()[0]
+        finally:
+            database.get_supabase_client = original
+
+    def _row(self, buy_commission, sell_commission):
+        return {
+            "id": 1,
+            "ticker": "TEST",
+            "shares": 100,
+            "buy_price": 10.0,
+            "buy_date": "2026-09-01",
+            "sell_price": 11.0,
+            "sell_date": "2026-09-08",
+            "profit_loss": 100.0,
+            "percent_return": 10.0,
+            "buy_commission": buy_commission,
+            "sell_commission": sell_commission,
+            "sell_reason": "Trailing Stop",
+        }
+
+    def test_commission_columns_survive_the_projection(self):
+        out = self._project(self._row(1.25, 2.75))
+        assert out["buy_commission"] == 1.25
+        assert out["sell_commission"] == 2.75
+
+    def test_recorded_fees_reach_the_net_figure(self):
+        enriched = enrich_trades([self._project(self._row(1.25, 2.75))])[0]
+        assert enriched["total_commission"] == 4.0
+        assert enriched["net_profit_loss"] == 96.0
+        assert enriched["commission_complete"] is True
+
+    def test_unreported_fee_is_none_not_zero(self):
+        # The exact failure mode: None coerced to 0.0 would make this trade look
+        # fee-complete and the gross figure would be published as final.
+        out = self._project(self._row(None, None))
+        assert out["buy_commission"] is None
+        assert out["sell_commission"] is None
+        enriched = enrich_trades([out])[0]
+        assert enriched["commission_complete"] is False
+        assert enriched["net_profit_loss"] == 100.0
+
+    def test_half_reported_trade_is_not_complete(self):
+        out = self._project(self._row(None, 2.0))
+        enriched = enrich_trades([out])[0]
+        assert enriched["total_commission"] == 2.0
+        assert enriched["commission_complete"] is False
