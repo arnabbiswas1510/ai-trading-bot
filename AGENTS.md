@@ -439,6 +439,71 @@ All 39 existing migrations were normalised to this convention on 2026-09-17; see
 
 ---
 
+## ♻️ MANDATORY: Every Migration Must Be Re-Runnable
+
+> **A migration must succeed, and change nothing, when run a second time.
+> Never use a bare `ADD COLUMN`, `DROP COLUMN`, `CREATE TABLE`, `CREATE INDEX`
+> or `ADD CONSTRAINT`.**
+
+```sql
+ALTER TABLE t ADD COLUMN IF NOT EXISTS c TEXT;     ✅
+ALTER TABLE t DROP COLUMN IF EXISTS c;             ✅
+CREATE TABLE IF NOT EXISTS t (...);                ✅
+ALTER TABLE t ADD COLUMN c TEXT;                   ❌ fails on re-run
+```
+
+### Why
+
+Nothing in this repo runs migrations — they are applied by hand in the Supabase
+SQL Editor. The operator has no ledger of what has been applied, so the *only*
+protection against running one twice is the file being safe to run twice.
+
+This is not hypothetical. On 2026-09-17 `20260624_migration_retention_period.sql`
+was re-run by mistake and aborted with `column "retention_period" of relation
+"watchlist" already exists`. Nothing was damaged — the SQL Editor wraps a script
+in a transaction, so it rolled back — but the error named a migration the
+operator had not intended to touch, which is alarming and costs real time to
+diagnose. The date-prefix convention above makes this *more* likely, not less:
+every migration now sorts together in one list, so picking a long-applied file
+out of it is easy.
+
+### Guards must match the *current* schema, not the original intent
+
+`IF NOT EXISTS` is necessary but often not sufficient. A migration written years
+ago may reference a column that has since been dropped, and no amount of
+`IF NOT EXISTS` saves a statement whose *referenced* object is gone —
+`20260624_twr_schema.sql` ends in `ADD PRIMARY KEY (date, key)`, and
+`account_balances.key` no longer exists, so that statement now fails outright.
+
+When that happens, wrap the step in a `DO $$ ... $$` block that tests its own
+preconditions and `RAISE NOTICE` on skip:
+
+```sql
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='t' AND column_name='c') THEN
+        EXECUTE 'ALTER TABLE t ADD PRIMARY KEY (a, c)';
+    ELSE
+        RAISE NOTICE 't: step skipped (column "c" no longer exists).';
+    END IF;
+END $$;
+```
+
+Make the historical step **inert**; do not rewrite it to impose the modern
+schema. An old migration's job is to record what was done at the time, not to
+reshape a table it no longer describes.
+
+### Enforcement
+
+`tests/test_migrations_idempotent.py` scans every file in `migrations/` and fails
+on unguarded DDL. It runs in the normal `pytest` suite, so a non-idempotent
+migration cannot be committed. Add an end-of-file verification `SELECT` that
+reports `OK`/`FAIL` per object, so the operator sees confirmation rather than
+silence. See `decisions/2026-09-17_idempotent-migrations.md`.
+
+---
+
 ## 🗄️ MANDATORY: Log Every Deletion in `docs/retired_code.md`
 
 > **Before deleting any rule, constant, function or code path, record it in

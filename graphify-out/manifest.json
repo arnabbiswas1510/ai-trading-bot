@@ -130,8 +130,8 @@
     "semantic_hash": ""
   },
   "migrations/20260624_twr_schema.sql": {
-    "mtime": 1785202226.8025124,
-    "ast_hash": "a01944dbb8ec2258d0f4bb35365a641b",
+    "mtime": 1789683771.9664702,
+    "ast_hash": "544c1be0e4e2471373bc103f1540232c",
     "semantic_hash": ""
   },
   "retention_helper.py": {
@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1789682042.226519,
-    "ast_hash": "5f30a8d538b91fddb896bbfb37d08939",
+    "mtime": 1789683725.74362,
+    "ast_hash": "9c102dc4d60670afcaa949f24b28871e",
     "semantic_hash": ""
   },
   "README.md": {
@@ -1060,8 +1060,8 @@
     "semantic_hash": ""
   },
   "migrations/20260624_migration_retention_period.sql": {
-    "mtime": 1789682042.320207,
-    "ast_hash": "68c0318f7078e4b2bd5660df11e7214a",
+    "mtime": 1789683771.9629831,
+    "ast_hash": "190ac6fc5b22cd969e34dce4a2fa3d61",
     "semantic_hash": ""
   },
   "migrations/20260708_add_hwm_date.sql": {
@@ -1287,6 +1287,16 @@
   "decisions/2026-09-17_rs-percentile-shadow-column.md": {
     "mtime": 1789682042.243895,
     "ast_hash": "4d64949194c18a5395b8f42d67572b39",
+    "semantic_hash": ""
+  },
+  "tests/test_migrations_idempotent.py": {
+    "mtime": 1789683761.3201156,
+    "ast_hash": "0bb6e34b6d4cb268764160e49d852693",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-17_idempotent-migrations.md": {
+    "mtime": 1789683807.565609,
+    "ast_hash": "f8a355daf7bc899ef28f025571fbe5de",
     "semantic_hash": ""
   }
 }
