@@ -247,7 +247,7 @@ Hard-coded floors: price > $15, 30-day average volume > 250,000, market cap > $3
 | `VOLUME_SURGE_MIN` | `1.50` | Breakout-bar volume multiple |
 | `ROLLING_HIGH_WINDOW` | `252` | Pivot lookback (~52 weeks) |
 | `PIVOT_PROXIMITY` | `0.95` | Close ≥ rolling high × this |
-| `RS_MIN_GATE` | `50` | Minimum RS percentile vs SPY |
+| `RS_MIN_GATE` | `50` | Minimum `rs_score` vs SPY. **Not a percentile** — `rs_score` is a clipped 0–100 transform of 12-week excess return, so 50 means "matched SPY" and 100 means "beat it by ≥ 10%". See [technical_triggers.md](technical_triggers.md#relative-strength). |
 | `MIN_PRICE_HISTORY` | `50` | Bars required to evaluate a name |
 | `FMP_HISTORY_DAYS` | `380` | Price history fetched per ticker |
 | `PRE_BREAKOUT_PROXIMITY` | `0.08` | Max distance below the high |
@@ -259,6 +259,16 @@ Hard-coded floors: price > $15, 30-day average volume > 250,000, market cap > $3
 | `RELAXED_RS_MIN_GATE` | `50` | Quota-fill variant |
 | `LEARNING_MIN_ROWS` | `3` | Minimum `breakout_learnings` rows before Phase-2 penalty activates |
 | `LEARNING_LOOKBACK_DAYS` | `90` | Recency window for failure-penalty learnings |
+
+**Shadow relative-strength columns (no env vars, no behavioural effect).**
+`rs_12w_return`, `rs_excess_return` and `rs_percentile` are written to
+`daily_triggers` and archived to `trigger_history` purely for research. They have
+no configuration knobs because nothing reads them at runtime: no buy gate, sort
+order, position size or exit rule consumes them, and `final_score` is unchanged.
+Apply `migrations/add_rs_percentile.sql` to enable them; without it the screener
+strips them on insert with a warning and continues normally, and `schema_guard`
+reports the gap as advisory only. Reviewed 2026-10-19 — see
+`decisions/2026-09-17_rs-percentile-shadow-column.md`.
 
 ---
 

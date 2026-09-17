@@ -80,6 +80,12 @@ _HISTORY_COLUMNS = (
     "technical_score", "rs_score", "liquidity_score", "sentiment_score",
     "score_rationale", "atr_pct", "est_days_to_target", "adjusted_score",
     "failure_penalty", "penalty_reason", "trigger_type",
+    # Shadow RS ranking — research only, read by no live rule. Archived here so
+    # backfill_trigger_outcomes.py can pair the percentile with forward returns,
+    # which is the whole point of carrying it. Rows written before
+    # migrations/add_rs_percentile.sql was applied simply carry NULL.
+    # See decisions/2026-09-17_rs-percentile-shadow-column.md.
+    "rs_12w_return", "rs_excess_return", "rs_percentile",
 )
 
 

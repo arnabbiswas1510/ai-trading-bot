@@ -78,6 +78,25 @@ ADVISORY_COLUMNS: dict[str, dict[str, str]] = {
             "dashboard cannot distinguish a stale broker mark from a "
             "never-synced position (migrations/add_ibkr_position_values.sql)",
     },
+    "trigger_history": {
+        # One probe stands for all three shadow columns — they ship in the same
+        # migration, so probing each would cost three round trips to learn one
+        # fact. Research-only: no risk rule and no dashboard number reads them,
+        # so a miss degrades the 2026-10-19 RS review, never trading. The
+        # screener strips these and retries on insert failure, so an unapplied
+        # migration cannot interrupt live screening either.
+        #
+        # Probed on trigger_history rather than daily_triggers for two reasons:
+        # the archive is what research/rs_percentile_review.py actually reads,
+        # and daily_triggers sits in the buy path, which the startup guard has
+        # no business touching before the market-direction gate has run.
+        "rs_percentile":
+            "shadow relative-strength rank (with rs_excess_return and "
+            "rs_12w_return) — without it the saturated rs_score cannot be "
+            "evaluated and decisions/provisional_decisions.json entry "
+            "'rs-percentile-shadow' has no data to review "
+            "(migrations/add_rs_percentile.sql)",
+    },
 }
 
 # Analytics/archive objects. Missing => warn only, never block trading.

@@ -74,6 +74,129 @@ def compute_rs_score(stock_12w_return: float, spy_12w_return: float) -> int:
         return 0
 
 
+# ── Shadow relative-strength ranking (RESEARCH ONLY) ─────────────────────────
+# Everything below this line is measured, archived and reviewed, but is NOT read
+# by compute_final_score(), by any buy gate, by position sizing, or by any exit
+# rule. compute_rs_score() above remains the only RS input to a live decision.
+#
+# WHY IT EXISTS
+# -------------
+# compute_rs_score() clips to a flat 100 for any excess >= +10%. The watchlist
+# is pre-filtered to growth names already near their 52-week highs, so nearly
+# every candidate clears that bar: over all 233 archived triggers on 2026-09-17,
+# rs_score was exactly 100 in 76% of rows. A component that is identical for
+# three of every four candidates cannot rank them, so its 10% weight in
+# compute_final_score() does far less work than the formula suggests.
+#
+# WHY IT IS NOT SIMPLY FIXED IN PLACE
+# -----------------------------------
+# The saturation is an established defect; the SIGN of the repair is not. Within
+# a universe already filtered for momentum, every sample available at the time
+# of writing pointed the OTHER way — corr(rs_score, fwd_20d_pct) = -0.68 on the
+# first 16 labelled triggers, and losers carried a HIGHER mean 12-week entry
+# return than winners (31.1% vs 28.1%) across 48 closed trades. A percentile
+# that promotes the strongest names could therefore make selection worse. These
+# functions let that question be measured before it is answered.
+# See decisions/2026-09-17_rs-percentile-shadow-column.md.
+
+
+def compute_rs_excess(stock_12w_return: float, spy_12w_return: float) -> float:
+    """Raw 12-week excess return vs SPY, in percent, UNCLIPPED.
+
+    This is the quantity compute_rs_score() flattens at +10%. Preserving it
+    unclipped is the entire point: the archive must retain enough information to
+    test ranking schemes that were not conceived when the row was written.
+    """
+    try:
+        return round(float(stock_12w_return) - float(spy_12w_return), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def rank_percentiles(values: list) -> list:
+    """Percentile rank (1-99) of each value within its own cohort.
+
+    Ties share the average of the ranks they span, so two identical inputs can
+    never be ordered arbitrarily — important here because a cohort of coiling
+    pre-breakouts can legitimately contain duplicate excess returns.
+
+    Entries that are not finite numbers rank as None rather than being coerced
+    to zero, which would otherwise plant them at the bottom of the cohort and
+    silently distort every other rank.
+
+    A cohort of one returns [50]: a single candidate has no peers, and 50 is the
+    honest "no information" answer. Returning 99 would manufacture a top-decile
+    signal out of an empty comparison.
+    """
+    n = len(values)
+    if n == 0:
+        return []
+
+    numeric: list[tuple[int, float]] = []
+    for i, v in enumerate(values):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f != f or f in (float("inf"), float("-inf")):   # NaN / inf guard
+            continue
+        numeric.append((i, f))
+
+    out: list = [None] * n
+    m = len(numeric)
+    if m == 0:
+        return out
+    if m == 1:
+        out[numeric[0][0]] = 50
+        return out
+
+    ordered = sorted(numeric, key=lambda p: p[1])
+
+    # Average-rank tie handling: walk runs of equal value and give each member
+    # the mean of the 1-based positions that run occupies.
+    j = 0
+    while j < m:
+        k = j
+        while k + 1 < m and ordered[k + 1][1] == ordered[j][1]:
+            k += 1
+        avg_rank = (j + k) / 2.0 + 1.0          # 1-based
+        pct = 1.0 + 98.0 * (avg_rank - 1.0) / (m - 1)
+        for idx in range(j, k + 1):
+            out[ordered[idx][0]] = int(max(1, min(99, round(pct))))
+        j = k + 1
+
+    return out
+
+
+def assign_rs_percentiles(triggers: list) -> list:
+    """Annotate each trigger dict in-place with `rs_percentile`.
+
+    Ranks on `rs_excess_return` within the cohort supplied. The cohort is one
+    screening run's triggers, which is deliberate: final_score exists to sort a
+    single morning's candidates against each other, so that is the comparison
+    that actually decides which ticker takes a slot.
+
+    Returns the same list for convenience. Never raises — this is a research
+    annotation and must not be capable of interrupting a live screening run.
+    """
+    if not triggers:
+        return triggers
+    try:
+        pcts = rank_percentiles([t.get("rs_excess_return") for t in triggers])
+        for t, p in zip(triggers, pcts):
+            t["rs_percentile"] = p
+    except Exception:
+        for t in triggers:
+            t.setdefault("rs_percentile", None)
+    return triggers
+
+
+# Column names written by the shadow ranking above. Kept here so the screener's
+# defensive insert and the trigger archive agree on one list, and so a future
+# reader grepping for the feature finds every consumer from one place.
+RS_SHADOW_COLUMNS = ("rs_12w_return", "rs_excess_return", "rs_percentile")
+
+
 def compute_final_score(technical_score: int, liquidity_score: int,
                          ai_score: int, sentiment_score: int,
                          rs_score: int) -> int:

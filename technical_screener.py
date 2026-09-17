@@ -5,7 +5,9 @@ import pandas as pd
 from supabase import create_client, Client
 from telegram_notifier import TelegramNotifier
 from zoneinfo import ZoneInfo
-from scoring import compute_rs_score, est_days_to_lock   # pure functions — no external deps
+from scoring import (compute_rs_score, est_days_to_lock,          # pure functions — no external deps
+                     compute_rs_excess, assign_rs_percentiles,
+                     RS_SHADOW_COLUMNS)
 import trigger_audit
 
 # Sourced safely from environment variables
@@ -321,6 +323,10 @@ def check_technical_breakout(ticker, *, volume_surge_min: float | None = None,
                 "technical_score":     quality_score,   # alias for 5-component formula
                 "avg_volume_50":       int(avg_vol_50) if avg_vol_50 == avg_vol_50 else 0,
                 "rs_score":            rs,
+                # Shadow RS ranking inputs — research only, read by no live rule.
+                # See decisions/2026-09-17_rs-percentile-shadow-column.md.
+                "rs_12w_return":       float(stock_12w_return),
+                "rs_excess_return":    compute_rs_excess(stock_12w_return, _SPY_12W_RETURN),
                 "atr_pct":             atr_pct,           # daily ATR as % of price
                 "est_days_to_target":  est_days_to_target, # trading days to the +5% lock at ATR pace
                 "triggered_at":        today_ny,
@@ -427,6 +433,10 @@ def check_pre_breakout_coil(ticker: str, df: "pd.DataFrame",
             "technical_score":     quality_score,
             "avg_volume_50":       int(avg_vol_50) if avg_vol_50 == avg_vol_50 else 0,
             "rs_score":            rs,
+            # Shadow RS ranking inputs — research only, read by no live rule.
+            # See decisions/2026-09-17_rs-percentile-shadow-column.md.
+            "rs_12w_return":       float(stock_12w_return),
+            "rs_excess_return":    compute_rs_excess(stock_12w_return, _SPY_12W_RETURN),
             "atr_pct":             atr_pct,
             "est_days_to_target":  est_days_to_target,
             "triggered_at":        today_ny,
@@ -506,11 +516,32 @@ def write_triggers_to_supabase(triggers):
         except Exception as _ae:
             print(f"⚠️ Could not archive trigger_history (non-fatal): {_ae}")
 
+        # Shadow RS ranking — annotate the cohort with a percentile rank before
+        # the insert. RESEARCH ONLY: no buy gate, ranking, sizing or exit rule
+        # reads rs_percentile, and final_score is not recomputed here. See
+        # decisions/2026-09-17_rs-percentile-shadow-column.md.
+        assign_rs_percentiles(triggers)
+
         print("🧹 Truncating daily_triggers table...")
         client.table("daily_triggers").delete().neq("ticker", "DUMMY_NEVER_MATCH").execute()
 
         print(f"📤 Pushing {len(triggers)} breakouts to 'daily_triggers'...")
-        client.table("daily_triggers").insert(triggers).execute()
+        try:
+            client.table("daily_triggers").insert(triggers).execute()
+        except Exception as _ie:
+            # The shadow columns are the only new schema this code depends on,
+            # and they are research-only. If migrations/add_rs_percentile.sql has
+            # not been applied yet, the screener must still publish its triggers
+            # — losing a research annotation is survivable, losing the morning's
+            # buy candidates is not. Retry once without them, loudly.
+            if not any(c in str(_ie) for c in RS_SHADOW_COLUMNS):
+                raise
+            print(f"⚠️ daily_triggers rejected the shadow RS columns ({_ie}).")
+            print("   Run migrations/add_rs_percentile.sql. Retrying WITHOUT them "
+                  "so live screening is unaffected.")
+            stripped = [{k: v for k, v in t.items() if k not in RS_SHADOW_COLUMNS}
+                        for t in triggers]
+            client.table("daily_triggers").insert(stripped).execute()
         print("✅ Breakouts replaced successfully.")
     except Exception as e:
         print(f"❌ Failed to log breakout signals: {e}")

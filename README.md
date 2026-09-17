@@ -39,7 +39,7 @@ their price structure signals accumulation, and exit fast when that signal fails
 | **A** | Annual earnings | Diluted EPS YoY TTM growth > 25%, revenue growth > 15% |
 | **N** | New highs / new products | Price within 5% of the 252-day rolling high |
 | **S** | Supply and demand | Volume ≥ 1.50× the 50-day average on the breakout bar |
-| **L** | Leader, not laggard | 12-week relative strength vs SPY, ≥ 50th percentile |
+| **L** | Leader, not laggard | 12-week relative strength vs SPY, `rs_score ≥ 50` (i.e. excess return ≥ 0) |
 | **I** | Institutional sponsorship | $300M market-cap floor, 250K average daily volume |
 | **M** | Market direction | Buys suspended unless **both** SPY and QQQ close >1% above their 200-day SMA with at least one 200-DMA non-falling; fails closed on any data error |
 
@@ -125,7 +125,7 @@ Every trigger receives a 0–100 composite:
 | Liquidity | 25% | Price, average volume, market cap |
 | AI rating | 25% | GPT-assessed fundamental quality in full context |
 | Sentiment | 10% | Recent news tone |
-| RS vs SPY | 10% | 12-week relative strength |
+| RS vs SPY | 10% | 12-week relative strength (clipped at +10% excess — see [docs/technical_triggers.md](docs/technical_triggers.md#relative-strength)) |
 
 The AI layer assigns a conviction grade; **grade D (conviction < 30) is a hard veto**
 regardless of composite score. A missing AI score is *also* a rejection — the system fails

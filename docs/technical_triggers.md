@@ -40,14 +40,59 @@ never carried forward.
 RS is computed once per run and applied to every candidate:
 
 ```
-RS percentile = 12-week stock return, ranked against the 12-week SPY return
+excess      = 12-week stock return − 12-week SPY return   (percent)
+rs_score    = 100                     if excess ≥ +10
+            = 50 + (excess × 5)       if −10 ≤ excess < +10
+            = 0                       if excess < −10
 ```
+
+`rs_score` is **not** a percentile despite the name of the gate — it is a clipped
+linear transform of excess return, bounded to 0–100. Nothing is ranked against
+the rest of the field.
 
 `RS_MIN_GATE` (50) enforces O'Neil's leadership requirement — the stock must be outperforming
 the index, not merely rising with it. A stock making highs in a market making larger highs is
-a laggard.
+a laggard. A score of 50 corresponds to exactly matching SPY, so the gate admits any candidate
+with non-negative excess return.
 
 Missing history yields a neutral 50 rather than a rejection.
+
+### The clip saturates, and that is measured but not yet acted on
+
+Because the watchlist is already filtered to growth names near their 52-week
+highs, most candidates clear +10% excess comfortably and receive an identical
+score of **100** — 176 of 233 archived triggers (**76%**). A component that is the
+same for three of every four candidates cannot separate them, so the 10% weight
+`rs_score` carries in `final_score` does far less ranking work than the table
+below implies.
+
+Three **research-only** columns record what the clip discards. They are written to
+`daily_triggers` and archived to `trigger_history`:
+
+| Column | Meaning |
+|---|---|
+| `rs_12w_return` | The stock's raw 12-week return |
+| `rs_excess_return` | 12-week excess vs SPY, **unclipped** |
+| `rs_percentile` | 1–99 rank of `rs_excess_return` within that run's trigger cohort (ties share the average rank; a cohort of one scores a neutral 50) |
+
+**None of these three is read by any buy gate, ranking, sort order, position size
+or exit rule.** `compute_rs_score()` and `compute_final_score()` are unchanged and
+the bot trades exactly as it did before they were added. They exist so the
+question "would a real ranking pick better stocks?" can be answered from data
+rather than assumed — the available evidence at the time of writing pointed the
+*opposite* way to the obvious fix, with higher relative strength associated with
+*worse* forward returns inside this already-momentum-filtered universe.
+
+The columns are populated by `migrations/add_rs_percentile.sql`. If that migration
+has not been applied, the screener detects the rejected insert, prints a warning
+and retries without them — live screening is never interrupted, only the research
+annotation is lost. `schema_guard` reports the absence as **advisory**, never as a
+trading block.
+
+Scheduled for review on **2026-10-19** via the
+[Provisional Decision Register](../decisions/provisional_decisions.json) entry
+`rs-percentile-shadow`; run `python3 research/rs_percentile_review.py --insecure`.
+See `decisions/2026-09-17_rs-percentile-shadow-column.md` for why.
 
 ---
 
@@ -121,6 +166,10 @@ pivot, and extension above SMA-50. This is one of five components later combined
 | AI rating | 25% |
 | Sentiment | 10% |
 | RS vs SPY | 10% |
+
+Note the RS component saturates at 100 for roughly three quarters of candidates
+(see [Relative strength](#relative-strength)), so its *effective* contribution to
+separating one candidate from another is well below the nominal 10%.
 
 A **failure penalty** is applied from `breakout_learnings` once enough rows exist
 (`LEARNING_MIN_ROWS`). Separately, `ai_evaluator.py` applies a ticker-level

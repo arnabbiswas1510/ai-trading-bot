@@ -1,22 +1,22 @@
 {
-  "_README": "PROVISIONAL DECISION REGISTER \u2014 the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else \u2014 add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process.",
+  "_README": "PROVISIONAL DECISION REGISTER — the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else — add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process.",
   "_schema": {
     "id": "kebab-case unique key; also the GitHub-issue marker",
     "title": "one-line human label",
     "status": "active | resolved | superseded  (only 'active' is ever alerted on)",
     "decided": "YYYY-MM-DD the decision was taken",
-    "implemented": "bool \u2014 true once the decision is live in production code; false = approved config still on the shelf",
+    "implemented": "bool — true once the decision is live in production code; false = approved config still on the shelf",
     "decision": "what we decided to do, stated as current fact",
     "rationale": "why, and on how large a sample",
     "adr": "path to the ADR that records the reasoning (may be null until written)",
     "revisit": {
-      "min_closed_trades": "int | null \u2014 becomes due once trade_history has >= this many rows",
-      "not_before": "YYYY-MM-DD | null \u2014 a date floor; due only once BOTH this and min_closed_trades are satisfied"
+      "min_closed_trades": "int | null — becomes due once trade_history has >= this many rows",
+      "not_before": "YYYY-MM-DD | null — a date floor; due only once BOTH this and min_closed_trades are satisfied"
     },
     "baseline": "the numbers measured at decision time, so a future review compares like-for-like",
     "review_command": "the exact command that reproduces the measurement",
     "review_questions": "the specific questions the review must answer",
-    "last_reviewed": "YYYY-MM-DD | null \u2014 set when a review is completed",
+    "last_reviewed": "YYYY-MM-DD | null — set when a review is completed",
     "history": "append-only log of {date, closed_trades, verdict, note} from each completed review"
   },
   "decisions": [
@@ -27,7 +27,7 @@
       "decided": "2026-09-08",
       "implemented": true,
       "decision": "When an open position's PEAK gain first reaches +4%, sell 33% of the shares at market; the remaining ~67% rides the unchanged Prove-It stop. Fires once per position (scaled_out latch); suppressed for power-held leaders. Freed capital stays as reserve until a full slot opens, then redeploys via normal available_cash / remaining_slots sizing. Live in execute_scale_out() + monitor_portfolio_intraday(); ADR and docs shipped.",
-      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped \u2014 those are an entry-quality problem, tracked separately.",
+      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped — those are an entry-quality problem, tracked separately.",
       "adr": "decisions/2026-09-08_partial-scale-out.md",
       "revisit": {
         "min_closed_trades": 50,
@@ -46,7 +46,7 @@
       "review_questions": [
         "Does +4%/33% still match or beat the SHIPPED net? (was -$64 = free)",
         "Is the fader benefit still spread over >=3 trades, or is it now carried by one? (single-trade-carry check)",
-        "Has the winner-clip grown \u2014 is harmed or winners_hurt higher than the baseline 6?",
+        "Has the winner-clip grown — is harmed or winners_hurt higher than the baseline 6?",
         "Do enough faders now peak in the +4-5% band to justify the trigger, or has the fader distribution shifted (argue the trigger up/down with the new peaks)?",
         "Would a different fraction (25% / 50%) now win, given the larger sample?"
       ],
@@ -60,7 +60,7 @@
       "decided": "2026-09-15",
       "implemented": true,
       "decision": "COOLING_OFF_DAYS defaults to 3 in config.py and .env.template, matching what production has run via a .env override since before 2026-08-09. Buy gate 2 continues to block re-entry for 3 days after a sale, checking BOTH trade_history and ibkr_fills SLD fills. The gate is NOT retired.",
-      "rationale": "Measured on 9 genuine re-entries (43 closed trades) plus a 26-trigger FMP counterfactual. 7 days blocks 7 of the 9 re-entries, worth +$1,736.67 net (4 winners / 3 losers, winners ~5x losers), including NTRA's 4-day re-entry of 2026-09-14 (+$575.44) \u2014 so 7 is measurably too wide, and its original justification in the 2026-08-09 ADR was asserted, never measured. But 0 is worse: of 26 blocked re-entries with forward bars, 16 (62%) break the Prove-It 1% day-0 band on their FIRST session, so the headline +2.17% mean 5-day return is unreachable \u2014 the bot exits on the band long before it. 0 also re-enables the same-session churn (NTRA sold 10:26, re-bought 10:32) that corrupted the lot basis. MAJOR CONFOUND: SLOTS_FULL accounts for 115 of 214 logged skips vs COOLING_OFF's 28, so capacity is the real binding constraint and +$1,736.67 is an UPPER BOUND on what 7 costs, not realised foregone profit. Sample is one month, entirely inside a BULL regime.",
+      "rationale": "Measured on 9 genuine re-entries (43 closed trades) plus a 26-trigger FMP counterfactual. 7 days blocks 7 of the 9 re-entries, worth +$1,736.67 net (4 winners / 3 losers, winners ~5x losers), including NTRA's 4-day re-entry of 2026-09-14 (+$575.44) — so 7 is measurably too wide, and its original justification in the 2026-08-09 ADR was asserted, never measured. But 0 is worse: of 26 blocked re-entries with forward bars, 16 (62%) break the Prove-It 1% day-0 band on their FIRST session, so the headline +2.17% mean 5-day return is unreachable — the bot exits on the band long before it. 0 also re-enables the same-session churn (NTRA sold 10:26, re-bought 10:32) that corrupted the lot basis. MAJOR CONFOUND: SLOTS_FULL accounts for 115 of 214 logged skips vs COOLING_OFF's 28, so capacity is the real binding constraint and +$1,736.67 is an UPPER BOUND on what 7 costs, not realised foregone profit. Sample is one month, entirely inside a BULL regime.",
       "adr": "decisions/2026-09-15_cooling-off-three-days.md",
       "revisit": {
         "min_closed_trades": 75,
@@ -80,12 +80,49 @@
       },
       "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure && python3 research/decision_review.py --insecure",
       "review_questions": [
-        "How many GENUINE re-entries now exist? (was 9; exclude split-fill duplicates sharing a buy timestamp, e.g. the TRV 2026-07-21 pair.) Below ~25 the comparison is still noise \u2014 report n FIRST.",
+        "How many GENUINE re-entries now exist? (was 9; exclude split-fill duplicates sharing a buy timestamp, e.g. the TRV 2026-07-21 pair.) Below ~25 the comparison is still noise — report n FIRST.",
         "Would a 7-day rule still be net-negative? (was -$1,736.67 across 7 blocked re-entries.) Is that result still spread across several trades, or is it now carried by one outlier like LPG's +$882?",
         "Does the 62% day-0-band break rate still hold for triggers the 3-day gate blocks? If it has fallen well below ~40%, retirement becomes arguable and should be swept properly.",
-        "Sweep 2, 3, 4 and 5 days \u2014 not just 3 vs 7 vs 0. Adjacent values were never discriminated because the sample was too small.",
+        "Sweep 2, 3, 4 and 5 days — not just 3 vs 7 vs 0. Adjacent values were never discriminated because the sample was too small.",
         "Has the bot traded through a non-BULL regime yet? The entire decision sample sits inside one bull window; a corrective tape is the real test of whether fast re-entry is safe.",
         "Has the SLOTS_FULL confound shrunk? If capacity is still the binding constraint (was 115 of 214 skips), the dollar figures remain an upper bound and should be quoted as such."
+      ],
+      "last_reviewed": null,
+      "history": []
+    },
+    {
+      "id": "rs-percentile-shadow",
+      "title": "Shadow rs_percentile: measure relative-strength ranking without trading on it",
+      "status": "active",
+      "decided": "2026-09-17",
+      "implemented": true,
+      "decision": "The screener computes and stores three research-only columns on daily_triggers and trigger_history: rs_12w_return, rs_excess_return (unclipped excess vs SPY) and rs_percentile (1-99 rank within that run's trigger cohort). compute_rs_score() and compute_final_score() are UNCHANGED and no buy gate, sort order, position size or exit rule reads any of the three. This is pure instrumentation: the bot trades exactly as it did before. tests/test_rs_percentile.py asserts compute_final_score's signature contains none of the shadow columns, so the day someone wires the percentile into live scoring, this register entry is invalidated by a failing test.",
+      "rationale": "compute_rs_score() clips to a flat 100 for any excess >= +10% vs SPY. The watchlist is already pre-filtered to growth names near 52-week highs, so 176 of 233 archived triggers (76%) score exactly 100 - the component cannot rank three of every four candidates, and its 10% weight in final_score does almost no discriminating work. That defect is established. The SIGN of the repair is NOT: within a universe already filtered for momentum, every sample we hold points the other way. corr(rs_score, fwd_20d) = -0.68 on the 16 labelled rows; losers entered with HIGHER mean 12-week returns than winners (31.1% vs 28.1%) over 48 closed trades; and the single largest loss in the book (CDNA, -$1,539) entered the most extended at +121%. A 'correct' percentile that promotes the strongest name could therefore buy more CDNAs. Crucially the -0.68 rests on 16 rows that all share ONE trigger date (2026-08-14) - effectively one observation, not sixteen. Shipping shadow mode buys a real multi-date sample without touching live selection during a profitable run (post-Prove-It: n=17, +$3,527, 59% win, worst loss -$280).",
+      "adr": "decisions/2026-09-17_rs-percentile-shadow-column.md",
+      "revisit": {
+        "min_closed_trades": null,
+        "not_before": "2026-10-19"
+      },
+      "baseline": {
+        "archived_triggers": 233,
+        "rs_score_saturated_at_100": 176,
+        "rs_score_saturation_pct": 76,
+        "triggers_labelled_at_decision": 16,
+        "corr_rs_score_fwd20d": -0.68,
+        "mean_12w_entry_return_losers_pct": 31.1,
+        "mean_12w_entry_return_winners_pct": 28.1,
+        "closed_trades_at_decision": 48,
+        "rs_weight_in_final_score_pct": 10,
+        "expected_full_label_date": "2026-10-19"
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 backfill_trigger_outcomes.py && python3 research/rs_percentile_review.py --insecure",
+      "review_questions": [
+        "How many trigger_history rows now carry BOTH rs_percentile and a non-null fwd_20d_pct, and across how many DISTINCT trigger dates? Below ~5 distinct dates this is still one cohort wearing a disguise - report the date count first, every time, and skip rather than read noise.",
+        "What is the SIGN of the relationship between rs_percentile and forward 5/10/20-day return? The decision hinges on this and nothing else. At decision time corr(rs_score, fwd20d) was -0.68 on a single cohort.",
+        "Does rs_percentile discriminate where rs_score could not? Compare forward returns of the top vs bottom percentile tercile RESTRICTED to rows where rs_score == 100. If there is no spread inside the saturated group, the percentile adds nothing and this entry should be resolved as 'no effect' rather than left open.",
+        "Is any result carried by one date or one ticker? Drop the largest-contributing trigger date and re-run. If the sign flips, it has not been measured.",
+        "If the relationship is NEGATIVE and holds up: the implied change is an RS CEILING (reject over-extended leaders), not the percentile promotion originally proposed. Does the extension data agree, given the 2026-09-09 buy-price drift guard already removed most of the pre-era gap-chasing?",
+        "If the relationship is POSITIVE and holds up: what would swapping rs_score for rs_percentile inside compute_final_score have changed about which ticker won each slot, and would that have helped? Re-rank historical cohorts before changing any live code."
       ],
       "last_reviewed": null,
       "history": []
