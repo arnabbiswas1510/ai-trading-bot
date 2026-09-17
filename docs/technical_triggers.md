@@ -285,7 +285,7 @@ to settled triggers.
 | `max_gain_20d_pct` / `max_drawdown_20d_pct` | Best and worst excursion, **including** the entry session |
 | `ever_above_entry` | Empirical twin of the Prove-It Stop's `closed_above_entry` latch |
 | `bench_fwd_20d_pct` / `alpha_20d_pct` | Same-window SPY return and the excess over it |
-| `outcome_bars` | Sessions measured; short windows are left unwritten |
+| `outcome_bars` | Sessions measured so far. Drives the partial/complete distinction below |
 
 Two conventions are load-bearing and neither announces itself if broken:
 
@@ -295,10 +295,29 @@ Two conventions are load-bearing and neither announces itself if broken:
 2. **`fwd_1d` is the entry day's own close** — matching the day-numbering used by every
    day-gated exit rule.
 
-Only triggers older than 34 calendar days (~20 sessions plus holiday margin) are processed,
-and the job is idempotent (`outcomes_computed_at IS NULL`).
+### Each horizon is written as soon as it matures
+
+The three horizons mature at very different rates, so they are written independently rather
+than as one unit. A trigger is picked up **3 calendar days** after it fires — enough for
+`fwd_1d` — and is then revisited on every subsequent run, gaining `fwd_5d` and finally
+`fwd_20d` as the sessions accumulate.
+
+`outcomes_computed_at` is the completion latch: it is stamped **only** once all 20 sessions
+exist. While it is NULL the row is re-selected and topped up; once stamped the row drops out.
+Partial writes never contain NULLs, so a later pass only ever adds knowledge.
+
+`max_gain_20d_pct`, `max_drawdown_20d_pct` and `ever_above_entry` carry 20-day semantics and
+are therefore withheld until all 20 sessions exist. A 5-bar drawdown is not a small 20-bar
+drawdown — it is a different quantity, and storing it under the 20d name would understate
+risk in every study that reads the column.
+
+The job is idempotent, and `--force` recomputes rows that are already complete.
 
 Manual run: `python3 backfill_trigger_outcomes.py --dry-run [--limit N]`
+
+See `decisions/2026-09-17_per-horizon-outcomes.md` for why, and for the measurement that
+motivated it: writing all three horizons together left 16 of 233 archived triggers measured
+and **zero** BREAKOUT rows, while `fwd_1d` was already computable for 222 of them.
 
 ---
 

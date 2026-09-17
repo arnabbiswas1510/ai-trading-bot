@@ -89,10 +89,18 @@ computes and stores them; `backfill_trigger_outcomes.py` will pair them with
 forward 5/10/20-day returns on its existing weekly schedule.
 
 By approximately **2026-10-19** every one of the 233 archived triggers will carry
-a labelled outcome (`SETTLE_DAYS = 34`, archive starts 2026-08-14), giving a real
-multi-date sample. That date is registered in
+a *complete* 20-day outcome (`SETTLE_DAYS = 34`, archive starts 2026-08-14),
+giving a real multi-date sample. That date is registered in
 `decisions/provisional_decisions.json`, so the monthly `decision_review.yml` cron
 opens a GitHub issue rather than relying on anyone remembering.
+
+> **2026-09-17 update.** Short-horizon labels now arrive far earlier: outcomes are
+> written per horizon as they mature, so as of today 222/233 rows carry `fwd_1d`
+> and 200/233 carry `fwd_5d` (34 and 25 of the 37 BREAKOUTs respectively). The
+> 2026-10-19 date still governs **`fwd_20d`**, which is the horizon this RS review
+> is specified on — so the review date is unchanged. Only a review willing to use
+> the 1d/5d horizons could run sooner. See
+> `decisions/2026-09-17_per-horizon-outcomes.md`.
 
 ### Design notes
 

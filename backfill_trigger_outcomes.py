@@ -79,11 +79,35 @@ BENCHMARK = "SPY"
 HORIZONS = (1, 5, 20)
 MAX_HORIZON = max(HORIZONS)
 
-# Calendar days to wait before measuring. 20 trading days is ~28 calendar days;
-# the extra margin absorbs holidays so a window is never measured short.
+# Calendar days after which the LONGEST horizon is measurable, and therefore the
+# point at which a row is considered COMPLETE. 20 trading days is ~28 calendar
+# days; the extra margin absorbs holidays so a window is never measured short.
 SETTLE_DAYS = 34
-# Sessions required after entry before a row is considered measurable at all.
-MIN_BARS_REQUIRED = MAX_HORIZON
+
+# Calendar days after which the SHORTEST horizon is measurable. fwd_1d needs a
+# single session, so three calendar days clears a weekend.
+#
+# WHY THESE ARE SEPARATE (measured 2026-09-17)
+# --------------------------------------------
+# Selection used to run off SETTLE_DAYS alone, and a row was discarded outright
+# unless all 20 sessions existed. Because fwd_1d, fwd_5d and fwd_20d were written
+# as one all-or-nothing unit, the two short horizons were withheld for a month by
+# the long one. On 2026-09-17 that left 16 of 233 archived triggers measured and
+# **zero** BREAKOUT rows, while the data already supported:
+#
+#     fwd_1d   222/233 rows   34/37 BREAKOUT
+#     fwd_5d   185/233 rows   24/37 BREAKOUT
+#     fwd_20d   16/233 rows    0/37 BREAKOUT   <- the only one actually mature
+#
+# That gap is what blocked refitting the breakout failure penalty, whose "failures"
+# are day-0/day-1 stop-outs -- exactly what fwd_1d and fwd_5d measure.
+# Rows are now revisited until complete; see decisions/2026-09-17_per-horizon-outcomes.md.
+MIN_SETTLE_DAYS = 3
+
+# Sessions required before a row is worth writing at all: the shortest horizon.
+MIN_BARS_REQUIRED = min(HORIZONS)
+# Sessions required before a row is COMPLETE and stops being revisited.
+COMPLETE_BARS_REQUIRED = MAX_HORIZON
 
 
 def _pct(a, b):
@@ -165,10 +189,16 @@ def compute_outcomes(bars, triggered_at, bench_bars=None):
     highs = [h for h in highs if h > 0]
     lows = [l for l in lows if l > 0]
 
-    out["max_gain_20d_pct"] = _pct(max(highs), entry_price) if highs else None
-    out["max_drawdown_20d_pct"] = _pct(min(lows), entry_price) if lows else None
-    # Mirrors the Thesis Stop's closed_above_entry latch: did it ever work?
-    out["ever_above_entry"] = bool(highs and max(highs) > entry_price)
+    # These three carry "20d" semantics, so they are written ONLY once all 20
+    # sessions exist. A max drawdown taken over 5 bars is not a small version of
+    # the 20-bar figure -- it is a different quantity, and storing it under the
+    # 20d name would silently understate risk in every study that reads it.
+    complete = len(forward) >= COMPLETE_BARS_REQUIRED
+    if complete:
+        out["max_gain_20d_pct"] = _pct(max(highs), entry_price) if highs else None
+        out["max_drawdown_20d_pct"] = _pct(min(lows), entry_price) if lows else None
+        # Mirrors the Thesis Stop's closed_above_entry latch: did it ever work?
+        out["ever_above_entry"] = bool(highs and max(highs) > entry_price)
 
     if bench_bars and out.get("fwd_20d_pct") is not None:
         b = compute_outcomes(bench_bars, triggered_at)
@@ -181,8 +211,14 @@ def compute_outcomes(bars, triggered_at, bench_bars=None):
 
 
 def fetch_pending(client, limit=None, force=False):
-    """Triggers whose measurement window has fully elapsed and are unmeasured."""
-    cutoff = (_today_ny() - datetime.timedelta(days=SETTLE_DAYS)).isoformat()
+    """Triggers with at least one measurable horizon that are not yet complete.
+
+    Selection runs off MIN_SETTLE_DAYS, not SETTLE_DAYS, so a row is picked up as
+    soon as its SHORTEST horizon is measurable. Incomplete rows keep
+    `outcomes_computed_at` NULL and are therefore re-selected on every subsequent
+    run until all 20 sessions exist, at which point they are stamped and drop out.
+    """
+    cutoff = (_today_ny() - datetime.timedelta(days=MIN_SETTLE_DAYS)).isoformat()
     q = (client.table("trigger_history")
          .select("triggered_at,ticker,trigger_type,outcomes_computed_at")
          .lte("triggered_at", cutoff))
@@ -231,7 +267,7 @@ def run(dry_run=False, limit=None, force=False):
     if not bench_bars:
         print(f"⚠️ No {BENCHMARK} data — alpha will be NULL for this batch.")
 
-    updated = skipped = 0
+    updated = skipped = partial = 0
     for ticker, rows in sorted(by_ticker.items()):
         bars = fetch_prices(ticker, start, end, session)
         if not bars:
@@ -240,34 +276,47 @@ def run(dry_run=False, limit=None, force=False):
 
         for row in rows:
             res = compute_outcomes(bars, row["triggered_at"], bench_bars)
-            if not res or (res.get("outcome_bars") or 0) < MIN_BARS_REQUIRED:
-                # Leave unmeasured so a later run can retry with more history,
-                # rather than recording a short window as a complete result.
+            bars_have = (res or {}).get("outcome_bars") or 0
+            if not res or bars_have < MIN_BARS_REQUIRED:
+                # Not even the shortest horizon is measurable yet. Leave the row
+                # untouched so a later run retries with more history.
                 skipped += 1
                 continue
 
-            res["outcomes_computed_at"] = datetime.datetime.now(
-                datetime.timezone.utc).isoformat()
+            complete = bars_have >= COMPLETE_BARS_REQUIRED
+            if complete:
+                # Only a complete row is stamped. While the stamp stays NULL the
+                # row is re-selected next run and its longer horizons filled in.
+                res["outcomes_computed_at"] = datetime.datetime.now(
+                    datetime.timezone.utc).isoformat()
+
+            # Never write NULL over a column: a partial row must ADD what it now
+            # knows, not erase what a previous pass established.
+            payload = {k: v for k, v in res.items() if v is not None}
 
             if dry_run:
-                print(f"   [dry-run] {ticker} {row['triggered_at']}: "
+                state = "complete" if complete else f"partial {bars_have}/{COMPLETE_BARS_REQUIRED}b"
+                print(f"   [dry-run] {ticker} {row['triggered_at']} [{state}]: "
                       f"1d={res.get('fwd_1d_pct')} 5d={res.get('fwd_5d_pct')} "
                       f"20d={res.get('fwd_20d_pct')} alpha={res.get('alpha_20d_pct')}")
                 updated += 1
+                partial += 0 if complete else 1
                 continue
 
             try:
-                (client.table("trigger_history").update(res)
+                (client.table("trigger_history").update(payload)
                  .eq("triggered_at", row["triggered_at"])
                  .eq("ticker", ticker)
                  .eq("trigger_type", row.get("trigger_type") or "BREAKOUT")
                  .execute())
                 updated += 1
+                partial += 0 if complete else 1
             except Exception as e:
                 print(f"   ⚠️ {ticker} {row['triggered_at']}: update failed: {e}")
                 skipped += 1
 
-    print(f"✅ Outcomes written: {updated} | skipped: {skipped}")
+    print(f"✅ Outcomes written: {updated} ({partial} partial, will be revisited) "
+          f"| skipped: {skipped}")
     return 0
 
 

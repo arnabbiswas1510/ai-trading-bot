@@ -249,3 +249,45 @@ held-out data. That requires `trigger_history` outcome columns, of which only
 (`HISTORY_LEARNING_MAX_PENALTY`, `compute_trade_history_penalty` in
 `ai_evaluator.py`) is a **different** rule and is unaffected — it penalises a
 ticker for its own recent losses rather than for resembling other tickers.
+
+---
+
+## 2026-09-17 — All-or-nothing outcome writing (RELOCATED, not deleted)
+
+**Identifiers:** `MIN_BARS_REQUIRED` (redefined, not removed), the `bars_have <
+MIN_BARS_REQUIRED` skip in `backfill_trigger_outcomes.run()`, and the
+`SETTLE_DAYS`-based cutoff in `fetch_pending()`.
+
+**Where it lived:** `backfill_trigger_outcomes.py`; asserted by
+`tests/test_trigger_outcomes.py::TestIncompleteWindowsNotWritten::test_short_window_is_skipped_not_written`.
+
+**Status when retired:** Active, and it had fired on every run. It is what left
+16 of 233 archived triggers labelled and **zero** BREAKOUT rows.
+
+**What it did:** Refused to write any outcome for a trigger unless all 20
+sessions of the longest horizon existed, so `fwd_1d` and `fwd_5d` were withheld
+for ~34 days by `fwd_20d`.
+
+**Why retired:** `fwd_1d` was already computable for 222/233 rows and `fwd_5d`
+for 185/233. The failure-penalty refit needs exactly those short horizons, since
+the "failures" it mislabelled were day-0/day-1 stop-outs. See
+`decisions/2026-09-17_per-horizon-outcomes.md`.
+
+**RELOCATED — the concern it protected is still enforced.** The rule existed so a
+partial window could never masquerade as a complete one. That guarantee now lives
+in two narrower places instead of one blanket gate:
+
+1. `compute_outcomes()` withholds `max_gain_20d_pct`, `max_drawdown_20d_pct` and
+   `ever_above_entry` unless `COMPLETE_BARS_REQUIRED` (20) sessions exist — these
+   are the only fields whose *name* asserts a 20-day window.
+2. `outcomes_computed_at` is stamped only on completion, so a partial row stays
+   in the pending set and is topped up rather than retired.
+
+Do **not** "simplify" either of these back into a single early-exit guard; that
+reintroduces the starvation without any offsetting benefit.
+
+**Restore path:** `git show b9c6233:backfill_trigger_outcomes.py`.
+
+**What would bring it back:** Nothing foreseeable. If a downstream study were ever
+found assuming every non-NULL row is fully measured, the correct fix is to make
+that study filter on `outcomes_computed_at`, not to re-block early writes.

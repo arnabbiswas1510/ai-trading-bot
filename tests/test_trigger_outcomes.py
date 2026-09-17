@@ -104,28 +104,48 @@ class TestForwardReturns:
 
 
 class TestPathMetrics:
+    """These metrics carry 20-day semantics, so the fixtures must supply a full
+    20-session window — see decisions/2026-09-17_per-horizon-outcomes.md. A
+    short-window fixture now yields no path metrics at all, which is the point:
+    a 3-bar drawdown must never be stored under a `20d` column name."""
 
     def test_max_gain_and_drawdown_include_entry_bar_exclude_trigger_bar(self):
         """The entry session IS held, so its range counts. The trigger session
         is not held, so its range must not."""
-        bars = _bars([100, 100, 100, 100],
+        bars = _bars([100] * 22,
                      start="2026-01-01",
-                     opens=[100, 100, 100, 100],
-                     highs=[999, 110, 105, 100],   # 999 on trigger day must not count
-                     lows=[1, 95, 90, 100])        # 1 on trigger day must not count
+                     opens=[100] * 22,
+                     # 999/1 on the trigger day must not count; the extremes
+                     # inside the held window are 110 and 90.
+                     highs=[999, 110, 105] + [100] * 19,
+                     lows=[1, 95, 90] + [100] * 19)
         res = bto.compute_outcomes(bars, "2026-01-01")
         assert res["max_gain_20d_pct"] == pytest.approx(10.0, abs=0.01)
         assert res["max_drawdown_20d_pct"] == pytest.approx(-10.0, abs=0.01)
 
+    def test_path_metrics_withheld_until_window_complete(self):
+        """A 3-bar excursion is not a small 20-bar excursion — it is a different
+        quantity. Writing it under the 20d name would understate risk in every
+        study that reads the column."""
+        bars = _bars([100, 100, 100, 100], start="2026-01-01",
+                     opens=[100] * 4, highs=[100, 110, 105, 100],
+                     lows=[100, 95, 90, 100])
+        res = bto.compute_outcomes(bars, "2026-01-01")
+        assert res["fwd_1d_pct"] is not None, "short horizons still measured"
+        for k in ("max_gain_20d_pct", "max_drawdown_20d_pct", "ever_above_entry"):
+            assert k not in res
+
     def test_ever_above_entry_true_when_high_exceeds(self):
-        bars = _bars([100, 98, 97], start="2026-01-01",
-                     opens=[100, 100, 97], highs=[100, 103, 97])
+        bars = _bars([100, 98, 97] + [97] * 19, start="2026-01-01",
+                     opens=[100, 100, 97] + [97] * 19,
+                     highs=[100, 103, 97] + [97] * 19)
         assert bto.compute_outcomes(bars, "2026-01-01")["ever_above_entry"] is True
 
     def test_ever_above_entry_false_for_never_worked(self):
         """The failed-breakout signature the Thesis Stop targets."""
-        bars = _bars([100, 97, 95, 93], start="2026-01-01",
-                     opens=[100, 100, 96, 94], highs=[100, 100, 96, 94])
+        bars = _bars([100, 97, 95, 93] + [93] * 18, start="2026-01-01",
+                     opens=[100, 100, 96, 94] + [93] * 18,
+                     highs=[100, 100, 96, 94] + [93] * 18)
         assert bto.compute_outcomes(bars, "2026-01-01")["ever_above_entry"] is False
 
 
@@ -165,6 +185,9 @@ class TestBenchmarkAlpha:
 
 
 class TestIncompleteWindowsNotWritten:
+    """Renamed in spirit 2026-09-17: short windows ARE now written, but only the
+    horizons that have genuinely matured, and the row is never stamped complete.
+    See decisions/2026-09-17_per-horizon-outcomes.md."""
 
     def _client(self, pending):
         c = MagicMock()
@@ -174,9 +197,11 @@ class TestIncompleteWindowsNotWritten:
         q.order.return_value.execute.return_value = MagicMock(data=pending)
         return c
 
-    def test_short_window_is_skipped_not_written(self, monkeypatch, capsys):
-        """Recording a 3-day window as a 20-day result would silently corrupt
-        every downstream conclusion."""
+    def test_short_window_is_written_partially_but_never_stamped(
+            self, monkeypatch, capsys):
+        """The 3-day window yields fwd_1d only. Stamping it would retire the row
+        forever and cap it at its first measurement — strictly worse than the
+        all-or-nothing behaviour this replaced."""
         pending = [{"triggered_at": "2026-01-01", "ticker": "AAA",
                     "trigger_type": "BREAKOUT", "outcomes_computed_at": None}]
         client = self._client(pending)
@@ -189,8 +214,12 @@ class TestIncompleteWindowsNotWritten:
                             lambda *a, **k: _bars([100, 101, 102], "2026-01-01"))
 
         assert bto.run() == 0
-        client.table.return_value.update.assert_not_called()
-        assert "skipped: 1" in capsys.readouterr().out
+        written = client.table.return_value.update.call_args.args[0]
+        assert "outcomes_computed_at" not in written, "partial row must stay pending"
+        assert written["fwd_1d_pct"] is not None
+        for k in ("fwd_20d_pct", "max_drawdown_20d_pct", "ever_above_entry"):
+            assert k not in written
+        assert "skipped: 0" in capsys.readouterr().out
 
     def test_complete_window_is_written(self, monkeypatch):
         pending = [{"triggered_at": "2026-01-01", "ticker": "AAA",
@@ -244,6 +273,8 @@ class TestResumability:
         chain.is_.assert_not_called()
 
     def test_only_considers_settled_triggers(self):
+        """Selection runs off MIN_SETTLE_DAYS — a row becomes visible as soon as
+        fwd_1d can be measured, not when the full 20-day window has elapsed."""
         client = MagicMock()
         client.table.return_value.select.return_value.lte.return_value \
             .is_.return_value.order.return_value.execute.return_value = \
@@ -251,7 +282,7 @@ class TestResumability:
         bto.fetch_pending(client)
         cutoff = client.table.return_value.select.return_value.lte.call_args.args[1]
         expected = (bto._today_ny()
-                    - datetime.timedelta(days=bto.SETTLE_DAYS)).isoformat()
+                    - datetime.timedelta(days=bto.MIN_SETTLE_DAYS)).isoformat()
         assert cutoff == expected
 
 

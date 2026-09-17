@@ -7,8 +7,9 @@ name: Weekly Trigger Outcome Backfill
 # group that trade_history lacks. This job supplies the outcomes, which is what
 # turns that archive into a test of whether final_score predicts forward return.
 #
-# Sunday: the 20-session measurement window needs ~34 calendar days to elapse, so
-# there is no benefit to running more often, and FMP has a daily request cap.
+# Sunday: a row is picked up 3 days after it fires (enough for fwd_1d) and is
+# revisited each week until all 20 sessions exist, ~34 calendar days later. Weekly
+# cadence is sufficient for that top-up and FMP has a daily request cap.
 
 on:
   schedule:

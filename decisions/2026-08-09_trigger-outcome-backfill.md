@@ -1,7 +1,15 @@
 # Forward-return backfill for trigger_history (and the prune we did NOT build)
 
 Date: 2026-08-09
-Status: Accepted
+Status: Superseded in part by `decisions/2026-09-17_per-horizon-outcomes.md`
+
+> **2026-09-17.** The "Guards" section below is no longer how the job behaves.
+> Writing all three horizons as one all-or-nothing unit left **16 of 233**
+> archived triggers measured and **zero** BREAKOUT rows, while `fwd_1d` was
+> already computable for 222 of them. Each horizon is now written as soon as it
+> matures and the row is revisited until complete. Everything else in this ADR —
+> the entry-at-next-open convention, the decision not to prune, the schema —
+> still stands.
 
 ## Context
 
@@ -55,9 +63,14 @@ prices from FMP for settled triggers and writes forward-return columns back onto
 
 - Only triggers older than `SETTLE_DAYS = 34` calendar days are processed — a
   proxy for 20 trading days with margin for holidays.
+  *(Superseded 2026-09-17: selection now runs off `MIN_SETTLE_DAYS = 3`;
+  `SETTLE_DAYS` now marks completion, not eligibility.)*
 - Rows with fewer than `MIN_BARS_REQUIRED` bars are left unmeasured rather than
   recorded on a partial window, so a half-formed 20-day return never enters the
   dataset looking like a complete one.
+  *(Superseded 2026-09-17: short horizons are now written early, but the
+  20d-named path metrics are still withheld until 20 sessions exist — so the
+  concern this guard existed for is preserved exactly.)*
 - `compute_outcomes()` returns `None` (row skipped, retried next week) when the
   trigger date is not covered or no session follows it.
 - `fetch_pending()` selects on `outcomes_computed_at IS NULL`, so the job is
