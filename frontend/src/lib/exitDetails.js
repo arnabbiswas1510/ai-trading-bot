@@ -311,6 +311,51 @@ export function extractReasonFacts(raw) {
     });
   }
 
+  // The stored HWM is refreshed on the 15-minute monitor cycle; a resting IBKR
+  // order is not. When a position runs up and turns over BETWEEN two cycles it
+  // is closed against a peak the agent never observed, so the HWM-derived
+  // trigger understates where the stop really sat. The agent detects this by
+  // reconstructing the anchor from the fill (a trailing order fills at its own
+  // trigger) and says so explicitly rather than publishing the stale figure.
+  // Surfacing it matters: on 2026-09-18 four exits reported a trigger BELOW
+  // entry for orders that had in fact fired above breakeven.
+  const staleHwm = raw.match(/stored HWM STALE/i) || raw.match(/no stored HWM/i);
+  const impliedPeak = raw.match(/fill implies peak\s+\$([\d,]+(?:\.\d+)?)/i);
+  const actualTrigger = raw.match(/actual trigger\s+\$([\d,]+(?:\.\d+)?)/i);
+  if (staleHwm) {
+    facts.push({
+      label: 'High-water mark status',
+      value: 'Stale — agent never saw the real peak',
+      kind: 'text',
+    });
+  }
+  if (impliedPeak) {
+    facts.push({
+      label: 'Peak implied by fill',
+      value: parseFloat(impliedPeak[1].replace(/,/g, '')),
+      kind: 'money',
+    });
+  }
+  if (actualTrigger) {
+    facts.push({
+      label: 'Stop trigger (from fill)',
+      value: parseFloat(actualTrigger[1].replace(/,/g, '')),
+      kind: 'money',
+    });
+  }
+
+  // Where the stop sat relative to entry. A level at or above entry means
+  // whatever fired was taking profit, whichever rule believed it was capping a
+  // loss -- the fact that makes a ratcheting stop visible at a glance.
+  const stopVsEntry = raw.match(/stop sat at entry\s+([+-][\d.]+)%/i);
+  if (stopVsEntry) {
+    facts.push({
+      label: 'Stop vs entry',
+      value: parseFloat(stopVsEntry[1]),
+      kind: 'percent',
+    });
+  }
+
   const dayOf = raw.match(/day\s+(\d+)\s+of hold/i);
   if (dayOf) facts.push({ label: 'Day of hold', value: parseInt(dayOf[1], 10), kind: 'int' });
 
@@ -353,7 +398,13 @@ export function unrecordedFields(trade, classification) {
     if (!present.has('High-water mark')) {
       missing.push('High-water mark the trail was anchored to');
     }
-    if (!present.has('Implied trigger') && !present.has('Stop trigger (re-anchored floor)')) {
+    // A fill-reconstructed trigger is a BETTER record than the HWM-derived
+    // one, not a worse one, so it must satisfy this check -- otherwise every
+    // exit where the agent correctly detected a stale peak would be reported
+    // as undocumented.
+    if (!present.has('Implied trigger')
+        && !present.has('Stop trigger (re-anchored floor)')
+        && !present.has('Stop trigger (from fill)')) {
       missing.push('Stop trigger price');
     }
   }

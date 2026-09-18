@@ -211,3 +211,101 @@ class TestReconcileUsesTheHelper:
         assert "_exit_context_suffix" in manual_branch.group(1), (
             "manual-close exits are being written without their risk context again"
         )
+
+
+# The four positions closed on 2026-09-18 by a Phase 1 stop that had ratcheted
+# above entry. Every one of them logged an "implied trigger" BELOW the entry
+# price — a string that reads exactly like a loss cap doing its job — while the
+# order had in fact fired at or above breakeven. Diagnosing it required
+# re-fetching 5-minute bars, which defeats the purpose of shipping logs at all.
+#
+# (ticker, entry, stored HWM, trail, stored peak %, actual fill)
+RATCHET_EXITS = [
+    ("SMTC", 180.50, 180.99, 0.0172, 0.27, 181.877),
+    ("TEN",   52.25,  53.18, 0.0188, 1.78,  52.53),
+    ("DHT",   23.04,  23.28, 0.0195, 1.04,  23.055),
+    ("TWLO", 241.38, 243.80, 0.0125, 1.00, 243.23),
+]
+
+
+def _ratchet_pos(entry, hwm, trail, peak):
+    return {
+        "buy_price": entry, "hwm_price": hwm, "stop_loss_pct": trail,
+        "hwm_date": "2026-09-18", "days_held": 0,
+        "highest_unrealized_pct": peak, "exit_armed": False, "power_hold": False,
+    }
+
+
+class TestStaleHighWaterMarkIsNotPublishedAsFact:
+    """The stored HWM is refreshed on a 15-minute cycle; a resting order is not.
+
+    A position that runs up and turns over between two cycles is closed against
+    a peak the agent never saw, so every figure derived from the stored HWM
+    understates what happened. The fill is the one number known exactly, and for
+    a trailing order it IS the trigger — so `fill / (1 - trail)` recovers the
+    anchor the broker was really using.
+    """
+
+    @pytest.mark.parametrize("ticker,entry,hwm,trail,peak,fill", RATCHET_EXITS)
+    def test_stale_hwm_is_labelled_not_silently_used(
+            self, ticker, entry, hwm, trail, peak, fill):
+        out = exit_context_suffix(
+            _ratchet_pos(entry, hwm, trail, peak), fill, broker_trail_fill=True)
+        assert "stored HWM STALE" in out, ticker
+        # The figure that concealed the defect must not be published unqualified.
+        assert "implied trigger" not in out, ticker
+        assert f"actual trigger ${fill:.2f}" in out, ticker
+
+    @pytest.mark.parametrize("ticker,entry,hwm,trail,peak,fill", RATCHET_EXITS)
+    def test_stop_position_relative_to_entry_is_always_recorded(
+            self, ticker, entry, hwm, trail, peak, fill):
+        # The single most diagnostic number on a stopped-out trade: a level at or
+        # above entry means whatever fired was taking profit, whichever rule
+        # believed it was capping a loss. All four of these were above entry.
+        out = exit_context_suffix(
+            _ratchet_pos(entry, hwm, trail, peak), fill, broker_trail_fill=True)
+        expected = (fill / entry - 1) * 100
+        assert f"stop sat at entry {expected:+.2f}%" in out, ticker
+        assert expected > 0, f"{ticker} fixture should be an above-entry exit"
+
+    @pytest.mark.parametrize("ticker,entry,hwm,trail,peak,fill", RATCHET_EXITS)
+    def test_understated_peak_is_corrected_from_the_fill(
+            self, ticker, entry, hwm, trail, peak, fill):
+        out = exit_context_suffix(
+            _ratchet_pos(entry, hwm, trail, peak), fill, broker_trail_fill=True)
+        assert f"peak {peak:+.2f}% recorded but >=" in out, ticker
+
+    def test_reconstructed_peak_matches_the_real_intraday_high(self):
+        # SMTC's true high was $185.30; the agent recorded $180.99. The
+        # reconstruction must land near the truth, not near the stored value.
+        out = exit_context_suffix(
+            _ratchet_pos(180.50, 180.99, 0.0172, 0.27), 181.877,
+            broker_trail_fill=True)
+        assert "fill implies peak $185.06" in out
+
+    def test_manual_close_never_infers_an_anchor_from_an_unrelated_fill(self):
+        # A manual close fills at a price with no relationship to the trail.
+        # Reconstructing an anchor from it would manufacture a stale-HWM claim
+        # out of an unrelated number, so the inference is gated on the caller
+        # proving the fill came from the trailing order itself.
+        pos = _ratchet_pos(180.50, 180.99, 0.0172, 0.27)
+        out = exit_context_suffix(pos, 181.877)          # no broker_trail_fill
+        assert "stored HWM STALE" not in out
+        assert "implied trigger $177.88" in out
+
+    def test_a_fresh_hwm_still_reports_a_plain_implied_trigger(self):
+        # The stale branch must fire only when the fill genuinely disagrees with
+        # the stored peak. A position whose HWM was captured accurately must be
+        # unaffected, or every normal exit gains a false staleness warning.
+        pos = _ratchet_pos(100.0, 110.0, 0.05, 10.0)
+        out = exit_context_suffix(pos, 104.50, broker_trail_fill=True)
+        assert "stored HWM STALE" not in out
+        assert "implied trigger $104.50" in out
+
+    def test_floor_pin_still_wins_over_the_stale_branch(self):
+        # FIVE (2026-09-09): a floor-pinned stop is not HWM-anchored at all, so
+        # neither the old implied trigger nor the new reconstruction applies.
+        pos = _ratchet_pos(250.0, 256.09, 0.0018, 4.3)
+        out = exit_context_suffix(pos, 248.85, broker_trail_fill=True)
+        assert "floor re-anchored near $248.85" in out
+        assert "stored HWM STALE" not in out

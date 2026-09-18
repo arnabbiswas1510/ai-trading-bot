@@ -980,8 +980,55 @@ implied trigger $46.82, day 2 of hold, peak +4.30%
 ```
 
 The trigger price is labelled **implied** because it is reconstructed from the
-trail and the last peak the agent observed, not read back from the broker. If the
-peak moved between the final 15-minute check and the fill, it is approximate.
+trail and the last peak the agent observed, not read back from the broker.
+
+### A stale peak is labelled, not published as fact
+
+The high-water mark on `portfolio_positions` is refreshed on the 15-minute
+monitor cycle. A resting IBKR order is not. A position that runs up and turns
+over *between* two cycles is therefore closed against a peak the agent never
+saw, and every figure derived from that stored peak understates what happened.
+
+The fill is the one number known exactly, and for a trailing order **the fill is
+the trigger** — so the anchor the broker was really using is recoverable as
+`fill ÷ (1 − trail)`, with no extra API call. When that reconstruction exceeds
+the stored high-water mark by more than 0.1%, the stored peak is known to be
+stale and the agent says so instead of quoting it:
+
+```
+Trailing stop (IBKR GTC TRAIL order) — trail 1.72%, HWM $180.99 set 2026-09-18,
+stored HWM STALE (cycle-delayed) — fill implies peak $185.06, actual trigger
+$181.88, stop sat at entry +0.76%, day 0 of hold, peak +0.27% recorded but
+>=+2.53% implied by fill
+```
+
+Every exit also records **`stop sat at entry ±X%`** — where the stop sat relative
+to the entry price. A value at or above `+0.00%` means whatever fired was taking
+profit, whichever rule believed it was capping a loss. It is the single most
+diagnostic number on a stopped-out trade.
+
+The inference is applied **only** to fills from the trailing order itself. A
+manual close fills at a price with no relationship to the trail, so
+reconstructing an anchor from it would manufacture a staleness claim out of an
+unrelated number; those exits keep the plain `implied trigger`.
+
+This is a **diagnostics change only — no trading rule behaves differently.** It
+exists because the stale figure actively concealed a live defect: on 2026-09-18
+SMTC, TEN, DHT and TWLO were all closed by a Phase 1 stop that had ratcheted
+*above* entry, and all four logged an implied trigger *below* entry, reading
+exactly like a healthy loss cap. See
+`decisions/2026-09-18_sell-reason-fill-derived-anchor.md` for why, and
+`decisions/2026-09-18_phase1-static-backstop.md` for the defect it hid.
+
+`sell_reason` and `buy_reason` are `text` columns
+(`migrations/20260918_widen_sell_reason.sql`); the previous `varchar(200)` cap
+could no longer hold the full context. Because every caller deletes the position
+from `portfolio_positions` **before** inserting the history row, and Postgres
+raises on overflow rather than truncating, an over-long reason could abort the
+insert after the position was already gone — losing the trade record entirely.
+`insert_trade_history()` therefore retries once with the reason truncated if the
+database rejects it, so a diagnostic string can never lose a trade whether or
+not the migration has been applied.
 
 The reconstruction `HWM × (1 − trail)` is only valid when the trail is anchored on
 the high-water mark (the base ATR trail and the profit-lock tiers). The **Prove-It

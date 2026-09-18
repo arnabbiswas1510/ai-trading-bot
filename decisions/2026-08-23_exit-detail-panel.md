@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-23
 **Status:** Accepted — the implied-trigger reconstruction is refined in part by
-`decisions/2026-09-09_reconcile-fill-window-and-trail-display.md`
+`decisions/2026-09-09_reconcile-fill-window-and-trail-display.md` and
+`decisions/2026-09-18_sell-reason-fill-derived-anchor.md`
 
 > **2026-09-09 update.** The claim below that the implied trigger is always
 > `HWM × (1 − trail)` holds only for HWM-anchored trails (base ATR, profit-lock
@@ -10,6 +11,20 @@
 > re-place price, not the HWM — that formula lands above the fill, so the agent
 > now suppresses it and records the re-anchored floor instead. The rest of this
 > ADR still stands.
+
+> **2026-09-18 update — the implied trigger can be actively misleading, not
+> merely approximate.** This ADR describes the reconstruction as approximate
+> "if the peak moved between the final 15-minute check and the fill". That
+> understates it. When a position runs up and turns over *between* two monitor
+> cycles, the stored high-water mark describes a peak that never happened, and
+> the derived trigger can land **below the entry price for an order that
+> actually fired above breakeven** — reading exactly like a healthy loss cap
+> while the opposite was true. Four exits on 2026-09-18 did precisely this, and
+> it concealed a live defect for weeks. The agent now detects the condition by
+> reconstructing the anchor from the fill (`fill ÷ (1 − trail)`), suppresses the
+> `implied trigger` when the stored peak is proven stale, and always records
+> where the stop sat relative to entry. See
+> `decisions/2026-09-18_sell-reason-fill-derived-anchor.md`.
 
 ## Context
 

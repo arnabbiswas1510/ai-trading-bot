@@ -191,6 +191,51 @@ check("a re-anchored floor exit reports nothing as missing", () => {
   eq(unrecordedFields(trade, classifyExit(trade.exit_reason)).length, 0);
 });
 
+// ── Stale high-water mark (2026-09-18) ───────────────────────────────────────
+// The stored HWM is refreshed on the 15-minute monitor cycle; a resting IBKR
+// order is not. SMTC, TEN, DHT and TWLO all ran up and turned over BETWEEN two
+// cycles, so each was closed against a peak the agent never saw -- and each
+// logged an "implied trigger" BELOW its entry price, reading exactly like a
+// loss cap working correctly, while the order had actually fired above
+// breakeven. The agent now reconstructs the real anchor from the fill.
+const AGENT_STALE_HWM_REASON =
+  "Trailing stop (IBKR GTC TRAIL order) — trail 1.72%, HWM $180.99 set " +
+  "2026-09-18, stored HWM STALE (cycle-delayed) — fill implies peak $185.06, " +
+  "actual trigger $181.88, stop sat at entry +0.76%, day 0 of hold, " +
+  "peak +0.27% recorded but >=+2.53% implied by fill";
+
+check("a stale high-water mark is surfaced rather than quietly used", () => {
+  const facts = extractReasonFacts(AGENT_STALE_HWM_REASON);
+  const byLabel = Object.fromEntries(facts.map((f) => [f.label, f.value]));
+  eq(byLabel["High-water mark status"], "Stale — agent never saw the real peak");
+  eq(byLabel["Peak implied by fill"], 185.06);
+  eq(byLabel["Stop trigger (from fill)"], 181.88);
+});
+
+check("a stop that fired above entry is visible as a signed percentage", () => {
+  const byLabel = Object.fromEntries(
+    extractReasonFacts(AGENT_STALE_HWM_REASON).map((f) => [f.label, f.value]),
+  );
+  // Positive means the "stop" was taking profit, not capping a loss. This one
+  // number is what made the ratcheting Phase 1 defect visible.
+  eq(byLabel["Stop vs entry"], 0.76);
+});
+
+check("a fill-derived trigger satisfies the trigger-recorded check", () => {
+  // It is a BETTER record than the HWM-derived one, so it must not be reported
+  // as missing -- otherwise correctly diagnosed exits look undocumented.
+  const trade = {
+    exit_reason: AGENT_STALE_HWM_REASON,
+    buy_date: "2026-09-18T13:45:00Z",
+    sell_date: "2026-09-18T18:02:00Z",
+  };
+  eq(unrecordedFields(trade, classifyExit(trade.exit_reason)).length, 0);
+});
+
+check("a stale-HWM exit is still credited to the broker, not reclassified", () => {
+  eq(classifyExit(AGENT_STALE_HWM_REASON).executor.key, "BROKER");
+});
+
 check("a fully recorded broker exit reports nothing as missing", () => {
   const trade = {
     exit_reason: AGENT_TRAIL_REASON,

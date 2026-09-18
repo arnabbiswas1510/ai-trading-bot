@@ -150,3 +150,8 @@ through the price.
 - The stale-`highest_price` logging defect this surfaced is *not* fixed here. The
   bot's recorded peak for a short-lived position is materially wrong, which
   misleads any human reading `sell_reason`. Tracked separately.
+  **Resolved 2026-09-18** by `decisions/2026-09-18_sell-reason-fill-derived-anchor.md`:
+  the agent now reconstructs the real anchor from the fill, labels the stored
+  peak as stale rather than quoting it, and always records `stop sat at entry
+  ±X%` — the field that would have made this defect obvious on the first trade
+  rather than the tenth. The underlying 15-minute observation gap remains.

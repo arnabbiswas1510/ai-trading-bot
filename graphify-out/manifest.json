@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1789751096.3162928,
-    "ast_hash": "c40443d717081c877feab966bcb37d4a",
+    "mtime": 1789755403.665213,
+    "ast_hash": "1c22f1fd89f68eec49a23b4164e33874",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1789751252.7620347,
-    "ast_hash": "c96aeb2fb485912096311b8910c293c6",
+    "mtime": 1789755532.8234396,
+    "ast_hash": "a02b4c5d34362af2867c68c860aba5b4",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1789753924.2611141,
-    "ast_hash": "0d2a65dbb384a1cef537604e939b5be3",
+    "mtime": 1789755523.5379581,
+    "ast_hash": "1cb2fb92a16ec59459d9b053beda3ac5",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -815,8 +815,8 @@
     "semantic_hash": ""
   },
   "frontend/scripts/test-exit-details.mjs": {
-    "mtime": 1788976619.3171432,
-    "ast_hash": "ace20d6b8cca23a92e7a2f7c6e7ddadb",
+    "mtime": 1789755492.035367,
+    "ast_hash": "435932a9da0b5fd790dc4c787dba3ddf",
     "semantic_hash": ""
   },
   "frontend/src/components/ExitDetailPanel.jsx": {
@@ -825,18 +825,18 @@
     "semantic_hash": ""
   },
   "frontend/src/lib/exitDetails.js": {
-    "mtime": 1788976365.8163655,
-    "ast_hash": "bc86069daae8469033d7e53d568ec133",
+    "mtime": 1789755498.6861434,
+    "ast_hash": "e97e8134864eba0c4d0322f190451d97",
     "semantic_hash": ""
   },
   "tests/test_exit_context.py": {
-    "mtime": 1788976376.720544,
-    "ast_hash": "372f4210dcfb8f6d80aa04d7e2fb8d16",
+    "mtime": 1789755214.9751222,
+    "ast_hash": "fe3ea4bf6f84818eee27ea3c6a19720e",
     "semantic_hash": ""
   },
   "decisions/2026-08-23_exit-detail-panel.md": {
-    "mtime": 1788976637.7641993,
-    "ast_hash": "9379342655a827407fa0388423308500",
+    "mtime": 1789755598.8406513,
+    "ast_hash": "7a82f0f06c4dd8d2c505e1f4fbe1102d",
     "semantic_hash": ""
   },
   "frontend/src/lib/volatilityFit.js": {
@@ -1380,13 +1380,28 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-18_phase1-static-backstop.md": {
-    "mtime": 1789751182.5630937,
-    "ast_hash": "84d4766c8d9d25eec74cdc5a6e266f61",
+    "mtime": 1789755598.8410866,
+    "ast_hash": "13056ce18d9ce2125f453f71876c962c",
     "semantic_hash": ""
   },
   "decisions/2026-09-18_runon-window-winners-run.md": {
     "mtime": 1789753896.0017455,
     "ast_hash": "1940edae51c8967ae76dd4331f2a09c2",
+    "semantic_hash": ""
+  },
+  "migrations/20260918_widen_sell_reason.sql": {
+    "mtime": 1789755343.1786122,
+    "ast_hash": "db063a84766dd2521598e22df01d57d8",
+    "semantic_hash": ""
+  },
+  "tests/test_trade_history_insert.py": {
+    "mtime": 1789755437.4127984,
+    "ast_hash": "7045da821c04c3d66bf0a852b1f8e011",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_sell-reason-fill-derived-anchor.md": {
+    "mtime": 1789755579.6436014,
+    "ast_hash": "3cc6706821c0d458b032f7aafbf6d77a",
     "semantic_hash": ""
   }
 }
