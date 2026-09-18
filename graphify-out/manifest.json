@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1789746208.8848145,
-    "ast_hash": "9283abdacb0b6b4c6388dc85f068451b",
+    "mtime": 1789747076.0120077,
+    "ast_hash": "f6fcfe2732d9070daeb99a6c4cd4163c",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1789746390.0245805,
-    "ast_hash": "fc69e354571d67ad6588cd896d13b05b",
+    "mtime": 1789747268.407655,
+    "ast_hash": "8bb16d3ad3ec0cf73e0126554885e603",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -650,8 +650,8 @@
     "semantic_hash": ""
   },
   "schema_guard.py": {
-    "mtime": 1789746331.2015133,
-    "ast_hash": "8d8bd3e290cd1f7bdd9ffb8460a7601d",
+    "mtime": 1789747092.1925364,
+    "ast_hash": "046d40810ff1423e1790251c71967bd0",
     "semantic_hash": ""
   },
   "tests/test_schema_guard.py": {
@@ -765,13 +765,13 @@
     "semantic_hash": ""
   },
   "supabase_backup.py": {
-    "mtime": 1787337605.8278234,
-    "ast_hash": "4c486849d129f88401e6dffbc0159594",
+    "mtime": 1789747133.8989475,
+    "ast_hash": "687e2971ea0122e96e5f5344769a8b30",
     "semantic_hash": ""
   },
   "tests/test_supabase_backup.py": {
-    "mtime": 1787337605.8287141,
-    "ast_hash": "8ee6d85c156042ec72976225c31790d0",
+    "mtime": 1789747149.3141139,
+    "ast_hash": "5b5ebe90aeeb42d84a6c408873568273",
     "semantic_hash": ""
   },
   ".github/workflows/weekly_supabase_backup.yml": {
@@ -1350,8 +1350,23 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-18_telegram-delivery-health.md": {
-    "mtime": 1789746367.5461266,
-    "ast_hash": "8938247b2f23d6ccf8c9e193993fb840",
+    "mtime": 1789747287.8596215,
+    "ast_hash": "51bdf0d9a09d35acf6ff585563c5a346",
+    "semantic_hash": ""
+  },
+  "migrations/20260918_add_agent_logs.sql": {
+    "mtime": 1789747007.9383142,
+    "ast_hash": "9473765ff2a3bc5e2b6387fe145017d8",
+    "semantic_hash": ""
+  },
+  "tests/test_log_shipping.py": {
+    "mtime": 1789747049.889656,
+    "ast_hash": "f3aac64ec0efb72a395b082cb65b6d4a",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_supabase-log-shipping.md": {
+    "mtime": 1789747221.165118,
+    "ast_hash": "aa08cca3c59fba46a61968afa11a9b35",
     "semantic_hash": ""
   }
 }

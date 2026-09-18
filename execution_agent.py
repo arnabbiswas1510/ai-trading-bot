@@ -2,7 +2,9 @@ import os
 import sys
 import argparse
 import datetime
+import re
 import time
+from collections import deque
 import requests
 from zoneinfo import ZoneInfo
 from supabase import create_client, Client
@@ -25,9 +27,50 @@ except ImportError:
 # Files survive container restarts/recreations because /app/logs is a
 # bind-mounted host directory (/opt/trading-bot/logs on the server).
 class TeeLogger:
-    """Mirrors stdout to a daily rotating log file without touching print() calls."""
+    """Mirrors stdout to a daily rotating log file without touching print() calls.
+
+    Both sys.stdout AND sys.stderr are pointed at one instance (see the install
+    block below), so the log file is a complete record of the session.
+
+    It also selectively captures noteworthy lines for shipping to Supabase --
+    see SHIP_MARKERS. That capture exists because the production host sits
+    behind a home network that is unreachable from most corporate networks, so
+    `docker logs` is frequently not available when a problem needs diagnosing.
+    See decisions/2026-09-18_supabase-log-shipping.md.
+    """
 
     KEEP_DAYS = 7
+
+    # Only lines containing one of these are shipped. Shipping is opt-IN per
+    # line, never opt-out: full stdout is both far too chatty and full of
+    # position, cash and account detail that has no business leaving the host.
+    SHIP_MARKERS = ("[TELEGRAM-FAIL]", "CRITICAL", "Traceback", "❌", "⚠️")
+
+    # Bounded so a failure storm can never exhaust memory on the trading host.
+    # When full, the OLDEST entries are dropped: during a storm the first
+    # occurrence is what explains the cause, but a full buffer means shipping
+    # itself is broken, and in that case recency is the more useful signal.
+    SHIP_BUFFER_MAX = 500
+
+    # Redaction applied before anything leaves the host. The log is written by
+    # code that has no idea it may be transmitted, so this is the only place
+    # that can be responsible for it.
+    _REDACTIONS = [
+        # IBKR account numbers (U1234567 / DU1234567) — identifies the brokerage
+        # account in a table that is far more widely readable than the host.
+        (re.compile(r"\b(D?U)\d{6,}\b"), r"\1[redacted]"),
+        # Telegram bot token (12345678:AA...) — grants full control of the bot.
+        # No leading \b: the token's most likely appearance is inside a request
+        # URL as ".../bot8997092181:AAG...", where the digits are preceded by a
+        # letter and \b does not match. Caught by test_secrets_are_redacted.
+        (re.compile(r"(?<!\d)\d{8,10}:[A-Za-z0-9_\-]{30,}"), "[bot-token-redacted]"),
+        # JWTs (Supabase keys) — appear in request URLs inside tracebacks.
+        (re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}"),
+         "[jwt-redacted]"),
+        # Generic key=value secrets, e.g. inside a requests exception repr.
+        (re.compile(r"(?i)\b(apikey|api_key|token|password|secret)(['\"]?\s*[=:]\s*['\"]?)"
+                    r"[A-Za-z0-9._\-]{8,}"), r"\1\2[redacted]"),
+    ]
 
     def __init__(self, log_dir: str):
         self.log_dir = log_dir
@@ -35,6 +78,11 @@ class TeeLogger:
         self._real_stdout = sys.__stdout__
         self._log_file = None
         self._current_date: str | None = None
+        # Shipping state. A deque with maxlen is the whole memory guarantee.
+        self.ship_buffer: deque = deque(maxlen=self.SHIP_BUFFER_MAX)
+        self.ship_dropped = 0          # lines lost to a full buffer
+        self._ship_partial = ""        # accumulates a line across write() calls
+        self._shipping = False         # re-entrancy guard
         self._open_today()
         self._purge_old_logs()
 
@@ -96,6 +144,73 @@ class TeeLogger:
         self._real_stdout.write(data)
         if self._log_file:
             self._log_file.write(data)
+        # Capture LAST: a fault in shipping must never cost us the log write
+        # above, which is the durable record.
+        if not self._shipping:
+            try:
+                self._capture_for_shipping(data)
+            except Exception:
+                pass    # logging must never raise into the caller
+
+    # ── Supabase shipping ───────────────────────────────────────────────────
+
+    @classmethod
+    def redact(cls, line: str) -> str:
+        for pattern, repl in cls._REDACTIONS:
+            line = pattern.sub(repl, line)
+        return line
+
+    def _capture_for_shipping(self, data: str):
+        """Buffer complete, noteworthy lines. Never performs network I/O.
+
+        print() issues the text and the newline as separate write() calls, so
+        partial data is accumulated until a newline arrives. Without this a
+        marker split across two writes would never match.
+        """
+        self._ship_partial += data
+        if "\n" not in self._ship_partial:
+            # Guard against a pathological unterminated line growing forever.
+            if len(self._ship_partial) > 8192:
+                self._ship_partial = self._ship_partial[-2048:]
+            return
+        *lines, self._ship_partial = self._ship_partial.split("\n")
+        for line in lines:
+            line = line.strip()
+            if not line or not any(m in line for m in self.SHIP_MARKERS):
+                continue
+            if len(self.ship_buffer) == self.SHIP_BUFFER_MAX:
+                self.ship_dropped += 1
+            self.ship_buffer.append({
+                "logged_at": datetime.datetime.now(
+                    ZoneInfo("America/New_York")).isoformat(),
+                "level":     self._classify(line),
+                "message":   self.redact(line)[:2000],
+            })
+
+    @staticmethod
+    def _classify(line: str) -> str:
+        if "[TELEGRAM-FAIL]" in line:
+            return "ALERT_CHANNEL"
+        if "CRITICAL" in line or "Traceback" in line:
+            return "CRITICAL"
+        if "❌" in line:
+            return "ERROR"
+        return "WARN"
+
+    def drain(self) -> list:
+        """Atomically remove and return everything buffered."""
+        items = list(self.ship_buffer)
+        self.ship_buffer.clear()
+        if self.ship_dropped:
+            items.append({
+                "logged_at": datetime.datetime.now(
+                    ZoneInfo("America/New_York")).isoformat(),
+                "level":     "WARN",
+                "message":   (f"[TeeLogger] {self.ship_dropped} log line(s) dropped — "
+                              f"ship buffer full ({self.SHIP_BUFFER_MAX})."),
+            })
+            self.ship_dropped = 0
+        return items
 
     def flush(self):
         self._real_stdout.flush()
@@ -367,6 +482,64 @@ notifier = TelegramNotifier(
 )
 
 
+
+
+AGENT_LOG_RETENTION_DAYS = int(os.getenv("AGENT_LOG_RETENTION_DAYS", 14))
+_last_log_purge_date: str | None = None
+
+
+def flush_logs_to_supabase(client) -> int:
+    """Ship buffered noteworthy log lines to Supabase. Returns rows written.
+
+    Called once per monitoring cycle. Exists because the production host is on
+    a home network that is unreachable from most corporate networks, so
+    `docker logs` is often unavailable exactly when a diagnosis is needed --
+    which is how the 2026-09-18 alert-channel outage stayed unexplained.
+
+    Three properties this must never violate:
+      * It must never raise. Log shipping is strictly less important than
+        trading, and an exception here would propagate into the monitor cycle.
+      * It must never recurse. Any print() from inside this function re-enters
+        TeeLogger.write(), so the _shipping guard is held for the duration;
+        without it a Supabase failure would log an error, buffer it, and
+        re-ship it forever.
+      * It must never block on a large backlog. The buffer is bounded and
+        drained in one insert.
+    """
+    global _last_log_purge_date
+    tee = globals().get("_tee")
+    if tee is None or not isinstance(tee, TeeLogger):
+        return 0                      # log tee not installed (CI/unit tests)
+
+    rows = tee.drain()
+    if not rows:
+        return 0
+
+    tee._shipping = True
+    try:
+        client.table("agent_logs").insert(rows).execute()
+
+        # Retention, at most once per day. Without it this table is the one
+        # part of the system that grows without bound.
+        today = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+        if _last_log_purge_date != today:
+            cutoff = (datetime.datetime.now(ZoneInfo("America/New_York"))
+                      - datetime.timedelta(days=AGENT_LOG_RETENTION_DAYS)).isoformat()
+            client.table("agent_logs").delete().lt("logged_at", cutoff).execute()
+            _last_log_purge_date = today
+        return len(rows)
+    except Exception as e:
+        # Write DIRECTLY to the real stdout, bypassing TeeLogger: we hold the
+        # _shipping guard, so a normal print() would be written to the file but
+        # silently not buffered, which reads as "no error occurred".
+        try:
+            tee._real_stdout.write(
+                f"   ⚠️ could not ship {len(rows)} log line(s) to Supabase: {e}\n")
+        except Exception:
+            pass
+        return 0
+    finally:
+        tee._shipping = False
 
 
 def _count_open_positions():
@@ -4904,6 +5077,13 @@ def main_loop():
                     # suspend the ladder, but the trail is still live) before its
                     # OCA goes out. Idempotent: a no-op when nothing was queued.
                     process_exit_requests(ib)
+                    # Ship buffered log lines LAST, so anything the cycle above
+                    # logged reaches Supabase before the 15-minute sleep rather
+                    # than sitting in memory where a container restart loses it.
+                    try:
+                        flush_logs_to_supabase(get_supabase_client())
+                    except Exception:
+                        pass    # diagnostics must never interrupt the cycle
                     ib.sleep(900)
                     continue
 

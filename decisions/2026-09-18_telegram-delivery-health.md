@@ -115,6 +115,12 @@ diagnostic is `docker logs execution-agent 2>&1 | grep -iE "telegram (api
 error|network error|timeout)"`, which will name the HTTP code or network error.
 Until that is read, treat the cause as open.
 
+That diagnostic requires access to the production host, which is exactly what
+was unavailable when the outage was noticed. `decisions/2026-09-18_supabase-log-shipping.md`
+closes that second gap by shipping `[TELEGRAM-FAIL]` lines (among others) to
+Supabase, so a future alert-channel failure is readable without reaching the
+host. It does not help retroactively here.
+
 ## Audit performed alongside
 
 Every lifecycle event was checked for notification coverage. **No gaps were

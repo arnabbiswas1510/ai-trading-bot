@@ -92,6 +92,23 @@ TABLES: dict[str, tuple[str, ...]] = {
     "watchlist_history":   ("snapshot_date", "ticker"),
 }
 
+# Tables deliberately NOT backed up, with the reason. This set exists so that
+# omitting a table is an explicit, reviewed decision rather than an oversight:
+# tests/test_supabase_backup.py requires every table found in migrations/ or in
+# the source to appear in TABLES *or* here.
+#
+# The bar for adding to this set is high. A table belongs here only if its
+# contents are reproducible from something else, or if retaining it would
+# actively contradict a policy elsewhere in the system.
+NOT_BACKED_UP: dict[str, str] = {
+    "agent_logs":
+        "Diagnostic log lines with a deliberate 14-day retention "
+        "(AGENT_LOG_RETENTION_DAYS, enforced by execution_agent."
+        "flush_logs_to_supabase). Backing them up would preserve them forever "
+        "and defeat that retention. They are also a filtered copy of the "
+        "host's own /app/logs files, so they are not the only record.",
+}
+
 # PostgREST caps a single response; page well under it and loop.
 PAGE_SIZE = 1000
 

@@ -19,6 +19,7 @@ import pytest
 
 import supabase_backup
 from supabase_backup import (
+    NOT_BACKED_UP,
     TABLES,
     fetch_table,
     run_backup,
@@ -102,14 +103,33 @@ def _tables_from_source() -> set[str]:
 
 
 def test_every_known_table_is_backed_up():
-    """A table the bot uses but never backs up is data loss waiting to happen."""
+    """A table the bot uses but never backs up is data loss waiting to happen.
+
+    A new table must be *classified*: either backed up (TABLES) or explicitly
+    excluded with a reason (NOT_BACKED_UP). Silently omitting it fails here.
+    """
     expected = _tables_from_migrations() | _tables_from_source()
-    missing = sorted(expected - set(TABLES))
+    missing = sorted(expected - set(TABLES) - set(NOT_BACKED_UP))
     assert not missing, (
         f"These tables are used by the bot but absent from supabase_backup.TABLES: "
-        f"{missing}. Add them (with their natural key as the order column) or they "
-        f"will never be backed up."
+        f"{missing}. Add them (with their natural key as the order column), or add "
+        f"them to NOT_BACKED_UP with a reason, or they will never be backed up."
     )
+
+
+def test_excluded_tables_are_not_also_backed_up():
+    """A table in both lists means one of them is a lie about what is retained."""
+    overlap = sorted(set(TABLES) & set(NOT_BACKED_UP))
+    assert not overlap, f"Tables in both TABLES and NOT_BACKED_UP: {overlap}"
+
+
+def test_every_exclusion_gives_a_reason():
+    """An unexplained exclusion decays into an unnoticed gap in the backups."""
+    for table, reason in NOT_BACKED_UP.items():
+        assert len(reason.strip()) > 40, (
+            f"NOT_BACKED_UP['{table}'] must explain why the table is safe to "
+            f"lose, not merely that it is excluded."
+        )
 
 
 def test_migrations_and_source_actually_found_tables():

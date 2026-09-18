@@ -44,8 +44,17 @@ increments a counter. After **3** consecutive failures the log escalates to
 `ALARM` and states that trades are executing unannounced.
 
 ```bash
-# Is the alert channel alive?
+# Is the alert channel alive? (requires access to the production host)
 docker logs execution-agent 2>&1 | grep TELEGRAM-FAIL
+```
+
+The same `[TELEGRAM-FAIL]` lines are also shipped to Supabase, so this question
+can be answered without reaching the host at all — see
+[Remote log access](#remote-log-access):
+
+```sql
+SELECT logged_at, message FROM agent_logs
+WHERE level = 'ALERT_CHANNEL' ORDER BY logged_at DESC LIMIT 20;
 ```
 
 Health is also persisted to `account_balances` every reconcile cycle (~15 min),
@@ -62,6 +71,56 @@ trading or fails the balance sync. Apply
 `migrations/20260918_add_telegram_health.sql`.
 
 See `decisions/2026-09-18_telegram-delivery-health.md` for why.
+
+---
+
+### Remote log access
+
+The execution agent writes every `print()` to a daily rotating file at
+`/app/logs/execution_YYYY-MM-DD.log` (bind-mounted to the host, kept 7 days).
+That file is the complete, durable record — but it is readable only from the
+production host's LAN, which is frequently not where the question is being
+asked.
+
+So a **filtered, redacted** subset is also shipped to the Supabase `agent_logs`
+table, once per monitoring cycle (~15 min):
+
+```sql
+-- What has gone wrong recently?
+SELECT logged_at, level, message FROM agent_logs
+ORDER BY logged_at DESC LIMIT 50;
+```
+
+| Column | Meaning |
+|---|---|
+| `logged_at` | America/New_York time the line was *emitted* on the host, not when it was shipped |
+| `level` | `ALERT_CHANNEL` (Telegram delivery failure) · `CRITICAL` · `ERROR` · `WARN` |
+| `message` | The redacted log line, truncated to 2000 characters |
+
+**Only lines that indicate a problem are shipped** — those containing
+`[TELEGRAM-FAIL]`, `CRITICAL`, `Traceback`, `❌` or `⚠️`. Ordinary cycle output,
+position sizes and cash balances never leave the host. Every shipped line first
+passes through a redaction pass that strips IBKR account numbers, Telegram bot
+tokens, Supabase JWTs and generic `key=value` secrets.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `AGENT_LOG_RETENTION_DAYS` | `14` | Rows older than this are deleted by the agent, at most once per day |
+
+The buffer holds at most 500 lines in memory between cycles. If shipping is
+broken or a failure storm overflows it, the oldest lines are dropped and the
+drop count is itself shipped as a `WARN` row — a truncated view never reads as a
+complete one. A container restart loses at most one cycle's worth from Supabase;
+the local file keeps them regardless.
+
+Apply `migrations/20260918_add_agent_logs.sql`. The table is advisory in
+`schema_guard`: if the migration is missing, shipping fails quietly and trading
+is unaffected. It is deliberately **excluded from backups**
+(`supabase_backup.NOT_BACKED_UP`) — backing it up would preserve forever the
+rows the retention window exists to delete.
+
+See `decisions/2026-09-18_supabase-log-shipping.md` for why this is not a
+tunnel or an exposed port.
 
 ---
 
