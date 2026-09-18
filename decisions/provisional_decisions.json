@@ -327,8 +327,15 @@
         "REACHABILITY: re-run the reachability table. Has the count of trades reaching +10% within 21 days WHILE STILL HELD moved off 1? If it has not, power hold remains inert and lowering POWER_HOLD_GAIN_PCT in isolation is still the wrong lever -- the ladder sells first.",
         "DOWNSIDE: track harmed and >300 alongside the net. Baseline was 12 -> 18 harmed going from shipped to ladder 5%. A widened give-back that improves the net by clipping fewer winners while materially worsening losers is not obviously the trade you want on a 5-slot book."
       ],
-      "last_reviewed": null,
-      "history": []
+      "last_reviewed": "2026-09-18",
+      "history": [
+        {
+          "date": "2026-09-18",
+          "closed_trades": 52,
+          "verdict": "holds",
+          "note": "Re-measured against the CORRECT live baseline (ladder 1.5% + scale-out 33%@+4%, both already shipped). An earlier read of +$6,429 was taken against a no-scale-out baseline and is withdrawn. True figures: remainder trail 3% = -$1,350; 5% = +$4,308 but ECO is 59% of net and ex-top-3 is -$1,014; 8% = +$4,495, ECO 56%, ex-top-3 -$1,801. Every positive result is outlier-carried, so the deferral stands. Worst single-trade loss is unchanged at -$1,269 across ALL variants, confirming the loss side is not what binds. Slot opportunity cost remains unmodelled and is still a blocking precondition. See decisions/2026-09-18_scaleout-runon-bias-and-concentration.md."
+        }
+      ]
     }
   ]
 }

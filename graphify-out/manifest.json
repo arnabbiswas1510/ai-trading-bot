@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "research/exit_rule_replay.py": {
-    "mtime": 1789752584.115311,
-    "ast_hash": "bee182f192a6b634e1ad1b89e22ab12c",
+    "mtime": 1789756466.770866,
+    "ast_hash": "13735c7bd1f25be012b102fbdf163470",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_slot-derived-early-dollar-stop.md": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1789754007.6864126,
-    "ast_hash": "0d6846c99c81c1b83e7e09cdacc94072",
+    "mtime": 1789756624.9924731,
+    "ast_hash": "df6bb4bfe44600746b2c6ffbdf2886d7",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1402,6 +1402,11 @@
   "decisions/2026-09-18_sell-reason-fill-derived-anchor.md": {
     "mtime": 1789755579.6436014,
     "ast_hash": "3cc6706821c0d458b032f7aafbf6d77a",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_scaleout-runon-bias-and-concentration.md": {
+    "mtime": 1789756610.3162029,
+    "ast_hash": "d2453d187597d118deb47ba23c9e99e3",
     "semantic_hash": ""
   }
 }

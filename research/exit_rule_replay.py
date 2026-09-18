@@ -420,15 +420,17 @@ def fetch_5min(symbol: str, start: dt.datetime, end: dt.datetime, api_key: str) 
 def fetch_entry_atr_pct(symbol: str, buy_date: dt.date, api_key: str,
                         window: int = 14) -> float | None:
     """Wilder ATR% on the daily bars strictly BEFORE entry (no look-ahead)."""
-    resp = requests.get(
+    # Through _fmp_get, not a bare requests.get: a 50-trade run issues two FMP
+    # calls per trade and reliably trips the rate limiter partway through. An
+    # unprotected call here aborts the whole sweep after ~40 trades of work.
+    resp = _fmp_get(
         "https://financialmodelingprep.com/stable/historical-price-eod/full",
-        params={
+        {
             "symbol": symbol,
             "from": (buy_date - dt.timedelta(days=120)).isoformat(),
             "to": buy_date.isoformat(),
             "apikey": api_key,
         },
-        timeout=30,
     )
     resp.raise_for_status()
     rows = resp.json()
@@ -576,6 +578,14 @@ def simulate_scaleout(trade: Trade, cfg: ExitConfig) -> dict | None:
     if scale_fill is not None and cfg.scale_be_remainder:
         rem_cfg = replace(cfg, p2_floor_pct=0.0)
     rem = simulate_proveit(trade, rem_cfg)
+    # RUN-ON: `rem is None` means the remainder's rule never fired. Booking the
+    # REAL sell price here reintroduces exactly the truncation bias the run-on
+    # window exists to remove -- it hands the remainder the live exit for free,
+    # so a wider trail on the remainder can never show its upside. Mark it out
+    # at the last available close instead, the same way score() does for the
+    # non-scale path.
+    if rem is None and trade.runon_from and trade.runon_from < len(trade.bars):
+        rem = {"price": trade.bars[-1]["close"], "reason": "runon_open"}
     remainder_exit = rem["price"] if rem is not None else trade.sell_price
     reason = (rem["reason"] if rem is not None else "held") 
 
@@ -1595,7 +1605,8 @@ def eod_configs() -> list[ExitConfig]:
     return out
 
 
-def report(results: list[dict], trades: list[Trade], top: int | None = None) -> None:
+def report(results: list[dict], trades: list[Trade], top: int | None = None,
+           detail_label: str | None = None) -> None:
     losers = [t for t in trades if t.is_loser]
     total_loss = sum(t.profit_loss for t in losers)
     print()
@@ -1634,22 +1645,60 @@ def report(results: list[dict], trades: list[Trade], top: int | None = None) -> 
     print("  worst = largest single-trade loss under that configuration")
     print("  >300  = number of trades losing more than $300")
     print()
-    print("Per-trade detail for the top configuration "
-          "(watch for a result carried by one trade):")
+    # AGENTS.md requires every review to answer "is any result carried by a
+    # single trade?". That question is about the configuration being CONSIDERED,
+    # which is rarely the top row -- the top row is usually an unshippable
+    # ceiling. Without this the concentration check silently gets skipped, or
+    # gets answered from the wrong config's numbers.
     best = ordered[0]
+    if detail_label:
+        matches = [r for r in ordered
+                   if detail_label.lower() in r["label"].lower()]
+        if not matches:
+            print(f"  !! --detail '{detail_label}' matched no configuration. "
+                  f"Showing the top row instead.")
+        else:
+            best = matches[0]
+    print(f"Per-trade detail for: {best['label']}")
+    print("(watch for a result carried by one trade):")
     if not best["per_trade"]:
         print("  (no trade would have exited differently)")
-    for row in best["per_trade"]:
+    rows = best["per_trade"]
+    for row in rows:
         sign = "+" if row["delta"] >= 0 else ""
         result = row.get("result_pl")
         tail = f"   -> ${result:>9,.2f}" if result is not None else ""
         print(f"  {row['ticker']:<8} actual ${row['actual_pl']:>10,.2f}   "
               f"delta {sign}${row['delta']:>10,.2f}{tail}   [{row['reason']}]")
+    if rows:
+        total = sum(r["delta"] for r in rows)
+        gains = sorted((r for r in rows if r["delta"] > 0),
+                       key=lambda r: -r["delta"])
+        print()
+        print(f"  CONCENTRATION  net ${total:+,.2f} over {len(rows)} changed trades")
+        if total > 0 and gains:
+            top = gains[0]
+            print(f"    largest single contributor: {top['ticker']} "
+                  f"${top['delta']:+,.2f} ({top['delta'] / total * 100:.0f}% of net)")
+            cum = 0.0
+            for n, r in enumerate(gains, 1):
+                cum += r["delta"]
+                if cum >= total:
+                    print(f"    top {n} trade(s) account for 100% of the net")
+                    break
+            ex = total - top["delta"]
+            print(f"    net excluding the largest: ${ex:+,.2f}")
+            print(f"    trades helped {len(gains)}, harmed "
+                  f"{len([r for r in rows if r['delta'] < 0])}")
     print()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--detail", metavar="SUBSTRING", default=None,
+                        help="show the per-trade breakdown for the configuration "
+                             "whose label contains SUBSTRING, instead of the "
+                             "top-scoring one (case-insensitive)")
     parser.add_argument("--grid", action="store_true",
                         help="run the full parameter sweep instead of the headline set")
     parser.add_argument("--proveit", action="store_true",
@@ -1741,7 +1790,8 @@ def main() -> None:
            top=args.top if (args.grid or args.proveit or args.ladder
                             or args.ratchet or args.scale or args.eod
                             or args.cliff or args.p1ratchet
-                            or args.runon) else None)
+                            or args.runon) else None,
+           detail_label=args.detail)
 
     if args.json:
         with open(args.json, "w") as fh:
