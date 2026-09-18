@@ -92,16 +92,22 @@ ADVISORY_COLUMNS: dict[str, dict[str, str]] = {
             "(migrations/20260918_add_telegram_health.sql)",
     },
     "agent_logs": {
-        # Diagnostics only. A missing table means noteworthy log lines stay on
-        # the host, where they are unreadable from a network that cannot reach
-        # it — degraded visibility, never degraded trading. flush_logs_to_supabase()
+        # Diagnostics only. A missing table means the agent's log stays on the
+        # host, where it is unreadable from a network that cannot reach it --
+        # degraded visibility, never degraded trading. flush_logs_to_supabase()
         # swallows the insert error, so an unapplied migration cannot interrupt
         # the monitor cycle.
+        #
+        # Probed on `message` rather than the newer columns so the check still
+        # passes on a host that has applied only the first migration: shipping
+        # degrades gracefully there (the extra columns are simply rejected),
+        # whereas a missing table means nothing ships at all.
         "message":
             "shipped execution-agent log lines — without the agent_logs table, "
-            "alert-channel failures, criticals and tracebacks are visible only "
-            "via `docker logs` on the production host "
-            "(migrations/20260918_add_agent_logs.sql)",
+            "the agent's log is readable only via `docker logs` on the "
+            "production host "
+            "(migrations/20260918_add_agent_logs.sql, then "
+            "migrations/20260918_expand_agent_logs.sql)",
     },
     "trigger_history": {
         # One probe stands for all three shadow columns — they ship in the same

@@ -1,7 +1,20 @@
 # Ship noteworthy log lines to Supabase
 
 **Date:** 2026-09-18
-**Status:** Accepted
+**Status:** Superseded in part by `decisions/2026-09-18_comprehensive-log-shipping.md`
+
+> **2026-09-18 — what is no longer true.** The decision to ship to Supabase, and
+> the rejection of exposing the host or running a tunnel, **still stand** and are
+> unchanged. What was superseded the same day, before this ever deployed, is the
+> *scope*: shipping is no longer opt-in per line. Every log line ships now, and
+> volume is controlled by tiered retention, consecutive-line dedup and a hard row
+> ceiling instead of by discarding context at capture time.
+>
+> Two specific claims below are now false: **"Shipping is opt-in per line, never
+> opt-out"** (it is opt-out, via `AGENT_LOG_SHIP_ALL=false`), and **"Retention is
+> 14 days"** (14 days applies only to WARN and above; INFO/TRADE expire after 3).
+> The volume and privacy arguments given for the filter did not survive being
+> checked — see the superseding ADR for the measured numbers.
 
 ## Context
 

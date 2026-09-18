@@ -1,5 +1,14 @@
 -- 20260918_add_agent_logs.sql
 --
+-- ⚠️ SUPERSEDED THE SAME DAY by migrations/20260918_expand_agent_logs.sql,
+-- which is what you should apply. The description below of WHAT gets shipped
+-- ("only TeeLogger.SHIP_MARKERS lines") is no longer true: the full log ships
+-- now, and volume is controlled by tiered retention rather than by filtering
+-- at capture time. The table comments written here are overwritten by the
+-- expand migration. Kept as the historical record; it is still safe to run
+-- first, and the expand migration works whether or not it was.
+-- See decisions/2026-09-18_comprehensive-log-shipping.md.
+--
 -- Noteworthy execution-agent log lines, shipped to Supabase.
 --
 -- The production host runs on a home network that is unreachable from most

@@ -82,44 +82,70 @@ That file is the complete, durable record — but it is readable only from the
 production host's LAN, which is frequently not where the question is being
 asked.
 
-So a **filtered, redacted** subset is also shipped to the Supabase `agent_logs`
-table, once per monitoring cycle (~15 min):
+So the **full, redacted** log is also shipped to the Supabase `agent_logs`
+table, at the end of every cycle (~15 min during market hours, ~30 min
+off-hours) and again on shutdown:
 
 ```sql
 -- What has gone wrong recently?
-SELECT logged_at, level, message FROM agent_logs
+SELECT logged_at, level, repeat_count, message FROM agent_logs
+WHERE level NOT IN ('INFO', 'TRADE')
 ORDER BY logged_at DESC LIMIT 50;
+
+-- Replay one container run in exact emission order — the usual starting point
+-- when reconstructing what the agent was doing.
+SELECT seq, level, message FROM agent_logs
+WHERE session_id = '20260918T093012' ORDER BY seq;
+
+-- Which runs exist, and how noisy was each?
+SELECT session_id, min(logged_at) AS started, count(*) AS lines
+FROM agent_logs GROUP BY session_id ORDER BY started DESC LIMIT 10;
 ```
 
 | Column | Meaning |
 |---|---|
 | `logged_at` | America/New_York time the line was *emitted* on the host, not when it was shipped |
-| `level` | `ALERT_CHANNEL` (Telegram delivery failure) · `CRITICAL` · `ERROR` · `WARN` |
-| `message` | The redacted log line, truncated to 2000 characters |
+| `session_id` | One container run, stamped at start. Distinguishes a restart loop from one long session |
+| `seq` | Monotonic line number within the session — restores ordering when lines share a timestamp |
+| `level` | `ALERT_CHANNEL` · `CRITICAL` · `ERROR` · `WARN` · `TRADE` · `INFO` |
+| `repeat_count` | Consecutive identical lines collapsed into this row. `1` = not repeated |
+| `message` | The redacted log line, truncated to 4000 characters |
 
-**Only lines that indicate a problem are shipped** — those containing
-`[TELEGRAM-FAIL]`, `CRITICAL`, `Traceback`, `❌` or `⚠️`. Ordinary cycle output,
-position sizes and cash balances never leave the host. Every shipped line first
-passes through a redaction pass that strips IBKR account numbers, Telegram bot
-tokens, Supabase JWTs and generic `key=value` secrets.
+Every line is redacted on the host before transmission: IBKR account numbers,
+Telegram bot tokens, Supabase JWTs and generic `key=value` secrets are stripped.
+Blank and separator-only lines are dropped, and consecutive identical lines are
+collapsed so one stuck retry loop cannot fill the retention window.
+
+#### Keeping the table small
 
 | Variable | Default | Effect |
 |---|---|---|
-| `AGENT_LOG_RETENTION_DAYS` | `14` | Rows older than this are deleted by the agent, at most once per day |
+| `AGENT_LOG_SHIP_ALL` | `true` | Ship every line. Set `false` to ship only `[TELEGRAM-FAIL]`, `CRITICAL`, `Traceback`, `❌`, `⚠️` — much smaller, much less useful |
+| `AGENT_LOG_RETENTION_DAYS` | `14` | Window for `WARN` and above — what a post-mortem needs |
+| `AGENT_LOG_INFO_RETENTION_DAYS` | `3` | Window for `INFO` and `TRADE` — the bulk of the volume, and the first to lose its value |
+| `AGENT_LOG_MAX_ROWS` | `250000` | Hard ceiling enforced regardless of age. Age retention alone cannot bound a burst between two sweeps |
+| `AGENT_LOG_BUFFER_MAX` | `20000` | In-memory lines held between flushes |
 
-The buffer holds at most 500 lines in memory between cycles. If shipping is
-broken or a failure storm overflows it, the oldest lines are dropped and the
-drop count is itself shipped as a `WARN` row — a truncated view never reads as a
-complete one. A container restart loses at most one cycle's worth from Supabase;
-the local file keeps them regardless.
+The sweep runs at most hourly. At roughly 4–5k lines/day the table settles
+around 16–20k rows (~5 MB); the row ceiling caps the worst case near 60 MB.
 
-Apply `migrations/20260918_add_agent_logs.sql`. The table is advisory in
-`schema_guard`: if the migration is missing, shipping fails quietly and trading
-is unaffected. It is deliberately **excluded from backups**
-(`supabase_backup.NOT_BACKED_UP`) — backing it up would preserve forever the
-rows the retention window exists to delete.
+If shipping breaks or a failure storm overflows the buffer, the oldest lines are
+dropped and the drop count is itself shipped as a `WARN` row naming the local
+file — a truncated view never reads as a complete one. A container restart loses
+at most one cycle's buffer from Supabase; the local file keeps everything
+regardless.
 
-See `decisions/2026-09-18_supabase-log-shipping.md` for why this is not a
+Apply `migrations/20260918_add_agent_logs.sql` then
+`migrations/20260918_expand_agent_logs.sql` (the second is idempotent and works
+even if the first was never applied). The table is advisory in `schema_guard`:
+if the migration is missing, shipping fails quietly and trading is unaffected.
+It is deliberately **excluded from backups** (`supabase_backup.NOT_BACKED_UP`) —
+backing it up would preserve forever the rows the retention window exists to
+delete.
+
+See `decisions/2026-09-18_comprehensive-log-shipping.md` for why the full log
+ships rather than a filtered subset, and
+`decisions/2026-09-18_supabase-log-shipping.md` for why this is not a
 tunnel or an exposed port.
 
 ---

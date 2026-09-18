@@ -1,8 +1,10 @@
 import os
 import sys
 import argparse
+import atexit
 import datetime
 import re
+import signal
 import time
 from collections import deque
 import requests
@@ -32,29 +34,57 @@ class TeeLogger:
     Both sys.stdout AND sys.stderr are pointed at one instance (see the install
     block below), so the log file is a complete record of the session.
 
-    It also selectively captures noteworthy lines for shipping to Supabase --
-    see SHIP_MARKERS. That capture exists because the production host sits
-    behind a home network that is unreachable from most corporate networks, so
-    `docker logs` is frequently not available when a problem needs diagnosing.
-    See decisions/2026-09-18_supabase-log-shipping.md.
+    It also captures lines for shipping to Supabase. That capture exists
+    because the production host sits behind a home network that is unreachable
+    from most corporate networks, so `docker logs` is frequently not available
+    when a problem needs diagnosing. The FULL log ships by default -- see
+    SHIP_ALL -- because an error line without the context that preceded it
+    explains nothing. See decisions/2026-09-18_comprehensive-log-shipping.md.
     """
 
     KEEP_DAYS = 7
 
-    # Only lines containing one of these are shipped. Shipping is opt-IN per
-    # line, never opt-out: full stdout is both far too chatty and full of
-    # position, cash and account detail that has no business leaving the host.
+    # ── What ships ───────────────────────────────────────────────────────────
+    # Everything, by default. The earlier design shipped only lines matching
+    # SHIP_MARKERS, which was enough to answer "is the alert channel dead?" but
+    # useless for the actual job: reconstructing what the agent was thinking
+    # when it made a decision. A stack trace without the twenty lines that
+    # preceded it explains nothing.
+    #
+    # Set AGENT_LOG_SHIP_ALL=false to fall back to markers-only (much smaller,
+    # much less useful). SHIP_MARKERS survives either way as the basis of
+    # level classification, which is what makes the full firehose filterable.
+    SHIP_ALL = os.getenv("AGENT_LOG_SHIP_ALL", "true").strip().lower() \
+        not in ("false", "0", "no")
+
     SHIP_MARKERS = ("[TELEGRAM-FAIL]", "CRITICAL", "Traceback", "❌", "⚠️")
 
+    # Lines whose only content is decoration. Shipping them triples row count
+    # and adds nothing — the local file keeps them for when formatting matters.
+    _NOISE = re.compile(r"^[\s=\-─━_*·.]*$")
+
     # Bounded so a failure storm can never exhaust memory on the trading host.
-    # When full, the OLDEST entries are dropped: during a storm the first
-    # occurrence is what explains the cause, but a full buffer means shipping
-    # itself is broken, and in that case recency is the more useful signal.
-    SHIP_BUFFER_MAX = 500
+    # Sized to hold several full cycles: dropping lines is worse now that the
+    # buffer holds the context, not just the errors. When full the OLDEST are
+    # dropped, and the drop count is shipped so a truncated view never reads as
+    # a complete one.
+    SHIP_BUFFER_MAX = int(os.getenv("AGENT_LOG_BUFFER_MAX", "20000"))
+
+    # PostgREST rejects very large request bodies, so a drained buffer is
+    # inserted in chunks rather than as one statement.
+    SHIP_BATCH_SIZE = 500
+
+    MAX_MESSAGE_CHARS = 4000
+
+    # Consecutive identical lines are collapsed into one row carrying a count.
+    # A retry loop or a stuck poll can emit the same line thousands of times;
+    # without this, one bug can fill the retention window.
+    DEDUP_MAX = 10000
 
     # Redaction applied before anything leaves the host. The log is written by
     # code that has no idea it may be transmitted, so this is the only place
-    # that can be responsible for it.
+    # that can be responsible for it. This matters far more now that every line
+    # ships, not just the handful that matched a marker.
     _REDACTIONS = [
         # IBKR account numbers (U1234567 / DU1234567) — identifies the brokerage
         # account in a table that is far more widely readable than the host.
@@ -83,6 +113,14 @@ class TeeLogger:
         self.ship_dropped = 0          # lines lost to a full buffer
         self._ship_partial = ""        # accumulates a line across write() calls
         self._shipping = False         # re-entrancy guard
+        # Identifies one container run. Without it, interleaved lines from a
+        # restart loop are indistinguishable from one long session — which is
+        # exactly the shape a crash-restart bug takes.
+        self.session_id = datetime.datetime.now(
+            ZoneInfo("America/New_York")).strftime("%Y%m%dT%H%M%S")
+        self._seq = 0                  # restores ordering within one timestamp
+        self._last_line: str | None = None
+        self._last_count = 0
         self._open_today()
         self._purge_old_logs()
 
@@ -161,53 +199,104 @@ class TeeLogger:
         return line
 
     def _capture_for_shipping(self, data: str):
-        """Buffer complete, noteworthy lines. Never performs network I/O.
+        """Buffer complete log lines. Never performs network I/O.
 
         print() issues the text and the newline as separate write() calls, so
         partial data is accumulated until a newline arrives. Without this a
-        marker split across two writes would never match.
+        line split across two writes would be classified on a fragment.
         """
         self._ship_partial += data
         if "\n" not in self._ship_partial:
             # Guard against a pathological unterminated line growing forever.
-            if len(self._ship_partial) > 8192:
-                self._ship_partial = self._ship_partial[-2048:]
+            if len(self._ship_partial) > 32768:
+                self._ship_partial = self._ship_partial[-8192:]
             return
         *lines, self._ship_partial = self._ship_partial.split("\n")
         for line in lines:
-            line = line.strip()
-            if not line or not any(m in line for m in self.SHIP_MARKERS):
-                continue
-            if len(self.ship_buffer) == self.SHIP_BUFFER_MAX:
-                self.ship_dropped += 1
-            self.ship_buffer.append({
-                "logged_at": datetime.datetime.now(
-                    ZoneInfo("America/New_York")).isoformat(),
-                "level":     self._classify(line),
-                "message":   self.redact(line)[:2000],
-            })
+            self._buffer_line(line)
 
-    @staticmethod
-    def _classify(line: str) -> str:
+    def _buffer_line(self, line: str):
+        line = line.rstrip()
+        if not line.strip():
+            return
+        if self._NOISE.match(line):
+            return                      # pure separator/decoration
+        if not self.SHIP_ALL and not any(m in line for m in self.SHIP_MARKERS):
+            return
+
+        # Collapse consecutive repeats. One stuck retry loop would otherwise
+        # fill the whole retention window with a single line.
+        if line == self._last_line and self._last_count < self.DEDUP_MAX:
+            self._last_count += 1
+            if self.ship_buffer:
+                self.ship_buffer[-1]["repeat_count"] = self._last_count
+            return
+        self._last_line = line
+        self._last_count = 1
+
+        self._seq += 1
+        if len(self.ship_buffer) == self.SHIP_BUFFER_MAX:
+            self.ship_dropped += 1
+        self.ship_buffer.append({
+            "logged_at": datetime.datetime.now(
+                ZoneInfo("America/New_York")).isoformat(),
+            "session_id":   self.session_id,
+            "seq":          self._seq,
+            "level":        self._classify(line),
+            "message":      self.redact(line)[:self.MAX_MESSAGE_CHARS],
+            "repeat_count": 1,
+        })
+
+    # Substrings that mark a line as a trade-lifecycle event. These are the
+    # lines worth keeping for the full retention window even though they are
+    # not errors — they are the record of what the bot actually DID.
+    _TRADE_MARKERS = (
+        "Successfully bought", "Successfully sold", "SELL", "BUY ",
+        "order", "Order", "ORDER", "fill", "Fill", "FILL",
+        "scale-out", "Scale-out", "trailing stop", "Trailing stop",
+        "hard stop", "Hard stop", "OCA", "arm_exit", "ARMED",
+        "Prove-It", "PROVE_IT", "sell_state", "POWER_HOLD", "EXITING",
+        "🟢", "🔴", "💰", "📉", "📈",
+    )
+
+    @classmethod
+    def _classify(cls, line: str) -> str:
+        """Map a line to a retention/filter tier.
+
+        Order matters: the checks run most-severe first, so a traceback line
+        that also mentions an order is classified CRITICAL, not TRADE.
+        """
         if "[TELEGRAM-FAIL]" in line:
             return "ALERT_CHANNEL"
-        if "CRITICAL" in line or "Traceback" in line:
+        if "CRITICAL" in line or "Traceback" in line or "FATAL" in line:
             return "CRITICAL"
-        if "❌" in line:
+        if "❌" in line or "Exception" in line or "Error:" in line:
             return "ERROR"
-        return "WARN"
+        if "⚠️" in line or "WARNING" in line:
+            return "WARN"
+        if any(m in line for m in cls._TRADE_MARKERS):
+            return "TRADE"
+        return "INFO"
 
     def drain(self) -> list:
         """Atomically remove and return everything buffered."""
         items = list(self.ship_buffer)
         self.ship_buffer.clear()
+        self._last_line = None          # a flush ends the dedup run
+        self._last_count = 0
         if self.ship_dropped:
+            self._seq += 1
             items.append({
                 "logged_at": datetime.datetime.now(
                     ZoneInfo("America/New_York")).isoformat(),
-                "level":     "WARN",
-                "message":   (f"[TeeLogger] {self.ship_dropped} log line(s) dropped — "
-                              f"ship buffer full ({self.SHIP_BUFFER_MAX})."),
+                "session_id":   self.session_id,
+                "seq":          self._seq,
+                "level":        "WARN",
+                "message":      (f"[TeeLogger] {self.ship_dropped} log line(s) dropped — "
+                                 f"ship buffer full ({self.SHIP_BUFFER_MAX}). "
+                                 f"The local file at {self.log_dir} is complete; "
+                                 f"only the shipped copy is missing lines."),
+                "repeat_count": 1,
             })
             self.ship_dropped = 0
         return items
@@ -251,6 +340,40 @@ except (PermissionError, OSError):
     _tee = TeeLogger(_LOG_DIR)
     sys.stdout = _tee
     sys.stderr = _tee
+
+
+# Ship whatever is buffered when the process goes away. `docker stop` sends
+# SIGTERM, whose default disposition kills Python WITHOUT running atexit, so the
+# last cycle's logs would be lost in exactly the scenario most worth reading: a
+# container that keeps restarting.
+#
+# These hooks are registered by main_loop(), NOT at import. Importing this
+# module must stay side-effect-free at exit: other tooling imports it to read
+# configuration and prints machine-readable output to stdout, and an
+# import-time atexit hook attempting a Supabase round trip would both stall
+# those callers and corrupt their output.
+def _flush_logs_on_shutdown(signum=None, frame=None):
+    try:
+        flush_logs_quietly()
+    except Exception:
+        pass
+    if signum is not None:
+        # Restore the default disposition and re-raise, so this hook only buys
+        # time to flush and does not change how the agent actually terminates.
+        try:
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+        except Exception:
+            os._exit(143)   # 128 + SIGTERM
+
+
+def install_shutdown_log_flush():
+    """Register the shutdown flush hooks. Called once, from main_loop()."""
+    atexit.register(_flush_logs_on_shutdown)
+    try:
+        signal.signal(signal.SIGTERM, _flush_logs_on_shutdown)
+    except (ValueError, OSError):
+        pass    # not the main thread — atexit still covers us
 
 FMP_API_KEY = os.getenv("FMP_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -485,16 +608,84 @@ notifier = TelegramNotifier(
 
 
 AGENT_LOG_RETENTION_DAYS = int(os.getenv("AGENT_LOG_RETENTION_DAYS", 14))
-_last_log_purge_date: str | None = None
+# Routine INFO/TRADE lines are the bulk of the volume and lose their value
+# quickly -- nobody debugs a healthy cycle from three weeks ago. Expiring them
+# sooner is what lets the full firehose be shipped without the table growing
+# without bound. Errors keep the longer window because they are what a
+# post-mortem actually needs.
+AGENT_LOG_INFO_RETENTION_DAYS = int(os.getenv("AGENT_LOG_INFO_RETENTION_DAYS", 3))
+# Absolute ceiling, enforced regardless of age. This is the backstop against a
+# runaway loop filling the table between two age-based purges -- age retention
+# alone cannot bound a burst.
+AGENT_LOG_MAX_ROWS = int(os.getenv("AGENT_LOG_MAX_ROWS", 250000))
+# Levels that expire on the SHORT window. Everything else keeps the long one.
+_SHORT_RETENTION_LEVELS = ("INFO", "TRADE")
+
+_last_log_purge_at: datetime.datetime | None = None
+_LOG_PURGE_INTERVAL = datetime.timedelta(hours=1)
+
+
+def _ship_diag(msg: str) -> None:
+    """Report a log-shipping problem without going through TeeLogger.
+
+    Goes to the real STDERR for two reasons: the caller holds the _shipping
+    guard (so a normal print() would reach the log file but silently not be
+    buffered, reading as "no error occurred"), and other tooling imports this
+    module and parses its stdout -- a diagnostic must never corrupt that.
+    """
+    try:
+        stream = sys.__stderr__
+        if stream is not None:
+            stream.write(msg + "\n")
+            stream.flush()
+    except Exception:
+        pass
+
+
+def _purge_agent_logs(client) -> None:
+    """Enforce retention. Runs at most hourly; caller holds the shipping guard.
+
+    Three sweeps, because no single one bounds the table on its own:
+      1. Short window for routine INFO/TRADE chatter (the bulk of the volume).
+      2. Long window for WARN and above (what a post-mortem needs).
+      3. A hard row ceiling, which is the only thing that bounds a burst
+         occurring between two age-based sweeps.
+    """
+    global _last_log_purge_at
+    now = datetime.datetime.now(ZoneInfo("America/New_York"))
+    if _last_log_purge_at and (now - _last_log_purge_at) < _LOG_PURGE_INTERVAL:
+        return
+
+    short_cutoff = (now - datetime.timedelta(days=AGENT_LOG_INFO_RETENTION_DAYS)).isoformat()
+    client.table("agent_logs").delete() \
+        .in_("level", list(_SHORT_RETENTION_LEVELS)).lt("logged_at", short_cutoff).execute()
+
+    long_cutoff = (now - datetime.timedelta(days=AGENT_LOG_RETENTION_DAYS)).isoformat()
+    client.table("agent_logs").delete().lt("logged_at", long_cutoff).execute()
+
+    # Row ceiling: find the id at the cutoff position and delete everything
+    # older. One SELECT plus one DELETE, regardless of how far over we are.
+    resp = client.table("agent_logs").select("id") \
+        .order("id", desc=True).limit(1).offset(AGENT_LOG_MAX_ROWS).execute()
+    if getattr(resp, "data", None):
+        client.table("agent_logs").delete().lt("id", resp.data[0]["id"]).execute()
+
+    _last_log_purge_at = now
 
 
 def flush_logs_to_supabase(client) -> int:
-    """Ship buffered noteworthy log lines to Supabase. Returns rows written.
+    """Ship buffered log lines to Supabase. Returns rows written.
 
-    Called once per monitoring cycle. Exists because the production host is on
-    a home network that is unreachable from most corporate networks, so
-    `docker logs` is often unavailable exactly when a diagnosis is needed --
-    which is how the 2026-09-18 alert-channel outage stayed unexplained.
+    Called at the end of every cycle -- market-open and off-hours alike -- and
+    again on shutdown. Exists because the production host is on a home network
+    that is unreachable from most corporate networks, so `docker logs` is
+    often unavailable exactly when a diagnosis is needed, which is how the
+    2026-09-18 alert-channel outage stayed unexplained.
+
+    Ships the FULL log by default, not just error lines: a stack trace without
+    the lines that preceded it explains nothing. Volume is controlled by
+    consecutive-line dedup, tiered retention and a hard row ceiling rather than
+    by discarding context at capture time.
 
     Three properties this must never violate:
       * It must never raise. Log shipping is strictly less important than
@@ -503,10 +694,10 @@ def flush_logs_to_supabase(client) -> int:
         TeeLogger.write(), so the _shipping guard is held for the duration;
         without it a Supabase failure would log an error, buffer it, and
         re-ship it forever.
-      * It must never block on a large backlog. The buffer is bounded and
-        drained in one insert.
+      * It must never block on a large backlog. The buffer is bounded by
+        SHIP_BUFFER_MAX and inserted in SHIP_BATCH_SIZE chunks, so the work is
+        bounded even after a long outage.
     """
-    global _last_log_purge_date
     tee = globals().get("_tee")
     if tee is None or not isinstance(tee, TeeLogger):
         return 0                      # log tee not installed (CI/unit tests)
@@ -516,30 +707,48 @@ def flush_logs_to_supabase(client) -> int:
         return 0
 
     tee._shipping = True
+    written = 0
     try:
-        client.table("agent_logs").insert(rows).execute()
-
-        # Retention, at most once per day. Without it this table is the one
-        # part of the system that grows without bound.
-        today = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
-        if _last_log_purge_date != today:
-            cutoff = (datetime.datetime.now(ZoneInfo("America/New_York"))
-                      - datetime.timedelta(days=AGENT_LOG_RETENTION_DAYS)).isoformat()
-            client.table("agent_logs").delete().lt("logged_at", cutoff).execute()
-            _last_log_purge_date = today
-        return len(rows)
-    except Exception as e:
-        # Write DIRECTLY to the real stdout, bypassing TeeLogger: we hold the
-        # _shipping guard, so a normal print() would be written to the file but
-        # silently not buffered, which reads as "no error occurred".
+        # Batch: one 20,000-row insert would exceed PostgREST's body limit and
+        # lose the whole drain, which is precisely the backlog we most want.
+        for i in range(0, len(rows), TeeLogger.SHIP_BATCH_SIZE):
+            batch = rows[i:i + TeeLogger.SHIP_BATCH_SIZE]
+            client.table("agent_logs").insert(batch).execute()
+            written += len(batch)
+        # Retention is reported separately: a purge failure is a capacity
+        # problem, and reporting it as a shipping failure would send whoever
+        # reads this hunting a delivery bug that does not exist.
         try:
-            tee._real_stdout.write(
-                f"   ⚠️ could not ship {len(rows)} log line(s) to Supabase: {e}\n")
-        except Exception:
-            pass
-        return 0
+            _purge_agent_logs(client)
+        except Exception as purge_err:
+            _ship_diag(f"   ⚠️ agent_logs retention sweep failed (rows WERE shipped): "
+                       f"{purge_err}")
+        return written
+    except Exception as e:
+        # Report on the real STDERR, bypassing TeeLogger: we hold the _shipping
+        # guard, so a normal print() would reach the file but silently not be
+        # buffered, which reads as "no error occurred". stderr rather than
+        # stdout because other tooling imports this module and parses its
+        # stdout -- a diagnostic must never corrupt a caller's output.
+        _ship_diag(f"   ⚠️ could not ship log lines to Supabase "
+                   f"({written}/{len(rows)} written): {e}")
+        return written
     finally:
         tee._shipping = False
+
+
+def flush_logs_quietly() -> int:
+    """flush_logs_to_supabase() that also swallows client-construction errors.
+
+    Every call site is a diagnostic afterthought placed on a path that matters
+    (a sleep, an exception handler, shutdown), so nothing here may propagate --
+    including get_supabase_client() itself failing, which is likely in exactly
+    the situation the logs are most wanted.
+    """
+    try:
+        return flush_logs_to_supabase(get_supabase_client())
+    except Exception:
+        return 0
 
 
 def _count_open_positions():
@@ -4893,6 +5102,7 @@ def execute_scale_out(ib: IB, client: Client, pos: dict, ticker: str,
 
 def main_loop():
     """Main daemon loop running inside the Docker container."""
+    install_shutdown_log_flush()
     print("==================================================")
     print("       CANSLIM Local Trade Execution Agent        ")
     print("==================================================")
@@ -5052,6 +5262,7 @@ def main_loop():
                     print("🎯 Force buy sentinel detected — running run_market_open_buys NOW")
                     reconcile_with_ibkr(ib)
                     run_market_open_buys(ib)
+                    flush_logs_quietly()
                     ib.sleep(900)
                     continue
 
@@ -5080,10 +5291,7 @@ def main_loop():
                     # Ship buffered log lines LAST, so anything the cycle above
                     # logged reaches Supabase before the 15-minute sleep rather
                     # than sitting in memory where a container restart loses it.
-                    try:
-                        flush_logs_to_supabase(get_supabase_client())
-                    except Exception:
-                        pass    # diagnostics must never interrupt the cycle
+                    flush_logs_quietly()
                     ib.sleep(900)
                     continue
 
@@ -5105,10 +5313,17 @@ def main_loop():
                 sleep_secs = 1800  # check every 30 min during deep off-hours
                 print(f"😴 Market is closed. Checking in 30 min... (Current Time: {now.strftime('%H:%M:%S')})")
 
+            # Off-hours ships too. Overnight is when the IBKR daily logoff, the
+            # autoheal restart and the 6am health check happen -- the things
+            # most likely to be broken by morning and least likely to be
+            # observed live.
+            flush_logs_quietly()
+
             time.sleep(sleep_secs)   # use time.sleep — ib.sleep() throws on a dead socket during long off-hours waits
             
         except KeyboardInterrupt:
             print("\nShutting down execution agent.")
+            flush_logs_quietly()    # last chance — the buffer dies with the process
             ib.disconnect()
             break
         except (ConnectionError, TimeoutError) as loop_err:
@@ -5119,10 +5334,12 @@ def main_loop():
                 print(f"Warning: IBKR socket disconnected (daily reset) -- reconnecting silently.")
             else:
                 print(f"Error: IBKR connection/timeout in main loop: {loop_err} -- autoheal watching, no alert.")
+            flush_logs_quietly()    # a disconnect loop is exactly what needs reading remotely
             time.sleep(60)
         except Exception as loop_err:
             print(f"❌ Error in main execution loop: {loop_err}")
             notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
+            flush_logs_quietly()    # ship the traceback before the retry sleep
             time.sleep(60)   # use time.sleep — ib.sleep() throws on a dead socket
             
         # Reconnection failsafe

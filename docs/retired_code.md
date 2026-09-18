@@ -291,3 +291,60 @@ reintroduces the starvation without any offsetting benefit.
 **What would bring it back:** Nothing foreseeable. If a downstream study were ever
 found assuming every non-NULL row is fully measured, the correct fix is to make
 that study filter on `outcomes_computed_at`, not to re-block early writes.
+
+---
+
+## 2026-09-18 — Marker-only log shipping (opt-in capture)
+
+**Identifiers:** `TeeLogger.SHIP_MARKERS` (as a *capture filter*),
+`_last_log_purge_date`, `AGENT_LOG_RETENTION_DAYS` as the single retention
+window.
+
+**Where it lived:** `execution_agent.py` — `TeeLogger._capture_for_shipping()`
+and `flush_logs_to_supabase()`. Tests in `tests/test_log_shipping.py`
+(`test_only_marked_lines_are_captured`, `test_retention_runs_once_per_day`).
+
+**Status when retired:** Written on 2026-09-18 as patch 057 and retired the same
+day, before patch 057 was ever deployed. **It never ran in production**, so
+there is no live evidence for or against it — only the reasoning below.
+
+**What it did:** Shipping to Supabase was opt-IN per line. A line was buffered
+only if it contained `[TELEGRAM-FAIL]`, `CRITICAL`, `Traceback`, `❌` or `⚠️`;
+everything else was discarded at capture time and never left the host. A single
+retention window (14 days) applied to all rows, swept once per day.
+
+**Why retired:** The filter was chosen to answer one question — "is the alert
+channel dead?" — and it answers that well. It is close to useless for the
+question actually being asked, which is "what was the agent doing when it
+decided that?" A stack trace without the twenty lines that preceded it explains
+nothing, and those twenty lines were exactly what the filter threw away. The
+stated justification (volume, and keeping position/cash detail on the host) did
+not survive contact with the numbers: ~125 print sites per cycle work out to
+roughly 4–5k lines/day, or ~5 MB at steady state against a 500 MB budget. See
+`decisions/2026-09-18_comprehensive-log-shipping.md`.
+
+**RELOCATED — `SHIP_MARKERS` still exists, in a different role.** It is no
+longer a capture filter; it is now the basis of `TeeLogger._classify()`, which
+assigns each line a `level`. That level is what drives *tiered retention*
+(INFO/TRADE expire in 3 days, WARN and above in 14) and what makes the full
+firehose filterable in SQL. Do not reintroduce it as a capture gate — the
+filtering it used to do at capture time is now done at query time, where the
+discarded context is still available if it turns out to be needed.
+
+`AGENT_LOG_RETENTION_DAYS` also survives, but now governs only WARN-and-above;
+`AGENT_LOG_INFO_RETENTION_DAYS` governs the rest. `_last_log_purge_date` (a
+date string, daily) became `_last_log_purge_at` (a timestamp, hourly), because
+a daily sweep cannot bound a burst.
+
+**Marker-only mode is retained as an escape hatch**, not deleted: set
+`AGENT_LOG_SHIP_ALL=false` to restore the old capture behaviour if volume ever
+does become a problem.
+
+**Restore path:** `git show d10090c:execution_agent.py` — the patch-057 commit,
+which contains the marker-only implementation in full.
+
+**What would bring it back:** Measured evidence that the full log is actually
+too expensive — the Supabase project approaching its storage quota, or insert
+latency showing up in the monitor cycle. Flip `AGENT_LOG_SHIP_ALL=false` first
+and confirm that fixes it before deleting anything; the constant exists so this
+does not require a code change.

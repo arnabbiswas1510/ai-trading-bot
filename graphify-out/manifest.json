@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1789747076.0120077,
-    "ast_hash": "f6fcfe2732d9070daeb99a6c4cd4163c",
+    "mtime": 1789748143.430788,
+    "ast_hash": "a5dd9cf2f38f5d46e5f7d9797e41a10b",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1789747268.407655,
-    "ast_hash": "8bb16d3ad3ec0cf73e0126554885e603",
+    "mtime": 1789748113.7724402,
+    "ast_hash": "47f6dded243ec24794f3d8846ff8c738",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -650,8 +650,8 @@
     "semantic_hash": ""
   },
   "schema_guard.py": {
-    "mtime": 1789747092.1925364,
-    "ast_hash": "046d40810ff1423e1790251c71967bd0",
+    "mtime": 1789748133.27404,
+    "ast_hash": "8bead4bc68adb45cd4680f858828cc80",
     "semantic_hash": ""
   },
   "tests/test_schema_guard.py": {
@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "supabase_backup.py": {
-    "mtime": 1789747133.8989475,
-    "ast_hash": "687e2971ea0122e96e5f5344769a8b30",
+    "mtime": 1789748138.1256676,
+    "ast_hash": "4513fdfd4bbc2d31d995b42b2b9c0d7d",
     "semantic_hash": ""
   },
   "tests/test_supabase_backup.py": {
@@ -900,8 +900,8 @@
     "semantic_hash": ""
   },
   "docs/retired_code.md": {
-    "mtime": 1789685171.879154,
-    "ast_hash": "d94564a83f492ff7a1a8128d805c966d",
+    "mtime": 1789748024.288824,
+    "ast_hash": "b32e9baf6fcd8ef8a926a5d351ba5ac4",
     "semantic_hash": ""
   },
   "tests/test_dashboard_pricing.py": {
@@ -1355,18 +1355,28 @@
     "semantic_hash": ""
   },
   "migrations/20260918_add_agent_logs.sql": {
-    "mtime": 1789747007.9383142,
-    "ast_hash": "9473765ff2a3bc5e2b6387fe145017d8",
+    "mtime": 1789748149.1163235,
+    "ast_hash": "673119f92969be285abf25f5692788e5",
     "semantic_hash": ""
   },
   "tests/test_log_shipping.py": {
-    "mtime": 1789747049.889656,
-    "ast_hash": "f3aac64ec0efb72a395b082cb65b6d4a",
+    "mtime": 1789747954.7100706,
+    "ast_hash": "aca62f69c698c41471d31ce82d222a19",
     "semantic_hash": ""
   },
   "decisions/2026-09-18_supabase-log-shipping.md": {
-    "mtime": 1789747221.165118,
-    "ast_hash": "aa08cca3c59fba46a61968afa11a9b35",
+    "mtime": 1789748074.2296717,
+    "ast_hash": "915c41ff6a089018a9f2656156c06487",
+    "semantic_hash": ""
+  },
+  "migrations/20260918_expand_agent_logs.sql": {
+    "mtime": 1789747638.0525339,
+    "ast_hash": "11baa248c65d6be8bb07c823b66ad908",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_comprehensive-log-shipping.md": {
+    "mtime": 1789748065.5385222,
+    "ast_hash": "3e998fe045165f1077883d3c5df4a045",
     "semantic_hash": ""
   }
 }

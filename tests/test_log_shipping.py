@@ -12,6 +12,9 @@ could fail to work:
 See decisions/2026-09-18_supabase-log-shipping.md.
 """
 import datetime
+import io
+import json
+import subprocess
 import os
 import sys
 import tempfile
@@ -68,16 +71,63 @@ def test_redaction_runs_before_buffering(tee):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Capture — opt-in, and correct across write() boundaries
+# Capture — comprehensive by default, and correct across write() boundaries
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_only_marked_lines_are_captured(tee):
+def test_ordinary_lines_are_captured(tee):
+    """The whole point of shipping everything: context, not just errors."""
     _emit(tee, "   Balance synced: own_cash=$5000 positions=$20000")
     _emit(tee, "✅ Successfully bought 788 shares of DHT at $23.04")
-    assert len(tee.ship_buffer) == 0, "ordinary cycle output must not be shipped"
-
     _emit(tee, "❌ Failed to execute order for DHT")
+    assert len(tee.ship_buffer) == 3
+    assert [r["level"] for r in tee.ship_buffer] == ["INFO", "TRADE", "ERROR"]
+
+
+def test_blank_and_decoration_lines_are_skipped(tee):
+    """Separators triple the row count and carry no information."""
+    for noise in ("", "   ", "=" * 60, "-" * 40, "──────────", "***"):
+        _emit(tee, noise)
+    assert len(tee.ship_buffer) == 0
+
+
+def test_markers_only_mode_still_works(tee, monkeypatch):
+    """AGENT_LOG_SHIP_ALL=false is the escape hatch if volume ever bites."""
+    monkeypatch.setattr(ea.TeeLogger, "SHIP_ALL", False)
+    _emit(tee, "   Balance synced: own_cash=$5000")
+    assert len(tee.ship_buffer) == 0
+    _emit(tee, "❌ Failed to execute order")
     assert len(tee.ship_buffer) == 1
+
+
+def test_consecutive_repeats_are_collapsed(tee):
+    """One stuck retry loop must not consume the whole retention window."""
+    for _ in range(500):
+        _emit(tee, "⚠️ Reconnection failed (attempt N)")
+    assert len(tee.ship_buffer) == 1
+    assert tee.ship_buffer[0]["repeat_count"] == 500
+
+
+def test_dedup_only_collapses_ADJACENT_lines(tee):
+    """Interleaved lines are distinct events and must stay separate rows."""
+    _emit(tee, "checking DHT")
+    _emit(tee, "checking TWLO")
+    _emit(tee, "checking DHT")
+    assert len(tee.ship_buffer) == 3
+
+
+def test_sequence_numbers_are_monotonic(tee):
+    """Ordering within one timestamp is otherwise unrecoverable."""
+    for i in range(5):
+        _emit(tee, f"line {i}")
+    seqs = [r["seq"] for r in tee.ship_buffer]
+    assert seqs == sorted(seqs) and len(set(seqs)) == 5
+
+
+def test_all_rows_carry_the_session_id(tee):
+    """A restart loop is indistinguishable from one long session without it."""
+    _emit(tee, "line one")
+    _emit(tee, "line two")
+    assert {r["session_id"] for r in tee.ship_buffer} == {tee.session_id}
 
 
 def test_marker_split_across_writes_is_still_captured(tee):
@@ -87,7 +137,7 @@ def test_marker_split_across_writes_is_still_captured(tee):
     assert len(tee.ship_buffer) == 0      # no newline yet — line incomplete
     tee.write("\n")
     assert len(tee.ship_buffer) == 1
-    assert "[TELEGRAM-FAIL]" in tee.ship_buffer[0]["message"]
+    assert tee.ship_buffer[0]["level"] == "ALERT_CHANNEL"
 
 
 @pytest.mark.parametrize("line,level", [
@@ -96,26 +146,39 @@ def test_marker_split_across_writes_is_still_captured(tee):
     ("Traceback (most recent call last):", "CRITICAL"),
     ("❌ Failed to execute order for DHT", "ERROR"),
     ("⚠️ DHT: could not persist hard_stop_price", "WARN"),
+    ("✅ Successfully bought 788 shares of DHT", "TRADE"),
+    ("   DHT: placing OCA bracket", "TRADE"),
+    ("   DHT sell_state UNPROVEN → PROVEN", "TRADE"),
+    ("   Balance synced: own_cash=$5000", "INFO"),
+    ("😴 Market is closed. Checking in 30 min...", "INFO"),
 ])
 def test_lines_are_classified(tee, line, level):
     _emit(tee, line)
     assert tee.ship_buffer[0]["level"] == level
 
 
+def test_severity_wins_over_trade_classification(tee):
+    """A traceback mentioning an order is CRITICAL, not TRADE — it must not be
+    purged on the short INFO/TRADE retention window."""
+    _emit(tee, "Traceback (most recent call last): during order placement")
+    assert tee.ship_buffer[0]["level"] == "CRITICAL"
+
+
 def test_unterminated_line_cannot_grow_without_bound(tee):
-    for _ in range(200):
+    for _ in range(2000):
         tee.write("x" * 100)          # never a newline
-    assert len(tee._ship_partial) <= 8192
+    assert len(tee._ship_partial) <= 32768
 
 
 def test_buffer_is_bounded_and_reports_drops(tee):
-    for i in range(ea.TeeLogger.SHIP_BUFFER_MAX + 50):
-        _emit(tee, f"❌ error number {i}")
+    over = 50
+    for i in range(ea.TeeLogger.SHIP_BUFFER_MAX + over):
+        _emit(tee, f"❌ error number {i}")     # distinct — defeats dedup
     assert len(tee.ship_buffer) == ea.TeeLogger.SHIP_BUFFER_MAX
-    assert tee.ship_dropped == 50
+    assert tee.ship_dropped == over
 
     drained = tee.drain()
-    assert any("50 log line(s) dropped" in r["message"] for r in drained), \
+    assert any(f"{over} log line(s) dropped" in r["message"] for r in drained), \
         "a silent drop would misrepresent the failure storm it was caused by"
     assert tee.ship_dropped == 0
 
@@ -143,6 +206,34 @@ def test_flush_ships_and_clears(tee, monkeypatch):
     rows = client.table.return_value.insert.call_args[0][0]
     assert {r["level"] for r in rows} == {"ERROR", "ALERT_CHANNEL"}
     assert len(tee.ship_buffer) == 0
+
+
+def test_large_backlog_is_inserted_in_batches(tee, monkeypatch):
+    """One 20,000-row insert would exceed PostgREST's body limit and lose the
+    whole drain — precisely the backlog most worth keeping."""
+    monkeypatch.setitem(ea.__dict__, "_tee", tee)
+    n = ea.TeeLogger.SHIP_BATCH_SIZE * 3 + 7
+    for i in range(n):
+        _emit(tee, f"line {i}")
+
+    client = MagicMock()
+    assert ea.flush_logs_to_supabase(client) == n
+    sizes = [len(c[0][0]) for c in client.table.return_value.insert.call_args_list]
+    assert len(sizes) == 4 and max(sizes) <= ea.TeeLogger.SHIP_BATCH_SIZE
+    assert sum(sizes) == n
+
+
+def test_partial_batch_failure_reports_what_was_written(tee, monkeypatch):
+    """Silently returning 0 after writing 500 rows would misreport the state."""
+    monkeypatch.setitem(ea.__dict__, "_tee", tee)
+    for i in range(ea.TeeLogger.SHIP_BATCH_SIZE * 2):
+        _emit(tee, f"line {i}")
+
+    client = MagicMock()
+    client.table.return_value.insert.return_value.execute.side_effect = [
+        MagicMock(), Exception("body too large"),
+    ]
+    assert ea.flush_logs_to_supabase(client) == ea.TeeLogger.SHIP_BATCH_SIZE
 
 
 def test_flush_is_a_noop_when_nothing_buffered(tee, monkeypatch):
@@ -191,16 +282,133 @@ def test_flush_is_safe_without_a_tee_installed(monkeypatch):
     assert ea.flush_logs_to_supabase(MagicMock()) == 0
 
 
-def test_retention_runs_once_per_day(tee, monkeypatch):
+def test_shipping_diagnostics_go_to_stderr_not_stdout(monkeypatch):
+    """Other tooling imports this module and parses its stdout as JSON. A
+    shipping warning on stdout corrupts that -- it broke
+    tests/test_max_positions_config.py when this was first written."""
+    out, err = io.StringIO(), io.StringIO()
+    monkeypatch.setattr(sys, "__stdout__", out)
+    monkeypatch.setattr(sys, "__stderr__", err)
+
+    ea._ship_diag("   ⚠️ could not ship log lines to Supabase")
+
+    assert "could not ship" in err.getvalue()
+    assert out.getvalue() == "", f"diagnostic leaked to stdout: {out.getvalue()!r}"
+
+
+def test_importing_the_module_registers_no_shutdown_hook():
+    """The shutdown hooks attempt a Supabase round trip at exit. Registering
+    them at import made every `python -c "import execution_agent; print(json)"`
+    caller emit a warning into its own stdout -- it broke
+    tests/test_max_positions_config.py, which parses exactly that.
+    """
+    proc = subprocess.run(
+        [sys.executable, "-c",
+         "import execution_agent; print('{\"ok\": true}')"],
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        capture_output=True, text=True, timeout=120,
+        env={**os.environ, "SUPABASE_URL": "https://unreachable.invalid",
+             "SUPABASE_KEY": "x" * 40, "LOG_DIR": tempfile.mkdtemp()},
+    )
+    assert json.loads(proc.stdout.strip().splitlines()[-1]) == {"ok": True}, \
+        f"import-time hook corrupted stdout: {proc.stdout!r}"
+
+
+def test_flush_quietly_survives_a_dead_supabase_client(tee, monkeypatch):
+    """Its call sites are exception handlers and shutdown — getting the client
+    is itself likely to fail there."""
     monkeypatch.setitem(ea.__dict__, "_tee", tee)
-    monkeypatch.setitem(ea.__dict__, "_last_log_purge_date", None)
+    monkeypatch.setattr(ea, "get_supabase_client",
+                        MagicMock(side_effect=Exception("no creds")))
+    _emit(tee, "❌ boom")
+    assert ea.flush_logs_quietly() == 0      # must not raise
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Retention — what stops the table jamming Supabase
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_retention_purges_info_on_the_short_window(tee, monkeypatch):
+    monkeypatch.setitem(ea.__dict__, "_tee", tee)
+    monkeypatch.setitem(ea.__dict__, "_last_log_purge_at", None)
+    client = MagicMock()
+    _emit(tee, "some info line")
+    ea.flush_logs_to_supabase(client)
+
+    # The level-scoped sweep must target exactly INFO and TRADE: anything more
+    # would expire errors early, anything less lets chatter accrue for 14 days.
+    levels = client.table.return_value.delete.return_value.in_.call_args[0][1]
+    assert set(levels) == {"INFO", "TRADE"}
+
+
+def test_retention_enforces_a_hard_row_ceiling(tee, monkeypatch):
+    """Age alone cannot bound a burst occurring between two sweeps."""
+    monkeypatch.setitem(ea.__dict__, "_tee", tee)
+    monkeypatch.setitem(ea.__dict__, "_last_log_purge_at", None)
+    client = MagicMock()
+    sel = client.table.return_value.select.return_value.order.return_value \
+        .limit.return_value.offset.return_value
+    sel.execute.return_value = MagicMock(data=[{"id": 4242}])
+
+    _emit(tee, "line")
+    ea.flush_logs_to_supabase(client)
+
+    client.table.return_value.select.return_value.order.return_value \
+        .limit.return_value.offset.assert_called_with(ea.AGENT_LOG_MAX_ROWS)
+    client.table.return_value.delete.return_value.lt.assert_any_call("id", 4242)
+
+
+def test_row_ceiling_is_a_noop_when_under_the_cap(tee, monkeypatch):
+    """An empty result means fewer rows than the cap — deleting on it would
+    wipe the table."""
+    monkeypatch.setitem(ea.__dict__, "_tee", tee)
+    monkeypatch.setitem(ea.__dict__, "_last_log_purge_at", None)
+    client = MagicMock()
+    client.table.return_value.select.return_value.order.return_value \
+        .limit.return_value.offset.return_value.execute.return_value = \
+        MagicMock(data=[])
+
+    _emit(tee, "line")
+    ea.flush_logs_to_supabase(client)
+
+    id_deletes = [c for c in client.table.return_value.delete.return_value
+                  .lt.call_args_list if c[0][0] == "id"]
+    assert not id_deletes
+
+
+def test_retention_is_rate_limited(tee, monkeypatch):
+    """Purging on every 15-minute flush is three wasted queries per cycle."""
+    monkeypatch.setitem(ea.__dict__, "_tee", tee)
+    monkeypatch.setitem(ea.__dict__, "_last_log_purge_at", None)
     client = MagicMock()
 
-    _emit(tee, "❌ one")
+    _emit(tee, "one")
     ea.flush_logs_to_supabase(client)
-    assert client.table.return_value.delete.call_count == 1
+    first = client.table.return_value.delete.call_count
+    assert first > 0
 
-    _emit(tee, "❌ two")
+    _emit(tee, "two")
     ea.flush_logs_to_supabase(client)
-    assert client.table.return_value.delete.call_count == 1, \
-        "retention must not re-run on every cycle"
+    assert client.table.return_value.delete.call_count == first, \
+        "retention must not re-run on the very next cycle"
+
+
+def test_retention_failure_is_reported_as_a_purge_failure(tee, monkeypatch):
+    """The insert already succeeded. Reporting this as "could not ship" would
+    send whoever reads it hunting a delivery bug that does not exist."""
+    monkeypatch.setitem(ea.__dict__, "_tee", tee)
+    monkeypatch.setitem(ea.__dict__, "_last_log_purge_at", None)
+    client = MagicMock()
+    client.table.return_value.delete.side_effect = Exception("purge failed")
+
+    sink = io.StringIO()
+    tee._real_stdout = sink
+    monkeypatch.setattr(ea, "_ship_diag", lambda m: sink.write(m + "\n"))
+
+    _emit(tee, "❌ boom")
+    assert ea.flush_logs_to_supabase(client) == 1
+    assert tee._shipping is False
+
+    out = sink.getvalue()
+    assert "retention sweep failed" in out, out
+    assert "could not ship" not in out, out

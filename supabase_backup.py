@@ -102,10 +102,11 @@ TABLES: dict[str, tuple[str, ...]] = {
 # actively contradict a policy elsewhere in the system.
 NOT_BACKED_UP: dict[str, str] = {
     "agent_logs":
-        "Diagnostic log lines with a deliberate 14-day retention "
-        "(AGENT_LOG_RETENTION_DAYS, enforced by execution_agent."
+        "Diagnostic log lines with deliberate tiered retention "
+        "(AGENT_LOG_INFO_RETENTION_DAYS / AGENT_LOG_RETENTION_DAYS / "
+        "AGENT_LOG_MAX_ROWS, all enforced by execution_agent."
         "flush_logs_to_supabase). Backing them up would preserve them forever "
-        "and defeat that retention. They are also a filtered copy of the "
+        "and defeat that retention. They are also a redacted copy of the "
         "host's own /app/logs files, so they are not the only record.",
 }
 
