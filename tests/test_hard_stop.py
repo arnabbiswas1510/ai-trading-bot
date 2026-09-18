@@ -41,9 +41,35 @@ def _armed_floor(entry=ENTRY):
 
 
 class TestHardStopPrice:
-    def test_unproven_uses_disaster_floor(self):
+    def test_unproven_uses_phase1_static_backstop(self):
+        """Unproven -> the Phase 1 band, one backstop-slack wider, held STATIC.
+
+        This leg used to be carried by the IBKR TRAIL order, whose anchor
+        ratchets up with price; a stop written to cap a loss climbed into profit
+        and sold SMTC at +0.76% 23 minutes after entry. It is now an entry-
+        anchored STP that cannot chase the HWM.
+        See decisions/2026-09-18_phase1-static-backstop.md.
+        """
         pos = {"closed_above_entry": False}
-        assert ea.hard_stop_price(pos, ENTRY, 0.0) == _disaster()
+        expected = round(ENTRY * (1 - ea.PROVE_IT_P1_LATER_PCT)
+                               * (1 - ea.PROVE_IT_BACKSTOP_SLACK_PCT), 2)
+        assert ea.hard_stop_price(pos, ENTRY, 0.0, False, 3) == expected
+        # Day 0 uses the tighter band.
+        expected_d0 = round(ENTRY * (1 - ea.PROVE_IT_P1_DAY0_PCT)
+                                  * (1 - ea.PROVE_IT_BACKSTOP_SLACK_PCT), 2)
+        assert ea.hard_stop_price(pos, ENTRY, 0.0, False, 0) == expected_d0
+        # Never looser than the disaster floor.
+        assert ea.hard_stop_price(pos, ENTRY, 0.0, False, 0) >= _disaster()
+
+    def test_phase1_backstop_never_rises_above_entry(self):
+        """THE REGRESSION THIS FIXES. Whatever the position does, the Phase 1
+        floor stays below entry — it is a loss cap and must never become a
+        profit-taker. The old trailing implementation reached entry +0.89% on
+        SMTC. Swept across the whole plausible day range."""
+        pos = {"closed_above_entry": False}
+        for day in range(0, 30):
+            level = ea.hard_stop_price(pos, ENTRY, 0.0, False, day)
+            assert level < ENTRY, f"day {day}: floor {level} is at/above entry {ENTRY}"
 
     def test_proven_but_unarmed_uses_disaster_floor(self):
         # Closed above entry, but peak gain below the +2% arm gain: no tight
@@ -117,3 +143,34 @@ class TestPlaceProtectiveStops:
         hard = next(c.args[1] for c in ib.placeOrder.call_args_list
                     if getattr(c.args[1], "orderType", "") == "STP")
         assert hard.auxPrice == 12.35
+
+
+class TestSafeHardStop:
+    """
+    A SELL stop resting at or above the market triggers immediately and sells at
+    market. safe_hard_stop() is what stops a legitimate raise from becoming an
+    accidental liquidation. See decisions/2026-09-18_phase1-static-backstop.md.
+    """
+
+    def test_normal_raise_is_allowed(self):
+        assert ea.safe_hard_stop(96.0, 100.0, 93.0) == 96.0
+
+    def test_level_at_or_above_market_keeps_the_resting_stop(self):
+        # Desired is above the market: placing it would sell instantly.
+        assert ea.safe_hard_stop(101.0, 100.0, 93.0) == 93.0
+        # Exactly at the market is equally unsafe — a stop triggers on touch.
+        assert ea.safe_hard_stop(100.0, 100.0, 93.0) == 93.0
+
+    def test_missing_price_never_moves_the_stop(self):
+        assert ea.safe_hard_stop(96.0, 0.0, 93.0) == 93.0
+
+    def test_the_deployment_scenario_that_motivated_it(self):
+        """THE REGRESSION. Moving the Phase 1 floor from the disaster level to
+        the entry band raises it by ~3-5%. A position already trading in that
+        gap must NOT have a stop placed above it."""
+        entry, stored = 100.0, 93.0
+        pos = {"closed_above_entry": False}
+        desired = ea.hard_stop_price(pos, entry, 0.0, False, 3)   # ~96.03
+        # Position has drifted to 95 — below the new floor, above the old one.
+        assert desired > 95.0, "precondition: the new floor is above this price"
+        assert ea.safe_hard_stop(desired, 95.0, stored) == stored

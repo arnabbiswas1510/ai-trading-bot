@@ -296,13 +296,24 @@ class TestBackstopTrailPct:
         pct = execution_agent.prove_it_trail_pct(95.0, 100.0, "phase2")
         assert pct == 0.05
 
-    def test_phase1_order_rests_wider_than_the_bot_side_exit(self):
-        """It is a gap backstop, so it must never front-run the armed exit."""
-        level = 97.0
-        pct = execution_agent.prove_it_trail_pct(level, 100.0, "phase1")
-        assert pct > 1 - (level / 100.0)
-        implied_stop = 100.0 * (1 - pct)
-        assert implied_stop < level
+    def test_phase1_yields_no_trailing_order_at_all(self):
+        """Phase 1 must NOT be expressed as a trailing percentage.
+
+        THE DEFECT THIS PINS. A trail solved here is submitted as
+        orderType='TRAIL', and a TRAIL anchor ratchets up with the high water
+        mark. The one-way tightening rule then refuses to widen it back, so on a
+        position that rallies before fading the loss cap climbs into profit and
+        fires as a profit-taker — SMTC was sold at +0.76%, 23 minutes in, by an
+        order intended to rest at -2.0%. Phase 1 is carried by the STATIC
+        hard-stop leg instead (see hard_stop_price).
+        See decisions/2026-09-18_phase1-static-backstop.md.
+        """
+        assert execution_agent.prove_it_trail_pct(97.0, 100.0, "phase1") is None
+        # True regardless of how far price has run from the level — the old
+        # implementation returned a larger percentage as price rose, which is
+        # precisely how the stop ended up above entry.
+        for price in (100.0, 105.0, 120.0, 200.0):
+            assert execution_agent.prove_it_trail_pct(97.0, price, "phase1") is None
 
     def test_no_level_yields_no_percentage(self):
         assert execution_agent.prove_it_trail_pct(None, 100.0, "phase2") is None

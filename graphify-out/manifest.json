@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1789748143.430788,
-    "ast_hash": "a5dd9cf2f38f5d46e5f7d9797e41a10b",
+    "mtime": 1789751096.3162928,
+    "ast_hash": "c40443d717081c877feab966bcb37d4a",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -230,8 +230,8 @@
     "semantic_hash": "c6399e27028dd7316d27a6d535b2244e"
   },
   "tests/test_sell_logic.py": {
-    "mtime": 1788835383.4765348,
-    "ast_hash": "7a00efbbb53e2ad5be295586f9ea13ac",
+    "mtime": 1789750967.5873137,
+    "ast_hash": "cd251e3123b68b0d3e823f040ec70191",
     "semantic_hash": ""
   },
   "tests/test_short_fix_and_new_logic.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1789743696.984591,
-    "ast_hash": "8e12b052e316cfbd931fc8db6cd0f80e",
+    "mtime": 1789751252.7620347,
+    "ast_hash": "c96aeb2fb485912096311b8910c293c6",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1789748113.7724402,
-    "ast_hash": "47f6dded243ec24794f3d8846ff8c738",
+    "mtime": 1789751301.2988832,
+    "ast_hash": "05d9be9f8243ab1603fa163d1543bb19",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1789743668.152792,
-    "ast_hash": "dc489d10ca55330b276dba8b4f48aced",
+    "mtime": 1789751244.3832898,
+    "ast_hash": "7615174b3f3bab030cf31f9814d56cd6",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -665,8 +665,8 @@
     "semantic_hash": ""
   },
   "frontend/src/lib/positionRules.js": {
-    "mtime": 1789682042.2492461,
-    "ast_hash": "e73186668191e859f9ad41342935f2e8",
+    "mtime": 1789751291.9036767,
+    "ast_hash": "6faf271f88a28b41d6c11d92fd1d58bf",
     "semantic_hash": ""
   },
   "decisions/2026-08-14_position-lifecycle-visibility.md": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "research/exit_rule_replay.py": {
-    "mtime": 1789091608.454383,
-    "ast_hash": "9ef02b966eb9e78a14a36156ad4308a7",
+    "mtime": 1789750277.2891002,
+    "ast_hash": "f0f0b081208b35aedabdab7f3be1bd11",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_slot-derived-early-dollar-stop.md": {
@@ -890,18 +890,18 @@
     "semantic_hash": ""
   },
   "tests/test_prove_it_stop.py": {
-    "mtime": 1789743442.6706588,
-    "ast_hash": "ba78ec4abba9b97595a0c46592584f31",
+    "mtime": 1789750991.7670033,
+    "ast_hash": "66e24a09dc4efec5fd79b98debd76cfb",
     "semantic_hash": ""
   },
   "decisions/2026-09-04_prove-it-stop.md": {
-    "mtime": 1788557026.615128,
-    "ast_hash": "09b781c81305ad9e88efad674bcb1e8f",
+    "mtime": 1789751334.0071907,
+    "ast_hash": "c12b42087c73021734039ded31c8462c",
     "semantic_hash": ""
   },
   "docs/retired_code.md": {
-    "mtime": 1789748024.288824,
-    "ast_hash": "b32e9baf6fcd8ef8a926a5d351ba5ac4",
+    "mtime": 1789751359.1680355,
+    "ast_hash": "65cfc05940d5534ebd7a49405fb36767",
     "semantic_hash": ""
   },
   "tests/test_dashboard_pricing.py": {
@@ -970,18 +970,18 @@
     "semantic_hash": ""
   },
   "tests/test_hard_stop.py": {
-    "mtime": 1788832976.2551436,
-    "ast_hash": "0f8ca1b9ea7871e7bcd49b54ff7372ba",
+    "mtime": 1789751110.3111427,
+    "ast_hash": "7b6f1228d19382e668fcfb2282635374",
     "semantic_hash": ""
   },
   "decisions/2026-09-07_static-hard-stop.md": {
-    "mtime": 1789682042.240511,
-    "ast_hash": "5d757ec813a9ff24a237a85c30913180",
+    "mtime": 1789751319.6279173,
+    "ast_hash": "0927497e5d4afbc7db7f53ecc425de6b",
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1789744326.833909,
-    "ast_hash": "f3d28f6bc3306e11e247de724e63e9de",
+    "mtime": 1789751394.5061848,
+    "ast_hash": "048f353034b4ebb11d5182667a06ac30",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1310,8 +1310,8 @@
     "semantic_hash": ""
   },
   "exit_rules.py": {
-    "mtime": 1789743318.3983157,
-    "ast_hash": "a1b8d5d0964cdaa72b27cec502d61196",
+    "mtime": 1789751082.6925683,
+    "ast_hash": "7b4f291a51428fa88ea64f03619b4a0d",
     "semantic_hash": ""
   },
   "indicators.py": {
@@ -1377,6 +1377,11 @@
   "decisions/2026-09-18_comprehensive-log-shipping.md": {
     "mtime": 1789748065.5385222,
     "ast_hash": "3e998fe045165f1077883d3c5df4a045",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_phase1-static-backstop.md": {
+    "mtime": 1789751182.5630937,
+    "ast_hash": "84d4766c8d9d25eec74cdc5a6e266f61",
     "semantic_hash": ""
   }
 }

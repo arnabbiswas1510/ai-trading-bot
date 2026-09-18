@@ -1,7 +1,21 @@
 # A static broker-side hard stop that survives disconnection
 
 **Date:** 2026-09-07
-**Status:** Accepted
+**Status:** Superseded in part by `decisions/2026-09-18_phase1-static-backstop.md`
+
+> **2026-09-18 — what is no longer true.** The "Pre-proof / unarmed" row below
+> describes the static leg as a flat disaster floor at `entry × (1 − MAX_LOSS_PCT)`
+> for every position that is not proven-and-armed. That now holds **only for
+> proven-but-unarmed** positions. **Unproven (Phase 1)** positions carry the
+> Prove-It band one backstop slack wider — entry − 1.99% on day 0, entry − 3.97%
+> from day 1 — because Phase 1 was moved off the trailing leg onto this static
+> one. The rest of this ADR, including the ratchet-up-only property and the
+> measurement that a 7% static floor is free where a 5% trailing base is not,
+> stands unchanged.
+>
+> One qualification to "it ratchets up only": while a position is **unproven**
+> the floor may now widen once, from the day-0 band to the day-1+ band, because
+> the band itself widens by design. Once proven, ratchet-up-only applies in full.
 
 ---
 

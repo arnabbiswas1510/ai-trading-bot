@@ -249,6 +249,42 @@
       ],
       "last_reviewed": null,
       "history": []
+    },
+    {
+      "id": "phase1-static-backstop",
+      "title": "Phase 1 rests on a static STP, not a ratcheting TRAIL order",
+      "status": "active",
+      "decided": "2026-09-18",
+      "implemented": true,
+      "decision": "Phase 1 of the Prove-It Stop is carried by the static hard-stop leg (hard_stop_price(), which gained a days_held argument and returns entry*(1-p1_pct)*(1-slack) for UNPROVEN positions only) instead of by a trailing percentage. prove_it_trail_pct() returns None for phase1, so no IBKR TRAIL order carries a Phase 1 level and nothing can ratchet. safe_hard_stop() refuses to place any static stop at or above the market. Phase 2 is unchanged. Deliberately NOT extended to proven-but-unarmed positions, which keep the disaster floor (that is the separately-rejected p2_unarmed_keeps_p1 hypothesis).",
+      "rationale": "FIXED A DEFECT, not a tuning choice: exit_rules.py documents Phase 1 as a FIXED floor anchored to entry, but place_protective_stops() submits it as orderType='TRAIL', whose anchor ratchets up with the high-water mark. SMTC (2026-09-18) reconciles to the cent: an order intended to rest at $176.91 (entry -2.0%) climbed to $182.11 (entry +0.89%) and sold a winner at +0.76%, 23 minutes after entry. Ten of 49 closed trades carry the signature, netting -$114 across ten slots. A 50-trade replay isolating the ratchet (new --p1ratchet flag) scored +$2,590 for pinning it: +$2,902 recovered on winners, -$313 paid on losers. TWO CAVEATS THAT MUST DRIVE THE REVIEW: (a) +$2,409 of the $2,590 is CPAY ALONE -- ex-CPAY the net is +$181, which is noise, so the dollar figure is NOT a defensible expected value and the decision rests on correctness instead; (b) the prior hypothesis that pinning would leave losers untouched was WRONG -- INCY (-$222) and PTGX (-$91) are losers the ratchet exited sooner, so the trade-off is real, just ~9:1 lopsided.",
+      "adr": "decisions/2026-09-18_phase1-static-backstop.md",
+      "revisit": {
+        "min_closed_trades": 60,
+        "not_before": "2026-11-20"
+      },
+      "baseline": {
+        "closed_trades": 50,
+        "ratchet_on_net": 8054,
+        "ratchet_off_net": 10644,
+        "delta": 2590,
+        "delta_ex_cpay": 181,
+        "winners_recovered": 2902,
+        "losers_cost": -313,
+        "trades_affected": 5,
+        "affected_tickers": "CPAY +2409, EGP +402, CDNA +91, PTGX -91, INCY -222"
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --p1ratchet --top 40",
+      "review_questions": [
+        "SINGLE-TRADE-CARRY CHECK, ask this first: is the B-A gap still dominated by CPAY? Report the net WITH and WITHOUT the largest single contributor. Baseline was +$2,590 total but only +$181 ex-CPAY.",
+        "Has the direction held? Baseline was unanimous: 3/3 winners helped, 2/2 losers hurt. If losers are now hurt by more than winners are helped, the ratchet was cutting losses and this decision must be revisited.",
+        "How many trades are affected at all? Baseline was 5 of 50. If it is still ~10%, the rule matters less than the correctness argument implies and that should be said plainly.",
+        "Has any NEW trade been sold by a Phase 1 stop resting above entry? That must now be impossible -- if one appears, the fix is not working and this is a live bug, not a review item.",
+        "Does the slack dose-response still hold (winners scored +$948 / +$2,320 / +$5,222 at 0.5% / 1.0% / 2.0%)? If it has gone flat, the mechanism model in the harness is wrong.",
+        "Would simply widening PROVE_IT_BACKSTOP_SLACK_PCT to 2% have scored as well? It did on the baseline (+$10,692 vs +$10,644) -- if it still does, note that it is a one-env-var alternative, but do NOT adopt it: a stop that CAN rise above entry stays wrong regardless of its expected value."
+      ],
+      "last_reviewed": null,
+      "history": []
     }
   ]
 }

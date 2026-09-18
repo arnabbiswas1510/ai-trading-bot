@@ -135,6 +135,24 @@ class ExitConfig:
     # behaviour, where every Phase 1 day is bot-polled and then armed).
     # Set to 0 to model "day 0 hard at the broker, day 1+ unchanged".
     p1_hard_max_day: int | None = None
+    # ── The resting Phase 1 broker leg ───────────────────────────────────────
+    # Live, Phase 1 is NOT only a bot-polled band. place_protective_stops() also
+    # rests an IBKR order at PROVE_IT_BACKSTOP_SLACK_PCT below the band, so a
+    # disconnect still has a floor. `p1_broker_leg` models that second order.
+    #
+    # `p1_ratchet` is what makes it faithful. The resting leg is submitted as
+    # orderType='TRAIL' (execution_agent.place_protective_stops), and an IBKR
+    # TRAIL order's anchor RATCHETS UP with the high water mark. exit_rules.py
+    # documents the Phase 1 level as a FIXED floor anchored to entry; the order
+    # actually placed does not behave that way. With `p1_ratchet=True` the leg
+    # climbs as peak * (1 - trail_pct) and can rise ABOVE entry -- converting a
+    # loss cap into a profit-taker. With False it stays pinned where the design
+    # says it sits. The gap between the two is the cost of the defect.
+    #
+    # Both default OFF so every pre-existing config replays unchanged.
+    p1_broker_leg: bool = False
+    p1_ratchet: bool = False
+    p1_backstop_slack: float = 0.01
     # Phase 2 (position HAS closed above entry) — peak-anchored give-back.
     p2_enabled: bool = True
     # Minimum peak gain % before the breakeven floor arms. Below this a floor
@@ -594,6 +612,7 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
     proven = False
     peak = entry
     stop_price: float | None = None
+    p1_broker_stop: float | None = None
     day_bars: list[dict] = []
     current_date: str | None = None
     # Final bar of each session, so the EOD variant can be evaluated without
@@ -693,8 +712,43 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
 
         elif not proven:
             pct = cfg.p1_pct_for_day(day)
+
+            # ── The resting broker leg ───────────────────────────────────────
+            # Submitted live as an IBKR TRAIL order. Its anchor is the HWM from
+            # bars BEFORE this one (`peak`), so testing this bar's low against
+            # it is not look-ahead. One-way by construction: a TRAIL anchor
+            # never falls, so neither does the stop.
+            broker_level: float | None = None
+            if pct is not None and cfg.p1_broker_leg:
+                slack_level = (entry * (1 - pct / 100.0)
+                               * (1 - cfg.p1_backstop_slack))
+                if cfg.p1_ratchet:
+                    # trailingPercent is solved once, at placement, to put the
+                    # stop on `slack_level` while price is ~entry. IBKR then
+                    # applies that same percentage to the running HWM.
+                    trail_pct = 1.0 - (slack_level / entry)
+                    cand = peak * (1.0 - trail_pct)
+                    p1_broker_stop = (cand if p1_broker_stop is None
+                                      else max(p1_broker_stop, cand))
+                else:
+                    p1_broker_stop = slack_level
+                broker_level = p1_broker_stop
+
+            bot_level = entry * (1 - pct / 100.0) if pct is not None else None
+
+            # A resting order fills on TOUCH; the bot only reacts to a 15-minute
+            # CLOSE. So once the ratchet lifts the resting leg to or above the
+            # bot's band, the broker is unavoidably first in line on any
+            # decline. That inversion IS the defect being measured.
+            if broker_level is not None and (bot_level is None
+                                             or broker_level >= bot_level):
+                if bar["open"] <= broker_level:
+                    return {"price": bar["open"], "reason": "p1_ratchet_gap"}
+                if bar["low"] <= broker_level:
+                    return {"price": broker_level, "reason": "p1_ratchet"}
+
             if pct is not None:
-                level = entry * (1 - pct / 100.0)
+                level = bot_level
                 # A "hard" day is enforced by a resting broker stop: wick-
                 # sensitive, fills at the level (or the open on a gap), and
                 # never arms. Otherwise fall back to the configured mechanism.
@@ -718,6 +772,16 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     armed = {"at": bar["ts"], "peak": fill,
                              "first": True, "reason": "p1"}
                     continue
+
+            # The resting broker leg when it sits BENEATH the bot's band — its
+            # designed position, where it is a genuine backstop and the band
+            # fires first. Reached only when the band did not fire/arm above.
+            if broker_level is not None and bot_level is not None \
+                    and broker_level < bot_level:
+                if bar["open"] <= broker_level:
+                    return {"price": bar["open"], "reason": "p1_backstop_gap"}
+                if bar["low"] <= broker_level:
+                    return {"price": broker_level, "reason": "p1_backstop"}
 
             # The base trail also rests in Phase 1, beneath the entry band.
             # Reached only when the band did not fire/arm on this bar.
@@ -1117,6 +1181,63 @@ def ladder_configs() -> list[ExitConfig]:
     return out
 
 
+def p1ratchet_configs() -> list[ExitConfig]:
+    """Does the Phase 1 broker leg ratcheting up with price cost real money?
+
+    THE DEFECT. exit_rules.py documents the Phase 1 stop as a FIXED floor
+    anchored to ENTRY -- "a breakout that fails on day one is wrong immediately
+    and cheaply". It is placed as an IBKR TRAIL order
+    (execution_agent.place_protective_stops), and a TRAIL anchor ratchets UP
+    with the high water mark. The bot's one-way tightening rule then refuses to
+    widen it back. So on any position that rallies before it fades, the order
+    written to cap a LOSS climbs into profit and fires as a profit-taker.
+
+    SMTC (2026-09-18) is the worked example, and every number reconciles:
+        entry $180.50, day-0 band 1%, backstop slack 1%
+        intended resting level   $176.91   (entry -2.0%)
+        solved trailingPercent    1.72%    <- matches the logged sell_reason
+        HWM reached              $185.30   (09:45)
+        ratcheted stop  185.30 x (1-0.0172) = $182.11   (entry +0.89%)
+        filled                   $181.88   (entry +0.76%, +$138 net)
+    A loss cap sold a winner 23 minutes into the trade.
+
+    THE COMPARISON. Both rows are the shipped Prove-It config and both carry the
+    resting broker leg. They differ in ONE property -- whether that leg's anchor
+    ratchets -- so the whole gap is attributable to the defect.
+
+      A. ratchet ON   -- what the live bot does today
+      B. ratchet OFF  -- what exit_rules.py says it does
+
+    `B - A` is the money the defect costs. Read `winners_hurt` and the per-trade
+    deltas before the net: the fix should help WINNERS (they stop being sold
+    into strength) while leaving losers untouched or slightly better, because a
+    pinned leg sits LOWER than a ratcheted one and so cannot fire earlier.
+    If instead the fix shows up as losers getting worse, the ratchet is
+    accidentally cutting losses and the trade-off is real -- say so.
+    """
+    out = [shipped_config(), shipped_proveit()]
+
+    for label, ratchet in (("A: ratchet ON  (live behaviour today)", True),
+                           ("B: ratchet OFF (documented intent)",   False)):
+        out.append(ExitConfig(
+            f"P1 broker leg {label}",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+            p1_broker_leg=True, p1_ratchet=ratchet, p1_backstop_slack=0.01))
+
+    # Sensitivity: the defect's cost scales with how wide the slack is, because
+    # a wider slack means a larger trailingPercent and so a stop that ratchets
+    # further above entry. Confirms the result is not an artefact of 1%.
+    for slack in (0.005, 0.02):
+        out.append(ExitConfig(
+            f"P1 ratchet ON, slack {slack * 100:.1f}%",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+            p1_broker_leg=True, p1_ratchet=True, p1_backstop_slack=slack))
+
+    return out
+
+
 def ratchet_configs() -> list[ExitConfig]:
     """The GNK/NTRA give-back sweep — the +2% to +5% 'winner rounds to a loss' band.
 
@@ -1330,6 +1451,11 @@ def main() -> None:
     parser.add_argument("--basetrail", action="store_true",
                         help="measure the normal-operation cost of tightening "
                              "the always-on base/disaster trailing stop (12% vs 5%)")
+    parser.add_argument("--p1ratchet", action="store_true",
+                        help="measure the Phase 1 broker leg defect: the "
+                             "resting IBKR TRAIL order ratchets its anchor up "
+                             "with price, turning a loss cap into a "
+                             "profit-taker (ON vs OFF)")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -1349,6 +1475,8 @@ def main() -> None:
 
     if args.cliff:
         configs = cliff_configs()
+    elif args.p1ratchet:
+        configs = p1ratchet_configs()
     elif args.day0:
         configs = day0_configs()
     elif args.basetrail:
@@ -1371,7 +1499,7 @@ def main() -> None:
     report(results, trades,
            top=args.top if (args.grid or args.proveit or args.ladder
                             or args.ratchet or args.scale or args.eod
-                            or args.cliff) else None)
+                            or args.cliff or args.p1ratchet) else None)
 
     if args.json:
         with open(args.json, "w") as fh:

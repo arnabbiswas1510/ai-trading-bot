@@ -227,7 +227,8 @@ POWER_HOLD_TRAIL_PCT      = float(os.getenv("POWER_HOLD_TRAIL_PCT", 0.30))
 
 def hard_stop_price(pos: dict, buy_price: float,
                     highest_unrealized_pct: float,
-                    power_held: bool = False) -> float:
+                    power_held: bool = False,
+                    days_held: int = 0) -> float:
     """
     The absolute price a STATIC broker-side hard stop should rest at right now.
 
@@ -238,20 +239,34 @@ def hard_stop_price(pos: dict, buy_price: float,
     trailing stop (see place_protective_stops); whichever fills first cancels the
     other.
 
-    Two levels, ratchet-UP only (never loosens, except under power-hold):
+    Three levels, entry-anchored in every case:
 
-      • Pre-proven / unarmed:  entry * (1 - MAX_LOSS_PCT). The 2026-09-07
-        --basetrail replay showed a 7% always-on base is free in normal
-        operation (the Prove-It floor fires first) while capping the worst case.
+      • PHASE 1 (unproven only): the Prove-It band, one backstop-slack wider —
+        entry * (1 - p1_pct(days_held)) * (1 - PROVE_IT_BACKSTOP_SLACK_PCT).
+        This leg USED to be carried by the trailing order, which ratcheted its
+        anchor up with price and converted a loss cap into a profit-taker; see
+        decisions/2026-09-18_phase1-static-backstop.md. It is static here, so it
+        cannot chase the HWM. Proven-but-unarmed positions are NOT included —
+        that is the separately-rejected `p2_unarmed_keeps_p1` hypothesis.
       • Proven AND armed (peak >= +2%): the give-back floor, one backstop-slack
         wider than the bot's own stop — entry * (1 + PROVE_IT_P2_FLOOR_PCT)
         * (1 - PROVE_IT_BACKSTOP_SLACK_PCT) ~= entry * 0.98. A proven green
         trade's floor becomes broker-GUARANTEED, not dependent on the bot being
         online to re-pin the trail.
+      • Never looser than the disaster floor, entry * (1 - MAX_LOSS_PCT). The
+        2026-09-07 --basetrail replay showed a 7% always-on base is free in
+        normal operation (the Prove-It floor fires first) while capping the
+        worst case.
 
-    Because it is entry-anchored and static it can never chase the HWM up and
-    clip a winner — which is exactly why the replay let us tighten it for free
-    where a 5% *trailing* base could not.
+    Because every level is entry-anchored and static, none can chase the HWM up
+    and clip a winner — which is exactly why the replay let us tighten it for
+    free where a 5% *trailing* base could not.
+
+    The Phase 1 level WIDENS once, from the day-0 band to the day-1+ band,
+    because the band itself widens by design ("a confirmed-but-slow name needs
+    room to shake out"). That is the single documented exception to the caller's
+    ratchet-up-only rule, and it applies only while unproven — see
+    monitor_portfolio_intraday(). Once proven the floor only ever rises.
 
     Under power-hold the tight floor is suppressed back to the disaster level so
     the widened trail (POWER_HOLD_TRAIL_PCT) can actually let the leader run —
@@ -266,7 +281,47 @@ def hard_stop_price(pos: dict, buy_price: float,
         floor = buy_price * (1.0 + PROVE_IT_P2_FLOOR_PCT)
         armed_floor = floor * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
         return round(max(disaster, armed_floor), 2)
+    if PROVE_IT_ENABLED and not prove_it_is_proven(pos, highest_unrealized_pct):
+        # PHASE 1 ONLY — unproven. The entry-anchored band, set one
+        # backstop-slack below the level the bot itself polls, so the resting
+        # order is a genuine backstop and cannot fire before the bot does.
+        #
+        # Deliberately NOT extended to proven-but-unarmed positions. Giving that
+        # window the Phase 1 band is the `p2_unarmed_keeps_p1` hypothesis, which
+        # was measured on 2026-09-10 and REJECTED (-$1,691, entirely DXCM); see
+        # decisions/2026-09-10_prove-it-unarmed-window-measured-not-closed.md.
+        # That window keeps the disaster floor until the re-run owed on the
+        # post-backfill sample says otherwise.
+        band = buy_price * (1.0 - prove_it_p1_threshold_pct(days_held))
+        p1_backstop = band * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
+        return round(max(disaster, p1_backstop), 2)
     return round(disaster, 2)
+
+def safe_hard_stop(desired: float, current_price: float,
+                   stored: float) -> float:
+    """
+    The hard-stop price it is safe to actually PLACE right now.
+
+    A SELL stop resting at or above the market triggers immediately and sells at
+    market. So a raise that lands above current price is not protection — it is
+    an instant liquidation at whatever the book happens to be.
+
+    This is not hypothetical. The Phase 1 floor moved from the disaster level
+    (entry -7%) to the entry-anchored band (entry -2% / -4%) in
+    decisions/2026-09-18_phase1-static-backstop.md. Any open position already
+    trading between those two levels would have had a stop placed ABOVE it on
+    the very next monitor cycle and been sold on the spot.
+
+    When the desired level is unreachable, keep whatever is already resting and
+    let the bot-side exit act instead — the same rule prove_it_trail_pct() uses
+    when its level is already through the price.
+    """
+    if current_price <= 0:
+        return stored
+    if desired >= current_price:
+        return stored
+    return desired
+
 
 def _position_atr_pct(pos: dict) -> tuple[float, str]:
     """
@@ -436,14 +491,25 @@ def prove_it_trail_pct(level: float | None, current_price: float,
     CURRENT price, not a historical peak, or the stop lands somewhere nobody
     intended.
 
-    In Phase 1 the resting order is a backstop behind the bot's armed exit, so it
-    sits PROVE_IT_BACKSTOP_SLACK_PCT wider and must never fire first. In Phase 2
-    the resting order IS the mechanism, so it sits exactly on the floor.
+    PHASE 1 RETURNS None, AND MUST CONTINUE TO.
+    This function once solved a trail for Phase 1 too, sitting
+    PROVE_IT_BACKSTOP_SLACK_PCT behind the band. That was a defect, because the
+    order it produces is orderType='TRAIL' and a TRAIL anchor RATCHETS UP with
+    the high water mark. The bot's one-way rule then refuses to widen it back,
+    so on any position that rallied before fading, a stop written to cap a LOSS
+    climbed into profit and fired as a profit-taker. SMTC (2026-09-18) was
+    stopped out 23 minutes after entry at +0.76% by an order intended to rest at
+    -2.0%. Phase 1 is now carried by the STATIC hard-stop leg instead — see
+    hard_stop_price() and decisions/2026-09-18_phase1-static-backstop.md.
+
+    In Phase 2 the resting order IS the mechanism, so it sits exactly on the
+    floor. That is safe because the Phase 2 level is itself peak-anchored and
+    one-way by design: it is supposed to rise.
     """
     if level is None or current_price <= 0:
         return None
     if phase == "phase1":
-        level = level * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
+        return None
     if level >= current_price:
         # Already at or through the level. Nothing sane to place; the bot-side
         # exit is what acts here.

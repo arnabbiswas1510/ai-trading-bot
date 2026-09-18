@@ -415,7 +415,7 @@ from exit_rules import (  # noqa: F401  (re-exported for patch compatibility)
     OCA_EXIT_MIN_UPPER_PCT, OCA_EXIT_MAX_UPPER_PCT, OCA_EXIT_DEFAULT_FLOOR_PCT,
     OCA_EXIT_DEFAULT_EXPIRY_DAYS, SMART_EXIT_FOR_RULES, POWER_HOLD_ENABLED,
     POWER_HOLD_GAIN_PCT, POWER_HOLD_TRIGGER_DAYS, POWER_HOLD_DURATION_DAYS,
-    POWER_HOLD_TRAIL_PCT, hard_stop_price, _position_atr_pct,
+    POWER_HOLD_TRAIL_PCT, hard_stop_price, safe_hard_stop, _position_atr_pct,
     resolve_oca_trail_pct, resolve_oca_limit_price, prove_it_is_proven,
     prove_it_p1_threshold_pct, prove_it_stop_level, prove_it_trail_pct,
     _compute_dynamic_trail_pct, is_power_hold_active, sell_state_code,
@@ -3761,13 +3761,20 @@ def run_market_open_buys(ib: IB):
                 "hwm_price": fill_price,
             }
             client.table("portfolio_positions").insert(position_data).execute()
+            # The Phase 1 static backstop this position opens with. Computed once
+            # so the persisted column and the ORDER placed below cannot disagree —
+            # a mismatch would make the first monitor cycle see a phantom change
+            # and needlessly re-place the bracket.
+            _entry_hard = hard_stop_price(
+                {"closed_above_entry": False, "buy_price": fill_price},
+                fill_price, 0.0, False, 0)
             # hard_stop_price is written as a best-effort follow-up (never in the
             # insert above) so a lagging migration cannot fail the insert and
             # leave a phantom-filled position. The static hard-stop ORDER is
             # placed regardless below; this column only drives ratchet/display.
             try:
                 client.table("portfolio_positions").update(
-                    {"hard_stop_price": round(fill_price * (1.0 - MAX_LOSS_PCT), 2)}
+                    {"hard_stop_price": _entry_hard}
                 ).eq("ticker", ticker).execute()
             except Exception as _hs_err:
                 if not ("PGRST204" in str(_hs_err) or "hard_stop_price" in str(_hs_err)):
@@ -3801,7 +3808,8 @@ def run_market_open_buys(ib: IB):
             # failure never prevents the position from being recorded above or
             # the loop from continuing.
             try:
-                _entry_hard = round(fill_price * (1.0 - MAX_LOSS_PCT), 2)
+                # Phase 1 static backstop (computed above, alongside the column
+                # write, so order and column always agree).
                 place_protective_stops(ib, contract, actual_shares,
                                        pos_stop_loss_pct, _entry_hard,
                                        get_ibkr_account(ib))
@@ -4280,7 +4288,8 @@ def monitor_portfolio_intraday(ib: IB):
                     ib, client, pos, ticker, shares, _scale_shares,
                     buy_price, buy_date, buy_reason, current_price,
                     highest_unrealized_pct, pos_stop_loss_pct,
-                    hard_stop_price(pos, buy_price, highest_unrealized_pct, False),
+                    hard_stop_price(pos, buy_price, highest_unrealized_pct, False,
+                                    days_held),
                 )
                 if _did_scale:
                     shares = pos["shares"]   # reduced remainder for the rest of the loop
@@ -4310,9 +4319,20 @@ def monitor_portfolio_intraday(ib: IB):
         # ── Static hard-stop ratchet ─────────────────────────────────────────
         # The disconnect-proof max-loss floor. Ratchets UP only (except under
         # power-hold, which widens it back to the disaster level like the trail).
-        desired_hard = hard_stop_price(pos, buy_price, highest_unrealized_pct, power_held)
+        desired_hard = hard_stop_price(pos, buy_price, highest_unrealized_pct,
+                                       power_held, days_held)
         stored_hard  = float(pos.get("hard_stop_price") or 0.0)
-        if power_held:
+        # Never place a SELL stop at or above the market — it would trigger
+        # instantly and liquidate at market. See safe_hard_stop().
+        desired_hard = safe_hard_stop(desired_hard, current_price, stored_hard)
+        # Phase 1 is now carried by THIS static leg rather than the trailing one
+        # (see hard_stop_price / decisions/2026-09-18_phase1-static-backstop.md).
+        # The Phase 1 band widens once, day 0 -> day 1, by design, so the floor
+        # must be allowed to follow it down that one time. Restricted to the
+        # unproven phase: once proven, ratchet-up-only is restored in full, so a
+        # green position's floor can still never loosen.
+        _unproven = not prove_it_is_proven(pos, highest_unrealized_pct)
+        if power_held or _unproven:
             hard_changed = abs(desired_hard - stored_hard) >= 0.01
         else:
             hard_changed = desired_hard > stored_hard + 0.005   # ratchet up only
@@ -4413,7 +4433,10 @@ def monitor_portfolio_intraday(ib: IB):
                 ib.sleep(1)
                 _heal_contract = Stock(ticker, 'SMART', 'USD')
                 ib.qualifyContracts(_heal_contract)
-                _heal_hard = hard_stop_price(pos, buy_price, highest_unrealized_pct, power_held)
+                _heal_hard = hard_stop_price(pos, buy_price, highest_unrealized_pct,
+                                             power_held, days_held)
+                _heal_hard = safe_hard_stop(_heal_hard, current_price,
+                                            float(pos.get("hard_stop_price") or 0.0))
                 # Anchor the trail from current price — IBKR tracks HWM from here.
                 _grp, _confirmed = place_protective_stops(
                     ib, _heal_contract, shares, pos_stop_loss_pct,

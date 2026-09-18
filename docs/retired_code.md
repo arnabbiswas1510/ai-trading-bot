@@ -348,3 +348,57 @@ too expensive — the Supabase project approaching its storage quota, or insert
 latency showing up in the monitor cycle. Flip `AGENT_LOG_SHIP_ALL=false` first
 and confirm that fixes it before deleting anything; the constant exists so this
 does not require a code change.
+
+---
+
+## 2026-09-18 — the Phase 1 trailing backstop (its ratcheting anchor)
+
+**Identifiers affected:** `prove_it_trail_pct()` (the `phase == "phase1"` branch),
+`hard_stop_price()` (signature gained `days_held`), new `safe_hard_stop()`.
+
+**Where it lived:** `exit_rules.py` (`prove_it_trail_pct`, `hard_stop_price`),
+`execution_agent.py` (buy-time placement, the tightening block, the self-heal
+block), mirrored in `frontend/src/lib/positionRules.js`, documented in
+`docs/sell_logic.md`, `docs/configuration.md` and `README.md`, and tested in
+`tests/test_prove_it_stop.py::TestBackstopTrailPct` and `tests/test_hard_stop.py`.
+
+**Status when retired:** ACTIVE, and it **fired in live trading repeatedly.**
+This is not dormant code being tidied away. Ten of 49 closed trades carry its
+signature (day 0, trail 0.2–1.9%, peak < 5%): MPC, PSX, FIVE, LPG#52, CHRD, GEO,
+ECO#58, CHRD#61, CDNA#62 and SMTC, together netting **−$114** across ten round
+trips and ten occupied position slots.
+
+**What it did:** Phase 1 of the Prove-It Stop computed a *trailing percentage*
+that placed the resting broker order one backstop slack below the entry-anchored
+band. Because `place_protective_stops()` submits that as `orderType='TRAIL'`, and
+an IBKR TRAIL anchor ratchets up with the high-water mark, the level did not stay
+where it was placed. On SMTC (2026-09-18) an order intended to rest at $176.91
+(entry −2.0%) climbed to $182.11 (entry **+0.89%**) and sold a winner at +0.76%,
+23 minutes after entry.
+
+**Why it was retired:** It contradicted its own documented contract —
+`exit_rules.py` describes the Phase 1 level as "a FIXED floor rather than a
+trail". A loss cap that drifts above entry is a profit-taker. A 50-trade replay
+isolating the ratchet scored **+$2,590** for pinning it (+$2,902 recovered on
+winners, −$313 paid on losers), though **+$2,409 of that is CPAY alone**, so the
+figure is not a defensible expected value and the decision rests on correctness
+rather than on the net. See `decisions/2026-09-18_phase1-static-backstop.md`.
+
+**RELOCATED, not deleted.** Phase 1 protection still exists at the broker — it
+moved from the trailing leg to the **static `STP` leg** in the same OCA group,
+where `hard_stop_price()` now returns the band for unproven positions. Broker-side
+protection in Phase 1 actually *improves*: the resting floor moves from the
+disaster level (entry −7%) to entry −1.99% on day 0 and entry −3.97% from day 1.
+Do not go looking for this behaviour under `prove_it_trail_pct()` — that function
+deliberately returns `None` for Phase 1 now, and a test pins it.
+
+**Restore path:** `git show 593aba9:exit_rules.py` — the patch-058 commit, the
+last to contain the ratcheting Phase 1 branch.
+
+**What would have to be true to bring it back:** That the ratchet was cutting
+losses rather than clipping winners. The measurement says the opposite by roughly
+9:1, but it is carried by one trade — if a re-run at ≥ 60 closed trades shows the
+direction reversing once CPAY stops dominating, reopen it. Tracked as `FU-011` in
+`decisions/provisional_decisions.json`. Note that even then the fix would be to
+*widen* the slack, not to restore the ratchet: a stop that can rise above entry
+is wrong independently of its expected value.

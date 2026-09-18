@@ -286,9 +286,24 @@ static floor keeps protecting the position at its resting price.
 
 | Position state | Static floor |
 |---|---|
-| Pre-proof / unarmed (peak gain < +2%) | `entry × (1 − MAX_LOSS_PCT)` = **entry − 7%** |
+| **Phase 1 — unproven** (never closed above entry) | the Prove-It band, one backstop slack wider: `entry × (1 − p1_pct(days_held)) × (1 − PROVE_IT_BACKSTOP_SLACK_PCT)` = **entry − 1.99%** on day 0, **entry − 3.97%** from day 1 |
+| Proven but **not** armed (peak gain < +2%) | `entry × (1 − MAX_LOSS_PCT)` = **entry − 7%** |
 | Proven **and** armed (closed above entry, peak gain ≥ +2%) | ratchets up to `entry × (1 + PROVE_IT_P2_FLOOR_PCT) × (1 − PROVE_IT_BACKSTOP_SLACK_PCT)` ≈ **entry − 2%** |
 | Power Hold | widens back to the entry − 7% disaster floor |
+
+No level is ever looser than the entry − 7% disaster floor.
+
+**Phase 1 lives on this leg, not on the trailing one.** It used to be expressed as
+a trailing percentage, which IBKR submits as an `orderType='TRAIL'` whose anchor
+ratchets up with the high-water mark — so a stop written to cap a *loss* climbed
+into *profit* and fired as a profit-taker. SMTC was sold at **entry +0.76%**, 23
+minutes after entry, by an order intended to rest at entry −2.0%.
+`prove_it_trail_pct()` now returns `None` for Phase 1 and nothing can ratchet.
+See `decisions/2026-09-18_phase1-static-backstop.md` for why.
+
+The **proven-but-unarmed** window deliberately keeps the disaster floor rather
+than the Phase 1 band — extending the band into it is the `p2_unarmed_keeps_p1`
+hypothesis, measured and rejected at −$1,691.
 
 Two properties keep it from ever clipping a winner:
 
@@ -296,8 +311,15 @@ Two properties keep it from ever clipping a winner:
    cannot rise into a winner and sell it on an ordinary pullback. (This is why it can be set
    tight where an always-on *trailing* base could not: a 7% static floor is free in the
    30-trade replay, while a 5% *trailing* base costs −$1,941, all on winners.)
-2. **It ratchets up only** — the sole exception being Power Hold, which widens it back to the
-   disaster floor so a genuine leader can run.
+2. **It ratchets up only** — with two documented exceptions: Power Hold, which widens it back
+   to the disaster floor so a genuine leader can run; and the Phase 1 band, which may widen
+   once from the day-0 to the day-1+ level while the position is still unproven, because the
+   band itself widens by design. Once proven, ratchet-up-only applies in full.
+
+**A raise is never placed at or above the market.** `safe_hard_stop()` keeps the
+existing resting order instead, because a SELL stop at or above the market
+triggers immediately and liquidates at market — it is not protection. The
+bot-side exit acts in that case.
 
 The armed floor sits **one backstop slack (`PROVE_IT_BACKSTOP_SLACK_PCT`, 1%) wider** than the
 bot's own Prove-It floor, so in normal operation the bot's tighter, live exit always acts
@@ -458,12 +480,17 @@ the sample the armed exit beats an immediate market sell by roughly $600.
 A resting IBKR GTC order backs this up so an overnight gap is still capped when
 the agent is offline:
 
-- **Phase 1:** the resting order sits `PROVE_IT_BACKSTOP_SLACK_PCT` (1%) **wider**
-  than the trigger, so it can never front-run the bot-side exit. It is a gap
-  backstop only.
-- **Phase 2:** the resting order **is** the floor.
+- **Phase 1:** the resting order is the **static `STP` leg**, sitting
+  `PROVE_IT_BACKSTOP_SLACK_PCT` (1%) **wider** than the trigger, so it can never
+  front-run the bot-side exit. It is a gap backstop only. It is deliberately
+  *not* a trailing order: a TRAIL anchor ratchets up with price and would turn
+  the loss cap into a profit-taker. See
+  `decisions/2026-09-18_phase1-static-backstop.md`.
+- **Phase 2:** the resting order **is** the floor, and is a trailing order —
+  safe there because the Phase 2 level is peak-anchored and meant to rise.
 
-`prove_it_trail_pct()` solves `1 − (level / current_price)` and feeds it into the
+`prove_it_trail_pct()` returns `None` in Phase 1. In Phase 2 it solves
+`1 − (level / current_price)` and feeds it into the
 existing one-way `min()` ratchet in `_compute_dynamic_trail_pct()`. Because the
 ratchet only ever tightens, a rising price yields a looser required percentage
 (rejected, so the stop stays put) and a falling price yields a tighter one

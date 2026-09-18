@@ -237,6 +237,13 @@ exit in Phase 1. Reducing it to 0 lets the broker fire first, which loses the ~$
 armed exit is worth across the sample. In Phase 2 the resting order is the floor, so the
 slack does not apply.
 
+**In Phase 1 that resting order is a static `STP`, not a trailing order.** Expressed
+as a trailing percentage it becomes an IBKR `TRAIL` whose anchor ratchets up with
+the high-water mark, so the level drifts above entry and the loss cap fires as a
+profit-taker — SMTC was sold at entry +0.76% by an order intended to rest at
+entry −2.0%. Phase 1 is carried by `hard_stop_price()`; `prove_it_trail_pct()`
+returns `None` for it. See `decisions/2026-09-18_phase1-static-backstop.md`.
+
 ### Partial scale-out
 
 | Variable | Default | Effect |

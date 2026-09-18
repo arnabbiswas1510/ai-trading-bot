@@ -189,9 +189,16 @@ exact price*" — which is what makes it genuinely disconnect-proof. Its price:
 
 | Position state | Static floor |
 |---|---|
-| Pre-proof / unarmed (peak gain < +2%) | `entry × (1 − MAX_LOSS_PCT)` = **entry − 7%** |
+| **Phase 1 — unproven** (never closed above entry) | the Prove-It band one backstop slack wider: **entry − 1.99%** on day 0, **entry − 3.97%** from day 1 |
+| Proven but **not** armed (peak gain < +2%) | `entry × (1 − MAX_LOSS_PCT)` = **entry − 7%** |
 | Proven **and** armed (closed above entry, peak gain ≥ +2%) | ratchets up to ≈ **entry − 2%** (one backstop slack wider than the Prove-It floor) |
 | Power Hold | widens back to the entry − 7% disaster floor |
+
+Phase 1 rests on **this** static leg rather than the trailing one. Expressed as a
+trailing percentage it became an IBKR `TRAIL` order whose anchor ratchets up with
+price, so a stop meant to cap a loss climbed into profit — SMTC was sold at entry
++0.76% twenty-three minutes after entry by its own loss cap. See
+`decisions/2026-09-18_phase1-static-backstop.md`.
 
 It is **static and entry-anchored** (it never chases the peak, so it cannot clip a winner) and
 **ratchets up only**. This is why it can be set tight where an always-on *trailing* base could

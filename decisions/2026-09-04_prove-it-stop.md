@@ -1,7 +1,7 @@
 # The Prove-It Stop — one loss rule replaces five
 
 **Date:** 2026-09-04
-**Status:** Accepted
+**Status:** Accepted — with one mechanism corrected on 2026-09-18
 **Supersedes:**
 `decisions/2026-08-01_early-loss-killswitch-and-day2-universal-minimiser.md`,
 `decisions/2026-08-04_plateau-exit-capital-velocity.md`,
@@ -10,6 +10,24 @@
 `decisions/2026-08-18_early-dollar-stop.md`,
 `decisions/2026-08-20_early-loss-day0-tightening.md`,
 `decisions/2026-08-20_slot-derived-early-dollar-stop.md`
+
+---
+
+> **2026-09-18 — mechanism erratum.** The decision itself stands: the two-phase
+> Prove-It Stop is unchanged, and so are every band, floor and arming gain in it.
+> What was wrong was **how Phase 1 reached the broker.** This ADR states that the
+> Phase 1 resting order "sits `PROVE_IT_BACKSTOP_SLACK_PCT` (1%) wider than the
+> trigger so it can never front-run the bot". In the shipped implementation it
+> could and did: `prove_it_trail_pct()` expressed the level as a percentage,
+> which `place_protective_stops()` submits as `orderType='TRAIL'`, and a TRAIL
+> anchor ratchets up with the high-water mark. On SMTC the order intended to rest
+> at entry −2.0% climbed to entry +0.89% and sold the position at +0.76%, 23
+> minutes after entry.
+>
+> Phase 1 is now carried by the **static** hard-stop leg, where the guarantee this
+> ADR claims actually holds. The sentence below beginning "`prove_it_trail_pct()`
+> solves `1 − (level / current_price)`" now describes **Phase 2 only**.
+> See `decisions/2026-09-18_phase1-static-backstop.md`.
 
 ---
 

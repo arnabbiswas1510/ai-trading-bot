@@ -237,7 +237,14 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
                   : (away != null && away <= 2) ? STATE.WATCH
                   : STATE.ACTIVE;
       const disaster = buy * (1 - C.MAX_LOSS_PCT);
-      const armed = hard > disaster + 0.005;
+      // Three states, not two. The Phase 1 band and the armed give-back floor
+      // both sit above the disaster level and are NUMERICALLY IDENTICAL on day 0
+      // (both entry x 0.99 x 0.99), so price alone cannot tell them apart — the
+      // proven latch is what discriminates. Mirrors exit_rules.hard_stop_price().
+      const provenNow = proveItIsProven(pos);
+      const tighter   = hard > disaster + 0.005;
+      const armed     = tighter && provenNow;
+      const phase1    = tighter && !provenNow;
       rules.push({
         id: 'hard_stop', tier: 'STOP', name: 'Hard Stop (IBKR GTC · static)',
         state,
@@ -248,6 +255,12 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
         detail: (armed
               ? `The give-back floor is armed: a static sell rests at $${hard.toFixed(2)}, one `
                 + `backstop slack (${(C.PROVE_IT_BACKSTOP_SLACK_PCT * 100).toFixed(0)}%) below the Prove-It floor. `
+              : phase1
+              ? `Phase 1 backstop: a static sell rests at $${hard.toFixed(2)}, one backstop slack `
+                + `(${(C.PROVE_IT_BACKSTOP_SLACK_PCT * 100).toFixed(0)}%) below the `
+                + `${(proveItP1ThresholdPct(daysHeld) * 100).toFixed(0)}% Prove-It band, so it cannot `
+                + `fire before the bot does. It is a STATIC order, not a trailing one — a trailing `
+                + `anchor ratchets up with price and would turn this loss cap into a profit-taker. `
               : `Pre-proof disaster floor: a static sell rests ${(C.MAX_LOSS_PCT * 100).toFixed(0)}% below the `
                 + `$${buy.toFixed(2)} entry, at $${hard.toFixed(2)}. `)
               + `It ratchets up only and never trails the peak, so it cannot clip a winner. `
@@ -310,7 +323,9 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
         + `${(C.PROVE_IT_P1_LATER_PCT * 100).toFixed(1)}% from day 1 onward. `;
     const mechanism = 'Fires arm_exit() (0.6% tight trail) rather than a market sell, so a bounce can still be '
       + `captured. A GTC order also rests ${(C.PROVE_IT_BACKSTOP_SLACK_PCT * 100).toFixed(1)}% wider at the broker `
-      + 'so an overnight gap is still capped when the agent is offline.';
+      + 'so an overnight gap is still capped when the agent is offline — in Phase 1 that is a '
+      + 'STATIC stop, deliberately not a trailing one, because a trailing anchor ratchets up with '
+      + 'price and would turn the loss cap into a profit-taker.';
 
     // The NBIX failure mode. Without the `closed_above_entry` column the rule
     // fails safe to "proven", so a single intraday poke above entry promotes a
