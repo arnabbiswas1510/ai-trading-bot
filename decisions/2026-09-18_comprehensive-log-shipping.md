@@ -1,8 +1,20 @@
 # Ship the full agent log, not just the error lines
 
 **Date:** 2026-09-18
-**Status:** Accepted
+**Status:** Accepted — with one claim corrected, see `decisions/2026-09-18_agent-logs-rls-blocked-writes.md`
 **Supersedes in part:** `decisions/2026-09-18_supabase-log-shipping.md`
+
+> **2026-09-18 — erratum, same day.** Two things below did not survive contact
+> with the deployed system. First, **nothing shipped at all**: the table was
+> created with a policy scoped `FOR ALL TO service_role` while the agent
+> authenticates with an anon-class publishable key, so every insert was rejected
+> `42501`. Second, the claim that credentials are "a redaction problem, not a
+> reason to filter" was right in principle but **the redaction had a hole** — a
+> bare `sb_publishable_…` / `sb_secret_…` token matched none of the four
+> patterns, and that is precisely the shape of the 401 error the failure was
+> generating. Both are fixed in the linked ADR. Redaction is now not merely
+> load-bearing but the *primary* control, since the relaxed policy makes shipped
+> lines readable by any publishable-key holder.
 
 ## Context
 
@@ -77,7 +89,8 @@ handler the last cycle's logs are lost in exactly the scenario most worth
 reading.
 
 **Redaction becomes load-bearing.** It always ran, but it now protects every
-line rather than the handful that matched a marker. It remains `TeeLogger`'s
+line rather than the handful that matched a marker. (It was found to have a gap
+the same day — see the erratum at the top.) It remains `TeeLogger`'s
 sole responsibility, because the code writing a log line has no idea the text
 may be transmitted.
 

@@ -149,12 +149,51 @@ ADVISORY_TABLES: dict[str, str] = {
 
 REPAIR_SCRIPT = "migrations/20260813_apply_missing_migrations.sql"
 
+# Tables whose whole purpose is to be WRITTEN, where a read probe cannot tell
+# you whether that works.
+#
+# Under row-level security a denied SELECT returns 200 with zero rows, not an
+# error. So `_probe` — which only selects — reports a table that the agent
+# cannot write to as perfectly healthy, and "empty because nothing shipped" is
+# indistinguishable from "empty because RLS rejects every insert".
+#
+# That is not hypothetical. agent_logs shipped on 2026-09-18 with a policy
+# scoped `TO service_role` while the agent authenticates with the publishable
+# key, so every flush failed 42501 for a full day while this guard reported the
+# table present. The failure was visible only on stderr inside the container —
+# the one place the operator could not reach, which is the exact problem log
+# shipping exists to solve.
+#
+# Probing writability costs one insert and one delete per buy cycle. That is
+# worth paying only where a silent write failure destroys the point of the
+# table, so this list is deliberately short.
+ADVISORY_WRITABLE: dict[str, dict] = {
+    "agent_logs": {
+        "row": {
+            "logged_at": "1970-01-01T00:00:00+00:00",
+            "level": "INFO",
+            "message": "schema_guard writability probe",
+            "session_id": "__schema_guard_probe__",
+            "seq": 0,
+        },
+        "why":
+            "shipped execution-agent log lines — the table exists but REJECTS "
+            "WRITES, so nothing is reaching Supabase and the agent's log is "
+            "readable only via `docker logs` on the production host. Usually an "
+            "RLS policy scoped to a role the agent does not authenticate as "
+            "(migrations/20260918_relax_agent_logs_rls.sql)",
+    },
+}
+
 
 @dataclass
 class SchemaReport:
     missing_critical: list[tuple[str, str, str]] = field(default_factory=list)
     missing_advisory: list[tuple[str, str]] = field(default_factory=list)
     missing_advisory_columns: list[tuple[str, str, str]] = field(default_factory=list)
+    # Table exists and reads fine, but rejects INSERTs — the RLS failure mode a
+    # SELECT probe cannot see.
+    unwritable: list[tuple[str, str, str]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -166,7 +205,8 @@ class SchemaReport:
         return bool(self.missing_critical)
 
     def summary(self) -> str:
-        if self.ok and not self.missing_advisory and not self.missing_advisory_columns:
+        if (self.ok and not self.missing_advisory
+                and not self.missing_advisory_columns and not self.unwritable):
             return "✅ Schema check passed — all risk-rule columns present."
         lines = []
         if self.missing_critical:
@@ -188,6 +228,13 @@ class SchemaReport:
             lines.append("Missing analytics tables (not blocking):")
             for table, why in self.missing_advisory:
                 lines.append(f"• `{table}` — {why}")
+        if self.unwritable:
+            if lines:
+                lines.append("")
+            lines.append("Tables that exist but REJECT WRITES (not blocking, "
+                         "but the data they should hold is being lost):")
+            for table, why, err in self.unwritable:
+                lines.append(f"• `{table}` — {why}\n  {err}")
         lines.append("")
         lines.append(f"Fix: run `{REPAIR_SCRIPT}` in the Supabase SQL Editor.")
         lines.append("The agent keeps monitoring and exiting existing positions "
@@ -202,6 +249,29 @@ def _probe(client, table: str, column: str | None = None) -> tuple[bool, str]:
         return True, ""
     except Exception as e:            # supabase-py raises APIError
         return False, str(e)[:200]
+
+
+def _probe_writable(client, table: str, row: dict) -> tuple[bool, str]:
+    """True if a row can actually be INSERTed into `table`.
+
+    A read probe cannot answer this: under RLS a denied SELECT returns 200 with
+    zero rows, so an unwritable table looks identical to an empty one.
+
+    The sentinel row is deleted immediately. Cleanup is best-effort and runs in
+    its own try block: a probe row that survives is harmless (logged_at is the
+    epoch, so the agent's own retention sweep removes it on the next pass),
+    whereas an exception escaping here would reach the buy cycle.
+    """
+    try:
+        client.table(table).insert(row).execute()
+    except Exception as e:
+        return False, str(e)[:200]
+    try:
+        key = "session_id" if "session_id" in row else next(iter(row))
+        client.table(table).delete().eq(key, row[key]).execute()
+    except Exception:
+        pass
+    return True, ""
 
 
 def check_schema(client) -> SchemaReport:
@@ -238,5 +308,17 @@ def check_schema(client) -> SchemaReport:
         ok, _ = _probe(client, table)
         if not ok:
             report.missing_advisory.append((table, why))
+
+    for table, spec in ADVISORY_WRITABLE.items():
+        ok, _ = _probe(client, table)
+        if not ok:
+            # Absent entirely — already the ADVISORY_TABLES story, and a
+            # writability failure against a missing table is not a distinct
+            # fact. Report it once.
+            report.missing_advisory.append((table, spec["why"]))
+            continue
+        writable, err = _probe_writable(client, table, spec["row"])
+        if not writable:
+            report.unwritable.append((table, spec["why"], err))
 
     return report

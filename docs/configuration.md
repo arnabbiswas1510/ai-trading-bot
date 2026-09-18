@@ -135,13 +135,29 @@ file — a truncated view never reads as a complete one. A container restart los
 at most one cycle's buffer from Supabase; the local file keeps everything
 regardless.
 
-Apply `migrations/20260918_add_agent_logs.sql` then
-`migrations/20260918_expand_agent_logs.sql` (the second is idempotent and works
-even if the first was never applied). The table is advisory in `schema_guard`:
-if the migration is missing, shipping fails quietly and trading is unaffected.
-It is deliberately **excluded from backups** (`supabase_backup.NOT_BACKED_UP`) —
-backing it up would preserve forever the rows the retention window exists to
-delete.
+Apply `migrations/20260918_add_agent_logs.sql`, then
+`migrations/20260918_expand_agent_logs.sql` (idempotent, works even if the first
+was never applied), then `migrations/20260918_relax_agent_logs_rls.sql`. **All
+three are required.** Without the third, `agent_logs` carries a policy scoped
+`FOR ALL TO service_role`, and the agent authenticates with an anon-class
+publishable key (`sb_publishable_…`), so every insert is rejected `42501` and the
+table stays empty. Every other table in the project uses a policy with no `TO`
+clause, which applies to PUBLIC; `agent_logs` now matches them. The consequence
+is that shipped log lines are readable by anyone holding the publishable key, so
+`TeeLogger._REDACTIONS` — which strips API keys, tokens and account numbers
+before a line is ever buffered — is the primary control on their contents, not a
+second line of defence. See `decisions/2026-09-18_agent-logs-rls-blocked-writes.md`.
+
+The table is advisory in `schema_guard`: if the migration is missing, shipping
+fails quietly and trading is unaffected. Because a denied `SELECT` under RLS
+returns 200 with zero rows rather than an error, the guard also **probes
+writability** with a sentinel insert (`ADVISORY_WRITABLE`), so a table that reads
+fine but rejects writes is reported instead of passing as healthy. That finding
+never blocks buys — losing logs is a visibility problem, not a risk-rule failure.
+
+`agent_logs` is deliberately **excluded from backups**
+(`supabase_backup.NOT_BACKED_UP`) — backing it up would preserve forever the rows
+the retention window exists to delete.
 
 See `decisions/2026-09-18_comprehensive-log-shipping.md` for why the full log
 ships rather than a filtered subset, and

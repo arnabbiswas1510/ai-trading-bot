@@ -51,6 +51,17 @@ def _emit(tee, text):
      "eyJzdWIiOiIxMjM0NTY3ODkwIn0"),
     ("Connection failed token: sk-abcdef123456789", "sk-abcdef123456789"),
     ("password='hunter2supersecret'", "hunter2supersecret"),
+    # Supabase's non-JWT key format. These leaked in full before 2026-09-18:
+    # the JWT pattern cannot match them, and the key=value pattern only fires
+    # when they follow apikey=/token=. A BARE occurrence is the realistic case —
+    # it is the exact shape of a PostgREST auth failure, and the agent hit one
+    # every 15 minutes while agent_logs was RLS-blocked.
+    ("HTTPError sb_secret_9zXyWvUt7654321abcdef returned 401",
+     "sb_secret_9zXyWvUt7654321abcdef"),
+    ("Authorization: Bearer sb_publishable_AbCdEf123456789xyz",
+     "sb_publishable_AbCdEf123456789xyz"),
+    ("client init with sb_publishable_QQQwwwEEE111222333 failed",
+     "sb_publishable_QQQwwwEEE111222333"),
 ])
 def test_secrets_are_redacted(raw, must_not_contain):
     out = ea.TeeLogger.redact(raw)

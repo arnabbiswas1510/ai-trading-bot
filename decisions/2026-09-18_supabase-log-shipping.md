@@ -1,7 +1,7 @@
 # Ship noteworthy log lines to Supabase
 
 **Date:** 2026-09-18
-**Status:** Superseded in part by `decisions/2026-09-18_comprehensive-log-shipping.md`
+**Status:** Superseded in part by `decisions/2026-09-18_comprehensive-log-shipping.md`; the deployment note below is corrected by `decisions/2026-09-18_agent-logs-rls-blocked-writes.md`
 
 > **2026-09-18 — what is no longer true.** The decision to ship to Supabase, and
 > the rejection of exposing the host or running a tunnel, **still stand** and are
@@ -112,6 +112,12 @@ diagnose. It cannot be its own diagnostic.
 - If the `agent_logs` migration has not been applied, the insert fails, the
   error is written straight to the real stdout, and the agent carries on.
   `schema_guard` reports the table as ADVISORY, never blocking buys.
+  **Corrected 2026-09-18:** this understated the failure mode. The insert can
+  also fail when the table *does* exist, if RLS rejects the write — and in that
+  case `schema_guard`'s read-only probe reported the table healthy, because a
+  denied `SELECT` under RLS returns 200 with zero rows rather than an error. The
+  guard now probes writability too. See
+  `decisions/2026-09-18_agent-logs-rls-blocked-writes.md`.
 - Under a sustained failure storm, lines are dropped oldest-first and the drop
   count is shipped as its own `WARN` row, so a truncated view never reads as a
   complete one.

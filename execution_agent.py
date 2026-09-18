@@ -97,6 +97,16 @@ class TeeLogger:
         # JWTs (Supabase keys) — appear in request URLs inside tracebacks.
         (re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}"),
          "[jwt-redacted]"),
+        # Supabase's NON-JWT key format (sb_publishable_... / sb_secret_...).
+        # The JWT pattern above cannot match these, and the key=value pattern
+        # below only catches them when they appear after apikey=/token=. A bare
+        # occurrence — e.g. "HTTPError sb_secret_abc123 returned 401", which is
+        # exactly the shape of a PostgREST auth failure — leaked in full.
+        # This matters more since 2026-09-18: agent_logs is now readable with
+        # the publishable key, so redaction is the PRIMARY control on this data,
+        # not a second layer. Caught by test_secrets_are_redacted.
+        (re.compile(r"\bsb_(?:publishable|secret)_[A-Za-z0-9_\-]{8,}"),
+         "[supabase-key-redacted]"),
         # Generic key=value secrets, e.g. inside a requests exception repr.
         (re.compile(r"(?i)\b(apikey|api_key|token|password|secret)(['\"]?\s*[=:]\s*['\"]?)"
                     r"[A-Za-z0-9._\-]{8,}"), r"\1\2[redacted]"),

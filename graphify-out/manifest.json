@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1789755403.665213,
-    "ast_hash": "1c22f1fd89f68eec49a23b4164e33874",
+    "mtime": 1789773906.6377993,
+    "ast_hash": "e66e22949c0d65661d1019751d9d6db5",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1789753916.101533,
-    "ast_hash": "b0129c026cbf2040fa1bea86d3f77aea",
+    "mtime": 1789774104.0928614,
+    "ast_hash": "60de60d36ceb09bccd21ff608f43f057",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -650,13 +650,13 @@
     "semantic_hash": ""
   },
   "schema_guard.py": {
-    "mtime": 1789748133.27404,
-    "ast_hash": "8bead4bc68adb45cd4680f858828cc80",
+    "mtime": 1789774038.4921057,
+    "ast_hash": "5eeff1eecdea0eac3330c6b96fac2907",
     "semantic_hash": ""
   },
   "tests/test_schema_guard.py": {
-    "mtime": 1789682042.2609375,
-    "ast_hash": "0cdf8304535550d9e6dfbcad4ac257e0",
+    "mtime": 1789774027.1504495,
+    "ast_hash": "9c107d05598af5efb802c3feef9d043d",
     "semantic_hash": ""
   },
   "decisions/2026-08-14_schema-guard-fail-loud.md": {
@@ -1360,13 +1360,13 @@
     "semantic_hash": ""
   },
   "tests/test_log_shipping.py": {
-    "mtime": 1789747954.7100706,
-    "ast_hash": "aca62f69c698c41471d31ce82d222a19",
+    "mtime": 1789773896.575353,
+    "ast_hash": "058767f00c69c96a51a1cf8be630c54e",
     "semantic_hash": ""
   },
   "decisions/2026-09-18_supabase-log-shipping.md": {
-    "mtime": 1789748074.2296717,
-    "ast_hash": "915c41ff6a089018a9f2656156c06487",
+    "mtime": 1789774180.9153492,
+    "ast_hash": "efeea90ceb7bfbea3f28aadaa05d7ff7",
     "semantic_hash": ""
   },
   "migrations/20260918_expand_agent_logs.sql": {
@@ -1375,8 +1375,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-18_comprehensive-log-shipping.md": {
-    "mtime": 1789748065.5385222,
-    "ast_hash": "3e998fe045165f1077883d3c5df4a045",
+    "mtime": 1789774180.9131753,
+    "ast_hash": "38a6e264a5d9956e57f4b584b31c0e7d",
     "semantic_hash": ""
   },
   "decisions/2026-09-18_phase1-static-backstop.md": {
@@ -1427,6 +1427,16 @@
   "decisions/2026-09-18_exit-review-52-trades-and-proveit-sweep-repair.md": {
     "mtime": 1789761971.9129388,
     "ast_hash": "9dd073b218a4cf329e895ac0b2b264be",
+    "semantic_hash": ""
+  },
+  "migrations/20260918_relax_agent_logs_rls.sql": {
+    "mtime": 1789773874.3671217,
+    "ast_hash": "a293365022a5fbd3d98087e879e6106c",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_agent-logs-rls-blocked-writes.md": {
+    "mtime": 1789774149.9094172,
+    "ast_hash": "08a1df87001056433c37388d3525ac4f",
     "semantic_hash": ""
   }
 }

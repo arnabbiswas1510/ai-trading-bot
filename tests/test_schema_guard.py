@@ -20,11 +20,13 @@ import schema_guard
 
 
 class _FakeQuery:
-    def __init__(self, table, missing_tables, missing_cols):
+    def __init__(self, table, missing_tables, missing_cols, unwritable=()):
         self._t = table
         self._mt = missing_tables
         self._mc = missing_cols
+        self._uw = unwritable
         self._col = None
+        self._writing = False
 
     def select(self, col):
         self._col = col
@@ -33,7 +35,25 @@ class _FakeQuery:
     def limit(self, _n):
         return self
 
+    def insert(self, _row):
+        # Models RLS: the table reads fine, but rejects the write.
+        self._writing = True
+        return self
+
+    def delete(self):
+        self._writing = False
+        self._col = None
+        return self
+
+    def eq(self, _k, _v):
+        return self
+
     def execute(self):
+        if self._writing and self._t in self._uw:
+            raise Exception(
+                '{"code":"42501","message":"new row violates row-level '
+                f'security policy for table \\"{self._t}\\""}}'
+            )
         if self._t in self._mt:
             raise Exception(
                 f'{{"code":"PGRST205","message":"Could not find the table '
@@ -47,9 +67,10 @@ class _FakeQuery:
         return MagicMock(data=[])
 
 
-def _client(missing_tables=(), missing_cols=()):
+def _client(missing_tables=(), missing_cols=(), unwritable=()):
     c = MagicMock()
-    c.table.side_effect = lambda t: _FakeQuery(t, set(missing_tables), set(missing_cols))
+    c.table.side_effect = lambda t: _FakeQuery(
+        t, set(missing_tables), set(missing_cols), set(unwritable))
     return c
 
 
@@ -214,3 +235,42 @@ class TestBuyGate:
         ea.notifier.notify_error = MagicMock(side_effect=RuntimeError("telegram down"))
         assert ea.assert_schema_ok(
             _client(missing_cols=[("portfolio_positions", "closed_above_entry")])) is False
+
+
+# ── Writability (the RLS failure a SELECT probe cannot see) ───────────────────
+
+class TestWritabilityProbe:
+    """agent_logs shipped 2026-09-18 with a policy scoped `TO service_role`
+    while the agent authenticates with the publishable key. Every flush failed
+    42501 for a day, and because a denied SELECT under RLS returns 200 with zero
+    rows, the read-only guard reported the table healthy the whole time."""
+
+    def test_unwritable_table_is_detected(self):
+        r = schema_guard.check_schema(_client(unwritable=["agent_logs"]))
+        assert [t for t, _why, _err in r.unwritable] == ["agent_logs"]
+
+    def test_unwritable_never_blocks_trading(self):
+        """Losing logs is a visibility problem, never a reason to stop trading."""
+        r = schema_guard.check_schema(_client(unwritable=["agent_logs"]))
+        assert r.ok
+        assert not r.degraded
+        assert r.missing_critical == []
+
+    def test_unwritable_is_reported_in_the_summary(self):
+        r = schema_guard.check_schema(_client(unwritable=["agent_logs"]))
+        s = r.summary()
+        assert "REJECT WRITES" in s
+        assert "agent_logs" in s
+        assert "42501" in s          # the operator needs the actual error
+        assert "passed" not in s     # must not read as healthy
+
+    def test_missing_table_is_not_double_reported_as_unwritable(self):
+        """A table that does not exist is one fact, not two."""
+        r = schema_guard.check_schema(_client(missing_tables=["agent_logs"]))
+        assert r.unwritable == []
+        assert "agent_logs" in [t for t, _why in r.missing_advisory]
+
+    def test_writable_table_produces_no_finding(self):
+        r = schema_guard.check_schema(_client())
+        assert r.unwritable == []
+        assert "passed" in r.summary()
