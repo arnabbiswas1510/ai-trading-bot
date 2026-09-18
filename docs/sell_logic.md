@@ -589,8 +589,12 @@ parameter here is provisional — see the scheduled review in `AGENTS.md`.
 Reproduce with:
 
 ```bash
-python3 research/exit_rule_replay.py --insecure --proveit
+python3 research/exit_rule_replay.py --insecure --proveit --top 80
 ```
+
+The sweep is 38 rows, so `--top 80` is required to see the baseline rows —
+`LIVE BASELINE`, `ProveIt SHIPPED` and `RETIRED pre-ProveIt` — which rank below
+the default 25-row cut.
 
 See `decisions/2026-09-04_prove-it-stop.md`.
 

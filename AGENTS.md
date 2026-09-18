@@ -804,13 +804,15 @@ parameters are corrected by evidence rather than left to ossify.
 ```bash
 set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
 
-# START HERE. --cliff is the only mode whose table contains the CURRENTLY
-# SHIPPED Prove-It stack, so it is the one that answers "does shipped still win?"
+# START HERE. Both --proveit (since the 2026-09-18 repair) and --cliff contain
+# the CURRENTLY SHIPPED Prove-It stack, so either answers "does shipped still
+# win?". --proveit additionally sweeps the neighbouring parameter values.
+python3 research/exit_rule_replay.py --insecure --proveit --top 80
 python3 research/exit_rule_replay.py --insecure --cliff
 
 python3 research/exit_rule_replay.py --insecure            # headline comparison
 python3 research/exit_rule_replay.py --insecure --grid     # full sweep
-python3 research/exit_rule_replay.py --insecure --proveit  # Prove-It parameter sweep
+python3 research/exit_rule_replay.py --insecure --proveit --top 80  # Prove-It parameter sweep (38 rows)
 python3 research/exit_rule_replay.py --insecure --day0     # Phase 1: bot-enforced vs broker-resting
 python3 research/exit_rule_replay.py --insecure --runon    # "let winners run": the LOOSENING direction
 ```
@@ -821,13 +823,15 @@ python3 research/exit_rule_replay.py --insecure --runon    # "let winners run": 
 > invisible. Those modes can rank tightening honestly and **cannot rank
 > loosening at all**. See `decisions/2026-09-18_runon-window-winners-run.md`.
 
-> ⚠️ **Do not use `--proveit` to ask "is the shipped config still best?"** Every
-> row in that sweep uses a **breakeven** Phase 2 floor and a 1.5%/2.0% Phase 1
-> band, whereas the live rule floors at **−1%** with a **3.0%** later band — so
-> none of its rows is the shipped configuration. It also seeds the table with the
-> *pre-2026-09-04* stack and then hides that row behind the default `--top 25`.
-> `--cliff` puts the real shipped rule first. This tripped up the 2026-09-17
-> review; see `decisions/2026-09-17_exit-review-48-trades.md`.
+> ⚠️ **`--proveit` was repaired on 2026-09-18 and now answers "is the shipped
+> config still best?" directly.** Until then it could not: every row used a
+> **breakeven** Phase 2 floor and a 1.5%/2.0% Phase 1 band whereas the live rule
+> floors at **−1%** with a **3.0%** later band, it seeded the table with the
+> *pre-2026-09-04* stack **mislabelled `SHIPPED`**, and the default `--top 25`
+> then hid that row entirely. The grid now contains the live shape and floor, the
+> retired row is labelled `RETIRED pre-ProveIt`, and both `shipped_proveit()` and
+> `live_baseline()` are scored. **Pass `--top 80`** — the grid is 38 rows. See
+> `decisions/2026-09-18_exit-review-52-trades-and-proveit-sweep-repair.md`.
 
 `research/exit_rule_replay.py` replays the bot's **own** closed trades on
 5-minute bars, reproducing the live mechanics (15-minute checks, `arm_exit()`
@@ -839,7 +843,7 @@ is working.
 
 | Due | Trades needed to be meaningful | Status |
 |---|---|---|
-| **2026-09-20** (+1 month) | ~22 | ☑ **run 2026-09-17**, n=48 — SHIPPED wins at **+$10,673**, no challenger beats it, **0 winners harmed**. Cliff fix rejected again (−$1,393). No change made. |
+| **2026-09-20** (+1 month) | ~22 | ☑ **re-run 2026-09-18**, n=52 — SHIPPED still on top at **+$10,669** (LIVE incl. scale-out +$10,762), **0 winners harmed**, 24 helped / 8 harmed. Best challenger (P2 arm +3%) is +$202, inside noise. No change made. **Repaired the `--proveit` sweep itself: its baseline was the retired ruleset and the live parameters were absent from the grid.** |
 | **2026-10-20** (+2 months) | ~28 | ☐ not run |
 | **2026-11-20** (+3 months) | ~35 | ☐ not run |
 | **2026-12-20** (+4 months) | ~42 | ☐ not run |
@@ -895,29 +899,38 @@ rules were replaced by the Prove-It Stop
 Early Dollar Stop and the Thesis Stop are moot — both rules are retired, having
 fired **zero** times in 30 closed trades.
 
-The measurement that replaced them, **re-run 2026-09-17 on all 48 closed trades**
-(26 losers, 22 winners) after the 2026-09-15 NBIX/NTRA repairs:
+The measurement that replaced them, **re-run 2026-09-18 on all 52 closed trades**
+(26 losers, 26 winners) — the scheduled 2026-09-20 review, run two days early
+because the 20th falls on a Sunday and no new data arrives over a weekend:
 
 | Configuration | NET vs the exits that actually happened | winners | harmed | >300 |
 |---|---|---|---|---|
-| **Prove-It (SHIPPED)** | **+$10,673** | +$5,222 | 8 | 11 |
-| + P2 arms at +1.5% peak | +$10,644 (−$29) | +$5,222 | 9 | 11 |
-| + P2 arms at +1.0% peak | +$10,018 (−$655) | +$4,028 | 10 | 10 |
-| Cliff fix (unarmed keeps P1 band) | +$9,280 (−$1,393) | +$3,531 | 9 | 12 |
+| P2 arms at +3.0% peak | +$10,871 (+$202) | +$5,222 | 6 | 11 |
+| **LIVE BASELINE (Prove-It + scale-out 33%@+4%)** | **+$10,762** | +$4,209 | 8 | 10 |
+| **Prove-It SHIPPED (stop only, no scale-out)** | **+$10,669** | +$5,222 | 8 | 11 |
+| + P2 arms at +1.5% peak | +$10,640 (−$29) | +$5,222 | 9 | 11 |
+| + P2 arms at +1.0% peak | +$10,014 (−$655) | +$4,028 | 10 | 10 |
+| RETIRED pre-Prove-It ruleset | +$1,643 (−$9,026) | $0 | 7 | 12 |
 
 Deltas, not absolute P&L: a positive net means the configuration would have made
-that much more than the bot actually did. For reference the 48 trades contain
+that much more than the bot actually did. For reference the 52 trades contain
 **−$15,054 of realised losses** across the 26 losers.
 
-**The shipped stack ranks first and nothing beats it.** The result is not carried
-by one trade: 23 trades improve against 8 harmed, and **seven** contribute more
-than $1,000 each (CDNA +$1,795, FR +$1,269, NBIX +$1,216, RSI +$1,188, NBIX
-+$1,180, FRO +$1,030, HWM +$1,016). Dropping the single largest contributor still
-leaves **+$8,878**.
+**The shipped stack still ranks at the top and nothing displaces it.** The result
+is not carried by one trade: 24 trades improve against 8 harmed, and **seven**
+contribute more than $1,000 each (CDNA +$1,795, FR +$1,269, NBIX +$1,216, RSI
++$1,188, NBIX +$1,180, FRO +$1,030, HWM +$1,016). Dropping the single largest
+contributor still leaves **+$8,874**.
 
 **Zero winners were harmed.** All 8 harmed trades (TTWO, CHRD, INCY, SGHC, APH,
 DXCM, GE, LPG) were already losers; the rule makes a few losses somewhat larger
 while rescuing far more. This is the column that matters most and it is clean.
+
+**One candidate to watch, not to ship.** Arming Phase 2 at a **+3.0%** peak
+instead of +2.0% scored **+$202** and harmed **6** trades instead of 8. That is
+well inside the ~$500 noise bar this review uses, so `PROVE_IT_P2_ARM_GAIN_PCT`
+stays at `0.02`. Re-check it at the next review: if the same direction persists
+on a larger sample it becomes real.
 
 > **Erratum — the pre-2026-09-17 version of this table is superseded.** It read
 > −$6,548 actual / −$4,069 old rules / +$5,410 Prove-It on **30** trades, and was
@@ -928,12 +941,19 @@ while rescuing far more. This is the column that matters most and it is clean.
 > Do not cite the old figures. See
 > `decisions/2026-09-15_nbix-reconstructed-sell-price.md`.
 
-Reproduce the shipped baseline with
-`python3 research/exit_rule_replay.py --insecure --cliff` — **not** `--proveit`.
-`--proveit` is a parameter *sweep*: its rows all use a breakeven Phase 2 floor
-(`floor+0.0`) and none of them is the live configuration, whose floor is −1%. Its
-top-25 cut also hides the baseline row entirely. `--cliff` places the true shipped
-config first, which is why it is the right command for "does shipped still win?".
+Reproduce with `python3 research/exit_rule_replay.py --insecure --proveit --top 80`.
+
+> **The `--proveit` sweep was repaired on 2026-09-18 and the old warning about it
+> no longer applies.** It previously could not answer its own headline question.
+> Three separate defects: (a) the baseline row was labelled `SHIPPED` but modelled
+> the **retired** pre-2026-09-04 ruleset — dollar stop, thesis stop and the
+> long-deleted `EFFECTIVE_POSITION_SLOTS`; (b) the grid tested Phase 1 later-tiers
+> of 1.5% and 2.0% but **not the live 3.0%**, and Phase 2 floors of 0.0/+0.5 but
+> **not the live −1.0%**, so the live configuration was absent from its own sweep;
+> (c) the default `--top 25` cut hid the baseline rows entirely. The function is
+> now named `retired_pre_proveit_config()`, the live tier shape and floor are in
+> the grid, and `live_baseline()` and `shipped_proveit()` are both scored. Always
+> pass `--top 80` — the grid is now 38 rows.
 
 **The three questions this leaves open:**
 

@@ -1,8 +1,18 @@
 # Exit-parameter review on 48 closed trades: shipped Prove-It confirmed, cliff fix rejected, nothing changed
 
 **Date:** 2026-09-17
-**Status:** Accepted — no code change. Confirms the shipped exit stack *against tighter alternatives only*; see the 2026-09-18 erratum below.
+**Status:** Accepted — no code change, and superseded as the current sample by `decisions/2026-09-18_exit-review-52-trades-and-proveit-sweep-repair.md` (n=52). Confirms the shipped exit stack *against tighter alternatives only*; see the two 2026-09-18 errata below.
 **Supersedes:** the 30-trade baseline table in `AGENTS.md` (figures only, not reasoning).
+
+> **Note, 2026-09-18 — the harness defect this ADR identified is now FIXED.**
+> Section "Why `--proveit` is the wrong command" below correctly diagnosed that
+> the sweep seeded its comparison with `shipped_config()`, the *pre-2026-09-04*
+> stack. That function has been renamed `retired_pre_proveit_config()` and
+> relabelled, the live Phase 1 later-tier (3.0%) and Phase 2 floor (−1.0%) have
+> been added to the grid, and `live_baseline()` / `shipped_proveit()` are now
+> scored rows. **The `--cliff`-not-`--proveit` workaround this ADR recommends is
+> therefore obsolete** — use `--proveit --top 80`. The diagnosis stands; only the
+> remedy has changed.
 
 > **Erratum, 2026-09-18.** Every sweep in this review ran on a harness that
 > truncated price history at the realised exit, which makes the **loosening**

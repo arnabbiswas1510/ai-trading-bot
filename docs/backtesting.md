@@ -96,6 +96,15 @@ python3 research/exit_rule_replay.py --insecure --json out.json
 Drop `--insecure` if the local TLS trust store is working. Other flags:
 `--proveit`, `--day0`, `--top N` (default 25).
 
+`--proveit` sweeps the Prove-It parameters and, since the 2026-09-18 repair,
+contains the live configuration itself. Its grid is **38 rows**, so pass
+`--top 80`; the three baseline rows (`LIVE BASELINE`, `ProveIt SHIPPED`,
+`RETIRED pre-ProveIt`) rank below the default cut and are otherwise invisible.
+Note that `RETIRED pre-ProveIt` was labelled `SHIPPED` until that date despite
+modelling rules retired on 2026-09-04 — **any "beats shipped by $N" claim taken
+from a `--proveit` run before 2026-09-18 is void.** See
+`decisions/2026-09-18_exit-review-52-trades-and-proveit-sweep-repair.md`.
+
 `--ladder` sweeps the Phase 2 profit-lock give-back — the trail width in
 `TRAIL_PROFIT_TIERS`, shipped at **1.5% from the high-water mark once a position
 is up +5%** — and crosses it against the gain at which it arms. Every row holds

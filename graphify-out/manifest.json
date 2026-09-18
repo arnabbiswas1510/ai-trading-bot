@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1789757504.1468942,
-    "ast_hash": "f6eafa299ededadbdbaad7b70458cd6b",
+    "mtime": 1789762017.8465931,
+    "ast_hash": "25c0ac2f518801f098a4000f25082213",
     "semantic_hash": ""
   },
   "README.md": {
@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1789755523.5379581,
-    "ast_hash": "1cb2fb92a16ec59459d9b053beda3ac5",
+    "mtime": 1789762024.5219698,
+    "ast_hash": "a38899427257871217b2b4ac063ad1da",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "research/exit_rule_replay.py": {
-    "mtime": 1789758874.0433598,
-    "ast_hash": "3204d94b6045d96a79a5e194d705a3a8",
+    "mtime": 1789761729.8681433,
+    "ast_hash": "8357fae21a4b9919a0483cb88be15be3",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_slot-derived-early-dollar-stop.md": {
@@ -950,8 +950,8 @@
     "semantic_hash": ""
   },
   "docs/backtesting.md": {
-    "mtime": 1788746345.9029205,
-    "ast_hash": "f7053c2113733d9ed3777635ea3fad56",
+    "mtime": 1789762031.5294673,
+    "ast_hash": "50dfe10b32bc9bde71ee7d70d7788a8a",
     "semantic_hash": ""
   },
   "tests/test_datasource_unavailable.py": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1789760162.4395,
-    "ast_hash": "78346f0580465dc1de89a236b1aa6ec9",
+    "mtime": 1789762045.6720157,
+    "ast_hash": "35c882787605d72154dbc710eb1a10fc",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1265,8 +1265,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-17_exit-review-48-trades.md": {
-    "mtime": 1789753971.4338195,
-    "ast_hash": "88745ec177a066992d0c06de223dd77a",
+    "mtime": 1789761985.2129996,
+    "ast_hash": "8ce2e73e96e9655383df3c83f3a49bb5",
     "semantic_hash": ""
   },
   "decisions/2026-09-17_exit-review-automation.md": {
@@ -1422,6 +1422,11 @@
   "research/backfill_rs_percentile.py": {
     "mtime": 1789759963.1601403,
     "ast_hash": "1e51ab3947d04736e7a375cafbb8d2d4",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_exit-review-52-trades-and-proveit-sweep-repair.md": {
+    "mtime": 1789761971.9129388,
+    "ast_hash": "9dd073b218a4cf329e895ac0b2b264be",
     "semantic_hash": ""
   }
 }

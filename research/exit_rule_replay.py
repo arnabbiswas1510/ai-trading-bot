@@ -1022,10 +1022,21 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
 
 # ── Candidate sets ────────────────────────────────────────────────────────────
 
-def shipped_config() -> ExitConfig:
-    """What the agent runs today. Every other result is relative to this.
+def retired_pre_proveit_config() -> ExitConfig:
+    """The RETIRED pre-2026-09-04 ruleset. NOT what the agent runs today.
 
-    The live dollar stop is no longer a flat amount: it resolves to
+    ⚠️  This was labelled "SHIPPED" until 2026-09-18 and that label was WRONG.
+    The kill-switch, Early Dollar Stop and Thesis Stop it models were all
+    replaced by the Prove-It Stop on 2026-09-04
+    (decisions/2026-09-04_prove-it-stop.md), and EFFECTIVE_POSITION_SLOTS --
+    referenced below -- was DELETED the same day (docs/retired_code.md).
+
+    It is kept only as the historical "what we replaced" reference point. The
+    baseline for anything that runs today is live_baseline(); for a stop-only
+    comparison with no scale-out it is shipped_proveit(). Using this row as the
+    baseline understates every current rule, because it is not a current rule.
+
+    The retired dollar stop was not a flat amount: it resolved to
     (equity / EFFECTIVE_POSITION_SLOTS) x EARLY_DOLLAR_STOP_PCT, i.e.
     (equity / 4) x 6%. At the ~$100K equity these trades were placed under that
     is $1,500, which is what is modelled here. If equity has moved materially
@@ -1034,7 +1045,7 @@ def shipped_config() -> ExitConfig:
     See decisions/2026-08-20_slot-derived-early-dollar-stop.md.
     """
     return ExitConfig(
-        label="SHIPPED (1.0% day 0 + $1500 slot-derived dollar stop + 1xATR thesis)",
+        label="RETIRED pre-ProveIt (1.0% d0 + $1500 dollar stop + 1xATR thesis)",
         pct=1.0, pct_last_day=0,
         dollar=1500.0, dollar_last_day=5,
         atr_mult=1.0, atr_start_day=2, atr_last_day=5,
@@ -1044,7 +1055,7 @@ def shipped_config() -> ExitConfig:
 def headline_configs() -> list[ExitConfig]:
     """The comparisons that decided the shipped parameters, plus neighbours."""
     return [
-        shipped_config(),
+        retired_pre_proveit_config(),
         # Like-for-like FULL-STACK comparisons. Single-rule rows below measure a
         # rule in isolation, which overstates any rule whose saves are also
         # reachable by a faster rule running alongside it. Only these rows answer
@@ -1226,7 +1237,7 @@ def day0_configs() -> list[ExitConfig]:
     band is included because a touch-stop and a close-stop at the same number are
     not the same rule — the touch version must be given room for noise.
     """
-    out = [shipped_config(), shipped_proveit()]
+    out = [retired_pre_proveit_config(), shipped_proveit()]
 
     for pct in (1.0, 1.25, 1.5, 2.0, 2.5):
         out.append(ExitConfig(
@@ -1270,16 +1281,22 @@ def proveit_configs() -> list[ExitConfig]:
       2. Phase 2 arming gain — how far must a trade advance before a breakeven
          floor is safe to place? Too low and normal noise stops it out.
     """
-    out = [shipped_config()]
+    out = [retired_pre_proveit_config(), shipped_proveit(), live_baseline()]
 
     tier_shapes: list[tuple[str, tuple[tuple[int, float], ...]]] = [
         ("1.0%/d0-1 then 1.5%", ((1, 1.0), (99, 1.5))),
         ("1.0%/d0-1 then 2.0%", ((1, 1.0), (99, 2.0))),
         ("1.0%/d0   then 1.5%", ((0, 1.0), (99, 1.5))),
         ("1.0%/d0   then 2.0%", ((0, 1.0), (99, 2.0))),
+        # The LIVE shape. Absent from this grid until 2026-09-18, which meant
+        # the sweep could not answer its own headline question ("does the
+        # shipped configuration still win?") because the shipped configuration
+        # was not in it.
+        ("1.0%/d0   then 3.0%", ((0, 1.0), (99, 3.0))),
         ("flat 1.0%",           ((99, 1.0),)),
         ("flat 1.5%",           ((99, 1.5),)),
         ("flat 2.0%",           ((99, 2.0),)),
+        ("flat 3.0%",           ((99, 3.0),)),
     ]
 
     for name, tiers in tier_shapes:
@@ -1290,12 +1307,15 @@ def proveit_configs() -> list[ExitConfig]:
                 proveit=True, p1_tiers=tiers, p1_touch=touch,
                 p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=0.0))
 
-    # Phase 2 arming sensitivity, held against the leading Phase 1 shape.
+    # Phase 2 arming sensitivity, held against the LIVE Phase 1 shape.
+    # The floor sweep must include -1.0, which is what PROVE_IT_P2_FLOOR_PCT
+    # actually is; before 2026-09-18 it tested only 0.0 and +0.5, so the live
+    # floor was never scored.
     for arm in (1.0, 1.5, 2.0, 3.0, 4.0):
-        for floor in (0.0, 0.5):
+        for floor in (-1.0, 0.0, 0.5):
             out.append(ExitConfig(
-                f"ProveIt P1 1.0/1.5 [close] + P2 arm{arm}% floor+{floor}%",
-                proveit=True, p1_tiers=((1, 1.0), (99, 1.5)), p1_touch=False,
+                f"ProveIt P1 1.0/3.0 [close] + P2 arm{arm}% floor{floor:+.1f}%",
+                proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
                 p2_enabled=True, p2_arm_gain=arm, p2_floor_pct=floor))
 
     # Isolate each phase so a headline result cannot be misread as coming from
@@ -1331,7 +1351,7 @@ def ladder_configs() -> list[ExitConfig]:
     OCA path. The replay fills exactly at the level with no slippage, which
     flatters tight settings, so treat the tightest rows as an upper bound.
     """
-    out = [shipped_config(), shipped_proveit()]
+    out = [retired_pre_proveit_config(), shipped_proveit()]
 
     for trail in (0.005, 0.0075, 0.010, 0.0125, 0.015, 0.020, 0.025, 0.030):
         out.append(ExitConfig(
@@ -1389,7 +1409,7 @@ def p1ratchet_configs() -> list[ExitConfig]:
     If instead the fix shows up as losers getting worse, the ratchet is
     accidentally cutting losses and the trade-off is real -- say so.
     """
-    out = [shipped_config(), shipped_proveit()]
+    out = [retired_pre_proveit_config(), shipped_proveit()]
 
     for label, ratchet in (("A: ratchet ON  (live behaviour today)", True),
                            ("B: ratchet OFF (documented intent)",   False)):
@@ -1649,7 +1669,7 @@ def ratchet_configs() -> list[ExitConfig]:
     that would have recovered, and on ~30 trades one shaken-out winner can carry
     the whole net.
     """
-    out = [shipped_config(), shipped_proveit()]
+    out = [retired_pre_proveit_config(), shipped_proveit()]
 
     # A. Give-back floor: entry-1% (shipped) -> -0.5% -> breakeven -> +0.5%.
     for floor in (-1.0, -0.5, 0.0, 0.5):

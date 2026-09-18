@@ -1,22 +1,22 @@
 {
-  "_README": "PROVISIONAL DECISION REGISTER — the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else — add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process. Entries are of two KINDS. A 'parameter' entry is a tuned number awaiting more evidence; a 'work-item' entry is a piece of engineering work deliberately deferred until the bot is in a safe state to absorb it. Both use `revisit` as the trigger (when to look), and may additionally declare `preconditions` (whether it is safe to act today) which are evaluated against LIVE portfolio state. A due-but-blocked entry is still reported -- never silently skipped.",
+  "_README": "PROVISIONAL DECISION REGISTER \u2014 the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else \u2014 add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process. Entries are of two KINDS. A 'parameter' entry is a tuned number awaiting more evidence; a 'work-item' entry is a piece of engineering work deliberately deferred until the bot is in a safe state to absorb it. Both use `revisit` as the trigger (when to look), and may additionally declare `preconditions` (whether it is safe to act today) which are evaluated against LIVE portfolio state. A due-but-blocked entry is still reported -- never silently skipped.",
   "_schema": {
     "id": "kebab-case unique key; also the GitHub-issue marker",
     "title": "one-line human label",
     "status": "active | resolved | superseded  (only 'active' is ever alerted on)",
     "decided": "YYYY-MM-DD the decision was taken",
-    "implemented": "bool — true once the decision is live in production code; false = approved config still on the shelf",
+    "implemented": "bool \u2014 true once the decision is live in production code; false = approved config still on the shelf",
     "decision": "what we decided to do, stated as current fact",
     "rationale": "why, and on how large a sample",
     "adr": "path to the ADR that records the reasoning (may be null until written)",
     "revisit": {
-      "min_closed_trades": "int | null — becomes due once trade_history has >= this many rows",
-      "not_before": "YYYY-MM-DD | null — a date floor; due only once BOTH this and min_closed_trades are satisfied"
+      "min_closed_trades": "int | null \u2014 becomes due once trade_history has >= this many rows",
+      "not_before": "YYYY-MM-DD | null \u2014 a date floor; due only once BOTH this and min_closed_trades are satisfied"
     },
     "baseline": "the numbers measured at decision time, so a future review compares like-for-like",
     "review_command": "the exact command that reproduces the measurement",
     "review_questions": "the specific questions the review must answer",
-    "last_reviewed": "YYYY-MM-DD | null — set when a review is completed",
+    "last_reviewed": "YYYY-MM-DD | null \u2014 set when a review is completed",
     "history": "append-only log of {date, closed_trades, verdict, note} from each completed review",
     "kind": "parameter | work-item | investigation  -- 'parameter' is a tuned value awaiting more trades; 'work-item' is deferred engineering work; 'investigation' is an OPEN QUESTION to be settled by measurement, where 'no signal, do nothing' is a valid and expected outcome. Defaults to 'parameter' when absent, so pre-existing entries are unaffected.",
     "preconditions": {
@@ -33,7 +33,7 @@
       "decided": "2026-09-08",
       "implemented": true,
       "decision": "When an open position's PEAK gain first reaches +4%, sell 33% of the shares at market; the remaining ~67% rides the unchanged Prove-It stop. Fires once per position (scaled_out latch); suppressed for power-held leaders. Freed capital stays as reserve until a full slot opens, then redeploys via normal available_cash / remaining_slots sizing. Live in execute_scale_out() + monitor_portfolio_intraday(); ADR and docs shipped.",
-      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped — those are an entry-quality problem, tracked separately.",
+      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped \u2014 those are an entry-quality problem, tracked separately.",
       "adr": "decisions/2026-09-08_partial-scale-out.md",
       "revisit": {
         "min_closed_trades": 50,
@@ -52,7 +52,7 @@
       "review_questions": [
         "Does +4%/33% still match or beat the SHIPPED net? (was -$64 = free)",
         "Is the fader benefit still spread over >=3 trades, or is it now carried by one? (single-trade-carry check)",
-        "Has the winner-clip grown — is harmed or winners_hurt higher than the baseline 6?",
+        "Has the winner-clip grown \u2014 is harmed or winners_hurt higher than the baseline 6?",
         "Do enough faders now peak in the +4-5% band to justify the trigger, or has the fader distribution shifted (argue the trigger up/down with the new peaks)?",
         "Would a different fraction (25% / 50%) now win, given the larger sample?"
       ],
@@ -66,7 +66,7 @@
       "decided": "2026-09-15",
       "implemented": true,
       "decision": "COOLING_OFF_DAYS defaults to 3 in config.py and .env.template, matching what production has run via a .env override since before 2026-08-09. Buy gate 2 continues to block re-entry for 3 days after a sale, checking BOTH trade_history and ibkr_fills SLD fills. The gate is NOT retired.",
-      "rationale": "Measured on 9 genuine re-entries (43 closed trades) plus a 26-trigger FMP counterfactual. 7 days blocks 7 of the 9 re-entries, worth +$1,736.67 net (4 winners / 3 losers, winners ~5x losers), including NTRA's 4-day re-entry of 2026-09-14 (+$575.44) — so 7 is measurably too wide, and its original justification in the 2026-08-09 ADR was asserted, never measured. But 0 is worse: of 26 blocked re-entries with forward bars, 16 (62%) break the Prove-It 1% day-0 band on their FIRST session, so the headline +2.17% mean 5-day return is unreachable — the bot exits on the band long before it. 0 also re-enables the same-session churn (NTRA sold 10:26, re-bought 10:32) that corrupted the lot basis. MAJOR CONFOUND: SLOTS_FULL accounts for 115 of 214 logged skips vs COOLING_OFF's 28, so capacity is the real binding constraint and +$1,736.67 is an UPPER BOUND on what 7 costs, not realised foregone profit. Sample is one month, entirely inside a BULL regime.",
+      "rationale": "Measured on 9 genuine re-entries (43 closed trades) plus a 26-trigger FMP counterfactual. 7 days blocks 7 of the 9 re-entries, worth +$1,736.67 net (4 winners / 3 losers, winners ~5x losers), including NTRA's 4-day re-entry of 2026-09-14 (+$575.44) \u2014 so 7 is measurably too wide, and its original justification in the 2026-08-09 ADR was asserted, never measured. But 0 is worse: of 26 blocked re-entries with forward bars, 16 (62%) break the Prove-It 1% day-0 band on their FIRST session, so the headline +2.17% mean 5-day return is unreachable \u2014 the bot exits on the band long before it. 0 also re-enables the same-session churn (NTRA sold 10:26, re-bought 10:32) that corrupted the lot basis. MAJOR CONFOUND: SLOTS_FULL accounts for 115 of 214 logged skips vs COOLING_OFF's 28, so capacity is the real binding constraint and +$1,736.67 is an UPPER BOUND on what 7 costs, not realised foregone profit. Sample is one month, entirely inside a BULL regime.",
       "adr": "decisions/2026-09-15_cooling-off-three-days.md",
       "revisit": {
         "min_closed_trades": 75,
@@ -86,10 +86,10 @@
       },
       "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure && python3 research/decision_review.py --insecure",
       "review_questions": [
-        "How many GENUINE re-entries now exist? (was 9; exclude split-fill duplicates sharing a buy timestamp, e.g. the TRV 2026-07-21 pair.) Below ~25 the comparison is still noise — report n FIRST.",
+        "How many GENUINE re-entries now exist? (was 9; exclude split-fill duplicates sharing a buy timestamp, e.g. the TRV 2026-07-21 pair.) Below ~25 the comparison is still noise \u2014 report n FIRST.",
         "Would a 7-day rule still be net-negative? (was -$1,736.67 across 7 blocked re-entries.) Is that result still spread across several trades, or is it now carried by one outlier like LPG's +$882?",
         "Does the 62% day-0-band break rate still hold for triggers the 3-day gate blocks? If it has fallen well below ~40%, retirement becomes arguable and should be swept properly.",
-        "Sweep 2, 3, 4 and 5 days — not just 3 vs 7 vs 0. Adjacent values were never discriminated because the sample was too small.",
+        "Sweep 2, 3, 4 and 5 days \u2014 not just 3 vs 7 vs 0. Adjacent values were never discriminated because the sample was too small.",
         "Has the bot traded through a non-BULL regime yet? The entire decision sample sits inside one bull window; a corrective tape is the real test of whether fast re-entry is safe.",
         "Has the SLOTS_FULL confound shrunk? If capacity is still the binding constraint (was 115 of 214 skips), the dollar figures remain an upper bound and should be quoted as such."
       ],
@@ -139,7 +139,7 @@
       "status": "active",
       "decided": "2026-09-04",
       "implemented": true,
-      "decision": "The shipped exit stack (Prove-It Phase 1 1.0%/day-0 then 3.0%; Phase 2 arms at a +2% peak and floors at -1% of entry; profit ladder +5% -> 1.5% trail) stands unchanged. Confirmed 2026-09-17 on 48 closed trades: SHIPPED ranks first at +$10,673 against the exits that actually happened, no challenger beats it, and ZERO winners are harmed. This entry exists to force that measurement to be repeated on a schedule rather than assumed.",
+      "decision": "The shipped exit stack (Prove-It Phase 1 1.0%/day-0 then 3.0%; Phase 2 arms at a +2% peak and floors at -1% of entry; profit ladder +5% -> 1.5% trail) stands unchanged. Re-confirmed 2026-09-18 on 52 closed trades: SHIPPED is +$10,669 against the exits that actually happened (+$10,762 for the full live bot including scale-out), the best challenger is +$202 (inside noise), and ZERO winners are harmed. This entry exists to force that measurement to be repeated on a schedule rather than assumed.",
       "rationale": "Every exit threshold was originally tuned on SEVENTEEN closed trades, and every ADR behind them says that is too few to trust. This entry is the ACTIVE half of the review schedule in AGENTS.md, which is otherwise passive: a date in a markdown table only fires if a human happens to read the file, so a review can be missed silently and a provisional number can ossify into a 'fact'. min_closed_trades is deliberately NULL: this review is DATE-driven, and gating it on a trade count would let a slow month stall it indefinitely - which is precisely the failure mode being removed. The review itself reports n first and may legitimately conclude 'sample barely moved, skip'. The dates are a prompt, not an obligation to change something.",
       "adr": "decisions/2026-09-17_exit-review-48-trades.md",
       "revisit": {
@@ -162,23 +162,29 @@
         "net_without_largest_contributor_usd": 8878,
         "trades_contributing_over_1000_usd": 7
       },
-      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --cliff",
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --proveit --top 80",
       "review_questions": [
         "How many closed trades now? Report n FIRST, every time. Below ~30 the differences are noise. If n has barely moved since the last review, say so and SKIP rather than re-reading noise.",
-        "Does the shipped configuration still win? It is the 'ProveIt SHIPPED' row, which --cliff places first. Baseline 2026-09-17: +$10,673 on 48 trades. A challenger must beat it by more than ~$500 AND spread that gain over 3+ trades to be a real candidate.",
-        "Is any result carried by a single trade? Per-trade deltas are printed for exactly this reason. At the 48-trade baseline the shipped result survived removal of its largest contributor (+$10,673 -> +$8,878), with 7 trades each worth over $1,000. Re-check that it still does.",
+        "Does the shipped configuration still win? It is the 'ProveIt SHIPPED' row; 'LIVE BASELINE' is the same stop PLUS scale-out and is the correct baseline for any exit-LOOSENING test. Baseline 2026-09-18: +$10,669 (SHIPPED) / +$10,762 (LIVE) on 52 trades. A challenger must beat it by more than ~$500 AND spread that gain over 3+ trades to be a real candidate. Note arming Phase 2 at +3.0% scored +$202 and harmed 6 rather than 8 - below the bar, but watch the sign.",
+        "Is any result carried by a single trade? Per-trade deltas are printed for exactly this reason. At the 52-trade baseline the shipped result survived removal of its largest contributor (+$10,669 -> +$8,874, CDNA being 17% of net), with 7 trades each worth over $1,000. Re-check that it still does.",
         "Has anything started harming WINNERS? This is the column that matters most and the one that sank the days-0-1 kill-switch. At the 48-trade baseline all 8 harmed trades were already losers and winners_harmed was ZERO. If a winner starts being clipped, that outweighs loss-cutting gains.",
-        "Use --cliff, NOT --proveit, to answer 'does shipped still win'. --proveit is a parameter sweep whose rows all use a breakeven Phase 2 floor and 1.5%/2.0% Phase 1 bands; none of them is the live rule (floor -1%, later band 3.0%), and its default --top 25 hides the baseline row entirely.",
-        "Still open and NOT answered by --cliff: is PROVE_IT_P1_LATER_PCT = 3% correct or CPAY-shaped, and does the Phase 2 floor need a full 1% of slack? Both need a dedicated single-variable sweep - the --proveit rows vary two things at once.",
+        "Run --proveit --top 80. It was REPAIRED on 2026-09-18 and now contains the live configuration: the grid includes the live Phase 1 later-band (3.0%) and the live Phase 2 floor (-1.0%), and both shipped_proveit() and live_baseline() are scored rows. --top 80 is required because the grid is 38 rows and the baselines rank below the default 25-row cut. Use live_baseline() (Prove-It PLUS scale-out) as the baseline for any LOOSENING test. Before 2026-09-18 the row labelled SHIPPED modelled the RETIRED pre-2026-09-04 ruleset, so any 'beats shipped by $N' claim from an older --proveit run is void.",
+        "Still open: is PROVE_IT_P1_LATER_PCT = 3% correct or CPAY-shaped, and does the Phase 2 floor need a full 1% of slack? Both need a dedicated single-variable sweep - the --proveit rows vary two things at once. Also carry forward the 2026-09-18 observation that PROVE_IT_P2_ARM_GAIN_PCT is NOT at a flat optimum: +1.0% and +1.5% both score worse than the shipped +2.0%, while +3.0% scored +$202 better and harmed 6 trades rather than 8. Below the ~$500 bar, so not shipped - but check whether the sign persists.",
         "Is POWER_HOLD_GAIN_PCT = 10% reachable yet? It was lowered from 20% only because 20% was never reached. If no trade has hit +10% within 21 days, the rule is still dormant and the number is still a guess."
       ],
-      "last_reviewed": "2026-09-17",
+      "last_reviewed": "2026-09-18",
       "history": [
         {
           "date": "2026-09-17",
           "closed_trades": 48,
           "verdict": "holds",
           "note": "2026-09-20 checkpoint, run 3 days early. SHIPPED first at +$10,673; runner-up (arm +1.5%) -$29 and harms one more trade. Cliff fix rejected again at -$1,393 with >300 rising 11->12, on the corrected sample that now CONTAINS NTRA RT1 - the owed re-run is discharged and that caveat is closed. Zero winners harmed; all 8 harmed trades were already losers. Result robust to dropping its largest contributor. No change made. Also replaced the stale 30-trade baseline table in AGENTS.md and corrected it to cite --cliff rather than --proveit."
+        },
+        {
+          "date": "2026-09-18",
+          "closed_trades": 52,
+          "verdict": "holds",
+          "note": "Scheduled 2026-09-20 review run two days early (the 20th is a Sunday, so no new data would arrive). n=52 (26 losers, 26 winners). Prove-It SHIPPED (stop only) +$10,669; LIVE BASELINE incl. scale-out +$10,762; retired pre-Prove-It ruleset +$1,643. 24 trades helped, 8 harmed, and ALL 8 harmed were already losers - zero winners harmed. Not carried by one trade: largest contributor CDNA +$1,795 is 17% of net, and net ex-largest is still +$8,874, with seven trades over $1,000 each. Best challenger was arming Phase 2 at a +3.0% peak (+$202, harmed 6 not 8) - inside the ~$500 noise bar, so NOT shipped; flagged to re-check next review. NO PARAMETER CHANGED. The review's main product was a repair to the harness: --proveit's baseline row was labelled SHIPPED but modelled the RETIRED pre-2026-09-04 ruleset, the grid omitted the live Phase 1 later-tier (3.0%) and the live Phase 2 floor (-1.0%), and the default --top 25 hid the baselines. Renamed to retired_pre_proveit_config(), added the live shape/floor to the grid, and added live_baseline() + shipped_proveit() as scored rows."
         }
       ]
     },
