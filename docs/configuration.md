@@ -330,8 +330,12 @@ almost any other.
 
 `POWER_HOLD_GAIN_PCT` was lowered from `20.0` to `10.0` alongside the Prove-It Stop: at 20%
 the rule was unreachable, because the realised trade distribution contains no +20% runners.
-The 10% figure is **unvalidated** — no trade in the 30-trade replay reached +10% within 21
-days — and is entered into the scheduled review in `AGENTS.md`.
+At 10% it is **provably inert as shipped**. A run-on replay on 2026-09-18 found that 13 of 50
+closed trades reached +10% within 21 days of entry, but the bot was still holding exactly one
+of them — the `+5% → 1.5%` ladder rung sells at roughly half the trigger. Power hold at +10%
+replays byte-identically to shipped at every trail width. Lowering the number alone will not
+fix this; the ladder and the trigger must be retuned together, and not before slot
+opportunity cost can be modelled. See `decisions/2026-09-18_runon-window-winners-run.md`.
 
 ### Trailing-stop ladder
 

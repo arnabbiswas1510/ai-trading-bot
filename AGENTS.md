@@ -763,7 +763,14 @@ python3 research/exit_rule_replay.py --insecure            # headline comparison
 python3 research/exit_rule_replay.py --insecure --grid     # full sweep
 python3 research/exit_rule_replay.py --insecure --proveit  # Prove-It parameter sweep
 python3 research/exit_rule_replay.py --insecure --day0     # Phase 1: bot-enforced vs broker-resting
+python3 research/exit_rule_replay.py --insecure --runon    # "let winners run": the LOOSENING direction
 ```
+
+> ⚠️ **Use `--runon` for any question of the form "should we hold longer?"**
+> Every other mode fetches bars only up to the realised exit, so a rule that
+> would have held longer is scored at the live exit price and its upside is
+> invisible. Those modes can rank tightening honestly and **cannot rank
+> loosening at all**. See `decisions/2026-09-18_runon-window-winners-run.md`.
 
 > ⚠️ **Do not use `--proveit` to ask "is the shipped config still best?"** Every
 > row in that sweep uses a **breakeven** Phase 2 floor and a 1.5%/2.0% Phase 1
@@ -819,8 +826,8 @@ change something.
 | `phase2-unarmed` (no floor below the arm gain) | open by design | Flooring it at the Phase 1 band is **rejected, and as of 2026-09-17 the rejection is settled.** Re-run via `--cliff` on the corrected 48-trade sample that now DOES contain NTRA RT1 (−$706.66) — the trade that motivated the hypothesis and whose absence made the earlier 2026-09-10 rejection provisional. The fix scores **−$1,393 vs shipped** (+$9,280 vs +$10,673) and raises `>300` from 11 to 12, so it is worse on the larger sample than it was on the smaller one. The owed re-run is **done**; no caveat remains. See `decisions/2026-09-10_prove-it-unarmed-window-measured-not-closed.md` and `decisions/2026-09-17_exit-review-48-trades.md`. |
 | `PROVE_IT_P2_FLOOR_PCT` | `-0.01` | The 1% of slack is worth +$1,189 on CPAY alone. Whether 1% is the *right* slack, or merely enough for CPAY, is unresolved. |
 | `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | Not measured. Set wide enough that the resting order provably cannot front-run the bot; no sweep supports the exact value. **Re-test with `--day0`:** a broker-hard Phase 1 wins by +$187 on the current sample, but the entire net is APH alone — recheck once more overnight-gap trades exist. |
-| `TRAIL_PROFIT_TIERS` | `+5% → 1.5%` | 2026-08-22 replay on 17 trades outperformed +6% by +$1,385 with no harmed trades; still under review due to sample size. |
-| `POWER_HOLD_GAIN_PCT` | `10.0` | **Entirely unvalidated.** No trade in the 30-trade replay reached +10% within 21 days, so the harness is silent on it. Lowered from 20% only because 20% was unreachable. |
+| `TRAIL_PROFIT_TIERS` | `+5% → 1.5%` | The tightening comparison (+6% vs +5%) stands. The **loosening** direction was never validly measured: until 2026-09-18 the replay truncated price history at the realised exit, so a looser trail was handed the live exit price for free and could not score upside. With a run-on window, ladder 5%/8% beat shipped by ~$5,700 — but ~65% of that is ECO alone and slot opportunity cost is unmodelled. Unresolved; see `decisions/2026-09-18_runon-window-winners-run.md`. |
+| `POWER_HOLD_GAIN_PCT` | `10.0` | **Provably inert as shipped**, measured 2026-09-18 via `--runon`. 13/50 trades reached +10% within 21 days of entry; the bot was still holding **one**. The +5% ladder rung sells at roughly half the trigger, so power hold at +10% replays byte-identically to shipped. Lowering it alone will not help — the ladder would still sell first. (The earlier "no trade ever reached +10%" claim was a truncation artefact and is **retracted**.) |
 | `STALE_EXIT_DAYS` (as a rotation discount) | `10` | The staleness discount is **unmodelled by the harness** — the replay cannot see Rank & Replace at all. |
 | `MARKET_DIRECTION_TICKERS` | `SPY,QQQ` | Chosen on a 4,940-session **index** grid. The trade-history replay could not discriminate — all 21 closed trades fall in one six-week window where every config says BULL. |
 | `MARKET_DIRECTION_BUFFER_PCT` | `0.01` | Same caveat. 1% and 2% scored within noise of each other on index data. |
@@ -890,10 +897,14 @@ config first, which is why it is the right command for "does shipped still win?"
    exists because CPAY retested entry on day 4. Test 0.5% and 1.5% and report
    whether the difference is carried by more than one trade.
 
-3. **Is `POWER_HOLD_GAIN_PCT = 10%` reachable?** It was lowered from 20%
-   because no realised trade ever hit 20% within 21 days. Check whether anything
-   has now hit 10% — if not, the rule is still dormant and the number is still a
-   guess.
+3. **~~Is `POWER_HOLD_GAIN_PCT = 10%` reachable?~~ ANSWERED 2026-09-18.** Yes —
+   13 of 50 trades reached +10% within 21 days of entry. The bot was still
+   holding **one**. The rule is dormant not because the names do not exist but
+   because the +5% ladder rung sells them first, so the live question is no
+   longer "is 10% reachable" but "do the ladder and the trigger have to move
+   together". They do. Do not retune either in isolation, and not before slot
+   opportunity cost can be modelled — see
+   `decisions/2026-09-18_runon-window-winners-run.md`.
 
 **A second erratum (2026-09-15).** The replay's *input* changed, not its code:
 NBIX was re-priced (+$835.82) and NTRA was split into its three real round trips.

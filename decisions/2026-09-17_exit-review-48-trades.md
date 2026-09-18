@@ -1,8 +1,17 @@
 # Exit-parameter review on 48 closed trades: shipped Prove-It confirmed, cliff fix rejected, nothing changed
 
 **Date:** 2026-09-17
-**Status:** Accepted — no code change. Confirms the shipped exit stack.
+**Status:** Accepted — no code change. Confirms the shipped exit stack *against tighter alternatives only*; see the 2026-09-18 erratum below.
 **Supersedes:** the 30-trade baseline table in `AGENTS.md` (figures only, not reasoning).
+
+> **Erratum, 2026-09-18.** Every sweep in this review ran on a harness that
+> truncated price history at the realised exit, which makes the **loosening**
+> direction unscoreable: a rule that holds longer is credited the live exit
+> price and its upside is deleted. The conclusions here about *tighter* rules —
+> which is all of them — are unaffected and stand. The review did not, and with
+> that harness could not, test whether the shipped exits sell winners too early.
+> That question was reopened the next day with a run-on window; see
+> `decisions/2026-09-18_runon-window-winners-run.md`.
 
 ## Context
 

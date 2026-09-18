@@ -69,6 +69,7 @@ import datetime as dt
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -226,6 +227,26 @@ class ExitConfig:
     scale_trigger: float = 4.0
     scale_be_remainder: bool = False
 
+    # ── Power hold (the "let a proven leader run" rule) ───────────────────────
+    # The only rule in the book whose PURPOSE is to hold longer, and the only
+    # one the harness has never modelled. Live (execution_agent ~L4217-4335):
+    # once a position gains `power_hold_gain` % within `power_hold_trigger_days`
+    # calendar days of entry, it latches for `power_hold_duration_days`; while
+    # latched the whole Prove-It stack is SUSPENDED (prove_it_level = None), the
+    # hard stop drops back to the disaster floor, and the trail widens to
+    # `power_hold_trail`. It is also the one case allowed to LOOSEN a stop —
+    # without that the +5% ladder rung, already clamped to 1.5%, would strangle
+    # the leader the rule exists to protect.
+    #
+    # `None` disables it, which is every pre-existing config: power hold has
+    # never fired in live trading and no replay before this one could see it.
+    # Measuring it requires the run-on window, because the rule can only pay off
+    # in bars AFTER the exit the tight ladder actually took.
+    power_hold_gain: float | None = None
+    power_hold_trail: float = 0.30
+    power_hold_trigger_days: int = 21
+    power_hold_duration_days: int = 56
+
     def describe(self) -> str:
         bits = []
         if self.proveit:
@@ -286,6 +307,11 @@ class Trade:
     bars: list[dict] = field(default_factory=list)
     trade_days: list[str] = field(default_factory=list)
     entry_atr_pct: float | None = None
+    # Number of bars in `bars` that fall at or before the REAL exit. With the
+    # run-on window enabled `bars` continues past the realised sell, so this is
+    # the boundary between "replayed history" and "counterfactual future".
+    # 0 means no run-on bars were fetched (every other mode).
+    runon_from: int = 0
 
     @property
     def is_loser(self) -> bool:
@@ -331,6 +357,30 @@ def load_trades(verify_tls: bool = True) -> list[Trade]:
     return out
 
 
+def _fmp_get(url: str, params: dict) -> requests.Response:
+    """GET with backoff on FMP rate limits.
+
+    The run-on window roughly doubles the number of chunk requests per trade, so
+    a sweep that used to sit under the rate limit now trips it. A 429 halfway
+    through hydration discards every trade fetched so far, which is an expensive
+    way to lose an hour — retry instead of dying.
+    """
+    delay = 2.0
+    for attempt in range(6):
+        resp = requests.get(url, params=params, timeout=30)
+        if resp.status_code in (429, 500, 502, 503, 504):
+            if attempt == 5:
+                resp.raise_for_status()
+            print(f"  . FMP {resp.status_code}, retrying in {delay:.0f}s",
+                  file=sys.stderr)
+            time.sleep(delay)
+            delay *= 2
+            continue
+        resp.raise_for_status()
+        return resp
+    raise RuntimeError("unreachable")
+
+
 def fetch_5min(symbol: str, start: dt.datetime, end: dt.datetime, api_key: str) -> list[dict]:
     """5-minute bars covering [start, end]. FMP caps the span, so chunk it."""
     collected: dict[str, dict] = {}
@@ -338,17 +388,12 @@ def fetch_5min(symbol: str, start: dt.datetime, end: dt.datetime, api_key: str) 
     last = end.date()
     while cursor <= last:
         chunk_end = min(cursor + dt.timedelta(days=5), last)
-        resp = requests.get(
-            FMP_5MIN,
-            params={
-                "symbol": symbol,
-                "from": cursor.isoformat(),
-                "to": chunk_end.isoformat(),
-                "apikey": api_key,
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
+        resp = _fmp_get(FMP_5MIN, {
+            "symbol": symbol,
+            "from": cursor.isoformat(),
+            "to": chunk_end.isoformat(),
+            "apikey": api_key,
+        })
         payload = resp.json()
         if isinstance(payload, list):
             for row in payload:
@@ -411,8 +456,18 @@ def fetch_entry_atr_pct(symbol: str, buy_date: dt.date, api_key: str,
     return result
 
 
-def hydrate(trades: list[Trade], api_key: str, quiet: bool = False) -> list[Trade]:
-    """Attach price history. This is the slow part — one FMP call per chunk."""
+def hydrate(trades: list[Trade], api_key: str, quiet: bool = False,
+            runon_days: int = 0) -> list[Trade]:
+    """Attach price history. This is the slow part — one FMP call per chunk.
+
+    `runon_days` extends the fetch window past the REAL exit by that many
+    calendar days. Without it the replay is truncated at the realised sell, and
+    any configuration whose rule would have fired LATER than the live rule is
+    silently scored at the live exit price — a delta of exactly zero. That is
+    fine when measuring tighter rules (they always fire first) but it makes the
+    loosening direction unmeasurable by construction: "hold longer" can only pay
+    off in the bars that truncation removes. See runon_configs().
+    """
     hydrated = []
     for i, trade in enumerate(trades, 1):
         if not quiet:
@@ -423,6 +478,8 @@ def hydrate(trades: list[Trade], api_key: str, quiet: bool = False) -> list[Trad
         # largest same-day losers (OII, FROG) that Phase 1 is meant to catch.
         window_start = trade.buy_ts.replace(hour=0, minute=0, second=0, microsecond=0)
         window_end = trade.sell_ts.replace(hour=23, minute=59, second=59, microsecond=0)
+        if runon_days:
+            window_end += dt.timedelta(days=runon_days)
         trade.bars = fetch_5min(trade.ticker, window_start, window_end, api_key)
         if not trade.bars:
             continue
@@ -432,6 +489,13 @@ def hydrate(trades: list[Trade], api_key: str, quiet: bool = False) -> list[Trad
                 days.append(bar["date"])
         trade.trade_days = days
         _correct_split(trade)
+        # ONLY meaningful when a run-on window was requested. The default
+        # whole-day window already extends past an intraday sell to 23:59, so
+        # setting this unconditionally would make score() mark every unfired
+        # rule out at the session close instead of crediting the realised exit
+        # — silently changing every other sweep in the file.
+        if runon_days:
+            trade.runon_from = sum(1 for b in trade.bars if b["ts"] <= trade.sell_ts)
         trade.entry_atr_pct = fetch_entry_atr_pct(
             trade.ticker, trade.buy_ts.date(), api_key)
         hydrated.append(trade)
@@ -610,6 +674,7 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
     day_index = {d: i for i, d in enumerate(trade.trade_days)}
     armed: dict | None = None
     proven = False
+    power_held = False
     peak = entry
     stop_price: float | None = None
     p1_broker_stop: float | None = None
@@ -665,6 +730,34 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
             peak_gain = (peak / entry - 1) * 100.0
             candidate: float | None = None
             floor_level = entry * (1 + cfg.p2_floor_pct / 100.0)
+
+            # ── Power hold ───────────────────────────────────────────────────
+            # Latch on the peak as it stood BEFORE this bar, same no-look-ahead
+            # rule as every level below. Once latched the Prove-It stack is
+            # suspended and the wide trail REPLACES stop_price outright rather
+            # than being max()'d into it — modelling the live `power_held or
+            # _unproven` branch that permits this single loosening.
+            if cfg.power_hold_gain is not None:
+                cal_days = (bar["ts"].date() - trade.buy_ts.date()).days
+                if (not power_held
+                        and peak_gain >= cfg.power_hold_gain
+                        and cal_days <= cfg.power_hold_trigger_days):
+                    power_held = True
+                if power_held and cal_days > cfg.power_hold_duration_days:
+                    power_held = False
+                    # Expiry hands the position back to the ladder, which is
+                    # one-way from wherever the wide trail left it.
+                    stop_price = None
+            if power_held:
+                stop_price = peak * (1 - cfg.power_hold_trail)
+                if bar["open"] <= stop_price:
+                    return {"price": bar["open"], "reason": "power_hold_gap"}
+                if bar["low"] <= stop_price:
+                    return {"price": stop_price, "reason": "power_hold_trail"}
+                peak = max(peak, bar["high"])
+                peak_close = max(peak_close, bar["close"])
+                continue
+
             if peak_gain >= cfg.p2_ladder_gain:
                 if cfg.p2_eod:
                     # The ladder rung is no longer a resting stop. Keep the
@@ -821,6 +914,14 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
             sim = simulate_proveit(trade, cfg)
         else:
             sim = simulate(trade, cfg)
+        # With a run-on window a configuration can survive past the REAL exit.
+        # `sim is None` then means "still open at the end of the extended
+        # window", which must be marked out at the last available close. Scoring
+        # it at the realised sell price (delta 0) would silently hand every
+        # loosened rule the live exit for free — the exact bias the run-on
+        # window exists to remove.
+        if sim is None and trade.runon_from and trade.runon_from < len(trade.bars):
+            sim = {"price": trade.bars[-1]["close"], "reason": "runon_open"}
         delta = 0.0 if sim is None else round(
             (sim["price"] - trade.sell_price) * trade.shares, 2)
         # Resulting P&L for this trade under `cfg`. This is what answers "how
@@ -1238,6 +1339,131 @@ def p1ratchet_configs() -> list[ExitConfig]:
     return out
 
 
+def runon_configs() -> list[ExitConfig]:
+    """"Let winners run" — the loosening direction, scored WITHOUT truncation.
+
+    This is the only sweep in the file that requires `--runon-days`, and the
+    reason is a methodological flaw that invalidates every earlier attempt to
+    answer this question.
+
+    Every other mode fetches bars only up to the REAL exit. A configuration that
+    would have held LONGER than the live rule therefore runs out of price
+    history at the moment the live rule sold, `simulate_proveit` returns None,
+    and `score()` books a delta of exactly zero — it is handed the realised exit
+    price for free. Tighter rules are unaffected (they fire before the truncation
+    point, so their fill is real), but looser rules can ONLY pay off in the bars
+    that truncation deletes. The result is a sweep that is structurally incapable
+    of showing a benefit from holding longer, which is precisely what the
+    2026-09-18 `--ladder` run showed: every rung looser than the shipped 1.5%
+    scored worse, monotonically, with no upside term in the arithmetic at all.
+
+    With the run-on window the comparison becomes honest in both directions: a
+    looser rule keeps trading through the real exit date and is marked out
+    either where its own rule fires or at the last available close.
+
+    Three questions, in order:
+
+      A. Is the shipped ladder too tight? Now that a looser trail can actually
+         capture post-exit upside, re-run the same widths the truncated sweep
+         rejected. A width that still loses here is genuinely too loose.
+
+      B. Is POWER_HOLD_GAIN_PCT = 10% reachable, and does the rule pay? It has
+         never fired in live trading and no previous replay could see it.
+         Sweeping the trigger down (10% -> 7% -> 5%) answers reachability and
+         value together.
+
+      C. What does pure patience cost? `NO EXIT RULE` holds every position to
+         the end of the run-on window. It is not a proposal — it is the ceiling,
+         and the honest denominator for A and B. If the best rule captures only
+         a sliver of it, the ladder is not the binding constraint.
+    """
+    out = [shipped_proveit()]
+
+    # A. Ladder widths, including ones far looser than the truncated sweep could
+    #    fairly score.
+    for trail in (0.015, 0.02, 0.03, 0.05, 0.08):
+        out.append(ExitConfig(
+            f"RunOn: P2 ladder trail {trail * 100:g}%",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+            p2_ladder_trail=trail))
+
+    # B. Power hold at the shipped 10% trigger and below it.
+    for gain in (10.0, 7.0, 5.0):
+        out.append(ExitConfig(
+            f"RunOn: SHIPPED + power hold >={gain:.0f}% @ 30% trail",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+            power_hold_gain=gain, power_hold_trail=0.30))
+
+    # Power hold with a trail tight enough to actually protect the gain. 30% is
+    # a disaster backstop, not a give-back rule; if the wide trail wins only by
+    # never firing, that is worth knowing separately.
+    for trail in (0.10, 0.15):
+        out.append(ExitConfig(
+            f"RunOn: SHIPPED + power hold >=10% @ {trail * 100:.0f}% trail",
+            proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+            p2_enabled=True, p2_arm_gain=2.0, p2_floor_pct=-1.0,
+            power_hold_gain=10.0, power_hold_trail=trail))
+
+    # C. The ceiling. Phase 1 still cuts losers; Phase 2 never sells.
+    out.append(ExitConfig(
+        "RunOn: CEILING — Phase 1 only, winners never sold",
+        proveit=True, p1_tiers=((0, 1.0), (99, 3.0)), p1_touch=False,
+        p2_enabled=False))
+
+    return out
+
+
+def runon_reachability(trades: list[Trade]) -> None:
+    """Answer the reachability question directly, before any dollar figure.
+
+    POWER_HOLD_GAIN_PCT was lowered from 20% to 10% purely because no trade in
+    the replay had ever reached 20% — a judgement about reachability, not a
+    measured optimum, and the comment in exit_rules.py says so. With run-on bars
+    the question is finally answerable: how far did each position ACTUALLY get
+    within the trigger window, whether or not the bot was still holding it?
+    """
+    rows = []
+    for trade in trades:
+        if not trade.runon_from:
+            continue
+        cutoff = trade.buy_ts.date() + dt.timedelta(days=21)
+        peak_in_window = max(
+            (b["high"] for b in trade.bars if b["ts"].date() <= cutoff),
+            default=trade.buy_price)
+        peak_all = max(b["high"] for b in trade.bars)
+        held_peak = max((b["high"] for b in trade.bars[:trade.runon_from]),
+                        default=trade.buy_price)
+        rows.append({
+            "ticker": trade.ticker,
+            "pl": trade.profit_loss,
+            "held_peak": (held_peak / trade.buy_price - 1) * 100.0,
+            "peak_21d": (peak_in_window / trade.buy_price - 1) * 100.0,
+            "peak_all": (peak_all / trade.buy_price - 1) * 100.0,
+        })
+    if not rows:
+        return
+    rows.sort(key=lambda r: -r["peak_21d"])
+
+    print("=" * 92)
+    print("POWER HOLD REACHABILITY — peak gain within 21 calendar days of "
+          "ENTRY, ignoring when we sold")
+    print("=" * 92)
+    print(f"{'ticker':<8}{'realised P/L':>14}{'peak WHILE HELD':>18}"
+          f"{'peak <=21d':>13}{'peak in window':>17}")
+    for row in rows[:20]:
+        print(f"  {row['ticker']:<6}{row['pl']:>14,.2f}"
+              f"{row['held_peak']:>17.2f}%{row['peak_21d']:>12.2f}%"
+              f"{row['peak_all']:>16.2f}%")
+    for threshold in (5.0, 7.0, 10.0, 15.0, 20.0):
+        hit = sum(1 for r in rows if r["peak_21d"] >= threshold)
+        held = sum(1 for r in rows if r["held_peak"] >= threshold)
+        print(f"  reached +{threshold:>4.0f}% within 21d: {hit:>3}/{len(rows)} "
+              f"trades   (while still held: {held})")
+    print()
+
+
 def ratchet_configs() -> list[ExitConfig]:
     """The GNK/NTRA give-back sweep — the +2% to +5% 'winner rounds to a loss' band.
 
@@ -1456,6 +1682,14 @@ def main() -> None:
                              "resting IBKR TRAIL order ratchets its anchor up "
                              "with price, turning a loss cap into a "
                              "profit-taker (ON vs OFF)")
+    parser.add_argument("--runon", action="store_true",
+                        help="\"let winners run\": sweep the LOOSENING direction "
+                             "(ladder width, power hold) with price history "
+                             "extended past the real exit, so holding longer "
+                             "can actually be credited")
+    parser.add_argument("--runon-days", type=int, default=30, metavar="N",
+                        help="calendar days of price history to fetch past the "
+                             "real exit (default 30; implied by --runon)")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -1469,11 +1703,18 @@ def main() -> None:
     print("Loading closed trades from Supabase...", file=sys.stderr)
     trades = load_trades(verify_tls=not args.insecure)
     print(f"Fetching 5-minute bars for {len(trades)} trades...", file=sys.stderr)
-    trades = hydrate(trades, api_key)
+    runon_days = args.runon_days if args.runon else 0
+    if runon_days:
+        print(f"  (run-on window: +{runon_days} calendar days past each exit)",
+              file=sys.stderr)
+    trades = hydrate(trades, api_key, runon_days=runon_days)
     if not trades:
         sys.exit("No trades with usable price history — nothing to replay.")
 
-    if args.cliff:
+    if args.runon:
+        runon_reachability(trades)
+        configs = runon_configs()
+    elif args.cliff:
         configs = cliff_configs()
     elif args.p1ratchet:
         configs = p1ratchet_configs()
@@ -1499,7 +1740,8 @@ def main() -> None:
     report(results, trades,
            top=args.top if (args.grid or args.proveit or args.ladder
                             or args.ratchet or args.scale or args.eod
-                            or args.cliff or args.p1ratchet) else None)
+                            or args.cliff or args.p1ratchet
+                            or args.runon) else None)
 
     if args.json:
         with open(args.json, "w") as fh:

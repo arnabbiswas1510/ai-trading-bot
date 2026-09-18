@@ -1,7 +1,7 @@
 # The Prove-It Stop — one loss rule replaces five
 
 **Date:** 2026-09-04
-**Status:** Accepted — with one mechanism corrected on 2026-09-18
+**Status:** Accepted — with one mechanism corrected and one measurement retracted on 2026-09-18
 **Supersedes:**
 `decisions/2026-08-01_early-loss-killswitch-and-day2-universal-minimiser.md`,
 `decisions/2026-08-04_plateau-exit-capital-velocity.md`,
@@ -206,6 +206,13 @@ these numbers should be believed.
   entered into the scheduled exit-parameter review in `AGENTS.md`.
 - **Power Hold's new +10% trigger is entirely unvalidated.** No trade in the
   sample reached +10% within 21 days, so the replay is silent on it.
+  > ⚠️ **DO NOT CITE this bullet — retracted 2026-09-18.** The claim was an
+  > artefact of a harness that truncated price history at each realised exit and
+  > so could not see where a stock went after we sold it. Measured with a run-on
+  > window, **13 of 50 closed trades reached +10% within 21 days of entry**; the
+  > bot was still holding one. The corrected statement is that power hold is
+  > inert *because the +5% ladder rung sells first*, not because the names do
+  > not exist. See `decisions/2026-09-18_runon-window-winners-run.md`.
 
 ---
 

@@ -1,8 +1,24 @@
 # Retune HWM profit-lock arm from +6% to +5%
 
 - **Date:** 2026-08-22
-- **Status:** Accepted
+- **Status:** Accepted — the tightening comparison stands; see the 2026-09-18 erratum below
 - **Supersedes in part:** `decisions/2026-08-20_hwm-profit-lock-first-leg.md`
+
+> **Erratum, 2026-09-18 — read before citing any figure below.**
+> The replay that produced this decision fetched price history only up to each
+> trade's **realised exit**. A configuration that would have held *longer* than
+> the live rule therefore ran out of bars at the moment the live rule sold and
+> was scored a delta of exactly zero — handed the live exit price for free.
+>
+> This does **not** invalidate the decision recorded here. `+5%` is *tighter*
+> than `+6%`, and a tighter rule fires before the truncation point, so its fill
+> is real and the comparison is sound.
+>
+> It does mean this ADR is silent on the opposite question. Nothing below is
+> evidence that `1.5%` is the right *width*, or that a looser ladder loses
+> money. Measured without truncation on 2026-09-18, widths of 5–8% score higher
+> — though carried by one trade and with slot opportunity cost unmodelled. See
+> `decisions/2026-09-18_runon-window-winners-run.md`.
 
 ## Context
 

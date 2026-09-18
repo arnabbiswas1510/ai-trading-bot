@@ -687,9 +687,22 @@ Backtested effect of the 30% power-hold trail was large, monotonic in trail widt
 consistent across both universes. See `decisions/2026-08-04_power-hold-trail-and-five-slots.md`.
 
 The trigger was lowered from +20% to +10% alongside the Prove-It Stop. At +20% the rule was
-unreachable: the realised trade distribution contains no +20% runners, so it never armed. The
-+10% figure is **unvalidated** — no trade in the 30-trade replay reached +10% within 21 days,
-so the harness is silent on it. It is entered into the scheduled review in `AGENTS.md`.
+unreachable: the realised trade distribution contains no +20% runners, so it never armed.
+
+At +10% it is **inert, and measurably so**. A run-on replay on 2026-09-18 — price history
+extended 30 days past each realised exit — found that **13 of 50 closed trades reached +10%
+within 21 days of entry, and the bot was still holding exactly one of them**. ECO reached
++28.5%, LPG +19.1%, DHT +17.1%, MPC +16.5%; all were sold long before. The rule does not fail
+for want of +10% names. It fails because the `+5% → 1.5%` ladder rung below it sells the
+position at roughly half the trigger, which is what the note at `TRAIL_PROFIT_TIERS` has
+always predicted. Power hold at +10% replays byte-identically to shipped at 30%, 15% and 10%
+trail widths — it never fires.
+
+Lowering `POWER_HOLD_GAIN_PCT` alone would not fix this: the ladder would still sell first.
+The ladder width and the trigger must be retuned together, and not before the replay can
+price slot opportunity cost — holding a winner longer occupies one of five slots and blocks
+the next breakout, a term no price-path replay can see. See
+`decisions/2026-09-18_runon-window-winners-run.md`.
 
 ---
 

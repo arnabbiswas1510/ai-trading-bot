@@ -285,6 +285,50 @@
       ],
       "last_reviewed": null,
       "history": []
+    },
+    {
+      "id": "ladder-width-runon",
+      "title": "Phase 2 ladder width and the power-hold trigger must be retuned together, and not before slot cost is modelled",
+      "status": "active",
+      "decided": "2026-09-18",
+      "implemented": false,
+      "decision": "NO live parameter changed. TRAIL_PROFIT_TIERS stays at +5% -> 1.5% and POWER_HOLD_GAIN_PCT stays at 10.0. What shipped is measurement capability: research/exit_rule_replay.py gained a run-on window (--runon / --runon-days, default 30) that extends price history past each realised exit, and gained a model of the power hold (power_hold_gain / power_hold_trail / trigger / duration on ExitConfig, applied in simulate_proveit). Both are strictly opt-in: with --runon off, runon_from stays 0 and every other sweep replays byte-identically (verified against the pre-change --ladder table to the dollar).",
+      "rationale": "Two findings. (1) METHODOLOGICAL: every sweep before this one truncated bars at the realised exit, so a rule that would have held LONGER ran out of history exactly when the live rule sold and scored a delta of zero -- handed the live exit price for free. Tightening is unaffected (it fires before truncation); loosening was unmeasurable BY CONSTRUCTION, which is why the truncated --ladder sweep decays perfectly monotonically as the trail widens. (2) SUBSTANTIVE: power hold at +10% is not unreachable for want of +10% names -- 13 of 50 closed trades reached +10% within 21 days of entry, but the bot was still holding exactly ONE of them, because the +5% ladder rung clamps the trail to 1.5% and sells at roughly half the trigger. Power hold at +10% replays byte-identically to shipped at 30%/15%/10% trail widths: it never fires. The two rules are mutually inconsistent and cannot be retuned independently. WHY NOTHING SHIPPED: with the run-on window, ladder 5% (+$5,685) and 8% (+$5,935) beat shipped, but ~65% of each is ECO alone, harmed rises 12 -> 18, and -- decisively -- slot opportunity cost is entirely unmodelled. MAX_POSITIONS is 5, so holding a winner 30 extra days blocks the next breakout, and no price-path replay can price that. All 52 trades also fall in one market regime, which is the weakest possible setting for a hold-longer result.",
+      "adr": "decisions/2026-09-18_runon-window-winners-run.md",
+      "revisit": {
+        "min_closed_trades": 75,
+        "not_before": "2026-12-20"
+      },
+      "baseline": {
+        "closed_trades": 52,
+        "usable_history": 50,
+        "runon_days": 30,
+        "shipped_net": 20930,
+        "ladder_5pct_net": 26662,
+        "ladder_8pct_net": 26922,
+        "ceiling_never_sell_net": 29320,
+        "ladder_5pct_vs_shipped": 5685,
+        "ladder_5pct_ex_largest": 1891,
+        "largest_contributor": "ECO +3794 (67% of the ladder-5% net)",
+        "harmed_shipped": 12,
+        "harmed_ladder_5pct": 18,
+        "power_hold_10pct_net": 20930,
+        "power_hold_10pct_note": "identical to shipped at every trail width -- never fires",
+        "reached_10pct_within_21d": 13,
+        "reached_10pct_while_still_held": 1,
+        "reached_5pct_within_21d": 34,
+        "reached_5pct_while_still_held": 16
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --runon --top 40",
+      "review_questions": [
+        "BLOCKING PRECONDITION, check this before reading any dollar figure: can the harness price slot opportunity cost yet? MAX_POSITIONS is 5, and every run-on figure assumes a position can be held 30 extra days for free. Until a replay can model the breakouts NOT taken because a slot was occupied, a positive run-on net is an upper bound and not a reason to widen the ladder. If the answer is still no, the correct verdict is 'still blocked' -- do not ship a ladder change on price-path evidence alone.",
+        "SINGLE-TRADE-CARRY CHECK: is the ladder-5%/8% advantage still ~65% one trade? Baseline was ECO +$3,794 of a +$5,685 net; ex-ECO it is +$1,891 over 23 trades. Report the net with and without the largest single contributor.",
+        "REGIME CHECK: do the trades now span more than one market regime? A hold-longer result measured entirely in a rising tape is close to uninformative. If the sample is still one regime, say so and discount accordingly.",
+        "REACHABILITY: re-run the reachability table. Has the count of trades reaching +10% within 21 days WHILE STILL HELD moved off 1? If it has not, power hold remains inert and lowering POWER_HOLD_GAIN_PCT in isolation is still the wrong lever -- the ladder sells first.",
+        "DOWNSIDE: track harmed and >300 alongside the net. Baseline was 12 -> 18 harmed going from shipped to ladder 5%. A widened give-back that improves the net by clipping fewer winners while materially worsening losers is not obviously the trade you want on a 5-slot book."
+      ],
+      "last_reviewed": null,
+      "history": []
     }
   ]
 }

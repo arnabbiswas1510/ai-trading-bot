@@ -192,10 +192,21 @@ SMART_EXIT_FOR_RULES = os.getenv("SMART_EXIT_FOR_RULES", "true").lower() == "tru
 # easy to reach, so it can begin to bind on the genuinely strong names while
 # still requiring roughly double the peak of a typical winner.
 #
-# ⚠️ UNVALIDATED. This threshold has no replay behind it — the 30-trade sample
-# contains no position that reached +10% within 21 days, so the change is a
-# judgement call about reachability, not a measured optimum. It is the first
-# thing to re-examine at the next exit-parameter review.
+# ⚠️ UNVALIDATED AS AN OPTIMUM, AND PROVABLY INERT AS SHIPPED. Measured
+# 2026-09-18 with a run-on replay window (research/exit_rule_replay.py --runon):
+# 13 of 50 closed trades reached +10% within 21 days of entry, but the bot was
+# still holding exactly ONE of them. The earlier claim that no trade ever
+# reached +10% was an artefact of a harness that truncated price history at the
+# realised exit and so could not see a stock's path after we sold it.
+#
+# The rule therefore does not fail for want of +10% names. It fails because the
+# +5% ladder rung below clamps the trail to 1.5% and sells at roughly half the
+# trigger — exactly what the note at TRAIL_PROFIT_TIERS predicted. Confirmed by
+# replay: power hold at +10% is byte-identical to shipped at every trail width.
+# Lowering this number alone will NOT fix that; the ladder would still sell
+# first. The two must be retuned together or not at all, and not before slot
+# opportunity cost is modelled — see
+# decisions/2026-09-18_runon-window-winners-run.md.
 POWER_HOLD_ENABLED        = os.getenv("POWER_HOLD_ENABLED", "true").lower() == "true"
 POWER_HOLD_GAIN_PCT       = float(os.getenv("POWER_HOLD_GAIN_PCT", 10.0))
 POWER_HOLD_TRIGGER_DAYS   = int(os.getenv("POWER_HOLD_TRIGGER_DAYS", 21))   # 3 weeks
