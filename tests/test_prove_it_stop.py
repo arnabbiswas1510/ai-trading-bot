@@ -32,6 +32,7 @@ from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import execution_agent
+from conftest import patch_everywhere
 
 BD_DAY0 = "2026-06-17T12:00:00+00:00"
 BD_DAY1 = "2026-06-16T12:00:00+00:00"
@@ -278,7 +279,7 @@ class TestStopLevelArithmetic:
 
     def test_disabled_returns_no_level(self):
         import unittest.mock as m
-        with m.patch.object(execution_agent, "PROVE_IT_ENABLED", False):
+        with patch_everywhere("PROVE_IT_ENABLED", False):
             level, phase = execution_agent.prove_it_stop_level(
                 {"closed_above_entry": False}, 100.0, 3, 0.0)
         assert level is None and phase == "disabled"

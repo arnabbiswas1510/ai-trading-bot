@@ -369,6 +369,37 @@ GitHub Actions (screening)          Supabase (Postgres)         Local host (Dock
 monitoring must not share a failure domain with a web UI — a dashboard crash cannot be
 allowed to stop trailing-stop maintenance. Only the agent holds brokerage write access.
 
+### Agent module map
+
+The agent is split along a **pure/impure seam**. Everything in the first group takes
+values and returns values — no database, no brokerage, no network — which is what makes
+the trading rules readable and replayable without an IBKR connection.
+
+| Module | Lines | Owns |
+|---|---|---|
+| `exit_rules.py` | 577 | **Pure.** Prove-It Stop, power hold, trail ladder, OCA sizing, hard stop, sell-state codes — and the constants behind them, each beside the replay result that chose it |
+| `indicators.py` | 277 | **Pure.** SMA/EMA/RSI, candlestick reversals, Momentum Health Score |
+| `market_calendar.py` | 125 | **Pure.** NYSE holidays, trading-day arithmetic, RTH check |
+| `execution_agent.py` | 4,952 | **Stateful.** Order placement, IBKR/Supabase reconciliation, the buy loop, the 15-minute monitor loop, and `main_loop()` |
+| `config.py` | 89 | Constants shared **across containers** (`MAX_POSITIONS`, `STOP_LOSS_PCT`) |
+
+Start at `exit_rules.py` to answer *"why did this position exit?"*, and at
+`execution_agent.py` to answer *"what did the agent actually do?"*.
+
+> **Note for contributors and AI assistants.** The extracted names are re-exported into
+> `execution_agent`'s namespace on purpose: the test suite patches ~214 call sites as
+> `execution_agent.<name>`, and the orchestrators resolve them from those globals. Do not
+> convert them to `exit_rules.foo()` call sites without re-pointing the tests — the
+> patches would silently become no-ops. Use `patch_everywhere()` from `tests/conftest.py`
+> for any constant read across module boundaries.
+> See `decisions/2026-09-18_execution-agent-split.md`.
+
+> **`Dockerfile.agent` copies source files individually.** Any new module must be added to
+> its `COPY` line or it will not exist in the container.
+> `tests/test_agent_image_completeness.py` walks the import closure and fails if one is
+> missing — it exists because `flex_query_sync.py` was absent from the image for its
+> entire life, silently disabling Tier 3 sell-price recovery in production.
+
 | Layer | Technology |
 |---|---|
 | Language | Python 3.11+ |

@@ -151,6 +151,39 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 # the growth universe, 98% -> 74% on the broad one). The CAGR/drawdown gaps
 # themselves are inside the noise floor; the concentration reduction is not.
 from config import MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS, BUY_PRICE_DRIFT_TOLERANCE  # noqa: E402  (single source of truth; set via .env)
+
+# ── Extracted modules (2026-09-18) ────────────────────────────────────────────
+# These names are re-exported into this module's namespace ON PURPOSE. The test
+# suite patches them as `execution_agent.<name>` (214 call sites), and the
+# orchestrators below resolve them from these globals -- so importing by name
+# here keeps every existing patch point working. Do NOT convert these to
+# `import exit_rules` + `exit_rules.foo()` call sites without re-pointing the
+# tests: the patches would silently become no-ops.
+# See decisions/2026-09-18_execution-agent-split.md.
+from market_calendar import (  # noqa: F401  (re-exported for patch compatibility)
+    _is_rth_now, _nyse_holidays, trading_days_between,
+)
+from indicators import (  # noqa: F401  (re-exported for patch compatibility)
+    MOMENTUM_HEALTH_RS_WEIGHT, MOMENTUM_HEALTH_VOL_WEIGHT, MOMENTUM_HEALTH_SENT_WEIGHT,
+    calculate_sma, calculate_ema, compute_rsi,
+    detect_candlestick_reversals, compute_momentum_health_score,
+)
+from exit_rules import (  # noqa: F401  (re-exported for patch compatibility)
+    TRAIL_PROFIT_TIERS, PROVE_IT_ENABLED, PROVE_IT_P1_DAY0_PCT,
+    PROVE_IT_P1_LATER_PCT, PROVE_IT_P1_DAY0_LAST_DAY, PROVE_IT_P2_ARM_GAIN_PCT,
+    PROVE_IT_P2_FLOOR_PCT, PROVE_IT_BACKSTOP_SLACK_PCT, OCA_EXIT_ENABLED,
+    OCA_EXIT_SETTLE_MINUTE, OCA_EXIT_ATR_FRACTION, OCA_EXIT_MIN_TRAIL_PCT,
+    OCA_EXIT_MAX_TRAIL_PCT, OCA_EXIT_DEFAULT_ATR_PCT, OCA_EXIT_UPPER_ATR_FRACTION,
+    OCA_EXIT_MIN_UPPER_PCT, OCA_EXIT_MAX_UPPER_PCT, OCA_EXIT_DEFAULT_FLOOR_PCT,
+    OCA_EXIT_DEFAULT_EXPIRY_DAYS, SMART_EXIT_FOR_RULES, POWER_HOLD_ENABLED,
+    POWER_HOLD_GAIN_PCT, POWER_HOLD_TRIGGER_DAYS, POWER_HOLD_DURATION_DAYS,
+    POWER_HOLD_TRAIL_PCT, hard_stop_price, _position_atr_pct,
+    resolve_oca_trail_pct, resolve_oca_limit_price, prove_it_is_proven,
+    prove_it_p1_threshold_pct, prove_it_stop_level, prove_it_trail_pct,
+    _compute_dynamic_trail_pct, is_power_hold_active, sell_state_code,
+    _infer_exit_type,
+)
+
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 # Base trailing stop, measured from the position's PEAK (not from entry — this
 # is not O'Neil's 7-8% hard stop from cost, it is much tighter in practice).
@@ -172,30 +205,6 @@ from config import MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS,
 # measured worse than the 10-12% band on both universes, clearly so on the
 # growth names (+34.5 vs +46.4 full period).
 ATR_STOP_MAX_PCT         = float(os.getenv("ATR_STOP_MAX_PCT", 0.12))
-# ── Dynamic trailing stop tightening tiers ───────────────────────────────────
-# Lever 1 (profit): unrealized gain % → trail %.
-#
-# Live-trade review showed a persistent pattern: modest winners were making new
-# highs and then round-tripping a large share of the open profit before the sell
-# rules reacted. On the 20 closed trades available on 2026-08-20, the 9 winners
-# gave back $8,071 from their high-water marks before exit (avg $897, median
-# 4.03% below the peak at sale). A simple HWM profit-lock beat the current exits:
-# arm once the trade is up +5%, then cap give-back to 1.5% from the peak.
-#
-# This is intentionally aggressive. The rule is not trying to protect +20% to
-# +50% leaders; it is trying to stop 4-9% winners from decaying into 0-4% exits.
-# If the tightened screener later starts producing true power-hold leaders, this
-# ladder must be revisited together with POWER_HOLD. Until then, bank the first
-# leg rather than hoping a modest winner becomes an outlier.
-#
-# Entries are (threshold, trail_pct), listed highest-threshold-first.
-TRAIL_PROFIT_TIERS: list[tuple[float, float]] = [
-    ( 5.0, 0.015),   # ≥ 5% gain  → 1.5% trail from HWM
-    ( 0.0, None),    # < 5%       → no change (base STOP_LOSS_PCT applies)
-]
-# The time lever that used to sit here (TRAIL_TIME_TIERS) is retired — see
-# docs/retired_code.md. Tightening a stop purely because time has passed
-# penalises a position for still working.
 # Trading days a stock is ineligible for re-entry after being sold. At 1 day a
 # stock that just hit its trailing stop was buyable the next morning while still
 # technically broken. 4-slot portfolio sim, CAGR (full / worst period):
@@ -241,13 +250,6 @@ PRICE_SAFETY_RESERVE     = float(os.getenv("PRICE_SAFETY_RESERVE", 1000.0))
 # docs/retired_code.md. Prove-It Phase 2 is tighter than a 1% undercut of a
 # 21-day average at every gain level, so it could never fire first.
 
-# ── Momentum Health Score (Mₜ) — live conviction for held positions ────────────
-# Computed EOD from live RS, volume ratio, and real sentiment (FMP news + GPT).
-# Weights: RS decay 40%, Volume ratio 35%, Sentiment 25%.
-# Used by Rank & Replace (Day 7+) to compare trigger vs held position quality.
-MOMENTUM_HEALTH_RS_WEIGHT   = float(os.getenv("MOMENTUM_HEALTH_RS_WEIGHT",   0.40))
-MOMENTUM_HEALTH_VOL_WEIGHT  = float(os.getenv("MOMENTUM_HEALTH_VOL_WEIGHT",  0.35))
-MOMENTUM_HEALTH_SENT_WEIGHT = float(os.getenv("MOMENTUM_HEALTH_SENT_WEIGHT", 0.25))
 # Minimum score gap (trigger Mₜ vs held Mₜ) to auto-swap in Rank & Replace (Day 7+).
 RANK_REPLACE_THRESHOLD      = int(os.getenv("RANK_REPLACE_THRESHOLD", 15))
 # Lower bar to rotate out of a position whose Day 3 breakout verdict was FAIL:
@@ -308,77 +310,6 @@ STALE_EXIT_MIN_DAYS_HELD    = int(os.getenv("STALE_EXIT_MIN_DAYS_HELD", 7))
 BREAKOUT_VERDICT_MIN_GAIN    = float(os.getenv("BREAKOUT_VERDICT_MIN_GAIN",    0.01))  # 1% above entry
 BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0.75)) # 75% of 20d avg
 
-# ── The Prove-It Stop ─────────────────────────────────────────────────────────
-# ONE question governs every loss-cutting exit: has this position ever CLOSED
-# above the price we paid?
-#
-#   PHASE 1 — unproven. The breakout has not confirmed. Anchor to ENTRY.
-#             Day 0:  1.0% below entry   (a breakout that fails on day one is
-#                                         wrong immediately and cheaply)
-#             Day 1+: 3.0% below entry   (a confirmed-but-slow name needs room
-#                                         to shake out before it works)
-#
-#   PHASE 2 — proven. It closed above entry, so it earned patience. Anchor to
-#             the PEAK.
-#             peak gain >= 2.0%: floor at 1.0% BELOW entry — a trade that went
-#                                green is never allowed to become a real loss
-#             gain      >= 5.0%: 1.5% trail from the high water mark
-#                                (TRAIL_PROFIT_TIERS, unchanged)
-#
-# WHY THIS REPLACES FIVE RULES
-# The kill-switch, Thesis Stop, Early Dollar Stop, EMA-21 exit and Plateau exit
-# were five different answers to two questions this asks once. Each carried its
-# own window, its own anchor and its own threshold, and they raced each other:
-# the Thesis Stop and Early Dollar Stop never fired ONCE in 30 closed trades
-# because the kill-switch always got there first — but the kill-switch stopped
-# looking after day 0, which is precisely how NBIX (-$2,261), DELL (-$1,283),
-# RSI (-$1,390) and HWM (-$1,463) were allowed to run.
-#
-# EVIDENCE (5-minute replay of all 30 closed trades, reproducing live mechanics:
-# 15-minute checks, arm_exit() 0.6% trail, 3.25h deadline)
-#     what actually happened      -$6,548
-#     rules shipped before this   -$4,069
-#     Prove-It                    +$5,410   <- zero winners cut short
-# Worst single loss falls from -$2,002 to -$1,140, and the -$1,140 is APH, an
-# overnight gap that no stop of any kind can prevent. Every intraday bleed is
-# cut small: NBIX -$2,261 -> -$230, CDNA -$1,539 -> +$256, RSI -$1,390 -> -$197.
-#
-# WHY PHASE 1 WIDENS AFTER DAY 0 RATHER THAN TIGHTENING
-# Counter-intuitive but measured. Holding the tight 1.0% band through day 1 costs
-# roughly $1,500-2,000 in winner damage: CPAY closed -2.24% on day 1 and low
-# -2.88%, then ran to +8.95%. Day 0 is the only day on which the failing and
-# working populations separate cleanly.
-#
-# WHY THE PHASE 2 FLOOR SITS 1% BELOW ENTRY, NOT AT IT
-# An exact-breakeven floor flushes any position that pokes green and immediately
-# retests entry. CPAY did exactly that on day 4 (high +3.60%, low -0.41%) and an
-# at-entry floor sold it for $0, forfeiting +$1,189. One percent of slack is the
-# difference between the floor protecting winners and clipping them: it turns
-# CPAY into +$1,907 while still catching FRO and CDNA.
-#
-# See decisions/2026-09-04_prove-it-stop.md.
-PROVE_IT_ENABLED           = os.getenv("PROVE_IT_ENABLED", "true").lower() == "true"
-# Phase 1 — entry-anchored, applied while the position is unproven.
-PROVE_IT_P1_DAY0_PCT       = float(os.getenv("PROVE_IT_P1_DAY0_PCT",       0.01))  # 1.0%
-PROVE_IT_P1_LATER_PCT      = float(os.getenv("PROVE_IT_P1_LATER_PCT",      0.03))  # 3.0%
-PROVE_IT_P1_DAY0_LAST_DAY  = int(os.getenv("PROVE_IT_P1_DAY0_LAST_DAY",       0))
-# Phase 2 — peak gain that arms the give-back floor, and where the floor sits
-# relative to entry (negative = below entry).
-PROVE_IT_P2_ARM_GAIN_PCT   = float(os.getenv("PROVE_IT_P2_ARM_GAIN_PCT",   0.02))  # +2.0%
-PROVE_IT_P2_FLOOR_PCT      = float(os.getenv("PROVE_IT_P2_FLOOR_PCT",     -0.01))  # -1.0%
-# How far BELOW the Phase 1 trigger the resting IBKR stop is parked.
-#
-# Phase 1 is enforced by the bot: on the 15-minute cycle it arms a tight 0.6%
-# trailing exit (arm_exit()) rather than selling at what is often a local trough.
-# The replay shows that armed exit beats an immediate market sell by roughly
-# $600 across the sample, so the bot must get first refusal.
-#
-# But the bot only looks every 15 minutes and cannot act at all when it is down
-# or the market gaps. So a GTC order rests at the broker one slack-width below
-# the same level: wide enough that it never front-runs the armed exit, tight
-# enough to cap an overnight gap. Belt and braces, in that order.
-PROVE_IT_BACKSTOP_SLACK_PCT = float(os.getenv("PROVE_IT_BACKSTOP_SLACK_PCT", 0.01))
-
 # ── Partial Scale-Out (winner give-back reducer) ───────────────────────────────
 # The winner->loser problem: a position runs to +4-5%, then fades back through
 # entry before any stop fires, turning a green trade red. Every attempt to fix
@@ -412,112 +343,6 @@ SCALE_OUT_FRACTION      = float(os.getenv("SCALE_OUT_FRACTION",    0.33))   # se
 ARMED_EXIT_TRAIL_PCT      = float(os.getenv("ARMED_EXIT_TRAIL_PCT",      0.006))  # 0.6%
 ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25))   # ~half a trading day
 
-# ── Smart OCA Managed Exit (queue-driven, see migrations/20260818_add_exit_requests.sql) ─
-# A row in `exit_requests` asks the agent to exit a named position via an IBKR
-# OCA pair rather than a market dump:
-#     upper leg = LMT sell at an optimistic recovery target
-#     lower leg = TRAIL sell that ratchets up behind any bounce
-# One cancels the other. The agent drains the queue every monitoring cycle, so a
-# request made at 11:00 acts at 11:00 — "first thing in the morning" is just the
-# special case where the request was queued overnight.
-#
-# The legs are NOT placed at 09:30. The opening auction has the widest spreads
-# and the wildest prints of the session; a limit computed off a 09:30 tick is
-# computed off noise. We wait until the tape settles.
-OCA_EXIT_ENABLED          = os.getenv("OCA_EXIT_ENABLED", "true").lower() == "true"
-OCA_EXIT_SETTLE_MINUTE    = int(os.getenv("OCA_EXIT_SETTLE_MINUTE", 45))   # place from 09:45 ET
-# Trail sizing for stop_mode='ATR_AUTO'. A trail tighter than the stock's own
-# noise fires on the first random wiggle, which just reproduces "sell now" with
-# extra steps and forfeits the upper leg entirely.
-OCA_EXIT_ATR_FRACTION     = float(os.getenv("OCA_EXIT_ATR_FRACTION",     0.33))
-OCA_EXIT_MIN_TRAIL_PCT    = float(os.getenv("OCA_EXIT_MIN_TRAIL_PCT",    0.015))  # 1.5%
-OCA_EXIT_MAX_TRAIL_PCT    = float(os.getenv("OCA_EXIT_MAX_TRAIL_PCT",    0.040))  # 4.0%
-OCA_EXIT_DEFAULT_ATR_PCT  = float(os.getenv("OCA_EXIT_DEFAULT_ATR_PCT",  3.0))
-# Upper-leg sizing for limit_mode='ATR_AUTO' — the default for a bare insert.
-#
-# BREAKEVEN was the original default, but it anchors the target to the ENTRY
-# price, so the bounce required is proportional to how much the position is
-# already down: a name 5.5% underwater needs a 5.9% rally before the leg can
-# fill, which is exactly when you least want to wait. ATR_AUTO anchors to the
-# CURRENT price instead, so entry drops out of the maths and the target is
-# always about half a day's move away — reachable regardless of the loss, and
-# self-scaling to each stock's own volatility.
-#
-# Clamped at both ends: a very quiet name would otherwise get a target inside
-# the spread, and a very volatile one a target no realistic bounce reaches.
-OCA_EXIT_UPPER_ATR_FRACTION = float(os.getenv("OCA_EXIT_UPPER_ATR_FRACTION", 0.50))
-OCA_EXIT_MIN_UPPER_PCT    = float(os.getenv("OCA_EXIT_MIN_UPPER_PCT",    0.0075))  # 0.75%
-OCA_EXIT_MAX_UPPER_PCT    = float(os.getenv("OCA_EXIT_MAX_UPPER_PCT",    0.050))   # 5.0%
-# Backstop applied in software each cycle: an OCA can sit unfilled indefinitely
-# while the position bleeds, so bound both the price and the time.
-OCA_EXIT_DEFAULT_FLOOR_PCT = float(os.getenv("OCA_EXIT_DEFAULT_FLOOR_PCT", 0.05))  # 5% below placement
-OCA_EXIT_DEFAULT_EXPIRY_DAYS = int(os.getenv("OCA_EXIT_DEFAULT_EXPIRY_DAYS", 3))
-
-# Route the *discretionary* Day 7+ exits through the Smart OCA queue instead of
-# selling at market on whichever 15-minute tick happened to notice.
-#
-# Scoped to Day 7+ non-urgent rules ON PURPOSE. The Prove-It Stop
-# (kill-switch, dollar stop, thesis stop) keep arm_exit(): a placed OCA
-# suspends the automated ladder for up to OCA_EXIT_DEFAULT_EXPIRY_DAYS, which
-# is exactly the wrong trade for a position that is actively failing.
-# See decisions/2026-08-19_smart-exit-for-discretionary-rules.md.
-SMART_EXIT_FOR_RULES = os.getenv("SMART_EXIT_FOR_RULES", "true").lower() == "true"
-
-# ── O'Neil 8-Week Hold Rule ───────────────────────────────────────────────────
-# From "How to Make Money in Stocks": a stock that gains 20%+ within 3 weeks of a
-# proper breakout is behaving like a genuine market leader and should be held for
-# at least 8 weeks rather than trimmed on the first wobble.
-#
-# This is the mechanism that would let a position become the outsized winner
-# CAN SLIM expectancy depends on. While a position is in its power-hold window we
-# suppress the DISCRETIONARY exits (Prove-It Stop, Rank & Replace) AND widen the
-# trailing stop to POWER_HOLD_TRAIL_PCT (see below). The trailing stop is never
-# removed — it remains the disaster backstop, so this bounds opportunity cost,
-# never risk.
-#
-# TRIGGER LOWERED 20% -> 10% (2026-09-04). At +20% the rule was unreachable in
-# practice: it never armed once across 30 closed trades, because it never armed
-# once across ANY closed trade. The realised winner distribution tops out well
-# below the level the rule was calibrated for — the +20%-in-3-weeks leader it was
-# built to protect is a population this screener has not yet produced.
-#
-# A rule that cannot fire protects nothing. 10% sits inside the observed
-# distribution (MPC +6.4%, LPG +7.0%, CPAY +9.0% peak) without being trivially
-# easy to reach, so it can begin to bind on the genuinely strong names while
-# still requiring roughly double the peak of a typical winner.
-#
-# ⚠️ UNVALIDATED. This threshold has no replay behind it — the 30-trade sample
-# contains no position that reached +10% within 21 days, so the change is a
-# judgement call about reachability, not a measured optimum. It is the first
-# thing to re-examine at the next exit-parameter review.
-POWER_HOLD_ENABLED        = os.getenv("POWER_HOLD_ENABLED", "true").lower() == "true"
-POWER_HOLD_GAIN_PCT       = float(os.getenv("POWER_HOLD_GAIN_PCT", 10.0))
-POWER_HOLD_TRIGGER_DAYS   = int(os.getenv("POWER_HOLD_TRIGGER_DAYS", 21))   # 3 weeks
-POWER_HOLD_DURATION_DAYS  = int(os.getenv("POWER_HOLD_DURATION_DAYS", 56))  # 8 weeks
-# Trail width applied WHILE a position is power-held, replacing the profit ladder.
-#
-# Without this the rule was self-defeating: TRAIL_PROFIT_TIERS tightens the trail
-# well below the gain that arms the power hold — under the ladder in force at the
-# time, to 6.5% at the then-current +20% trigger — so the ladder strangled the
-# leaders the rule exists to protect. Instrumenting the
-# backtest showed the rule armed on 9% (growth) / 6% (broad) of trades and then
-# *100% of those still exited on the trailing stop*, making it inert.
-#
-# The current HWM profit lock makes this worse, not better: it clamps to 1.5% from
-# the peak at only +5% gain, so by the time a position reaches POWER_HOLD_GAIN_PCT
-# it is already on the tightest rung. Bypassing the ladder while power-held is
-# therefore load-bearing — see decisions/2026-08-20_hwm-profit-lock-first-leg.md.
-#
-# Widening the trail while power-held recovers the intended behaviour. The effect
-# is large, monotonic in the trail width, and consistent across both universes
-# (growth +27.0% -> +66.3% CAGR, broad +27.4% -> +44.5% at 0.30). Crucially it
-# does NOT increase risk: the rule only arms after a position is already well up,
-# so the worst trade is unchanged at -10% and max drawdown is flat (17.6% / 14.5%).
-# NOTE: those figures were measured with the +20% trigger. The move to +10% widens
-# the trail on a weaker class of position and is NOT covered by that backtest.
-# 0.30 is chosen over removing the stop entirely (+76.6% / +48.8%) to retain a
-# disaster backstop, since the upside rests on very few trades.
-POWER_HOLD_TRAIL_PCT      = float(os.getenv("POWER_HOLD_TRAIL_PCT", 0.30))
 
 # ── CANSLIM "M" — market direction gate ───────────────────────────────────────
 # Both benchmarks must close above their SMA-200 by MARKET_DIRECTION_BUFFER_PCT,
@@ -542,19 +367,6 @@ notifier = TelegramNotifier(
 )
 
 
-def _is_rth_now() -> bool:
-    """True if US regular trading hours (Mon–Fri, 09:30–16:00 ET) right now.
-
-    Cheap, dependency-free helper used only to colour the IBKR-disconnect alert:
-    a broker outage during RTH means exits are actively not firing, which is more
-    urgent than the same outage overnight. Does not account for market holidays —
-    a false positive on a holiday only makes the alert slightly louder, never
-    quieter, so it fails safe.
-    """
-    now = datetime.datetime.now(ZoneInfo("America/New_York"))
-    if now.weekday() >= 5:
-        return False
-    return (now.hour == 9 and now.minute >= 30) or (10 <= now.hour < 16)
 
 
 def _count_open_positions():
@@ -572,105 +384,8 @@ def _count_open_positions():
         return None
 
 
-# ── NYSE trading-day calendar ─────────────────────────────────────────────────
-def _nyse_holidays(year: int) -> set:
-    """Return the set of NYSE market holidays for a given year.
-
-    Computed algorithmically — no external package required.
-    Includes the observed (Mon/Fri substitute) date when a holiday falls on a
-    weekend, matching the NYSE official schedule.
-    """
-    from calendar import monthcalendar, MONDAY, THURSDAY
-
-    def _observed(d: datetime.date) -> datetime.date:
-        """Shift Sat → Fri, Sun → Mon for observed holiday."""
-        if d.weekday() == 5:  # Saturday
-            return d - datetime.timedelta(days=1)
-        if d.weekday() == 6:  # Sunday
-            return d + datetime.timedelta(days=1)
-        return d
-
-    def _nth_weekday(year: int, month: int, weekday: int, n: int) -> datetime.date:
-        """Return the nth occurrence of weekday (0=Mon..6=Sun) in month/year."""
-        weeks = monthcalendar(year, month)
-        hits = [w[weekday] for w in weeks if w[weekday] != 0]
-        return datetime.date(year, month, hits[n - 1])
-
-    def _last_weekday(year: int, month: int, weekday: int) -> datetime.date:
-        """Return the last occurrence of weekday in month/year."""
-        weeks = monthcalendar(year, month)
-        hits = [w[weekday] for w in weeks if w[weekday] != 0]
-        return datetime.date(year, month, hits[-1])
-
-    holidays = set()
-
-    # New Year's Day — Jan 1 (observed)
-    holidays.add(_observed(datetime.date(year, 1, 1)))
-    # MLK Day — 3rd Monday in January
-    holidays.add(_nth_weekday(year, 1, MONDAY, 3))
-    # Presidents' Day — 3rd Monday in February
-    holidays.add(_nth_weekday(year, 2, MONDAY, 3))
-    # Good Friday — 2 days before Easter Sunday
-    # Easter via Anonymous Gregorian algorithm
-    a, b, c = year % 19, year // 100, year % 100
-    d_, e = b // 4, b % 4
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d_ - g + 15) % 30
-    i, k = c // 4, c % 4
-    l_ = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l_) // 451
-    easter_month = (h + l_ - 7 * m + 114) // 31
-    easter_day   = ((h + l_ - 7 * m + 114) % 31) + 1
-    easter = datetime.date(year, easter_month, easter_day)
-    holidays.add(easter - datetime.timedelta(days=2))  # Good Friday
-    # Memorial Day — last Monday in May
-    holidays.add(_last_weekday(year, 5, MONDAY))
-    # Juneteenth — Jun 19 (observed), added from 2022
-    if year >= 2022:
-        holidays.add(_observed(datetime.date(year, 6, 19)))
-    # Independence Day — Jul 4 (observed)
-    holidays.add(_observed(datetime.date(year, 7, 4)))
-    # Labor Day — 1st Monday in September
-    holidays.add(_nth_weekday(year, 9, MONDAY, 1))
-    # Thanksgiving — 4th Thursday in November
-    holidays.add(_nth_weekday(year, 11, THURSDAY, 4))
-    # Christmas — Dec 25 (observed)
-    holidays.add(_observed(datetime.date(year, 12, 25)))
-
-    return holidays
 
 
-def trading_days_between(start: datetime.date, end: datetime.date) -> int:
-    """Count NYSE trading days in the half-open interval [start, end).
-
-    Weekends and NYSE market holidays are excluded.  This is used for plateau
-    detection so a 3-day weekend (e.g. Labor Day) doesn't artificially advance
-    the stall counter.
-
-    Args:
-        start: The earlier date (inclusive).
-        end:   The later date (exclusive — typically 'today').
-
-    Returns:
-        Number of trading days between start and end (>= 0).
-    """
-    if end <= start:
-        return 0
-    # Pre-compute holidays for all years in range
-    years = range(start.year, end.year + 1)
-    holidays: set = set()
-    for y in years:
-        holidays |= _nyse_holidays(y)
-
-    count = 0
-    current = start
-    one_day = datetime.timedelta(days=1)
-    while current < end:
-        if current.weekday() < 5 and current not in holidays:  # Mon–Fri, not a holiday
-            count += 1
-        current += one_day
-    return count
 
 
 # Global unhandled exception hook
@@ -970,23 +685,7 @@ def fetch_historical_closes_with_dates(ticker: str, window: int) -> list:
         print(f"❌ Error fetching historical prices for {ticker} from FMP: {e}")
     return []
 
-def calculate_sma(closes: list, window: int) -> float | None:
-    """Compute Simple Moving Average."""
-    if len(closes) < window:
-        return None
-    return sum(closes[-window:]) / window
 
-def calculate_ema(closes: list, window: int) -> float | None:
-    """Compute Exponential Moving Average."""
-    if len(closes) < window:
-        return None
-    alpha = 2 / (window + 1)
-    # Start with SMA of the first 'window' closes
-    ema = sum(closes[:window]) / window
-    # Apply recursive EMA formula to subsequent closes
-    for price in closes[window:]:
-        ema = (price * alpha) + (ema * (1 - alpha))
-    return ema
 
 def _matches_account(obj, target_account: str | None) -> bool:
     """Return True if obj belongs to target_account, or if obj has no account string set (e.g. test mocks)."""
@@ -1249,48 +948,6 @@ def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> 
     return group, confirmed_trail_pct
 
 
-def hard_stop_price(pos: dict, buy_price: float,
-                    highest_unrealized_pct: float,
-                    power_held: bool = False) -> float:
-    """
-    The absolute price a STATIC broker-side hard stop should rest at right now.
-
-    This is the disconnect-proof floor. Unlike the trailing stop — which freezes
-    at its last-placed % when the bot drops and then only trails from the HWM —
-    the hard stop is a static STP that does not move on its own, so a bot outage
-    cannot let a position bleed past it. It is placed in an OCA group with the
-    trailing stop (see place_protective_stops); whichever fills first cancels the
-    other.
-
-    Two levels, ratchet-UP only (never loosens, except under power-hold):
-
-      • Pre-proven / unarmed:  entry * (1 - MAX_LOSS_PCT). The 2026-09-07
-        --basetrail replay showed a 7% always-on base is free in normal
-        operation (the Prove-It floor fires first) while capping the worst case.
-      • Proven AND armed (peak >= +2%): the give-back floor, one backstop-slack
-        wider than the bot's own stop — entry * (1 + PROVE_IT_P2_FLOOR_PCT)
-        * (1 - PROVE_IT_BACKSTOP_SLACK_PCT) ~= entry * 0.98. A proven green
-        trade's floor becomes broker-GUARANTEED, not dependent on the bot being
-        online to re-pin the trail.
-
-    Because it is entry-anchored and static it can never chase the HWM up and
-    clip a winner — which is exactly why the replay let us tighten it for free
-    where a 5% *trailing* base could not.
-
-    Under power-hold the tight floor is suppressed back to the disaster level so
-    the widened trail (POWER_HOLD_TRAIL_PCT) can actually let the leader run —
-    the same single exception the trailing stop already makes.
-    """
-    disaster = buy_price * (1.0 - MAX_LOSS_PCT)
-    if power_held or buy_price <= 0:
-        return round(disaster, 2)
-    if (PROVE_IT_ENABLED
-            and prove_it_is_proven(pos, highest_unrealized_pct)
-            and highest_unrealized_pct >= PROVE_IT_P2_ARM_GAIN_PCT * 100.0):
-        floor = buy_price * (1.0 + PROVE_IT_P2_FLOOR_PCT)
-        armed_floor = floor * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
-        return round(max(disaster, armed_floor), 2)
-    return round(disaster, 2)
 
 
 def place_protective_stops(ib: IB, contract, shares: int, trail_pct: float,
@@ -1397,98 +1054,10 @@ def arm_exit(ib: IB, client: Client, ticker: str, shares: int, current_price: fl
         print(f"   ⚠️ {ticker}: failed to arm exit: {arm_err}")
 
 
-def _position_atr_pct(pos: dict) -> tuple[float, str]:
-    """
-    The ATR percent both OCA legs are sized from, with its provenance.
-
-    Note this is `entry_atr_pct` — the ATR recorded when the position was
-    opened, not today's. It is the only ATR the position row carries. For a
-    name whose volatility has since expanded this sizes both legs slightly
-    tight; the hard floor and expiry backstops bound that.
-    """
-    atr_pct = pos.get("entry_atr_pct")
-    if not atr_pct or float(atr_pct) <= 0:
-        return OCA_EXIT_DEFAULT_ATR_PCT, "default (no ATR on record)"
-    return float(atr_pct), "entry_atr_pct"
 
 
-def resolve_oca_trail_pct(pos: dict, stop_mode: str, stop_value) -> tuple[float, str]:
-    """
-    Resolves the OCA lower leg's trailing percent.
-
-    'ATR_AUTO' scales the trail to the stock's own volatility. This matters more
-    than it looks: a 1% trail on a name with a 7% average true range fires on
-    the first tick of ordinary noise, which cancels the upper leg and turns the
-    whole OCA into an expensive market order.
-    """
-    if stop_mode == "TRAIL_PCT" and stop_value:
-        return float(stop_value) / 100.0, f"fixed {float(stop_value):.2f}%"
-
-    atr_pct, source = _position_atr_pct(pos)
-
-    raw = (atr_pct / 100.0) * OCA_EXIT_ATR_FRACTION
-    trail = max(OCA_EXIT_MIN_TRAIL_PCT, min(OCA_EXIT_MAX_TRAIL_PCT, raw))
-    note = f"auto: {OCA_EXIT_ATR_FRACTION:.0%} of {atr_pct:.2f}% ATR ({source})"
-    if abs(trail - raw) > 1e-9:
-        note += f", clamped to {trail*100:.2f}%"
-    return trail, note
 
 
-def resolve_oca_limit_price(pos: dict, limit_mode: str, limit_value,
-                            ref_price: float, limit_cap=None) -> float | None:
-    """
-    Resolves the OCA upper leg's limit price from stored *intent*.
-
-    Requests are frequently queued outside market hours, so a literal price
-    captured at request time would be stale by the time it is placed. Only
-    'ABS' pins an absolute price; everything else is resolved here against the
-    live reference price or the position's entry.
-
-    'ATR_AUTO' is the default and the one to reach for on a force sell: it
-    targets the current price plus a fraction of the stock's ATR, so the leg is
-    reachable within about half a session no matter how far underwater the
-    position is. BREAKEVEN, by contrast, demands a bounce proportional to the
-    loss already taken.
-
-    limit_cap is the ceiling on the resolved target, and exists because
-    PCT_FROM_PRICE is momentum-following by construction: re-anchoring to the
-    open means the better the gap, the greedier the target becomes, so it never
-    takes the gift it was waiting for. Capping at (typically) breakeven turns
-    "sell 4.5% above wherever it opens" into "sell 4.5% above the open, but
-    never hold out for more than breakeven" — which is what an exit plan
-    actually wants. A capped target that lands below the market is fine: a SELL
-    limit cannot fill under its limit price, so it simply fills at the better
-    prevailing bid.
-    """
-    entry = float(pos.get("buy_price") or 0)
-    mode = (limit_mode or "ATR_AUTO").upper()
-
-    if mode == "NONE":
-        return None
-    elif mode == "ATR_AUTO":
-        # Anchored to the CURRENT price, not the entry, so the target stays
-        # reachable no matter how far underwater the position is. See the
-        # OCA_EXIT_UPPER_ATR_FRACTION comment for why this is the default.
-        if not ref_price:
-            return None
-        atr_pct, _ = _position_atr_pct(pos)
-        raw  = (atr_pct / 100.0) * OCA_EXIT_UPPER_ATR_FRACTION
-        frac = max(OCA_EXIT_MIN_UPPER_PCT, min(OCA_EXIT_MAX_UPPER_PCT, raw))
-        price = ref_price * (1 + frac)
-    elif mode == "ABS":
-        price = float(limit_value) if limit_value else None
-    elif mode == "BREAKEVEN":
-        price = entry or None
-    elif mode == "PCT_FROM_ENTRY":
-        price = entry * (1 + float(limit_value or 0) / 100.0) if entry else None
-    elif mode == "PCT_FROM_PRICE":
-        price = ref_price * (1 + float(limit_value or 0) / 100.0) if ref_price else None
-    else:
-        return None
-
-    if price and limit_cap and float(limit_cap) > 0:
-        price = min(price, float(limit_cap))
-    return price
 
 
 def place_oca_exit(ib: IB, contract, shares: int, limit_price: float | None,
@@ -1859,185 +1428,16 @@ def get_oca_managed_tickers(client: Client) -> set:
         return set()
 
 
-def prove_it_is_proven(pos: dict, highest_unrealized_pct: float = 0.0) -> bool:
-    """
-    Has this position ever CLOSED above the price we paid?
-
-    This single question selects the Prove-It phase, so it is the most
-    load-bearing predicate in the exit ladder. `closed_above_entry` is latched
-    True by the EOD block the first time a close prints above entry and is never
-    cleared afterwards — a breakout confirms only once.
-
-    Fails SAFE. A missing column (migration not yet applied) reads as None, which
-    must never be treated as "unproven": that would apply the tight Phase 1 band
-    to a working position. When the latch is unavailable, every available sign
-    that the position has traded above entry counts as proof, which is
-    deliberately more generous than the close-based latch it stands in for.
-    """
-    latch = pos.get("closed_above_entry")
-    if latch is not None:
-        return bool(latch)
-    try:
-        buy_price = float(pos.get("buy_price") or 0)
-    except (TypeError, ValueError):
-        return True
-    if buy_price <= 0:
-        return True
-    return (
-        highest_unrealized_pct > 0
-        or float(pos.get("hwm_price") or 0) > buy_price
-        or float(pos.get("intraday_high_today") or 0) > buy_price
-    )
 
 
-def prove_it_p1_threshold_pct(days_held: int) -> float:
-    """
-    Phase 1 band for a given day of the hold, as a positive fraction below entry.
-
-    Widens after the entry day rather than tightening. A breakout that fails on
-    day 0 is wrong immediately; from day 1 the failing and working populations
-    overlap, and holding the tight band through day 1 costs far more in clipped
-    winners than it saves in cut losers.
-    """
-    if days_held <= PROVE_IT_P1_DAY0_LAST_DAY:
-        return PROVE_IT_P1_DAY0_PCT
-    return PROVE_IT_P1_LATER_PCT
 
 
-def prove_it_stop_level(pos: dict, buy_price: float, days_held: int,
-                        highest_unrealized_pct: float) -> tuple[float | None, str]:
-    """
-    The price at which this position should be protected right now, and which
-    phase produced it.
-
-    Phase 1 (unproven) anchors to ENTRY: the breakout has not confirmed, so the
-    only meaningful reference is what we paid. Phase 2 (proven) anchors to the
-    give-back floor once the peak gain has armed it: the trade went green, so it
-    is never allowed to become a real loss. Above +5% the profit ladder in
-    TRAIL_PROFIT_TIERS takes over and is tighter than either.
-
-    Returns (None, phase) when no Prove-It level applies — an unarmed Phase 2
-    position is governed by the base trailing stop alone.
-    """
-    if not PROVE_IT_ENABLED or buy_price <= 0:
-        return None, "disabled"
-    if prove_it_is_proven(pos, highest_unrealized_pct):
-        if highest_unrealized_pct < PROVE_IT_P2_ARM_GAIN_PCT * 100.0:
-            return None, "phase2-unarmed"
-        return buy_price * (1.0 + PROVE_IT_P2_FLOOR_PCT), "phase2"
-    return buy_price * (1.0 - prove_it_p1_threshold_pct(days_held)), "phase1"
 
 
-def prove_it_trail_pct(level: float | None, current_price: float,
-                       phase: str) -> float | None:
-    """
-    Trailing % that parks the resting IBKR stop on `level`.
-
-    IBKR's trailingPercent is measured from the high water mark, and the anchor
-    RESETS whenever the order is cancelled and re-placed — which is exactly what
-    the tightening block does. So the percentage must be solved against the
-    CURRENT price, not a historical peak, or the stop lands somewhere nobody
-    intended.
-
-    In Phase 1 the resting order is a backstop behind the bot's armed exit, so it
-    sits PROVE_IT_BACKSTOP_SLACK_PCT wider and must never fire first. In Phase 2
-    the resting order IS the mechanism, so it sits exactly on the floor.
-    """
-    if level is None or current_price <= 0:
-        return None
-    if phase == "phase1":
-        level = level * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
-    if level >= current_price:
-        # Already at or through the level. Nothing sane to place; the bot-side
-        # exit is what acts here.
-        return None
-    return round(1.0 - (level / current_price), 4)
 
 
-def _compute_dynamic_trail_pct(
-    unrealized_pct: float,
-    calendar_days: int,
-    current_pct: float,
-    prove_it_pct: float | None = None,
-) -> float | None:
-    """
-    Returns a tighter trailing stop % if the position has crossed a new tier,
-    otherwise returns None (no change needed).
-
-    Two independent levers — the tighter of the two always wins:
-      Lever 1 (profit):   unrealized gain % -> TRAIL_PROFIT_TIERS
-      Lever 2 (Prove-It): the trail % that pins the resting IBKR stop at the
-                          current Prove-It level (see prove_it_trail_pct())
-
-    `calendar_days` is retained for signature stability and for callers that
-    still report it; the time lever it fed (TRAIL_TIME_TIERS) is retired — see
-    docs/retired_code.md.
-
-    One-way only: result is always strictly less than current_pct.
-    Never loosens a stop (a position at 5% trail stays at 5% even if it
-    briefly dips below a profit tier threshold).
-
-    That one-way rule is what turns the Prove-It lever into a FIXED floor rather
-    than a trail. As price rises, the % needed to keep the stop at the floor
-    grows, is looser than what is already placed, and is therefore rejected —
-    so the stop stays put. As price falls back toward the floor the required %
-    shrinks, is tighter, and is applied — pinning the stop exactly on the floor.
-    """
-    # Profit lever: find highest threshold the gain has crossed
-    profit_trail: float | None = None
-    for threshold, pct in TRAIL_PROFIT_TIERS:
-        if unrealized_pct >= threshold:
-            profit_trail = pct
-            break
-
-    candidates = [p for p in (profit_trail, prove_it_pct) if p is not None]
-    if not candidates:
-        return None
-
-    new_pct = min(candidates)   # tighter of the two levers
-
-    # Compare at the precision IBKR actually places the order. place_trailing_stop
-    # submits trailingPercent = round(pct * 100, 2), so any decrease smaller than
-    # 0.01% yields a byte-identical resting order. Comparing the raw floats instead
-    # let the Prove-It floor lever — which recomputes a slightly different % every
-    # cycle as price ticks — clear `new_pct < current_pct` by a sub-basis-point
-    # margin on every pass, re-placing the same stop and firing a "4.9% → 4.9%"
-    # notification each time (the DHT churn/spam observed 2026-09-07). Only act
-    # when the placed value would genuinely change.
-    if round(new_pct * 100, 2) < round(current_pct * 100, 2):
-        return new_pct
-    return None
 
 
-def is_power_hold_active(pos: dict, calendar_days: int) -> bool:
-    """
-    O'Neil 8-week hold rule.
-
-    True while a position is inside its protected window: it gained
-    POWER_HOLD_GAIN_PCT or more within POWER_HOLD_TRIGGER_DAYS of entry, and is
-    still within POWER_HOLD_DURATION_DAYS of entry.
-
-    Callers must use this to suppress DISCRETIONARY exits, and to widen the
-    trailing stop to POWER_HOLD_TRAIL_PCT. The trailing stop is never suspended,
-    so a protected position can still be stopped out if it genuinely breaks down.
-
-    NOTE: the `power_hold` column must be migrated (migrations/20260804_add_power_hold.sql).
-    Without it the flag cannot persist, so the fallback below only holds while
-    calendar_days <= POWER_HOLD_TRIGGER_DAYS — the rule would silently expire at
-    day 21 instead of day 56, losing most of its intended effect.
-    """
-    if not POWER_HOLD_ENABLED:
-        return False
-    if calendar_days > POWER_HOLD_DURATION_DAYS:
-        return False
-
-    # The qualifying run must have happened inside the trigger window. Once the
-    # flag is set we keep honouring it, so a later pullback cannot cancel it.
-    if pos.get("power_hold"):
-        return True
-
-    peak_gain = float(pos.get("highest_unrealized_pct") or 0.0)
-    return peak_gain >= POWER_HOLD_GAIN_PCT and calendar_days <= POWER_HOLD_TRIGGER_DAYS
 
 
 def maybe_arm_power_hold(client: Client, pos: dict, calendar_days: int) -> bool:
@@ -2100,28 +1500,6 @@ SELL_STATE_LABELS = {
 SELL_STATE_SUPPRESS_NOTIFY = {"EXITING", "POWER_HOLD"}
 
 
-def sell_state_code(pos: dict, prove_it_phase: str, power_held: bool,
-                    peak_pct: float) -> str | None:
-    """The single governing exit regime for a position this cycle.
-
-    Precedence follows the monitor loop: an armed exit governs everything, then
-    the power-hold widening, then the profit-lock ladder (peak >= the first
-    TRAIL_PROFIT_TIERS threshold), then the Prove-It phase. Returns None when no
-    regime applies (Prove-It disabled), so the caller tracks nothing.
-    """
-    if pos.get("exit_armed"):
-        return "EXITING"
-    if power_held:
-        return "POWER_HOLD"
-    if TRAIL_PROFIT_TIERS and peak_pct >= TRAIL_PROFIT_TIERS[0][0]:
-        return "PROFIT_LOCKED"
-    if prove_it_phase == "phase2":
-        return "PROVEN_FLOOR"
-    if prove_it_phase == "phase2-unarmed":
-        return "PROVEN"
-    if prove_it_phase == "phase1":
-        return "UNPROVEN"
-    return None
 
 
 def maybe_notify_sell_state(client: Client, pos: dict, ticker: str,
@@ -4156,247 +3534,10 @@ def fetch_held_position_sentiment(ticker: str) -> int:
         return 50
 
 
-def compute_rsi(closes: list, period: int = 14) -> list:
-    """Wilder's smoothed RSI from a list of closing prices.
-
-    Returns a list of RSI values the same length as closes (first `period`
-    values are None — insufficient history). Uses Wilder's exponential
-    smoothing (alpha = 1/period), consistent with TradingView / standard
-    charting platforms.
-
-    Pure function — no side effects, no I/O.
-    """
-    if len(closes) < period + 1:
-        return [None] * len(closes)
-
-    rsi = [None] * period  # first `period` values have no RSI
-
-    # ── Seed: simple average of first `period` gains/losses ──────────────────
-    gains, losses = [], []
-    for i in range(1, period + 1):
-        delta = closes[i] - closes[i - 1]
-        gains.append(max(delta, 0.0))
-        losses.append(max(-delta, 0.0))
-
-    avg_gain = sum(gains) / period
-    avg_loss = sum(losses) / period
-
-    def _rsi_from_avgs(ag, al):
-        if al == 0:
-            return 100.0
-        return round(100.0 - (100.0 / (1.0 + ag / al)), 2)
-
-    rsi.append(_rsi_from_avgs(avg_gain, avg_loss))
-
-    # ── Wilder's smoothing for remaining bars ─────────────────────────────────
-    alpha = 1.0 / period
-    for i in range(period + 1, len(closes)):
-        delta    = closes[i] - closes[i - 1]
-        g        = max(delta, 0.0)
-        l        = max(-delta, 0.0)
-        avg_gain = avg_gain * (1 - alpha) + g * alpha
-        avg_loss = avg_loss * (1 - alpha) + l * alpha
-        rsi.append(_rsi_from_avgs(avg_gain, avg_loss))
-
-    return rsi
 
 
-def detect_candlestick_reversals(ohlcv: list, hwm_price: float) -> int:
-    """Detect bearish reversal candles on the last 3 bars near the plateau zone.
-
-    Returns the total Mₜ penalty to subtract (0, -8, -15, or -20).
-
-    Location filter: only applies when current close >= hwm_price * 0.97.
-    Reversal candles during deep pullbacks (> 3% from HWM) are noise.
-
-    Shooting Star / Pin Bar (penalty -8):
-      - Upper shadow > 2× lower shadow
-      - Close < open  (bearish body)
-      - Upper shadow > 60% of full candle range
-
-    Bearish Engulfing (penalty -15):
-      - Today's open > yesterday's close   (gap up / opens above)
-      - Today's close < yesterday's open   (body engulfs prior body)
-      - Today's volume > 20-day avg volume (institutional confirmation)
-
-    Both detected: -20 pts (capped).
-    """
-    if len(ohlcv) < 22:      # need 20-day vol baseline + 2 candles
-        return 0
-
-    # Location filter — only care when near the HWM
-    current_close = float(ohlcv[-1].get("close", 0))
-    if hwm_price <= 0 or current_close < hwm_price * 0.97:
-        return 0
-
-    vols  = [float(r.get("volume", 0)) for r in ohlcv]
-    avg20 = sum(vols[-21:-1]) / 20 if sum(vols[-21:-1]) > 0 else 0
-
-    shooting_star = False
-    engulfing     = False
-
-    # ── Shooting Star / Pin Bar: check last 3 bars ────────────────────────────
-    for i in range(-3, 0):
-        bar = ohlcv[i]
-        o = float(bar.get("open",  0))
-        h = float(bar.get("high",  0))
-        l = float(bar.get("low",   0))
-        c = float(bar.get("close", 0))
-        full_range   = h - l
-        if full_range <= 0:
-            continue
-        upper_shadow = h - max(o, c)
-        lower_shadow = min(o, c) - l
-        if (c < o
-                and upper_shadow > 2 * max(lower_shadow, 0.0001)
-                and upper_shadow / full_range > 0.60):
-            shooting_star = True
-            break
-
-    # ── Bearish Engulfing: last 2 bars ────────────────────────────────────────
-    if len(ohlcv) >= 2:
-        prev   = ohlcv[-2]
-        curr   = ohlcv[-1]
-        prev_o = float(prev.get("open",  0))
-        prev_c = float(prev.get("close", 0))
-        curr_o = float(curr.get("open",  0))
-        curr_c = float(curr.get("close", 0))
-        curr_v = float(curr.get("volume", 0))
-        if (prev_c > prev_o          # prior bar bullish
-                and curr_o > prev_c  # today gapped up
-                and curr_c < prev_o  # today engulfs prior body
-                and avg20 > 0
-                and curr_v > avg20): # volume confirmation
-            engulfing = True
-
-    if shooting_star and engulfing:
-        return -20
-    if engulfing:
-        return -15
-    if shooting_star:
-        return -8
-    return 0
 
 
-def compute_momentum_health_score(
-    pos: dict,
-    ohlcv: list,
-    live_sentiment: int = 50,
-    days_held: int = 0,
-) -> tuple[float, dict]:
-    """Live Momentum Health Score Mₜ (0–100) for a held position.
-
-    Returns (score, debug_info) where debug_info has keys:
-      rs_component, vol_component, sentiment_component,
-      rsi_penalty, candle_penalty, raw_score, final_score.
-
-    Formula:
-      Mₜ_raw = 0.40 * RS + 0.35 * Vol + 0.25 * Sentiment
-      Mₜ     = max(0, Mₜ_raw - RSI_divergence_penalty - candle_reversal_penalty)
-
-    Day 7+ only: RSI divergence and candlestick penalties activate after
-    days_held >= 7. Before that they are 0 (breakout consolidation phase).
-
-    RS component (0-100):
-        (live_rs / entry_rs) * 100, capped at 100. Default 50 if no baseline.
-
-    Volume component (0-100):
-        V_ratio = today_vol / 20-day_avg_vol
-        ≥ 1.5x → 100 | 1.0-1.5x → 50-100 | 0.5-1.0x → 0-50 | < 0.5x → 0
-
-    Sentiment component (0-100):
-        live_sentiment from GPT-4o-mini / FMP stock_news.
-
-    RSI Divergence penalty (Day 7+, applied post-blend):
-        Price made higher high vs 5 days ago, but RSI made lower high.
-        Gap < 5 RSI pts → -10 | 5-15 pts → -18 | > 15 pts → -25
-
-    Candlestick Reversal penalty (Day 7+, applied post-blend):
-        Shooting star/pin bar → -8 | Bearish engulfing (vol) → -15 | Both → -20
-        Only when price is within 3% of HWM (near plateau top).
-    """
-    # ── RS component ─────────────────────────────────────────────────────────
-    entry_rs = pos.get("entry_rs_score")
-    live_rs  = pos.get("live_rs_score")
-    if entry_rs and entry_rs > 0 and live_rs is not None:
-        rs_ratio     = live_rs / entry_rs
-        rs_component = min(100.0, rs_ratio * 100.0)
-    else:
-        rs_component = 50.0
-
-    # ── Volume component ─────────────────────────────────────────────────────
-    vol_component = 50.0
-    if len(ohlcv) >= 21:
-        vols      = [float(r.get("volume", 0)) for r in ohlcv]
-        avg20     = sum(vols[-21:-1]) / 20
-        today_vol = vols[-1]
-        if avg20 > 0:
-            v_ratio = today_vol / avg20
-            if v_ratio >= 1.5:
-                vol_component = 100.0
-            elif v_ratio >= 1.0:
-                vol_component = 50.0 + (v_ratio - 1.0) / 0.5 * 50.0
-            elif v_ratio >= 0.5:
-                vol_component = (v_ratio - 0.5) / 0.5 * 50.0
-            else:
-                vol_component = 0.0
-
-    # ── Sentiment component ───────────────────────────────────────────────────
-    sentiment_component = float(max(1, min(100, live_sentiment)))
-
-    # ── Weighted blend ───────────────────────────────────────────────────────
-    raw_score = (
-        MOMENTUM_HEALTH_RS_WEIGHT   * rs_component +
-        MOMENTUM_HEALTH_VOL_WEIGHT  * vol_component +
-        MOMENTUM_HEALTH_SENT_WEIGHT * sentiment_component
-    )
-
-    # ── Day 7+ penalty signals ───────────────────────────────────────────────
-    rsi_penalty    = 0
-    candle_penalty = 0
-
-    if days_held >= 7 and len(ohlcv) >= 20:
-        closes = [float(r.get("close", 0)) for r in ohlcv]
-        rsi_vals = compute_rsi(closes, period=14)
-
-        # RSI divergence: price up, RSI down (compare today vs 5 days ago)
-        lookback = 5
-        if (len(rsi_vals) >= lookback + 1
-                and rsi_vals[-1] is not None
-                and rsi_vals[-1 - lookback] is not None):
-            price_now  = closes[-1]
-            price_then = closes[-1 - lookback]
-            rsi_now    = rsi_vals[-1]
-            rsi_then   = rsi_vals[-1 - lookback]
-
-            # Bearish divergence: price higher but RSI lower
-            if price_now > price_then and rsi_now < rsi_then:
-                div_gap = rsi_then - rsi_now  # positive number
-                if div_gap > 15:
-                    rsi_penalty = 25
-                elif div_gap >= 5:
-                    rsi_penalty = 18
-                else:
-                    rsi_penalty = 10
-
-        # Candlestick reversal near HWM plateau
-        hwm_price = float(pos.get("hwm_price") or pos.get("buy_price") or 0)
-        candle_penalty_raw = detect_candlestick_reversals(ohlcv, hwm_price)
-        candle_penalty = abs(candle_penalty_raw)  # stored as positive for subtraction
-
-    penalty_total = rsi_penalty + candle_penalty
-    final_score   = max(0.0, raw_score - penalty_total)
-
-    debug = {
-        "rs_component":        round(rs_component, 1),
-        "vol_component":       round(vol_component, 1),
-        "sentiment_component": round(sentiment_component, 1),
-        "rsi_penalty":         -rsi_penalty,
-        "candle_penalty":      -candle_penalty,
-        "raw_score":           round(raw_score, 1),
-        "final_score":         round(final_score, 1),
-    }
-    return round(final_score, 1), debug
 
 
 def _get_market_regime() -> str:
@@ -5198,24 +4339,6 @@ def monitor_portfolio_intraday(ib: IB):
                         break
 
 
-def _infer_exit_type(reason: str) -> str:
-    """Classify an exit reason into the breakout_learnings exit_type bucket."""
-    r_lower = str(reason or "").lower()
-    if "rank & replace" in r_lower or "rank and replace" in r_lower:
-        return "rank_replace"
-    if "time-stop" in r_lower or ("mandatory" in r_lower and "time" in r_lower):
-        return "time_stop"
-    if "break-even" in r_lower or "hwm break" in r_lower:
-        return "break_even"
-    if "ema" in r_lower or "moving average" in r_lower:
-        return "ma_exit"
-    if "hard stop" in r_lower:
-        return "hard_stop"
-    if "stop" in r_lower:
-        return "stop_loss"
-    if "rotation" in r_lower or "param" in r_lower or "drift" in r_lower:
-        return "rotation"
-    return "manual"
 
 
 def _build_failed_params_snapshot(pos_row: dict | None, percent_return: float) -> dict:

@@ -2,9 +2,16 @@
 
 Every exit rule in the live agent, in evaluation order.
 
-**Source:** `execution_agent.py` — `monitor_portfolio_intraday()` (15-minute cycle),
-`execute_sell()` (market liquidation), `arm_exit()` (armed trailing exit),
+**Source:** the decision logic — where a stop sits and whether a rule may fire — lives
+in `exit_rules.py` (Prove-It Stop, power hold, trail ladder, OCA sizing, hard stop,
+sell-state codes) together with the tunable constants behind it. Acting on those
+decisions stays in `execution_agent.py`: `monitor_portfolio_intraday()` (15-minute
+cycle), `execute_sell()` (market liquidation), `arm_exit()` (armed trailing exit),
 `enqueue_smart_exit()` (hands the exit to the Smart OCA queue).
+
+`exit_rules.py` is pure — it reads no database and holds no brokerage connection — so
+every threshold here can be read and replayed without connecting to IBKR.
+See `decisions/2026-09-18_execution-agent-split.md`.
 
 ## Price source: IBKR first, FMP fallback
 
@@ -708,8 +715,9 @@ tracking is lost.
 
 ## Sell-state transition notifications
 
-**Source:** `sell_state_code()` + `maybe_notify_sell_state()` in `execution_agent.py`,
-called once per position at the end of `monitor_portfolio_intraday()`.
+**Source:** `sell_state_code()` in `exit_rules.py` + `maybe_notify_sell_state()` in
+`execution_agent.py`, called once per position at the end of
+`monitor_portfolio_intraday()`.
 
 Every cycle a position sits under exactly one **governing exit regime**. When it
 changes, the agent sends one concise Telegram and latches the new regime in
@@ -869,7 +877,7 @@ Two behaviours worth knowing:
   buys the trigger rather than rotating.
 
 > **Mirror warning.** `frontend/src/lib/positionRules.js` holds a **copy** of the
-> thresholds in `execution_agent.py`. Changing a threshold in the agent without changing
+> thresholds in `exit_rules.py`. Changing a threshold in the agent without changing
 > it there makes the dashboard lie. Every constant carries a comment naming its source.
 > Rationale and the rejected alternatives are in
 > `decisions/2026-08-14_position-lifecycle-visibility.md`.

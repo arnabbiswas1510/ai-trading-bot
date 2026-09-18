@@ -13,12 +13,59 @@ Key design decisions:
 import datetime
 import sys
 import os
+import contextlib
 import pytest
 import pandas as pd
 from unittest.mock import MagicMock, patch, call
 
 # Make the project root importable from tests/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# ...and this directory, so test modules can `from conftest import patch_everywhere`.
+# pytest loads conftest.py by path, which does not put it on sys.path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+# ── Cross-module constant/function patching ───────────────────────────────────
+
+@contextlib.contextmanager
+def patch_everywhere(name: str, value):
+    """Patch `name` on EVERY loaded project module that binds it.
+
+    Python imports constants BY VALUE: `from exit_rules import PROVE_IT_ENABLED`
+    gives the importing module its own binding. So patching a single module only
+    reaches the readers that happen to live in that module -- which makes the
+    test silently dependent on which FILE a function currently sits in.
+
+    That dependency bit during the 2026-09-18 split of execution_agent.py. Six
+    tests patched `execution_agent.<CONST>`; two broke instantly because their
+    reader moved to exit_rules.py, and the other four kept passing only because
+    their reader happened to stay behind. Re-pointing those four at exit_rules
+    would have broken them the opposite way. There is no single correct module to
+    patch -- so patch them all.
+
+    Use this for any constant or function read across module boundaries. It stays
+    correct when code moves, which a module-specific patch cannot.
+    """
+    targets = []
+    for mod in list(sys.modules.values()):
+        f = getattr(mod, "__file__", None)
+        if not f or not f.startswith(_PROJECT_ROOT) or f"{os.sep}tests{os.sep}" in f:
+            continue
+        if name in getattr(mod, "__dict__", {}):
+            targets.append((mod, mod.__dict__[name]))
+    if not targets:
+        raise AssertionError(
+            f"patch_everywhere({name!r}) matched no module -- the name was "
+            f"renamed or deleted, so this test is asserting nothing."
+        )
+    try:
+        for mod, _ in targets:
+            setattr(mod, name, value)
+        yield targets
+    finally:
+        for mod, original in targets:
+            setattr(mod, name, original)
 
 
 # ── PortfolioItem mock ────────────────────────────────────────────────────────

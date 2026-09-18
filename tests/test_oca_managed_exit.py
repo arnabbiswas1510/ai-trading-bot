@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import execution_agent
+from conftest import patch_everywhere
 
 
 NY = ZoneInfo("America/New_York")
@@ -223,7 +224,7 @@ class TestManagedTickers:
         assert execution_agent.get_oca_managed_tickers(sb) == set()
 
     def test_disabled_flag_never_suspends(self):
-        with patch.object(execution_agent, "OCA_EXIT_ENABLED", False):
+        with patch_everywhere("OCA_EXIT_ENABLED", False):
             assert execution_agent.get_oca_managed_tickers(
                 self._sb([{"ticker": "DELL", "status": "PLACED"}])) == set()
 
@@ -545,7 +546,7 @@ class TestQueueResilience:
 
     def test_disabled_flag_short_circuits(self):
         sb = MagicMock()
-        with patch.object(execution_agent, "OCA_EXIT_ENABLED", False), \
+        with patch_everywhere("OCA_EXIT_ENABLED", False), \
              patch("execution_agent.get_supabase_client", return_value=sb):
             execution_agent.process_exit_requests(MagicMock())
         sb.table.assert_not_called()

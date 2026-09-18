@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import execution_agent
 from execution_agent import is_power_hold_active, maybe_arm_power_hold
+from conftest import patch_everywhere
 
 
 def _pos(peak_pct=0.0, power_hold=False, ticker="TEST"):
@@ -83,12 +84,12 @@ class TestStickiness:
 class TestDisableSwitch:
 
     def test_disabled_never_activates(self):
-        with patch.object(execution_agent, "POWER_HOLD_ENABLED", False):
+        with patch_everywhere("POWER_HOLD_ENABLED", False):
             assert is_power_hold_active(_pos(peak_pct=50.0), calendar_days=5) is False
 
     def test_disabled_never_arms(self):
         client = _client()
-        with patch.object(execution_agent, "POWER_HOLD_ENABLED", False):
+        with patch_everywhere("POWER_HOLD_ENABLED", False):
             assert maybe_arm_power_hold(client, _pos(peak_pct=50.0), 5) is False
         client.table.assert_not_called()
 
