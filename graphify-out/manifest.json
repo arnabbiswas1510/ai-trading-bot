@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1789753956.1823893,
-    "ast_hash": "b81564988e8d8fb9d8b7dd6b04fcd460",
+    "mtime": 1789757504.1468942,
+    "ast_hash": "f6eafa299ededadbdbaad7b70458cd6b",
     "semantic_hash": ""
   },
   "README.md": {
@@ -325,8 +325,8 @@
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
-    "mtime": 1789684953.5538063,
-    "ast_hash": "d3c01d15103833d897cd06f1027b5ea0",
+    "mtime": 1789760192.415802,
+    "ast_hash": "6c4f938925df832e7575b3dc00200ce5",
     "semantic_hash": ""
   },
   "frontend/index.html": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "research/exit_rule_replay.py": {
-    "mtime": 1789756466.770866,
-    "ast_hash": "13735c7bd1f25be012b102fbdf163470",
+    "mtime": 1789758874.0433598,
+    "ast_hash": "3204d94b6045d96a79a5e194d705a3a8",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_slot-derived-early-dollar-stop.md": {
@@ -980,13 +980,13 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1789756624.9924731,
-    "ast_hash": "df6bb4bfe44600746b2c6ffbdf2886d7",
+    "mtime": 1789760162.4395,
+    "ast_hash": "78346f0580465dc1de89a236b1aa6ec9",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
-    "mtime": 1789744297.9793744,
-    "ast_hash": "407abbc9443509ac72bcd115d303a8f4",
+    "mtime": 1789757425.7780821,
+    "ast_hash": "f6984d8236c1a753d5974804f74be92f",
     "semantic_hash": ""
   },
   ".github/workflows/decision_review.yml": {
@@ -1335,8 +1335,8 @@
     "semantic_hash": ""
   },
   "tests/test_decision_review.py": {
-    "mtime": 1789744354.9086738,
-    "ast_hash": "37381b921623572c6a5d223fb33777d6",
+    "mtime": 1789757411.2688432,
+    "ast_hash": "8810996aaf8a0905eb536e14c6b7f162",
     "semantic_hash": ""
   },
   "decisions/2026-09-18_register-preconditions.md": {
@@ -1407,6 +1407,21 @@
   "decisions/2026-09-18_scaleout-runon-bias-and-concentration.md": {
     "mtime": 1789756610.3162029,
     "ast_hash": "d2453d187597d118deb47ba23c9e99e3",
+    "semantic_hash": ""
+  },
+  "research/entry_quality_review.py": {
+    "mtime": 1789760067.663942,
+    "ast_hash": "4c59ba842b41f05227cbc1899baba87f",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_entry-quality-open-question.md": {
+    "mtime": 1789760175.9945161,
+    "ast_hash": "adeccc1ff4a1922c13b038596582f90a",
+    "semantic_hash": ""
+  },
+  "research/backfill_rs_percentile.py": {
+    "mtime": 1789759963.1601403,
+    "ast_hash": "1e51ab3947d04736e7a375cafbb8d2d4",
     "semantic_hash": ""
   }
 }

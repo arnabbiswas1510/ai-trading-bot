@@ -5,6 +5,55 @@
 - Do not collapse, hide, or strip your analytical steps.
 - Format your raw thinking process inside standard markdown code blocks or `<think>` tags so they remain permanently visible within the IntelliJ chat screen.
 
+# 🗣️ MANDATORY: Speak Plainly — Brevity Never Outranks Being Understood
+
+> **Terseness that leaves me guessing is a failure, not a style. If a sentence
+> would need a follow-up question to be understood, it was too short.**
+
+This rule exists because of a specific, repeated failure: a correction was
+delivered as *"That number was against the wrong baseline. It isn't."* — which
+is accurate, fits in one line, and is impossible to act on. It does not say what
+the number was, what the wrong baseline was, why it was wrong, what the right
+one is, or what changed as a result.
+
+### What must always be spelled out in full
+
+| Situation | What the message MUST contain |
+|---|---|
+| **Retracting or correcting something I was told earlier** | The original claim *quoted*, what specifically was wrong with it, the corrected claim, and whether any decision was made on the bad version |
+| **A number changing** | Old value, new value, and the reason it moved |
+| **Recommending against something** | The thing considered, the evidence, and the threshold it failed |
+| **Naming a rule, constant or file** | What it actually does, not just its name |
+| **Jargon or shorthand** (`baseline`, `concentration`, `AUC`, `ex-top-3`, `carried by one trade`) | A plain-English gloss the first time it appears in a conversation |
+
+### The rules
+
+1. **Never assume I remember a number from earlier.** Restate it. The cost of
+   repeating a figure is one line; the cost of me misreading a correction is a
+   wrong decision about real money.
+2. **A correction is never a one-liner.** State what was said, why it was wrong,
+   and what is true now — in that order. Corrections are the highest-stakes
+   messages sent and must be the most explicit.
+3. **Explain the mechanism, not just the verdict.** "This isn't shippable" is
+   useless. "It gains $4,308, but $2,527 of that is ECO alone, and removing the
+   top three trades makes it *lose* $1,014 — so it rests on outliers, not on a
+   repeatable edge" is actionable.
+4. **Define a term the first time it is used in a conversation**, even if it was
+   defined in an earlier session. Sessions are not continuous for me.
+5. **Prefer a clear paragraph to a clever sentence.** Length is cheap here;
+   ambiguity is not.
+6. **If asked "what do you mean?", the previous message was too terse.** Treat
+   that as a defect in the explanation, not a gap in the reader. Rewrite it in
+   full, and do not simply rephrase the same compressed statement.
+
+### What this does NOT license
+
+Padding, restating the whole plan, narrating routine tool calls, or hedging
+everything into mush. Be *complete*, not *verbose*: every added sentence must
+carry information I did not already have. The target is a technical colleague
+who was not in the room for the previous analysis — not a summary, and not a
+transcript.
+
 ---
 
 ## 🖥️ New Machine Setup (REQUIRED BEFORE ANY WORK)
@@ -968,10 +1017,25 @@ register removes that failure mode.
 1. **`decisions/provisional_decisions.json`** — the register. Each entry records
    the decision, its rationale and *baseline numbers at decision time*, the ADR
    link, the exact `review_command` that reproduces the measurement, the
-   `review_questions` the review must answer, a `kind`, a `revisit` **trigger**
-   (`min_closed_trades` and/or `not_before`) and optional `preconditions`.
-   `history` is an append-only log of past reviews. The file's own
-   `_README`/`_schema` document every field.
+   `review_questions` the review must answer, a `kind` (`parameter`,
+   `work-item` or `investigation`), a `revisit` **trigger**
+   (`min_closed_trades`, `min_matured_triggers` and/or `not_before`) and
+   optional `preconditions`. `history` is an append-only log of past reviews.
+   The file's own `_README`/`_schema` document every field.
+
+   > **Gate on the population that actually limits the measurement.** Not every
+   > question is answered by closed trades. `entry-quality-right-tail` is
+   > answered by *trigger* rows with matured forward outcomes, so it uses
+   > `min_matured_triggers`; gating it on closed trades would have fired the
+   > review while the evidence was still missing. If `is_due()` meets a gate it
+   > has no count for, it **raises** rather than assuming it passed — a gate
+   > that cannot be evaluated must never be silently treated as satisfied.
+
+   > **Row count is not sample size.** State the *effective* sample in
+   > `baseline_at_decision`, not just `n`. On 2026-09-18 all 50 matured trigger
+   > rows came from **four** scan dates: rows on one day share a tape, so a
+   > feature can look predictive purely because its day ran. Where clustering is
+   > possible, add a second gate on distinct dates.
 2. **`research/decision_review.py`** — reads the register, queries the live
    closed-trade count **and live portfolio state** from Supabase, and reports
    which active entries are DUE and which of those are actually **actionable**.

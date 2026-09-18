@@ -105,6 +105,49 @@ def closed_trade_count(verify_tls: bool) -> int:
     return len(r.json())
 
 
+def matured_trigger_count(verify_tls: bool) -> int:
+    """Trigger rows whose 20-day forward outcome has actually matured.
+
+    Not every provisional decision is waiting on CLOSED TRADES. A question about
+    entry quality -- "does any feature observable at trigger time predict which
+    breakouts run?" -- is answered on the TRIGGER population, which is several
+    times larger than the traded one and includes the triggers the bot passed
+    over. Those are the most informative rows in the table: they are the
+    counterfactual.
+
+    The gating quantity is therefore rows with a non-null `max_gain_20d_pct`. A
+    trigger fired three days ago has features but no outcome yet and must not be
+    counted, or the review fires on a sample that is mostly unlabelled.
+    """
+    if not verify_tls:
+        urllib3.disable_warnings()
+    url = _env("SUPABASE_URL").rstrip("/")
+    key = _env("SUPABASE_KEY")
+    r = requests.get(
+        f"{url}/rest/v1/trigger_history",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Prefer": "count=exact",
+            "Range": "0-0",
+        },
+        # trigger_history has no surrogate `id` column; select a column that
+        # certainly exists. The count comes from the Content-Range header, so
+        # which column is selected does not affect the result.
+        params={"select": "ticker", "max_gain_20d_pct": "not.is.null"},
+        timeout=30,
+        verify=verify_tls,
+    )
+    if r.status_code not in (200, 206):
+        sys.exit(f"error: Supabase returned HTTP {r.status_code}: {r.text[:200]}")
+    content_range = r.headers.get("Content-Range", "")
+    if "/" in content_range:
+        total = content_range.rsplit("/", 1)[1]
+        if total.isdigit():
+            return int(total)
+    return len(r.json())
+
+
 def portfolio_state(verify_tls: bool) -> dict:
     """Live bot state that preconditions are evaluated against.
 
@@ -183,8 +226,15 @@ def check_preconditions(decision: dict, state: dict) -> tuple[bool, list[str]]:
     return ok, reasons
 
 
-def is_due(decision: dict, n_trades: int, today: dt.date) -> tuple[bool, list[str]]:
-    """Has the TRIGGER fired? Says nothing about whether acting is safe today."""
+def is_due(decision: dict, n_trades: int, today: dt.date,
+           counts: dict | None = None) -> tuple[bool, list[str]]:
+    """Has the TRIGGER fired? Says nothing about whether acting is safe today.
+
+    `counts` carries sample sizes other than the closed-trade count, for
+    decisions that are waiting on a different population (see
+    `min_matured_triggers`). It is optional only so that existing callers and
+    tests that use none of those gates keep working unchanged.
+    """
     if decision.get("status") != "active":
         return False, ["status is not 'active'"]
     revisit = decision.get("revisit") or {}
@@ -208,7 +258,26 @@ def is_due(decision: dict, n_trades: int, today: dt.date) -> tuple[bool, list[st
             reasons.append(f"date {today} < {not_before}")
             due = False
 
-    if min_trades is None and not not_before:
+    # Sample-size gate for decisions measured on the TRIGGER population rather
+    # than on closed trades.
+    min_matured = revisit.get("min_matured_triggers")
+    if min_matured is not None:
+        have = (counts or {}).get("matured_triggers")
+        if have is None:
+            # Never silently pass or silently defer a gate that could not be
+            # evaluated -- that is how a review gets skipped forever. The
+            # register fails LOUD by design.
+            raise ValueError(
+                f"decision '{decision.get('id')}' sets revisit.min_matured_triggers "
+                f"but no 'matured_triggers' count was supplied to is_due()")
+        if have >= min_matured:
+            reasons.append(f"matured triggers {have} >= {min_matured} ✓")
+        else:
+            reasons.append(f"matured triggers {have} < {min_matured} "
+                           f"(need {min_matured - have} more)")
+            due = False
+
+    if min_trades is None and min_matured is None and not not_before:
         reasons.append("no thresholds set — always due")
 
     return due, reasons
@@ -226,12 +295,13 @@ def main() -> None:
 
     registry = load_registry()
     n_trades = closed_trade_count(verify_tls=not args.insecure)
+    counts = {"matured_triggers": matured_trigger_count(verify_tls=not args.insecure)}
     state = portfolio_state(verify_tls=not args.insecure)
     today = dt.datetime.now(ZoneInfo("America/New_York")).date()
 
     due_items, pending_items = [], []
     for d in registry["decisions"]:
-        due, reasons = is_due(d, n_trades, today)
+        due, reasons = is_due(d, n_trades, today, counts)
         actionable, pre_reasons = check_preconditions(d, state)
         row = {
             "id": d["id"],
@@ -252,6 +322,7 @@ def main() -> None:
     result = {
         "checked_at": today.isoformat(),
         "closed_trades": n_trades,
+        "matured_triggers": counts["matured_triggers"],
         "portfolio": state,
         "due": due_items,
         "pending": [p for p in pending_items if p["status"] == "active"],
@@ -261,7 +332,9 @@ def main() -> None:
         print(json.dumps(result, indent=2))
     else:
         pf = state["youngest_position_age_days"]
-        print(f"Provisional Decision Register — {today}  (closed trades: {n_trades})")
+        print(f"Provisional Decision Register — {today}  "
+              f"(closed trades: {n_trades}, matured triggers: "
+              f"{counts['matured_triggers']})")
         print(f"Bot state: {state['open_positions']} open position(s)"
               + (f", youngest {pf}d old" if pf is not None else ", book flat")
               + (f"  [{', '.join(state['tickers'])}]" if state["tickers"] else ""))

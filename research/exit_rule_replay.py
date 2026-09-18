@@ -227,6 +227,32 @@ class ExitConfig:
     scale_trigger: float = 4.0
     scale_be_remainder: bool = False
 
+    # ── Drawdown-conditional ladder ("clean leader" trail) ───────────────────
+    # The audit of 2026-09-18 found that widening the +5% ladder rung for EVERY
+    # position does not pay: it buys upside on the few that keep running and
+    # gives it straight back on the many that stall. The rung is one knob serving
+    # two populations.
+    #
+    # This splits them using information available AT THE TIME, with no
+    # lookahead: how far the position has already fallen below entry. On the
+    # seven matched trades the separation was clean -- FRO (+24.7%), LPG (+20.8%)
+    # and PSX (+13.2%) never fell more than 3.1% below entry, while every trade
+    # that stalled had already been 8-13% underwater.
+    #
+    # When `clean_dd_pct` is set, a position that has reached the ladder rung
+    # having NEVER traded more than `clean_dd_pct` below entry is treated as a
+    # clean leader and trails at `clean_ladder_trail` instead of the tight
+    # `p2_ladder_trail`. Anything that has been deeper underwater keeps the tight
+    # rung. `None` disables it, so every pre-existing config replays unchanged.
+    #
+    # NOTE the confound this must be checked against: Phase 1 already exits at
+    # -1%/-3% from entry, so among positions that SURVIVE to the rung, a shallow
+    # drawdown may be near-automatic and this would collapse into a plain
+    # widening. The `--clean` report prints the qualifying rate so that cannot be
+    # glossed over.
+    clean_dd_pct: float | None = None
+    clean_ladder_trail: float = 0.03
+
     # ── Power hold (the "let a proven leader run" rule) ───────────────────────
     # The only rule in the book whose PURPOSE is to hold longer, and the only
     # one the harness has never modelled. Live (execution_agent ~L4217-4335):
@@ -697,6 +723,10 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
     for _b in trade.bars:
         last_bar_ts[_b["date"]] = _b["ts"]
     peak_close = entry
+    # Deepest excursion BELOW entry seen so far, as a positive %. Updated only
+    # from bars at/after entry, and read before the current bar is folded in, so
+    # the decision never uses information from the future.
+    max_dd_pct = 0.0
 
     for bar in trade.bars:
         # ── Resolve an armed Phase 1 exit before anything else ───────────────
@@ -777,7 +807,11 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     if cfg.p2_eod_backstop is not None:
                         candidate = max(candidate, peak * (1 - cfg.p2_eod_backstop))
                 else:
-                    candidate = peak * (1 - cfg.p2_ladder_trail)
+                    rung = cfg.p2_ladder_trail
+                    if (cfg.clean_dd_pct is not None
+                            and max_dd_pct <= cfg.clean_dd_pct):
+                        rung = cfg.clean_ladder_trail
+                    candidate = peak * (1 - rung)
             elif peak_gain >= cfg.p2_arm_gain:
                 candidate = floor_level
             elif cfg.p2_unarmed_keeps_p1:
@@ -895,6 +929,12 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     return {"price": base_level, "reason": "base_trail"}
 
         peak = max(peak, bar["high"])
+        # Fold this bar into the drawdown tracker LAST, so every decision above
+        # was made on bars strictly before it. Only bars at/after entry count.
+        if bar["ts"] >= trade.buy_ts:
+            dd = (entry - bar["low"]) / entry * 100.0
+            if dd > max_dd_pct:
+                max_dd_pct = dd
 
     return None
 
@@ -1086,11 +1126,34 @@ def grid_configs() -> list[ExitConfig]:
 
 
 def shipped_proveit() -> ExitConfig:
-    """The Prove-It Stop exactly as it now runs live.
+    """The Prove-It STOP as it runs live -- the stop ONLY, NOT the whole live bot.
 
     Mirrors the PROVE_IT_* constants in execution_agent.py: Phase 1 is 1.0% below
     entry on day 0 and 3.0% from day 1, enforced on the agent's 15-minute CLOSE
     and then armed; Phase 2 arms at a +2.0% peak and floors at -1.0% of entry.
+
+    ⚠️  THIS IS NOT A FULL MODEL OF THE LIVE BOT, AND MUST NOT BE USED AS THE
+    BASELINE FOR ANY EXIT-LOOSENING COMPARISON.
+
+    It omits SCALE-OUT, which is ON in production (SCALE_OUT_ENABLED defaults
+    True: 33% of the position is sold at +4%). That omission is not neutral --
+    it BIASES loosening experiments in their favour. A wider trail earns its
+    keep by capturing upside beyond the exit point; scale-out already banks part
+    of that upside. Measured against a no-scale-out baseline, a wider trail gets
+    credited for money the real bot ALREADY collects, so its apparent gain is
+    inflated.
+
+    This is not hypothetical. This docstring previously read "exactly as it now
+    runs live", and on 2026-09-18 that sentence caused a widened trail to be
+    reported as +$6,429 and called promising. Re-measured against the true live
+    configuration (scale-out included) the same change was worth +$4,308, and
+    stripping the three largest trades turned it NEGATIVE (-$1,014) -- which
+    reversed the recommendation from "ship it" to "do not ship". The figure was
+    formally withdrawn. See decisions/2026-09-18_scaleout-runon-bias-and-
+    concentration.md.
+
+    For a full-bot baseline use simulate_scaleout() with the shipped
+    SCALE_OUT_* values, or the `--runon` path which does this for you.
     """
     return ExitConfig(
         "ProveIt SHIPPED (P1 1.0%/d0 then 3.0%, close+arm; P2 arm2% floor-1%)",
@@ -1347,6 +1410,94 @@ def p1ratchet_configs() -> list[ExitConfig]:
             p1_broker_leg=True, p1_ratchet=True, p1_backstop_slack=slack))
 
     return out
+
+
+def live_baseline() -> ExitConfig:
+    """The FULL live bot: the Prove-It stop AND scale-out, which is on in prod.
+
+    This is the only correct baseline for any exit-LOOSENING experiment.
+    shipped_proveit() omits scale-out and therefore over-credits a wider trail
+    with upside the real bot already banks -- the error that produced the
+    withdrawn +$6,429 figure on 2026-09-18. Mirrors SCALE_OUT_* in
+    execution_agent.py (enabled, 33% at +4%).
+    """
+    return replace(shipped_proveit(),
+                   label="LIVE BASELINE (ProveIt + scale 33%@+4%)",
+                   scale_frac=0.33, scale_trigger=4.0)
+
+
+def clean_configs() -> list[ExitConfig]:
+    """Does a DRAWDOWN-CONDITIONAL ladder rung beat one flat rung?
+
+    The question this answers. The +5% rung is a single knob serving two
+    populations: the few positions that keep running, and the many that stall.
+    Widening it for everyone was measured on 2026-09-18 and rejected -- the gain
+    was carried by one trade and went negative once the top three were removed.
+
+    The hypothesis here is that the two populations are separable AT THE TIME,
+    without lookahead, by how far the position has already fallen below entry.
+    On the seven trigger-matched trades the split was clean: FRO (+24.7%),
+    LPG (+20.8%) and PSX (+13.2%) never traded more than 3.1% below entry, while
+    every trade that stalled had already been 8-13% underwater.
+
+    THE CONFOUND, which decides whether any result here means anything: Phase 1
+    already exits at -1%/-3% from entry, so a position that SURVIVES to reach the
+    rung may be shallow-drawdown almost by construction. If nearly every trade
+    qualifies, this rule is just a flat widening wearing a disguise, and it must
+    be judged against the flat widening rows below -- which are included here for
+    exactly that reason, not as filler.
+
+    Every row is scored against live_baseline(), scale-out included.
+    """
+    out = [live_baseline()]
+
+    # Flat widening -- the null hypothesis. If a conditional row cannot beat
+    # these, the condition is adding nothing.
+    for trail in (0.03, 0.05):
+        out.append(replace(live_baseline(),
+                           label=f"FLAT rung {trail*100:.0f}% (no condition)",
+                           p2_ladder_trail=trail))
+
+    # The conditional rows.
+    for dd in (2.0, 3.0, 5.0):
+        for trail in (0.03, 0.05, 0.08):
+            out.append(replace(
+                live_baseline(),
+                label=f"CLEAN dd<={dd:.0f}% -> rung {trail*100:.0f}% (else 1.5%)",
+                clean_dd_pct=dd, clean_ladder_trail=trail))
+    return out
+
+
+def clean_qualifying_rate(trades: list[Trade], dd_pct: float) -> tuple[int, int]:
+    """How many trades would the `clean` condition actually fire on?
+
+    Without this the sweep cannot be read: a conditional rule that qualifies 100%
+    of trades is a flat widening, and one that qualifies 0% is a no-op. Both
+    would score identically to something they are not.
+
+    Returns (qualified, total) counted at the moment each trade FIRST reaches the
+    ladder rung, which is the only point the condition is consulted.
+    """
+    qualified = total = 0
+    for trade in trades:
+        entry = trade.buy_price
+        peak = entry
+        max_dd = 0.0
+        reached = False
+        for bar in trade.bars:
+            if bar["ts"] < trade.buy_ts:
+                continue
+            peak = max(peak, bar["high"])
+            if (peak / entry - 1) * 100.0 >= 5.0:
+                reached = True
+                break
+            dd = (entry - bar["low"]) / entry * 100.0
+            max_dd = max(max_dd, dd)
+        if reached:
+            total += 1
+            if max_dd <= dd_pct:
+                qualified += 1
+    return qualified, total
 
 
 def runon_configs() -> list[ExitConfig]:
@@ -1731,6 +1882,11 @@ def main() -> None:
                              "resting IBKR TRAIL order ratchets its anchor up "
                              "with price, turning a loss cap into a "
                              "profit-taker (ON vs OFF)")
+    parser.add_argument("--clean", action="store_true",
+                        help="drawdown-conditional ladder rung: does splitting "
+                             "the +5%% rung by prior drawdown beat one flat "
+                             "rung? Scored against the FULL live bot "
+                             "(Prove-It + scale-out). Use with --runon-days.")
     parser.add_argument("--runon", action="store_true",
                         help="\"let winners run\": sweep the LOOSENING direction "
                              "(ladder width, power hold) with price history "
@@ -1760,7 +1916,22 @@ def main() -> None:
     if not trades:
         sys.exit("No trades with usable price history — nothing to replay.")
 
-    if args.runon:
+    if args.clean:
+        print("\n── qualifying rate for the `clean` condition ──"
+              "──────────────────────────", file=sys.stderr)
+        for _dd in (2.0, 3.0, 5.0):
+            q, t = clean_qualifying_rate(trades, _dd)
+            pct = (q / t * 100.0) if t else 0.0
+            note = ""
+            if t and pct >= 90:
+                note = "  <-- ~everything qualifies: this is a FLAT widening"
+            elif t and pct <= 10:
+                note = "  <-- almost nothing qualifies: near no-op"
+            print(f"   dd<={_dd:.0f}%: {q}/{t} trades that reach +5% "
+                  f"qualify ({pct:.0f}%){note}", file=sys.stderr)
+        print(file=sys.stderr)
+        configs = clean_configs()
+    elif args.runon:
         runon_reachability(trades)
         configs = runon_configs()
     elif args.cliff:
@@ -1790,7 +1961,7 @@ def main() -> None:
            top=args.top if (args.grid or args.proveit or args.ladder
                             or args.ratchet or args.scale or args.eod
                             or args.cliff or args.p1ratchet
-                            or args.runon) else None,
+                            or args.clean or args.runon) else None,
            detail_label=args.detail)
 
     if args.json:

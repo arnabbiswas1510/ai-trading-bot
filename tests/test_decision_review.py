@@ -119,12 +119,15 @@ def test_registry_is_valid_and_every_entry_parses():
     for d in reg["decisions"]:
         assert d.get("id") and d.get("title")
         assert d.get("status") in {"active", "resolved", "superseded"}
-        assert d.get("kind", "parameter") in {"parameter", "work-item"}
+        assert d.get("kind", "parameter") in {"parameter", "work-item", "investigation"}
         nb = (d.get("revisit") or {}).get("not_before")
         if nb:
             dt.date.fromisoformat(nb)  # raises on a malformed date
-        # Must not crash on any real entry.
-        dr.is_due(d, 45, TODAY)
+        # Must not crash on any real entry. Counts must be supplied for every
+        # gate the registry actually uses -- is_due() raises rather than
+        # silently skipping a gate it cannot evaluate, so omitting one here
+        # would make this test fail loudly (which is the intended behaviour).
+        dr.is_due(d, 45, TODAY, {"matured_triggers": 50})
         dr.check_preconditions(d, _state(5, 0))
 
 
@@ -149,3 +152,30 @@ def test_orchestrator_split_unblocks_when_the_book_quietens(age, n, expected):
     reg = json.load(open(REGISTRY))
     entry = next(d for d in reg["decisions"] if d["id"] == "orchestrator-split")
     assert dr.check_preconditions(entry, _state(n, age))[0] is expected
+
+
+# --------------------------------------------------------------------------
+# the matured-trigger gate (added 2026-09-18 for `entry-quality-right-tail`)
+# --------------------------------------------------------------------------
+
+def test_matured_trigger_gate_blocks_and_releases():
+    e = _entry(revisit={"min_matured_triggers": 150})
+    assert dr.is_due(e, 999, TODAY, {"matured_triggers": 149})[0] is False
+    assert dr.is_due(e, 999, TODAY, {"matured_triggers": 150})[0] is True
+
+
+def test_matured_trigger_gate_raises_when_it_cannot_be_evaluated():
+    """A gate that cannot be checked must never be silently treated as passed."""
+    e = _entry(revisit={"min_matured_triggers": 150})
+    with pytest.raises(ValueError, match="min_matured_triggers"):
+        dr.is_due(e, 999, TODAY)
+
+
+def test_entry_quality_investigation_is_registered_and_not_yet_due():
+    """The right-tail question must be machine-tracked, not left in prose."""
+    reg = json.load(open(REGISTRY))
+    entry = next(d for d in reg["decisions"] if d["id"] == "entry-quality-right-tail")
+    assert entry["status"] == "active"
+    assert entry["kind"] == "investigation"
+    # 50 matured rows on 2026-09-18 -- nowhere near the 150-row gate.
+    assert dr.is_due(entry, 999, TODAY, {"matured_triggers": 50})[0] is False

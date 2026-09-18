@@ -18,7 +18,7 @@
     "review_questions": "the specific questions the review must answer",
     "last_reviewed": "YYYY-MM-DD | null — set when a review is completed",
     "history": "append-only log of {date, closed_trades, verdict, note} from each completed review",
-    "kind": "parameter | work-item  -- 'parameter' is a tuned value awaiting more trades; 'work-item' is deferred engineering work. Defaults to 'parameter' when absent, so pre-existing entries are unaffected.",
+    "kind": "parameter | work-item | investigation  -- 'parameter' is a tuned value awaiting more trades; 'work-item' is deferred engineering work; 'investigation' is an OPEN QUESTION to be settled by measurement, where 'no signal, do nothing' is a valid and expected outcome. Defaults to 'parameter' when absent, so pre-existing entries are unaffected.",
     "preconditions": {
       "_note": "OPTIONAL. Evaluated against live portfolio state at review time. This is the 'is it safe to act TODAY' check, separate from `revisit` which is the 'is it time' trigger. Omit the block entirely for no constraint.",
       "max_open_positions": "int | null -- actionable only when open positions <= this. Use 0 to require a flat book.",
@@ -334,8 +334,73 @@
           "closed_trades": 52,
           "verdict": "holds",
           "note": "Re-measured against the CORRECT live baseline (ladder 1.5% + scale-out 33%@+4%, both already shipped). An earlier read of +$6,429 was taken against a no-scale-out baseline and is withdrawn. True figures: remainder trail 3% = -$1,350; 5% = +$4,308 but ECO is 59% of net and ex-top-3 is -$1,014; 8% = +$4,495, ECO 56%, ex-top-3 -$1,801. Every positive result is outlier-carried, so the deferral stands. Worst single-trade loss is unchanged at -$1,269 across ALL variants, confirming the loss side is not what binds. Slot opportunity cost remains unmodelled and is still a blocking precondition. See decisions/2026-09-18_scaleout-runon-bias-and-concentration.md."
+        },
+        {
+          "date": "2026-09-18",
+          "closed_trades": 52,
+          "verdict": "rejected",
+          "note": "Drawdown-conditional rung tested (--clean --runon-days 30) against the FULL live bot incl. scale-out. LIVE BASELINE wins outright at +$10,762; every loosening scores lower (3% flat +$8,426; 5% flat +$6,611) and harms more trades (8 -> 11-13). The condition is a flat widening in disguise: 14/15 (93%) of trades reaching +5% qualify at dd<=3%, because Phase 1 already exits at -1%/-3% so survivors are shallow-drawdown by construction. Loosening also REDUCES the winner delta (+4,209 -> +1,872): a wider rung rides faders down rather than holding runners. Loss side identical in every row (worst -$1,269, >300 = 10). Exit is not the bottleneck."
         }
       ]
+    },
+    {
+      "id": "entry-quality-right-tail",
+      "title": "Is the missing right tail an EXIT problem or an ENTRY problem? Measure on the trigger population, not on taken trades",
+      "status": "active",
+      "kind": "investigation",
+      "decided": "2026-09-18",
+      "implemented": false,
+      "decision": "NOTHING shipped. This is an OPEN QUESTION with a defined measurement, recorded so it cannot be forgotten. The bot's realised return distribution has no right tail: across 52 closed trades the best result is LPG +6.47% and NOTHING exceeds +7%, while nothing is worse than -6.25%. The loss side is now demonstrably well controlled (since the Prove-It Stop shipped 2026-09-04 the worst loss is -1.62%, payoff ratio 1.96, expectancy +$183/trade), so the deficit is entirely on the winner side. Repeated attempts to fix that by LOOSENING THE EXIT have all failed the concentration test -- see ladder-width-runon. The hypothesis this entry exists to test is therefore that the binding constraint is UPSTREAM of the exit: either the screener is not producing stocks that run, or the bot is systematically choosing the wrong triggers from those it does produce.",
+      "rationale": "There is a concrete and troubling preliminary signal that must be confirmed or killed. On the TAKEN trades, 13/50 reached +10% within 21 days and only 1/50 reached +20%. On the matured rows of trigger_history -- i.e. the breakouts the screener FIRED, whether or not the bot bought them -- 20/50 reached +10% and 8/50 reached +20%. If that gap survives an overlap check, the screener is generating right-tail candidates and the bot's SELECTION among them is destroying the tail before any exit rule is reached. That would make trigger ranking, not trail width, the single highest-leverage thing in the system. It must not be asserted on 50 half-matured rows, which is exactly why this waits.",
+      "measurement_plan": [
+        "A. SELECTION: for each trading day, split matured trigger_history rows into TAKEN (a trade_history/portfolio row exists for that ticker within ~2 sessions of triggered_at) and PASSED OVER. Compare max_gain_20d_pct distributions. Confirm or kill the 8/50-vs-1/50 signal FIRST -- if the bot's picks underperform its own passed-over triggers, nothing else in this plan matters.",
+        "B. PREDICTION: per-feature discrimination of max_gain_20d_pct >= 10% (secondary: >= 20%), over quality_score, technical_score, final_score, adjusted_score, rs_score, rs_percentile (once populated), atr_pct, volume_surge, pivot_distance_pct, liquidity_score, sentiment_score, failure_penalty, trigger_type. Report AUC and decile lift per feature.",
+        "C. HONESTY GUARDS, mandatory: (i) time-split -- fit on the older half by triggered_at, report on the newer half, never in-sample; (ii) permutation baseline -- shuffle the labels and report the AUC the same search finds on noise, because with ~13 features the best in-sample AUC will look impressive on pure noise; (iii) report n for every cell.",
+        "D. SLOT COST: for each day the book was full (open_positions == MAX_POSITIONS), count triggers that fired and could not be bought, and total their realised max_gain_20d_pct. This is the opportunity cost of holding winners longer, and it is the BLOCKING PRECONDITION on ladder-width-runon -- that entry cannot be resolved until this number exists.",
+        "E. SIZING: only if B finds a feature that survives C. Replay conviction-weighted sizing (weight by the surviving feature) against the shipped equal-weight rule position_size = available_cash / remaining_slots. If B finds nothing, equal-weight is CORRECT and this step is skipped, not fudged."
+      ],
+      "decision_rule": "TWO sample gates, both required. (1) >= 150 matured trigger rows. (2) >= 20 DISTINCT trigger dates -- row count is not sample size. On 2026-09-18 all 50 matured rows came from just FOUR scan dates (2026-08-14..19), so they are four observations of market regime wearing fifty hats: every row on one day shares the same tape, breadth and sector rotation, and a feature can look predictive purely because its day ran. research/entry_quality_review.py prints a loud warning below 20 dates. Beyond the gates: a feature is actionable ONLY if it holds AUC >= 0.60 on the HELD-OUT half, shows monotone decile lift, and clears the permutation baseline by a visible margin. If nothing clears the bar, the honest conclusion is that entry quality is not measurable from the features currently stored, and the next move is to store better ones -- NOT to ship a weak ranker.",
+      "baseline_at_decision": {
+        "closed_trades": 52,
+        "matured_triggers": 50,
+        "taken_reached_10pct": "13/50",
+        "taken_reached_20pct": "1/50",
+        "trigger_pop_reached_10pct": "20/50",
+        "trigger_pop_reached_20pct": "8/50",
+        "best_realised_trade_pct": 6.47,
+        "worst_realised_trade_pct": -6.25,
+        "post_proveit_expectancy_per_trade": 183.38,
+        "note": "trigger-population figures are from 50 matured rows of 245 and the TAKEN/PASSED overlap has NOT yet been checked. They are a reason to measure, NOT a finding.",
+        "distinct_trigger_dates": 4,
+        "trigger_date_span": "2026-08-14..2026-08-19",
+        "first_run_taken_median_max_gain_pct": 12.83,
+        "first_run_passed_median_max_gain_pct": 3.76,
+        "first_run_selection_auc": 0.623,
+        "first_run_best_feature_auc": 0.613,
+        "first_run_permutation_baseline_auc": 0.63,
+        "correction": "The 8/50-vs-1/50 framing that motivated this entry was WRONG and is withdrawn. It compared the taken trades' REALISED returns against the trigger population's MAX_GAIN -- two different measures. Measured like for like, the bot's TAKEN triggers have a median 20-day max gain of +12.83% versus +3.76% for those it passed over (AUC 0.623). Selection is ADDING value, not destroying it. The bot buys stocks that do run and then exits before they do. On 4 dates this is indicative only.",
+        "rs_backfilled": "2026-09-18: all 245 trigger_history rows backfilled by research/backfill_rs_percentile.py (no lookahead; validated to exact equality against all 13 live-written daily_triggers rows). The 0/245 was a pipeline-timing artifact, not a defect -- the migration was applied and daily_triggers was always correct.",
+        "rs_score_saturation": "185/245 rows (76%) sit at the clipped maximum of 100",
+        "first_run_5d_horizon": "200 rows / 19 dates; all four RS variants rank top-4 (best rs_excess_return AUC 0.608) but the permutation baseline is 0.593 -- NO SIGNAL. Horizons disagree (rs_percentile 0.370 on the 20d sample)."
+      },
+      "review_command": "python3 research/entry_quality_review.py --insecure",
+      "review_questions": [
+        "Are there >= 20 distinct trigger dates yet? If not, stop: the rows are clustered within days and the effective sample is far smaller than n.",
+        "Does rs_excess_return (unclipped) beat rs_score (clipped at +10%) on the 20-day horizon? 76% of rows saturate rs_score, so this is the specific thing the percentile was built to test.",
+        "Do the bot's TAKEN triggers underperform the triggers it passed over, on the same days? (If yes, ranking is the whole problem and everything else is secondary.)",
+        "Does ANY entry-time feature separate the >= +10% population on the HELD-OUT half, or only in-sample?",
+        "What AUC does the same search find on permuted labels? If the real best barely beats it, report 'no signal' and stop.",
+        "What did a blocked slot actually cost, in dollars of forgone max_gain_20d_pct?",
+        "Is rs_percentile populated yet? It was 0/245 on 2026-09-18 and is the single feature most likely to carry CAN SLIM's 'L'."
+      ],
+      "revisit": {
+        "min_matured_triggers": 150,
+        "not_before": "2026-11-01",
+        "why": "245 trigger rows exist but only 50 had matured 20-day outcomes on 2026-09-18. 150 is the point at which a held-out half is ~75 rows -- thin, but enough to distinguish a real AUC of 0.65 from noise. Gating on matured triggers rather than closed trades is deliberate: this question is answered on the trigger population, which grows several times faster than the traded one."
+      },
+      "preconditions": [],
+      "adr": "decisions/2026-09-18_entry-quality-open-question.md",
+      "history": []
     }
   ]
 }

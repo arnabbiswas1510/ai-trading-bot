@@ -89,6 +89,25 @@ and retries without them — live screening is never interrupted, only the resea
 annotation is lost. `schema_guard` reports the absence as **advisory**, never as a
 trading block.
 
+`trigger_history` rows archived before the migration landed carried NULL for all
+three columns. They were **backfilled on 2026-09-18** by
+`research/backfill_rs_percentile.py`, which reconstructs the 12-week return from
+price history using the last close at or before each trigger date and the close
+60 trading days earlier — so no value depends on information that was unavailable
+on the day. It imports `compute_rs_excess` and `rank_percentiles` from
+`scoring.py` rather than reimplementing them, and was validated to exact equality
+against all 13 live-written `daily_triggers` rows before writing. All 245 archived
+rows now carry RS. Re-run it any time to fill rows that predate a future schema
+change; it only touches rows where `rs_excess_return` is NULL.
+
+The first measurement on the backfilled data (2026-09-18, `fwd_5d_pct >= +5%`,
+200 rows across 19 dates) found **no signal**: all four RS variants rank in the
+top four features, but the best of them scores AUC 0.608 against a
+shuffled-label baseline of 0.593. `rs_score` is saturated — **185/245 rows (76%)
+sit at the clipped maximum of 100** — which is what the percentile exists to fix,
+but the unclipped variants do not yet separate outcomes either. See
+`decisions/2026-09-18_entry-quality-open-question.md`.
+
 Scheduled for review on **2026-10-19** via the
 [Provisional Decision Register](../decisions/provisional_decisions.json) entry
 `rs-percentile-shadow`; run `python3 research/rs_percentile_review.py --insecure`.
