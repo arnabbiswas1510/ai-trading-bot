@@ -10,8 +10,14 @@ Configuration (via environment variables):
   TELEGRAM_BOT_TOKEN  — Bot API token from @BotFather
   TELEGRAM_CHAT_IDS   — Comma-separated list of recipient chat IDs
 
-If either variable is empty/missing, all notify_* calls are silent no-ops.
-Notification failures NEVER raise exceptions or affect trading logic.
+If either variable is empty/missing, all notify_* calls are no-ops -- but NOT
+silent ones: every failed delivery, including the unconfigured case, emits a
+`[TELEGRAM-FAIL]` marker on stderr and increments `consecutive_failures`.
+
+Notification failures NEVER raise exceptions or affect trading logic. That
+guarantee is what makes an outage easy to miss, so the counters and the marker
+exist to make a dead channel observable without weakening it. Use
+`verify_delivery()` for an active startup check and `health()` for a snapshot.
 
 Setup Instructions:
   1. Open Telegram → search @BotFather → send /newbot
@@ -23,6 +29,7 @@ Setup Instructions:
 
 import hashlib
 import html
+import sys
 import time
 import requests
 from datetime import datetime
@@ -30,7 +37,25 @@ from scoring import volatility_fit
 from zoneinfo import ZoneInfo
 
 TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
+TELEGRAM_GETME_URL = "https://api.telegram.org/bot{token}/getMe"
 ET = ZoneInfo("America/New_York")
+
+# Every delivery failure is prefixed with this so one grep over the container
+# logs answers "is the alert channel alive?":
+#     docker logs execution-agent 2>&1 | grep TELEGRAM-FAIL
+#
+# This exists because on 2026-09-18 the channel went silent after the 06:00
+# restart and the outage was only noticed hours later, by its ABSENCE, after
+# five buys and a broker-side close had gone unannounced. _send() swallowed
+# every error to stdout with no marker and no counter, so nothing distinguished
+# "nothing happened" from "six alerts were dropped".
+# See decisions/2026-09-18_telegram-delivery-health.md.
+DELIVERY_FAIL_MARKER = "[TELEGRAM-FAIL]"
+
+# Escalate the log level once a run of failures makes an outage (rather than a
+# one-off blip) the better explanation. Telegram drops the occasional request;
+# three in a row is a channel that is down.
+DELIVERY_ALARM_AFTER = 3
 
 # Suppress identical exception alerts within this window (prevents storm if same
 # error fires every monitoring cycle — e.g. gateway connection refused during restart)
@@ -52,6 +77,15 @@ class TelegramNotifier:
         self.chat_ids = [cid.strip() for cid in chat_ids if cid.strip()]
         self._exception_cache: dict[str, float] = {}
         self._url = TELEGRAM_API_URL.format(token=self.bot_token)
+        # ── Delivery health ────────────────────────────────────────────────
+        # Counters, not just logs: a number that can be persisted and shown is
+        # what turns "the channel is dead" from something you infer from an
+        # absence into something the system states.
+        self.consecutive_failures = 0
+        self.sends_attempted = 0
+        self.sends_delivered = 0
+        self.last_error: str | None = None
+        self.last_success_at: float | None = None
 
     def _is_configured(self) -> bool:
         return bool(self.bot_token and self.chat_ids)
@@ -59,29 +93,131 @@ class TelegramNotifier:
     def _now_et(self) -> str:
         return datetime.now(ET).strftime("%Y-%m-%d %H:%M:%S ET")
 
-    def _send(self, message: str) -> None:
-        """Send message to all configured chat IDs. Never raises."""
+    # ──────────────────────────────────────────────────────────────────────────
+    # Delivery health
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _record_failure(self, detail: str) -> None:
+        """Record a failed delivery and leave a greppable marker on stderr.
+
+        stderr, not stdout: the agent tees stdout to a log file, but a dead
+        alert channel should also surface in `docker logs` even when stdout is
+        being captured elsewhere.
+        """
+        self.consecutive_failures += 1
+        self.last_error = detail
+        level = "ALARM" if self.consecutive_failures >= DELIVERY_ALARM_AFTER else "WARN"
+        print(f"{DELIVERY_FAIL_MARKER} {level}: {detail} "
+              f"(consecutive failures: {self.consecutive_failures})", file=sys.stderr)
+        if self.consecutive_failures == DELIVERY_ALARM_AFTER:
+            print(f"{DELIVERY_FAIL_MARKER} ALARM: the Telegram alert channel appears "
+                  f"DOWN. Trade events are still executing but are NOT being "
+                  f"announced. Check TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_IDS and "
+                  f"connectivity to api.telegram.org from this container.",
+                  file=sys.stderr)
+
+    def _record_success(self) -> None:
+        if self.consecutive_failures:
+            print(f"{DELIVERY_FAIL_MARKER} RECOVERED: Telegram delivery restored after "
+                  f"{self.consecutive_failures} consecutive failure(s).", file=sys.stderr)
+        self.consecutive_failures = 0
+        self.sends_delivered += 1
+        self.last_success_at = time.time()
+
+    def verify_delivery(self) -> tuple[bool, str]:
+        """Active check that the channel works, for use at startup.
+
+        Returns (ok, detail). Calls getMe rather than sending a message so it is
+        free of side effects and distinguishes an invalid token (401) from a
+        network problem -- the two causes need completely different fixes, and
+        guessing between them is what made the 2026-09-18 outage slow to
+        diagnose. Never raises.
+        """
+        if not self.bot_token:
+            return False, "TELEGRAM_BOT_TOKEN is not set"
+        if not self.chat_ids:
+            return False, "TELEGRAM_CHAT_IDS is not set (token present)"
+        try:
+            r = requests.get(TELEGRAM_GETME_URL.format(token=self.bot_token),
+                             timeout=(5, 15))
+        except Exception as e:  # noqa: BLE001 — a health check must never raise
+            return False, f"cannot reach api.telegram.org: {e}"
+        if r.status_code == 401:
+            return False, "token rejected by Telegram (401) — it was revoked or is wrong"
+        if r.status_code != 200:
+            return False, f"getMe returned HTTP {r.status_code}: {r.text[:120]}"
+        try:
+            username = (r.json().get("result") or {}).get("username", "?")
+        except Exception:  # noqa: BLE001
+            username = "?"
+        return True, f"@{username}, {len(self.chat_ids)} recipient(s)"
+
+    def health(self) -> dict:
+        """Snapshot for persistence/display. Pure — performs no network I/O."""
+        return {
+            "configured":           self._is_configured(),
+            "consecutive_failures": self.consecutive_failures,
+            "sends_attempted":      self.sends_attempted,
+            "sends_delivered":      self.sends_delivered,
+            "last_error":           self.last_error,
+            "last_success_at":      self.last_success_at,
+        }
+
+    def _send_one(self, chat_id: str, message: str) -> bool:
+        """Deliver to a single chat. Returns True on confirmed delivery."""
+        for attempt in range(2):          # 1 retry on timeout
+            try:
+                r = requests.post(
+                    self._url,
+                    data={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+                    timeout=(5, 15),      # (connect_timeout, read_timeout) in seconds
+                )
+                if r.status_code != 200:
+                    # Includes the HTML-parse 400s, which silently DROP a message
+                    # that the bot believes it sent.
+                    self._record_failure(
+                        f"chat_id={chat_id} HTTP {r.status_code}: {r.text[:160]}")
+                    return False
+                return True
+            except requests.exceptions.Timeout:
+                if attempt == 0:
+                    print(f"Telegram timeout for chat_id={chat_id}, retrying...")
+                else:
+                    self._record_failure(f"chat_id={chat_id} timed out after retry")
+                    return False
+            except Exception as e:
+                self._record_failure(f"chat_id={chat_id} network error: {e}")
+                return False    # non-timeout errors don't benefit from retry
+        return False
+
+    def _send(self, message: str) -> bool:
+        """Send message to all configured chat IDs. Never raises.
+
+        Returns True only when EVERY recipient was delivered to. Partial
+        delivery counts as failure: if one of two recipients is silently
+        dropping alerts, that is a fault worth surfacing, not rounding up.
+        """
+        self.sends_attempted += 1
         if not self._is_configured():
-            return
+            missing = []
+            if not self.bot_token:
+                missing.append("TELEGRAM_BOT_TOKEN")
+            if not self.chat_ids:
+                missing.append("TELEGRAM_CHAT_IDS")
+            # Previously a bare `return` -- a completely unconfigured channel
+            # produced no output whatsoever, so a deployment that simply lost
+            # its env vars looked identical to a quiet trading day.
+            self._record_failure(f"not configured: {' and '.join(missing)} unset")
+            return False
+
+        all_ok = True
         for chat_id in self.chat_ids:
-            for attempt in range(2):          # 1 retry on timeout
-                try:
-                    r = requests.post(
-                        self._url,
-                        data={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
-                        timeout=(5, 15),      # (connect_timeout, read_timeout) in seconds
-                    )
-                    if r.status_code != 200:
-                        print(f"Telegram API Error ({r.status_code}): {r.text}")
-                    break                     # success — no retry needed
-                except requests.exceptions.Timeout:
-                    if attempt == 0:
-                        print(f"Telegram timeout for chat_id={chat_id}, retrying...")
-                    else:
-                        print(f"Telegram timeout for chat_id={chat_id} after retry — giving up.")
-                except Exception as e:
-                    print(f"Telegram Network Error: {e}")
-                    break                     # non-timeout errors don't benefit from retry
+            if not self._send_one(chat_id, message):
+                all_ok = False
+        if all_ok:
+            self._record_success()
+        return all_ok
+
 
     # ──────────────────────────────────────────────────────────────────────────
     # Trade Event Notifications

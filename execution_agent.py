@@ -7,7 +7,7 @@ import requests
 from zoneinfo import ZoneInfo
 from supabase import create_client, Client
 from ib_insync import IB, Stock, MarketOrder, Order
-from telegram_notifier import TelegramNotifier
+from telegram_notifier import TelegramNotifier, DELIVERY_FAIL_MARKER
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import trigger_audit
@@ -2173,6 +2173,25 @@ def reconcile_with_ibkr(ib: IB):
                 "ibkr_margin_loan":     round(margin_loan, 2),
             }
             client.table("account_balances").upsert(upsert_payload).execute()
+            # Alert-channel health is written as a SEPARATE best-effort update,
+            # never as part of the upsert above -- same reasoning as
+            # hard_stop_price: a lagging migration must not be able to fail the
+            # balance sync, which the dashboard and exit sizing both depend on.
+            # Persisting it means a dead alert channel is visible in the data
+            # every ~15 minutes without needing container-log access.
+            try:
+                _tg = notifier.health()
+                client.table("account_balances").update({
+                    "telegram_consecutive_failures": _tg["consecutive_failures"],
+                    "telegram_last_success": (
+                        datetime.datetime.fromtimestamp(
+                            _tg["last_success_at"], tz=datetime.timezone.utc
+                        ).isoformat() if _tg["last_success_at"] else None
+                    ),
+                }).eq("date", today_str).execute()
+            except Exception as _tg_err:
+                if not ("PGRST204" in str(_tg_err) or "telegram_" in str(_tg_err)):
+                    print(f"   ⚠️ could not persist Telegram health: {_tg_err}")
             margin_note = f" ⚠️ MARGIN LOAN: ${margin_loan:,.2f}" if margin_loan > 0 else ""
             print(f"   💰 Balance synced [{target_account}]: own_cash=${cash_balance:,.2f} "
                   f"positions=${pos_value:,.2f} net_liq=${net_liq:,.2f} "
@@ -4704,6 +4723,30 @@ def main_loop():
     print("==================================================")
     print("       CANSLIM Local Trade Execution Agent        ")
     print("==================================================")
+
+    # ── Telegram delivery self-test ───────────────────────────────────────
+    # Runs BEFORE the IB connect retry loop, because a broken alert channel is
+    # precisely what stops the operator from learning that anything below this
+    # line went wrong. On 2026-09-18 the channel died after the 06:00 restart
+    # and six trade events went unannounced; nothing in the logs said so.
+    # getMe separates "token revoked" from "cannot reach Telegram" -- the two
+    # causes need different fixes. Never fatal: a bot that trades without
+    # alerts is bad, but one that refuses to guard open positions is worse.
+    _tg_ok, _tg_detail = notifier.verify_delivery()
+    if _tg_ok:
+        print(f"✅ Telegram delivery verified: {_tg_detail}")
+        notifier._send(
+            f"🤖 <b>Execution agent started</b>\n"
+            f"Alert channel verified ({_tg_detail}).\n"
+            f"🕒 {datetime.datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S ET')}"
+        )
+    else:
+        print(f"{DELIVERY_FAIL_MARKER} STARTUP: Telegram delivery FAILED its "
+              f"self-test: {_tg_detail}", file=sys.stderr)
+        print(f"{DELIVERY_FAIL_MARKER} STARTUP: trade events will execute but "
+              f"will NOT be announced. Fix the alert channel.", file=sys.stderr)
+        print(f"⚠️  Telegram delivery self-test FAILED: {_tg_detail}")
+
     print(f"Connecting to IB Gateway at {IB_GATEWAY_HOST}:{IB_GATEWAY_PORT}...")
     
     ib = IB()

@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1789743318.4034786,
-    "ast_hash": "3c6d606e27cb65ea4d79dd5223c2b723",
+    "mtime": 1789746208.8848145,
+    "ast_hash": "9283abdacb0b6b4c6388dc85f068451b",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "telegram_notifier.py": {
-    "mtime": 1789480625.1662166,
-    "ast_hash": "04a645639164229f9ff590518b8d9cc3",
+    "mtime": 1789746283.94598,
+    "ast_hash": "a9724a2fc934329181992a842e9ed3b8",
     "semantic_hash": ""
   },
   "tests/__init__.py": {
@@ -240,8 +240,8 @@
     "semantic_hash": ""
   },
   "tests/test_telegram_notifier.py": {
-    "mtime": 1789480625.175952,
-    "ast_hash": "0f9c2be418d40231df47d3bc2397af0f",
+    "mtime": 1789746267.424176,
+    "ast_hash": "4aaf2bee444e2372fec18f8b9ce4bc06",
     "semantic_hash": ""
   },
   "tests/test_timezone_usage.py": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1789682043.4307628,
-    "ast_hash": "efd974fc31e92c6ce14dcb47452c50f3",
+    "mtime": 1789746390.0245805,
+    "ast_hash": "fc69e354571d67ad6588cd896d13b05b",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -650,8 +650,8 @@
     "semantic_hash": ""
   },
   "schema_guard.py": {
-    "mtime": 1789682042.259873,
-    "ast_hash": "68f9e89c16f4af246891fc2a3c7ac5c0",
+    "mtime": 1789746331.2015133,
+    "ast_hash": "8d8bd3e290cd1f7bdd9ffb8460a7601d",
     "semantic_hash": ""
   },
   "tests/test_schema_guard.py": {
@@ -1342,6 +1342,16 @@
   "decisions/2026-09-18_register-preconditions.md": {
     "mtime": 1789744495.585421,
     "ast_hash": "84111ac608e49c60a18beea00c11ee2e",
+    "semantic_hash": ""
+  },
+  "migrations/20260918_add_telegram_health.sql": {
+    "mtime": 1789746219.1695983,
+    "ast_hash": "1b1890cc793be75eea33ca5d6aa279f7",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_telegram-delivery-health.md": {
+    "mtime": 1789746367.5461266,
+    "ast_hash": "8938247b2f23d6ccf8c9e193993fb840",
     "semantic_hash": ""
   }
 }

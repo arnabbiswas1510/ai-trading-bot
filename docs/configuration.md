@@ -24,9 +24,44 @@ parameter requires a code change.**
 | `IBKR_LIVE_USER` / `IBKR_LIVE_PASS` / `IBKR_TOTP_SECRET` | yes | Gateway login — see [IBKR TOTP setup](ibkr_totp_setup.md) |
 | `IBKR_ACCOUNT` | conditional | **Required if more than one account is visible under the login** — both live (`U…`) and paper (`DU…`), *or* two live accounts. The agent trades and prices this account only and ignores all others; with multiple accounts it refuses to guess. Setting it is also what lets pricing fall back to `reqPnLSingle` for the right account (see [sell logic](sell_logic.md)) |
 | `IBKR_FLEX_TOKEN` / `IBKR_FLEX_QUERY_ID` | optional | Cash-flow reconciliation. Token expires annually |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_IDS` | optional | Alerts |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_IDS` | optional | Alerts. Optional to the *bot*, but this is the only channel that tells you a trade happened — see [Alert-channel health](#alert-channel-health) |
 
 TradingView requires no credentials.
+
+### Alert-channel health
+
+Telegram is the only alerting channel, so its own failures are made visible
+rather than swallowed. Delivery failures never raise and never affect trading.
+
+The agent runs a `getMe` self-test at startup, before connecting to IB Gateway,
+and sends a boot message on success. A failure is logged loudly but is **not**
+fatal: a bot trading without alerts is bad, one refusing to guard open positions
+is worse.
+
+Every failed delivery — including a completely unconfigured channel, which used
+to produce no output at all — emits a `[TELEGRAM-FAIL]` marker on **stderr** and
+increments a counter. After **3** consecutive failures the log escalates to
+`ALARM` and states that trades are executing unannounced.
+
+```bash
+# Is the alert channel alive?
+docker logs execution-agent 2>&1 | grep TELEGRAM-FAIL
+```
+
+Health is also persisted to `account_balances` every reconcile cycle (~15 min),
+so a dead channel is visible without container access:
+
+| Column | Meaning |
+|---|---|
+| `telegram_consecutive_failures` | `0` = healthy. `>0` = alerts are being dropped right now |
+| `telegram_last_success` | UTC time of the last confirmed delivery; staleness = how long it has been down |
+
+Both are advisory (`schema_guard.ADVISORY_COLUMNS`) and written as a separate
+best-effort update, so a missing column degrades visibility but never blocks
+trading or fails the balance sync. Apply
+`migrations/20260918_add_telegram_health.sql`.
+
+See `decisions/2026-09-18_telegram-delivery-health.md` for why.
 
 ---
 

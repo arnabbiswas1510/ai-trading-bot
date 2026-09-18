@@ -78,6 +78,19 @@ ADVISORY_COLUMNS: dict[str, dict[str, str]] = {
             "dashboard cannot distinguish a stale broker mark from a "
             "never-synced position (migrations/20260904_add_ibkr_position_values.sql)",
     },
+    "account_balances": {
+        # One probe stands for both health columns — same migration. Advisory,
+        # not critical: a missing column degrades operator visibility into the
+        # alert channel, never a risk rule. The agent writes these as a separate
+        # best-effort update, so an unapplied migration cannot fail the balance
+        # sync that the dashboard and exit sizing depend on.
+        "telegram_consecutive_failures":
+            "Telegram alert-channel health (with telegram_last_success) — "
+            "without it a dead alert channel is invisible outside the container "
+            "logs, which is how the 2026-09-18 outage went unnoticed through "
+            "five buys and a close "
+            "(migrations/20260918_add_telegram_health.sql)",
+    },
     "trigger_history": {
         # One probe stands for all three shadow columns — they ship in the same
         # migration, so probing each would cost three round trips to learn one
