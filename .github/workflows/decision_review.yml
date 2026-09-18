@@ -81,12 +81,27 @@ jobs:
             fi
 
             questions=$(jq -r ".due[$i].review_questions[] | \"- [ ] \" + ." review.json)
-            body=$(cat <<EOF
-          **Provisional decision \`${id}\` is due for review.**
+            kind=$(jq -r ".due[$i].kind // \"parameter\"" review.json)
+            actionable=$(jq -r ".due[$i].actionable" review.json)
+            pf=$(jq -r '.portfolio | "\(.open_positions) open position(s)" + (if .youngest_position_age_days == null then ", book flat" else ", youngest \(.youngest_position_age_days)d old" end)' review.json)
 
-          Closed trades now: **${trades}**. This decision was taken on a smaller sample
-          and parked here so it could be re-checked against real trades. See the
-          register entry in \`decisions/provisional_decisions.json\` and ADR \`${adr}\`.
+            # An entry can be DUE but not safe to action yet. Say so explicitly in
+            # the issue rather than opening a ticket that reads as ready to start.
+            if [ "$actionable" = "true" ]; then
+              state_block="✅ **Preconditions met — safe to action now.** Bot state: ${pf}."
+            else
+              blockers=$(jq -r ".due[$i].precondition_reasons[] | \"  - \" + ." review.json)
+              state_block=$(printf '🚧 **DUE, but BLOCKED by live bot state — do not start yet.** Bot state: %s\n\n%s\n\n  Re-check with `python3 research/decision_review.py --insecure`; this issue stays open until it clears.' "${pf}" "${blockers}")
+            fi
+
+            body=$(cat <<EOF
+          **Register entry \`${id}\` (${kind}) is due for review.**
+
+          ${state_block}
+
+          Closed trades now: **${trades}**. This was parked here so it could be
+          re-checked against real trades and live bot state. See the register entry in
+          \`decisions/provisional_decisions.json\` and ADR \`${adr}\`.
 
           ### Reproduce the measurement
           \`\`\`bash

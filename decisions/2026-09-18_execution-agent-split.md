@@ -117,6 +117,12 @@ against the previous Dockerfile.
 - `exit_rules.py` is independently readable and testable with no IBKR connection.
 - **Not addressed:** the three 500–700-line orchestrator functions. Splitting them
   requires solving the `supabase`/`notifier` singleton coupling and is deferred.
+  That deferral is **not left in prose** — it is registered in
+  `decisions/provisional_decisions.json` as the `orchestrator-split` work item,
+  due 2026-10-06 and gated on the book being quiet (≤2 open positions, youngest
+  ≥7 days). See `decisions/2026-09-18_register-preconditions.md` for the
+  precondition mechanism, and TD-005 in
+  `docs/tech_debt_and_requirements_tracker.md`.
 
 ## What would justify going further
 

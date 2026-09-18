@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1789683725.74362,
-    "ast_hash": "9c102dc4d60670afcaa949f24b28871e",
+    "mtime": 1789744438.740043,
+    "ast_hash": "df49d8f97a7d41e6d552e6779a2a7922",
     "semantic_hash": ""
   },
   "README.md": {
@@ -740,8 +740,8 @@
     "semantic_hash": ""
   },
   "docs/tech_debt_and_requirements_tracker.md": {
-    "mtime": 1789682042.246886,
-    "ast_hash": "895c8f61ec8444667fba90d347a8d341",
+    "mtime": 1789744462.4000838,
+    "ast_hash": "cd18470d70b662bbadd67c521d3d2eb2",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_hwm-profit-lock-first-leg.md": {
@@ -980,18 +980,18 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1789682043.4294827,
-    "ast_hash": "8807961ec20b07330eea485a530102be",
+    "mtime": 1789744326.833909,
+    "ast_hash": "f3d28f6bc3306e11e247de724e63e9de",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
-    "mtime": 1788900760.8068762,
-    "ast_hash": "2c5ade76be11bd92eb5f461e0f7f2508",
+    "mtime": 1789744297.9793744,
+    "ast_hash": "407abbc9443509ac72bcd115d303a8f4",
     "semantic_hash": ""
   },
   ".github/workflows/decision_review.yml": {
-    "mtime": 1788898566.8565874,
-    "ast_hash": "9b8cd21edca5c15809e530446a16638b",
+    "mtime": 1789744384.4016783,
+    "ast_hash": "0b6ce71eafcb5e6bbc66414f931887b2",
     "semantic_hash": ""
   },
   "tests/test_scale_out.py": {
@@ -1330,8 +1330,18 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-18_execution-agent-split.md": {
-    "mtime": 1789743640.9351757,
-    "ast_hash": "2c95ec83f8917008b63acd76ad553db6",
+    "mtime": 1789744505.229684,
+    "ast_hash": "6f362dd62a181f7af15f76b1c519cd58",
+    "semantic_hash": ""
+  },
+  "tests/test_decision_review.py": {
+    "mtime": 1789744354.9086738,
+    "ast_hash": "37381b921623572c6a5d223fb33777d6",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-18_register-preconditions.md": {
+    "mtime": 1789744495.585421,
+    "ast_hash": "84111ac608e49c60a18beea00c11ee2e",
     "semantic_hash": ""
   }
 }

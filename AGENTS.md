@@ -939,10 +939,11 @@ citing any older number, re-run it.
 
 ## 🧭 MANDATORY: Provisional Decision Register (revisit-when-more-trades)
 
-> **Whenever we take a decision on a small trade sample that should be re-checked
-> once more trades exist, add an entry to `decisions/provisional_decisions.json`
-> in the same commit — never track it in prose.** This is the single source of
-> truth for "decisions to revisit", and it is wired to an active alarm.
+> **Whenever we take a decision on a small trade sample, or defer a piece of
+> engineering work until the bot is in a safer state, add an entry to
+> `decisions/provisional_decisions.json` in the same commit — never track it in
+> prose.** This is the single source of truth for "things to come back to", and
+> it is wired to an active alarm.
 
 ### Why this exists
 
@@ -956,20 +957,52 @@ register removes that failure mode.
 1. **`decisions/provisional_decisions.json`** — the register. Each entry records
    the decision, its rationale and *baseline numbers at decision time*, the ADR
    link, the exact `review_command` that reproduces the measurement, the
-   `review_questions` the review must answer, and a `revisit` threshold
-   (`min_closed_trades` and/or `not_before`). `history` is an append-only log of
-   past reviews. The file's own `_README`/`_schema` document every field.
+   `review_questions` the review must answer, a `kind`, a `revisit` **trigger**
+   (`min_closed_trades` and/or `not_before`) and optional `preconditions`.
+   `history` is an append-only log of past reviews. The file's own
+   `_README`/`_schema` document every field.
 2. **`research/decision_review.py`** — reads the register, queries the live
-   closed-trade count from Supabase, and reports which active decisions are DUE.
+   closed-trade count **and live portfolio state** from Supabase, and reports
+   which active entries are DUE and which of those are actually **actionable**.
    Exit `10` = something due, `0` = nothing due, `1` = error (fails LOUD; a
    malformed register or unreachable Supabase must never be silently skipped).
    Run locally: `python3 research/decision_review.py --insecure`.
 3. **`.github/workflows/decision_review.yml`** — a monthly cron (20th, 12:00 UTC)
-   that runs the script and, the instant a decision is due, opens a **persistent
+   that runs the script and, the instant an entry is due, opens a **persistent
    GitHub issue** (idempotent by an `id` marker in the title, so it never
-   double-opens) and pings Telegram. The issue stays open until a human reviews
-   the decision and closes it — a scrolled-past Telegram message can be missed,
-   an open issue cannot.
+   double-opens) and pings Telegram. The issue states whether the entry is ready
+   to action or blocked, and by what. It stays open until a human reviews the
+   entry and closes it — a scrolled-past Telegram message can be missed, an open
+   issue cannot.
+
+### Trigger vs. precondition — they are not the same question
+
+`revisit` asks **"is it time?"** — a date floor and/or a closed-trade count.
+`preconditions` asks **"and is it safe to act today?"** — evaluated against live
+portfolio state at review time:
+
+| Field | Meaning |
+|---|---|
+| `max_open_positions` | Actionable only when open positions ≤ this. `0` requires a flat book. |
+| `min_position_age_days` | Actionable only when the **youngest** open position is at least this old. A flat book always satisfies it. |
+
+Youngest is the binding figure, not average or oldest: a single day-0 position
+sits in the tight Prove-It Phase 1 band, so the book is not quiet no matter how
+long the others have been held.
+
+An entry that is due but blocked is **still reported and still opens an issue** —
+it is never silently skipped. The issue says what is blocking it and stays open
+until it clears. Omit the `preconditions` block entirely when there is no
+constraint; absent means always actionable.
+
+### The two kinds of entry
+
+| `kind` | Use for | Typically gated by |
+|---|---|---|
+| `parameter` (default) | A tuned number chosen on too small a sample | `min_closed_trades` |
+| `work-item` | Engineering work deliberately deferred until it is safe | `not_before` + `preconditions` |
+
+`kind` defaults to `parameter` when absent, so pre-existing entries are unchanged.
 
 ### When you must add an entry
 
@@ -977,6 +1010,11 @@ Any time a shipped number was chosen on a sample too small to trust and the hone
 statement is "this is provisional until we have more trades" — new exit trigger,
 fraction, threshold, gate, or default. If you would write "revisit when we have N
 trades" anywhere, that sentence belongs in the register instead.
+
+**Also add one whenever work is deferred for safety** rather than abandoned. If
+you would write "let's do this once the book is flat" or "revisit after the next
+deploy settles", that is a `work-item` entry with `preconditions` — not a note in
+a commit message, and not a line in a chat log that scrolls away.
 
 ### When a review comes due (the loop that closes)
 
@@ -986,7 +1024,10 @@ trades" anywhere, that sentence belongs in the register instead.
 3. If the decision **still holds**, bump `revisit.min_closed_trades` to the next
    milestone. If it **does not**, set `status` to `superseded`, refresh the ADR
    and the docs (Doc Sync Rule), and log any deletion (`docs/retired_code.md`).
-4. Close the GitHub issue.
+   For a `work-item` that is now **done**, set `status` to `resolved`.
+4. If it was **blocked**, do not close the issue and do not weaken the
+   precondition to make it pass. Leave it open; it is doing its job.
+5. Close the GitHub issue.
 
 > The register is the machine-readable companion to the ADRs: an ADR says *why*
 > a provisional decision was made; the register guarantees we come back and test

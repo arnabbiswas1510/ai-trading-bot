@@ -2,10 +2,19 @@
 """decision_review.py — the ACTIVE half of the Provisional Decision Register.
 
 Reads decisions/provisional_decisions.json (the single source of truth) and asks
-one question of each active decision: *is it due for review yet?* A decision is
-due once the live closed-trade count has reached its `min_closed_trades` AND the
-current date is on/after its `not_before` floor (either threshold may be null,
-in which case it does not gate).
+two questions of each active entry:
+
+    1. Is it DUE?        -- has the trigger fired? (closed-trade count / date)
+    2. Is it ACTIONABLE? -- do the live preconditions hold right now?
+
+These are deliberately separate. A trigger says "it is time to look at this"; a
+precondition says "and the bot is currently in a state where acting is safe". An
+entry that is due but blocked is still reported -- it is never silently skipped,
+because "we forgot" is the exact failure mode this file exists to remove.
+
+Preconditions are evaluated against LIVE portfolio state, so a work item like the
+orchestrator rewrite can declare "only when the book is quiet" and have that
+checked on the day rather than assumed months in advance.
 
 This exists because the schedule in AGENTS.md is only a PASSIVE reminder — it
 fires when a human happens to read the file. This script is run on a cron by
@@ -22,7 +31,7 @@ Usage:
 
 Exit codes:
     0   ran cleanly, nothing due
-    10  ran cleanly, one or more decisions are DUE  (the workflow branches on this)
+    10  ran cleanly, one or more entries are DUE  (the workflow branches on this)
     1   error (registry missing/malformed, Supabase unreachable) — fail LOUD
 """
 from __future__ import annotations
@@ -96,8 +105,86 @@ def closed_trade_count(verify_tls: bool) -> int:
     return len(r.json())
 
 
+def portfolio_state(verify_tls: bool) -> dict:
+    """Live bot state that preconditions are evaluated against.
+
+    Returns open position count and the age in days of the YOUNGEST open
+    position -- the two facts that decide whether disruptive work is safe today.
+    Youngest is the one that matters: a single day-0 position is sitting in the
+    tight Prove-It Phase 1 band, so the book is not quiet regardless of how long
+    the other four have been held.
+
+    `youngest_position_age_days` is None when the book is flat, which every
+    precondition must treat as "no constraint" rather than "zero".
+    """
+    url = f"{_env('SUPABASE_URL').rstrip('/')}/rest/v1/portfolio_positions"
+    r = requests.get(
+        url,
+        headers={"apikey": _env("SUPABASE_KEY"),
+                 "Authorization": f"Bearer {_env('SUPABASE_KEY')}"},
+        params={"select": "ticker,buy_date"},
+        timeout=30, verify=verify_tls,
+    )
+    if r.status_code != 200:
+        sys.exit(f"error: Supabase returned HTTP {r.status_code}: {r.text[:200]}")
+    rows = r.json()
+    today = dt.datetime.now(ZoneInfo("America/New_York")).date()
+
+    ages = []
+    for row in rows:
+        raw = (row.get("buy_date") or "")[:10]
+        try:
+            ages.append((today - dt.date.fromisoformat(raw)).days)
+        except ValueError:
+            # An unparseable buy_date must not silently read as age 0, which
+            # would make a stale row look like a fresh position and block work
+            # forever. Skip it and let the count still reflect the row.
+            continue
+    return {
+        "open_positions": len(rows),
+        "youngest_position_age_days": min(ages) if ages else None,
+        "tickers": sorted(r.get("ticker", "?") for r in rows),
+    }
+
+
+def check_preconditions(decision: dict, state: dict) -> tuple[bool, list[str]]:
+    """Is it SAFE to action this entry right now, given live bot state?
+
+    Distinct from is_due(). Due means the trigger fired; actionable means the
+    conditions the work assumes still hold. An entry with no `preconditions`
+    block is always actionable, so every existing parameter review is unaffected.
+    """
+    pre = decision.get("preconditions") or {}
+    if not pre:
+        return True, []
+
+    ok, reasons = True, []
+
+    max_open = pre.get("max_open_positions")
+    if max_open is not None:
+        n = state["open_positions"]
+        if n <= max_open:
+            reasons.append(f"open positions {n} <= {max_open} ✓")
+        else:
+            reasons.append(f"open positions {n} > {max_open}")
+            ok = False
+
+    min_age = pre.get("min_position_age_days")
+    if min_age is not None:
+        age = state["youngest_position_age_days"]
+        if age is None:
+            reasons.append("book is flat — no position-age constraint ✓")
+        elif age >= min_age:
+            reasons.append(f"youngest position {age}d >= {min_age}d ✓")
+        else:
+            reasons.append(f"youngest position {age}d < {min_age}d")
+            ok = False
+
+    return ok, reasons
+
+
 def is_due(decision: dict, n_trades: int, today: dt.date) -> tuple[bool, list[str]]:
-    """A decision is due only when EVERY threshold it declares is satisfied."""
+    """Has the TRIGGER fired? Says nothing about whether acting is safe today."""
     if decision.get("status") != "active":
         return False, ["status is not 'active'"]
     revisit = decision.get("revisit") or {}
@@ -139,16 +226,22 @@ def main() -> None:
 
     registry = load_registry()
     n_trades = closed_trade_count(verify_tls=not args.insecure)
+    state = portfolio_state(verify_tls=not args.insecure)
     today = dt.datetime.now(ZoneInfo("America/New_York")).date()
 
     due_items, pending_items = [], []
     for d in registry["decisions"]:
         due, reasons = is_due(d, n_trades, today)
+        actionable, pre_reasons = check_preconditions(d, state)
         row = {
             "id": d["id"],
             "title": d.get("title", d["id"]),
+            "kind": d.get("kind", "parameter"),
             "status": d.get("status"),
             "revisit": d.get("revisit"),
+            "preconditions": d.get("preconditions"),
+            "actionable": actionable,
+            "precondition_reasons": pre_reasons,
             "review_command": d.get("review_command"),
             "review_questions": d.get("review_questions", []),
             "adr": d.get("adr"),
@@ -159,6 +252,7 @@ def main() -> None:
     result = {
         "checked_at": today.isoformat(),
         "closed_trades": n_trades,
+        "portfolio": state,
         "due": due_items,
         "pending": [p for p in pending_items if p["status"] == "active"],
     }
@@ -166,16 +260,30 @@ def main() -> None:
     if args.json:
         print(json.dumps(result, indent=2))
     else:
+        pf = state["youngest_position_age_days"]
         print(f"Provisional Decision Register — {today}  (closed trades: {n_trades})")
+        print(f"Bot state: {state['open_positions']} open position(s)"
+              + (f", youngest {pf}d old" if pf is not None else ", book flat")
+              + (f"  [{', '.join(state['tickers'])}]" if state["tickers"] else ""))
         print("=" * 72)
         if due_items:
-            print(f"\n⏰ DUE FOR REVIEW ({len(due_items)}):")
-            for it in due_items:
-                print(f"\n  • {it['title']}  [{it['id']}]")
-                for r in it["reasons"]:
-                    print(f"      {r}")
-                if it["review_command"]:
-                    print(f"      run: {it['review_command']}")
+            ready = [i for i in due_items if i["actionable"]]
+            blocked = [i for i in due_items if not i["actionable"]]
+            if ready:
+                print(f"\n⏰ DUE — ready to action ({len(ready)}):")
+                for it in ready:
+                    print(f"\n  • {it['title']}  [{it['id']}]")
+                    for r in it["reasons"] + it["precondition_reasons"]:
+                        print(f"      {r}")
+                    if it["review_command"]:
+                        print(f"      run: {it['review_command']}")
+            if blocked:
+                print(f"\n🚧 DUE — but BLOCKED by live bot state ({len(blocked)}):")
+                for it in blocked:
+                    print(f"\n  • {it['title']}  [{it['id']}]")
+                    for r in it["precondition_reasons"]:
+                        print(f"      {r}")
+                    print("      → still tracked; re-check with this same command.")
         else:
             print("\n✓ Nothing due for review.")
         active_pending = result["pending"]
@@ -199,8 +307,12 @@ def _notify_telegram(due_items: list[dict], n_trades: int, today: dt.date) -> No
         return
     lines = [f"⏰ <b>Decision review due</b> ({today}, {n_trades} closed trades)", ""]
     for it in due_items:
-        lines.append(f"• <b>{it['title']}</b>")
-        if it["review_command"]:
+        flag = "" if it["actionable"] else " 🚧 <i>blocked</i>"
+        lines.append(f"• <b>{it['title']}</b>{flag}")
+        if not it["actionable"]:
+            for r in it["precondition_reasons"]:
+                lines.append(f"  {r}")
+        elif it["review_command"]:
             lines.append(f"  <code>{it['review_command']}</code>")
     text = "\n".join(lines)
     for cid in chat_ids:
