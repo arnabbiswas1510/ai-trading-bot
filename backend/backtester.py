@@ -7,7 +7,7 @@ Key design decisions (matching live execution_agent.py behaviour):
   - Entry:  Breakout detected on day T using EOD data; buy at day T+1 OPEN
             (no look-ahead bias — screener runs after close, bot buys next morning)
   - Stops:  Trailing stop from peak price (rises with winners, never drops)
-  - Size:   available_cash / remaining_slots  (proportional — matches live bot)
+  - Size:   min(available_cash / remaining_slots, equity / MAX_POSITIONS)  (equal-weight cap — matches live bot)
   - Exit:   Trailing stop fires OR close < EMA-21 × 0.99 (no fixed profit target)
   - Market: Bullish when SPY close > SPY EMA-21 (matches live market filter)
   - Slots:  MAX_POSITIONS concurrent positions, read from the same env var
@@ -35,7 +35,7 @@ DEFAULT_STOP_LOSS_PCT = 7.0      # trailing stop % from peak price
 DEFAULT_EMA_WINDOW    = 21       # EMA for market direction + exit signal
 DEFAULT_EXIT_BUFFER   = 0.01     # exit when close < EMA × (1 - buffer)
 MIN_VOLUME_MULTIPLIER = 1.4      # breakout volume must be ≥ 1.4× 50d avg
-# No fixed position size — sizing: available_cash / remaining_slots (live bot L1300)
+# No fixed position size — sizing: min(cash / remaining_slots, equity / MAX_POSITIONS)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -90,10 +90,13 @@ def run_backtest(
     """
     Historical simulation of the CAN SLIM breakout strategy.
 
-    Position sizing matches live execution_agent.py (L1295-1300):
+    Position sizing matches live execution_agent.py:
         remaining_slots = max(1, MAX_POSITIONS - len(open_positions))
-        position_size   = available_cash / remaining_slots
-    There is NO fixed dollar block — sizing is proportional to remaining cash.
+        position_size   = min(available_cash / remaining_slots,
+                              equity / MAX_POSITIONS)   # equal-weight ceiling
+    There is NO fixed dollar block — sizing is proportional to remaining cash,
+    capped at one equal-weight share of total equity (see
+    decisions/2026-09-21_equity-capped-position-size.md).
 
     Parameters
     ----------
@@ -172,9 +175,19 @@ def run_backtest(
                 if open_price <= 0 or cash <= 0:
                     still_pending.append(ticker)
                     continue
-                # Proportional: spread cash equally across unfilled slots
+                # Proportional: spread cash equally across unfilled slots, but
+                # never exceed one equal-weight share of total equity — mirrors
+                # the live per-position ceiling added 2026-09-21
+                # (decisions/2026-09-21_equity-capped-position-size.md).
                 remaining_slots = max(1, max_positions - len(positions))
-                alloc  = cash / remaining_slots          # equal share of cash
+                held_value = 0.0
+                for _t, _p in positions.items():
+                    if _t in data and current_date in data[_t].index:
+                        held_value += _p["shares"] * float(data[_t].loc[current_date]["Close"])
+                    else:
+                        held_value += _p["shares"] * _p["buy_price"]
+                equity_now = cash + held_value
+                alloc = min(cash / remaining_slots, equity_now / max_positions)
                 shares = int(alloc // open_price)
                 if shares <= 0:
                     continue

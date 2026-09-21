@@ -171,12 +171,28 @@ Bounded on **both** sides:
 
 ```
 remaining_slots = max(1, MAX_POSITIONS − held_count)
-position_size   = available_cash / remaining_slots
+position_size   = min(available_cash / remaining_slots,   # base: free cash across free slots
+                      NetLiquidation / MAX_POSITIONS)      # HARD CEILING: one equal-weight slot
 shares          = int((position_size − PRICE_SAFETY_RESERVE) / current_price)
 ```
 
 Recomputed before every buy, so capital is divided among the slots that remain rather than
 committed on a fixed schedule.
+
+**No single position may exceed an equal-weight share of the account** —
+`NetLiquidation / MAX_POSITIONS` (e.g. a $111,530 account with 5 slots caps each position at
+$22,306). This ceiling is the important half of the formula: the base rule
+`available_cash / remaining_slots` alone oversizes a *replacement* position whenever the book
+is nearly full but a large cash pile is free. When only one slot is open, `remaining_slots` is
+1 and the base rule pours 100% of free cash into that single name. On 2026-09-21 that sized MPC
+at `$37,916 / 1 = $36,206` and PSX at `$37,184 / 1 = $35,856` — roughly 1.6× the equal-weight
+share and nearly 2× the morning cohort — so a routine −2% stop lost ~$720 on each instead of
+~$400. The exits fired correctly; the loss came entirely from size. The cap makes that
+impossible. See `decisions/2026-09-21_equity-capped-position-size.md`.
+
+If IBKR's `NetLiquidation` read is momentarily unavailable (returns 0), equity is reconstructed
+from cash + the IBKR-synced market value of current holdings so the ceiling still binds — it
+never silently falls back to the uncapped formula.
 
 `PRICE_SAFETY_RESERVE` ($1,000) is withheld because IBKR's price feed can lag the market by
 15–20 minutes. Sizing against a stale quote can produce an order that exceeds settled cash;

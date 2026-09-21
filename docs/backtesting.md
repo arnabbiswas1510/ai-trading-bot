@@ -15,7 +15,9 @@ different questions. Picking the wrong one wastes time.
 
 Simulates the full CAN SLIM breakout strategy over historical FMP data.
 Entries are detected on day T's close and filled at day T+1's **open** (no
-look-ahead). Sizing is `available_cash / remaining_slots`, matching the live bot.
+look-ahead). Sizing is `min(available_cash / remaining_slots, equity / MAX_POSITIONS)`,
+matching the live bot — the second term caps each position at one equal-weight share of
+equity (see `decisions/2026-09-21_equity-capped-position-size.md`).
 
 ### From the dashboard
 

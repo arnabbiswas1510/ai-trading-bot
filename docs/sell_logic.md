@@ -374,7 +374,9 @@ the fat winners the book depends on, whereas trimming *quantity* is asymmetric.
   cannot leave a reduced, unprotected position.
 
 **Freed capital stays as reserve** until a full slot opens, then redeploys via the
-normal `available_cash / remaining_slots` sizing. Slots are counted by ticker
+normal `min(available_cash / remaining_slots, NetLiquidation / MAX_POSITIONS)`
+sizing (equal-weight capped — see
+`decisions/2026-09-21_equity-capped-position-size.md`). Slots are counted by ticker
 existence, so a scaled position still occupies one of the `MAX_POSITIONS` slots —
 scale-out never creates a sixth name.
 

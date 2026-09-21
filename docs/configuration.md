@@ -179,9 +179,17 @@ tunnel or an exposed port.
 | `BUY_PRICE_DRIFT_TOLERANCE` | `0.01` | Reconcile overwrites the stored `buy_price` when it drifts more than this (1%) from what the lot actually cost, then resets the derived peak/proven flags and alerts. The basis comes from the **BOT fills that opened the lot**; IBKR's `averageCost` is only a fallback, and is refused outright when the symbol has been round-tripped (it then folds earlier realised losses into the open lot). Guards against a wrong fill price silently corrupting both the dashboard P&L and every `buy_price`-anchored exit rule. See [sell logic](sell_logic.md) and `decisions/2026-09-10_lot-basis-and-broker-aware-cooling-off.md` |
 | `COOLING_OFF_DAYS` | `3` | Re-entry block after a sale. 3 is a measured optimum, not a default: 7 blocks 7 of the bot's 9 genuine re-entries (+$1,736.67 net, including NTRA's +$575.44 on a 4-day gap), while 0 readmits names that are still falling — 62% of blocked re-entries break the Prove-It day-0 band on their first session. See `decisions/2026-09-15_cooling-off-three-days.md` |
 
-**Sizing** is `available_cash / remaining_slots`, recomputed before each buy. The
-per-position stop is `max(STOP_LOSS_PCT, min(ATR_STOP_MAX_PCT, 2.5 × entry_atr_pct))` — so
-in practice 10–12%, scaled to the name's own volatility.
+**Sizing** is `min(available_cash / remaining_slots, NetLiquidation / MAX_POSITIONS)`,
+recomputed before each buy. The first term spreads free cash across open slots; the second is
+a **hard ceiling** — no single position may exceed one equal-weight share of account equity
+(e.g. a $111,530 account with 5 slots caps each position at $22,306). The ceiling exists
+because the first term alone oversizes a replacement bought into a nearly-full book: with one
+slot open it pours all free cash into that name (on 2026-09-21 that sized MPC and PSX at ~$36k
+vs a $22k equal-weight share, doubling two −2% stop-outs). If `NetLiquidation` is momentarily
+unavailable, equity is reconstructed from cash + held market value so the cap still binds. See
+`decisions/2026-09-21_equity-capped-position-size.md`. The per-position stop is
+`max(STOP_LOSS_PCT, min(ATR_STOP_MAX_PCT, 2.5 × entry_atr_pct))` — so in practice 10–12%,
+scaled to the name's own volatility.
 
 Raising `MAX_POSITIONS` with a fully-invested book does **not** free capital. New slots fill
 only as existing positions exit, and the book carries uneven weights until it fully turns

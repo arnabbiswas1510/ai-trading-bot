@@ -148,10 +148,14 @@ Full detail: [docs/buy_logic.md](docs/buy_logic.md)
 
 ## Risk Model
 
-Position sizing is `available_cash / remaining_slots`, recomputed before each buy. With 5
-slots, a full book is roughly 20% per name. **Concentration is deliberate** — but it means
-a single-name loss is 4–5× more damaging to the portfolio than in a 20-stock book. That
-asymmetry is why exits are aggressive and layered.
+Position sizing is `min(available_cash / remaining_slots, NetLiquidation / MAX_POSITIONS)`,
+recomputed before each buy. The second term is a hard ceiling: no single position may exceed
+one equal-weight share of account equity, so a replacement bought into a nearly-full book can
+never absorb the whole free-cash pile (the 2026-09-21 oversizing bug — see
+`decisions/2026-09-21_equity-capped-position-size.md`). With 5 slots, a full book is roughly
+20% per name. **Concentration is deliberate** — but it means a single-name loss is 4–5× more
+damaging to the portfolio than in a 20-stock book. That asymmetry is why exits are aggressive
+and layered.
 
 Exits form a hierarchy from mechanical to discretionary. Every rule below is evaluated on
 **trading days held**, counted over the half-open interval `[buy_date, today)` — so a

@@ -12,7 +12,7 @@ export default function BacktesterView() {
   const [capital, setCapital] = useState(100000);
   const [stopLoss, setStopLoss] = useState(7.0);
   const [maxPositions, setMaxPositions] = useState(5);  // matches live MAX_POSITIONS=5
-  // No positionSize field — backtester uses available_cash / remaining_slots (matches live bot)
+  // No positionSize field — backtester uses min(available_cash / remaining_slots, equity / MAX_POSITIONS) (matches live bot)
 
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);

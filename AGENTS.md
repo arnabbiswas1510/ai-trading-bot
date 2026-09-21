@@ -227,8 +227,12 @@ The application uses a decoupled cloud screening and local execution environment
   env-overridable; the book was migrated from 4 slots to 5 — see
   `decisions/2026-08-04_backtest-noise-floor-and-slot-count.md` and
   `decisions/2026-08-09_max-positions-single-source.md`). Per-trade allocation:
-  `position_size = available_cash / remaining_slots`
-  where `remaining_slots = MAX_POSITIONS - len(open_positions)`, recomputed at each buy.
+  `MAX_POSITIONS`, recomputed at each buy. This base allocation is then **capped
+  at one equal-weight share of total equity** — `min(available_cash /
+  remaining_slots, NetLiquidation / MAX_POSITIONS)` — so a replacement bought into
+  a nearly-full book can never absorb the whole free-cash pile (the 2026-09-21
+  oversizing incident; see
+  `decisions/2026-09-21_equity-capped-position-size.md`).
   A slot is counted by ticker existence (`len(holdings)`), not dollar size, so a
   partially scaled-out position still occupies exactly one of the five slots.
 * **Risk Boundaries**:

@@ -3445,6 +3445,52 @@ def assert_schema_ok(client) -> bool:
     return True
 
 
+def equity_capped_position_size(available_cash: float, remaining_slots: int,
+                                equity: float, max_positions: int) -> float:
+    """Dollar allocation for one new position, never exceeding an equal-weight
+    share of total account equity.
+
+    The base allocation is the historical rule — free cash spread evenly across
+    the still-open slots: ``available_cash / remaining_slots``. On top of that a
+    HARD CEILING of ``equity / max_positions`` (one equal-weight slot of the
+    whole account) is applied.
+
+    ── Why the ceiling exists (2026-09-21 oversizing incident) ──────────────
+    The base rule alone oversizes a replacement position whenever the book is
+    nearly full but a large cash pile is free. On 2026-09-21 four names opened in
+    the morning at ~$19k each (cash divided ÷4, ÷3, ÷2, ÷1 across empty slots),
+    then as single slots reopened intraday the formula put ALL free cash into the
+    one open slot: MPC was sized ``$37,916 / 1 slot = $36,206`` and PSX
+    ``$37,184 / 1 slot = $35,856`` — about 1.6x the $22,306 equal-weight share of
+    the $111,530 account, and nearly 2x the morning cohort. A routine −2% stop
+    then lost ~$720 on each instead of the ~$400 an equal-weight position would
+    have. The exits fired correctly; the dollar damage came entirely from size.
+    See decisions/2026-09-21_equity-capped-position-size.md.
+
+    Args:
+        available_cash:  free (margin-free) cash available to deploy this cycle.
+        remaining_slots: open position slots (MAX_POSITIONS − held). Coerced to
+                         at least 1 to avoid division by zero.
+        equity:          total account equity (NetLiquidation). When <= 0 it is
+                         treated as UNKNOWN and the ceiling is skipped rather than
+                         applied as a zero — a zero cap would block every buy.
+                         Callers must pass a best-effort equity (reconstruct from
+                         cash + held market value if NetLiquidation is missing) so
+                         the cap is virtually always active.
+        max_positions:   MAX_POSITIONS — the divisor for the equal-weight cap.
+
+    Returns:
+        The dollar allocation, guaranteed <= equity / max_positions whenever
+        equity and max_positions are both positive.
+    """
+    remaining_slots = max(1, int(remaining_slots))
+    base = max(0.0, float(available_cash)) / remaining_slots
+    if equity and equity > 0 and max_positions and max_positions > 0:
+        equity_cap = float(equity) / int(max_positions)
+        return min(base, equity_cap)
+    return base
+
+
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
     print("⏳ Running Market Open Buy checks...")
@@ -3538,6 +3584,20 @@ def run_market_open_buys(ib: IB):
 
     cycle_cash_spent = 0.0
     initial_own_cash = get_own_cash(ib)
+
+    # Equity base for the per-position ceiling (equity / MAX_POSITIONS). Captured
+    # once per cycle: NetLiquidation is stable as cash converts to shares within
+    # the cycle. If IBKR's NetLiquidation tag is momentarily unavailable (returns
+    # 0.0), reconstruct equity from cash + the IBKR-synced market value of current
+    # holdings so the cap NEVER silently falls back to the uncapped formula that
+    # caused the 2026-09-21 oversizing incident.
+    initial_net_liq = get_net_liquidation(ib)
+    if initial_net_liq <= 0:
+        held_value = sum(float(h.get("market_value") or 0.0) for h in holdings)
+        initial_net_liq = initial_own_cash + held_value
+        print(f"⚠️ NetLiquidation unavailable — reconstructed equity for position "
+              f"cap: ${initial_net_liq:,.2f} (cash ${initial_own_cash:,.2f} + held "
+              f"${held_value:,.2f}).")
 
     for trigger in triggers:
         ticker = trigger["ticker"]
@@ -3659,8 +3719,17 @@ def run_market_open_buys(ib: IB):
         stock_held_count = len(holdings)
         remaining_slots = max(1, MAX_POSITIONS - stock_held_count)
         print(f"💰 Own Cash (margin-free) in IBKR: ${available_cash:,.2f} (initial: ${initial_own_cash:,.2f}, spent this cycle: ${cycle_cash_spent:,.2f})")
-        position_size = available_cash / remaining_slots
-        print(f"   Position sizing: ${available_cash:,.2f} / {remaining_slots} slot(s) = ${position_size:,.2f} per position (${PRICE_SAFETY_RESERVE:,.0f} safety reserve applied at share count)")
+        uncapped_size = available_cash / remaining_slots
+        position_size = equity_capped_position_size(
+            available_cash, remaining_slots, initial_net_liq, MAX_POSITIONS)
+        equity_cap = (initial_net_liq / MAX_POSITIONS) if initial_net_liq > 0 else None
+        if equity_cap is not None and uncapped_size > equity_cap + 0.005:
+            print(f"   Position sizing: ${available_cash:,.2f} / {remaining_slots} slot(s) = "
+                  f"${uncapped_size:,.2f}, CAPPED to equal-weight ${equity_cap:,.2f} "
+                  f"(equity ${initial_net_liq:,.2f} / {MAX_POSITIONS}) "
+                  f"(${PRICE_SAFETY_RESERVE:,.0f} safety reserve applied at share count)")
+        else:
+            print(f"   Position sizing: ${available_cash:,.2f} / {remaining_slots} slot(s) = ${position_size:,.2f} per position (${PRICE_SAFETY_RESERVE:,.0f} safety reserve applied at share count)")
 
         # Double check active holdings size again
         if stock_held_count >= MAX_POSITIONS:
@@ -5109,7 +5178,8 @@ def execute_scale_out(ib: IB, client: Client, pos: dict, ticker: str,
     realised profit a later fade cannot erase, while the remainder keeps riding
     the UNCHANGED Prove-It stop so the fat winners the book depends on are never
     clipped. Freed capital stays as reserve until a full slot opens, then
-    redeploys via the normal available_cash / remaining_slots sizing.
+    redeploys via the normal equity-capped min(cash / remaining_slots,
+    NetLiquidation / MAX_POSITIONS) sizing.
 
     Ordering is CANCEL-FIRST, matching execute_sell(): the full-size protective
     bracket is cancelled before the market sell so the resting trailing/hard legs
