@@ -15,7 +15,7 @@
     "semantic_hash": ""
   },
   "backend/backtester.py": {
-    "mtime": 1790026982.7234516,
+    "mtime": 1790037416.2732596,
     "ast_hash": "7aa6cbc01d0ea5a503b8cb343d9c037f",
     "semantic_hash": ""
   },
@@ -40,7 +40,7 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1790037318.9897676,
+    "mtime": 1790037416.2759907,
     "ast_hash": "f4e272735f0ea30a7cedd3422d94da3e",
     "semantic_hash": ""
   },
@@ -75,7 +75,7 @@
     "semantic_hash": ""
   },
   "frontend/src/components/BacktesterView.jsx": {
-    "mtime": 1790026992.1977925,
+    "mtime": 1790037416.276377,
     "ast_hash": "c52dbdac0af533bc7b6f5e762f598817",
     "semantic_hash": ""
   },
@@ -280,12 +280,12 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790037311.514379,
+    "mtime": 1790037416.2722266,
     "ast_hash": "4e97e5ca7f246dee78aad494657c9577",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790026902.9323509,
+    "mtime": 1790037416.2727022,
     "ast_hash": "a1edbc389723d60b91f5e09ada78b25e",
     "semantic_hash": ""
   },
@@ -300,12 +300,12 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1790026844.1009445,
+    "mtime": 1790037416.274092,
     "ast_hash": "5f5e82dea8bc080973c346d5b9ccb21c",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790026894.4921515,
+    "mtime": 1790037416.2745187,
     "ast_hash": "4dca134c68f71c2f19cc36c6bea8dfac",
     "semantic_hash": ""
   },
@@ -320,7 +320,7 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1790037315.6105704,
+    "mtime": 1790037416.2750776,
     "ast_hash": "477326cf92a34127dde097e110959bf8",
     "semantic_hash": ""
   },
@@ -950,7 +950,7 @@
     "semantic_hash": ""
   },
   "docs/backtesting.md": {
-    "mtime": 1790026988.8803003,
+    "mtime": 1790037416.2738333,
     "ast_hash": "118bffb532d03effb962e66bc751fea2",
     "semantic_hash": ""
   },
@@ -1440,13 +1440,28 @@
     "semantic_hash": ""
   },
   "tests/test_position_sizing_cap.py": {
-    "mtime": 1790026765.2826312,
+    "mtime": 1790037416.2871182,
     "ast_hash": "a2d66e2253fab9f3a0e6c2470b97a6cb",
     "semantic_hash": ""
   },
   "decisions/2026-09-21_equity-capped-position-size.md": {
-    "mtime": 1790027015.700113,
+    "mtime": 1790037416.2734947,
     "ast_hash": "b6725611e872bd1df34c086dddaed2dc",
+    "semantic_hash": ""
+  },
+  "tests/golden/exit_path_monitor.json": {
+    "mtime": 1790041369.0180564,
+    "ast_hash": "58557e15bbbe1f37d3840fd414e64276",
+    "semantic_hash": ""
+  },
+  "tests/golden_log.py": {
+    "mtime": 1790041340.647585,
+    "ast_hash": "e42ff94e191f8cf383ad04436d88c627",
+    "semantic_hash": ""
+  },
+  "tests/test_exit_path_golden.py": {
+    "mtime": 1790041364.4928017,
+    "ast_hash": "0dfafd014bdecf58131bf6798c1c6d4a",
     "semantic_hash": ""
   }
 }

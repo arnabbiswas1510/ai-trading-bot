@@ -1,0 +1,45 @@
+[
+  {
+    "kind": "arm_exit",
+    "ticker": "LOSERAA",
+    "shares": 100,
+    "reason": "Prove-It Stop"
+  },
+  {
+    "kind": "notify",
+    "method": "notify_prove_it_stop",
+    "ticker": null
+  },
+  {
+    "kind": "cancel_sells",
+    "ticker": "WINNERB"
+  },
+  {
+    "kind": "place_protective_stops",
+    "ticker": "WINNERB",
+    "shares": 100,
+    "trail_pct": 0.015,
+    "hard_price": 98.01
+  },
+  {
+    "kind": "notify",
+    "method": "_send",
+    "ticker": null
+  },
+  {
+    "kind": "cancel_sells",
+    "ticker": "PROVENC"
+  },
+  {
+    "kind": "place_protective_stops",
+    "ticker": "PROVENC",
+    "shares": 100,
+    "trail_pct": 0.0481,
+    "hard_price": 98.01
+  },
+  {
+    "kind": "notify",
+    "method": "_send",
+    "ticker": null
+  }
+]
