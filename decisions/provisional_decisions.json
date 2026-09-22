@@ -365,15 +365,16 @@
         "reached_5pct_within_21d": 34,
         "reached_5pct_while_still_held": 16
       },
-      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --runon --top 40",
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --runon --top 40 && python3 research/exit_rule_replay.py --insecure --slotcost --top 15",
       "review_questions": [
-        "BLOCKING PRECONDITION, check this before reading any dollar figure: can the harness price slot opportunity cost yet? MAX_POSITIONS is 5, and every run-on figure assumes a position can be held 30 extra days for free. Until a replay can model the breakouts NOT taken because a slot was occupied, a positive run-on net is an upper bound and not a reason to widen the ladder. If the answer is still no, the correct verdict is 'still blocked' -- do not ship a ladder change on price-path evidence alone.",
-        "SINGLE-TRADE-CARRY CHECK: is the ladder-5%/8% advantage still ~65% one trade? Baseline was ECO +$3,794 of a +$5,685 net; ex-ECO it is +$1,891 over 23 trades. Report the net with and without the largest single contributor.",
+        "BLOCKING PRECONDITION, now UNBLOCKED (2026-09-22): the harness CAN price slot opportunity cost, via --slotcost. Run it and read slot_net, not naive_net. slot_net = naive_net - slot_cost, where slot_cost is the counterfactual P&L of the real entries a longer hold would have blocked (MAX_POSITIONS=5). A config only qualifies if its slot_net beats shipped AND the edge is not one-trade-carried. First run: ladder 5% slot_net +$22,277 vs shipped +$20,207; ladder 8% falls BELOW shipped once $6,624 of blocked winners are charged. Do NOT ship on naive_net.",
+        "SINGLE-TRADE-CARRY CHECK: is the ladder-5%/8% advantage still ~65% one trade? Baseline was ECO +$3,794 of a +$5,685 net; ex-ECO it is +$1,891 over 23 trades. Report the net with and without the largest single contributor, for BOTH naive_net and slot_net.",
         "REGIME CHECK: do the trades now span more than one market regime? A hold-longer result measured entirely in a rising tape is close to uninformative. If the sample is still one regime, say so and discount accordingly.",
         "REACHABILITY: re-run the reachability table. Has the count of trades reaching +10% within 21 days WHILE STILL HELD moved off 1? If it has not, power hold remains inert and lowering POWER_HOLD_GAIN_PCT in isolation is still the wrong lever -- the ladder sells first.",
-        "DOWNSIDE: track harmed and >300 alongside the net. Baseline was 12 -> 18 harmed going from shipped to ladder 5%. A widened give-back that improves the net by clipping fewer winners while materially worsening losers is not obviously the trade you want on a 5-slot book."
+        "DOWNSIDE: track harmed and >300 alongside the net. Baseline was 12 -> 18 harmed going from shipped to ladder 5%. A widened give-back that improves the net by clipping fewer winners while materially worsening losers is not obviously the trade you want on a 5-slot book.",
+        "SLOT-MODEL SANITY: confirm --slotcost still reports peak concurrency <= MAX_POSITIONS (the merge correctness gate). A peak above 5 means the partial-merge broke and every slot_cost is overstated -- investigate before trusting any row."
       ],
-      "last_reviewed": "2026-09-18",
+      "last_reviewed": "2026-09-22",
       "history": [
         {
           "date": "2026-09-18",
@@ -386,6 +387,12 @@
           "closed_trades": 52,
           "verdict": "rejected",
           "note": "Drawdown-conditional rung tested (--clean --runon-days 30) against the FULL live bot incl. scale-out. LIVE BASELINE wins outright at +$10,762; every loosening scores lower (3% flat +$8,426; 5% flat +$6,611) and harms more trades (8 -> 11-13). The condition is a flat widening in disguise: 14/15 (93%) of trades reaching +5% qualify at dd<=3%, because Phase 1 already exits at -1%/-3% so survivors are shallow-drawdown by construction. Loosening also REDUCES the winner delta (+4,209 -> +1,872): a wider rung rides faders down rather than holding runners. Loss side identical in every row (worst -$1,269, >300 = 10). Exit is not the bottleneck."
+        },
+        {
+          "date": "2026-09-22",
+          "closed_trades": 60,
+          "verdict": "holds (blocker resolved, decision unchanged)",
+          "note": "The blocking precondition is now UNBLOCKED: --slotcost models slot opportunity cost. Merge correctness gate passes (60 rows -> 59 positions, peak concurrency 5 = MAX_POSITIONS). First slot-aware result: ladder 5% slot_net +$22,277 vs shipped +$20,207 (a ~$2,070 edge that SURVIVES the $5,761 slot charge); ladder 8% naive +$19,511 but slot_net +$12,886 -- it drops BELOW shipped once $6,624 of blocked winners are charged, exactly the re-ranking the model exists to produce. NOTHING shipped: the ladder-5% naive number is still the ECO-carried, one-regime distribution flagged before, and the blocked-entry model conflates a continued hold with a same-ticker re-entry (first-order). The deferral stands but for a better-understood reason. See decisions/2026-09-22_slot-opportunity-cost-harness.md."
         }
       ],
       "fed_by": [

@@ -6,6 +6,16 @@
   `decisions/2026-09-17_exit-review-48-trades.md` (loosening direction only)
 - **Follow-up:** `decisions/provisional_decisions.json` → `ladder-width-runon`
 
+> **2026-09-22 — the "decisive term" this ADR left unmodelled is now modelled.**
+> This ADR refused to ship any ladder change because "slot opportunity cost is
+> entirely unmodelled, and it is the decisive term … no ladder change should ship
+> until it can." That capability now exists as `--slotcost`
+> (`decisions/2026-09-22_slot-opportunity-cost-harness.md`). Its first run charges
+> the blocked-entry cost and re-ranks this ADR's table: ladder 8% falls **below**
+> shipped once its $6,624 of blocked winners are paid for, and ladder 5% keeps a
+> ~$2,070 slot-aware edge that is still ECO-carried and one-regime. The refusal to
+> ship stands; the reason it could not be tested does not.
+
 ## Context
 
 The standing question is the one the book is actually built around: *cut losers

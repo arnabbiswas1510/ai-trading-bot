@@ -819,6 +819,7 @@ python3 research/exit_rule_replay.py --insecure --grid     # full sweep
 python3 research/exit_rule_replay.py --insecure --proveit --top 80  # Prove-It parameter sweep (38 rows)
 python3 research/exit_rule_replay.py --insecure --day0     # Phase 1: bot-enforced vs broker-resting
 python3 research/exit_rule_replay.py --insecure --runon    # "let winners run": the LOOSENING direction
+python3 research/exit_rule_replay.py --insecure --slotcost # "let winners run" WITH the blocked-entry slot cost charged
 ```
 
 > ⚠️ **Use `--runon` for any question of the form "should we hold longer?"**
@@ -826,6 +827,15 @@ python3 research/exit_rule_replay.py --insecure --runon    # "let winners run": 
 > would have held longer is scored at the live exit price and its upside is
 > invisible. Those modes can rank tightening honestly and **cannot rank
 > loosening at all**. See `decisions/2026-09-18_runon-window-winners-run.md`.
+
+> ⚠️ **Then use `--slotcost` before believing any "hold longer" winner.**
+> `--runon` still assumes a held winner occupies its slot for free. `--slotcost`
+> merges scale-out partials into parent positions, verifies peak concurrency
+> ≤ `MAX_POSITIONS` (the correctness gate — it comes out exactly 5), and runs a
+> 5-slot portfolio sim that charges each longer hold for the real entries it
+> would have blocked. It re-ranks the sweep: ladder 8% loses more than half its
+> naive gain to blocked winners and drops below shipped. See
+> `decisions/2026-09-22_slot-opportunity-cost-harness.md`.
 
 > ⚠️ **`--proveit` was repaired on 2026-09-18 and now answers "is the shipped
 > config still best?" directly.** Until then it could not: every row used a
@@ -883,9 +893,9 @@ change something.
 | `phase2-unarmed` (no floor below the arm gain) | open by design | Flooring it at the Phase 1 band is **rejected, and as of 2026-09-17 the rejection is settled.** Re-run via `--cliff` on the corrected 48-trade sample that now DOES contain NTRA RT1 (−$706.66) — the trade that motivated the hypothesis and whose absence made the earlier 2026-09-10 rejection provisional. The fix scores **−$1,393 vs shipped** (+$9,280 vs +$10,673) and raises `>300` from 11 to 12, so it is worse on the larger sample than it was on the smaller one. The owed re-run is **done**; no caveat remains. See `decisions/2026-09-10_prove-it-unarmed-window-measured-not-closed.md` and `decisions/2026-09-17_exit-review-48-trades.md`. |
 | `PROVE_IT_P2_FLOOR_PCT` | `-0.01` | The 1% of slack is worth +$1,189 on CPAY alone. Whether 1% is the *right* slack, or merely enough for CPAY, is unresolved. |
 | `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | Not measured. Set wide enough that the resting order provably cannot front-run the bot; no sweep supports the exact value. **Re-test with `--day0`:** a broker-hard Phase 1 wins by +$187 on the current sample, but the entire net is APH alone — recheck once more overnight-gap trades exist. |
-| `TRAIL_PROFIT_TIERS` | `+5% → 1.5%` | The tightening comparison (+6% vs +5%) stands. The **loosening** direction was never validly measured: until 2026-09-18 the replay truncated price history at the realised exit, so a looser trail was handed the live exit price for free and could not score upside. With a run-on window, ladder 5%/8% beat shipped by ~$5,700 — but ~65% of that is ECO alone and slot opportunity cost is unmodelled. Unresolved; see `decisions/2026-09-18_runon-window-winners-run.md`. |
-| `POWER_HOLD_GAIN_PCT` | `10.0` | **Provably inert as shipped**, measured 2026-09-18 via `--runon`. 13/50 trades reached +10% within 21 days of entry; the bot was still holding **one**. The +5% ladder rung sells at roughly half the trigger, so power hold at +10% replays byte-identically to shipped. Lowering it alone will not help — the ladder would still sell first. (The earlier "no trade ever reached +10%" claim was a truncation artefact and is **retracted**.) |
-| `STALE_EXIT_DAYS` (as a rotation discount) | `10` | The staleness discount is **unmodelled by the harness** — the replay cannot see Rank & Replace at all. |
+| `TRAIL_PROFIT_TIERS` | `+5% → 1.5%` | The tightening comparison (+6% vs +5%) stands. The **loosening** direction is now measurable in full: `--runon` (2026-09-18) removed the truncation bias and `--slotcost` (2026-09-22) removed the free-hold bias. With both, ladder 5% still leads shipped (+$22,277 vs +$20,207 slot-aware) but is still ECO-carried and one-regime; ladder 8% drops **below** shipped once blocked winners ($6,624) are charged. Not shippable yet — remeasure as n grows and on a down-tape. See `decisions/2026-09-22_slot-opportunity-cost-harness.md`. |
+| `POWER_HOLD_GAIN_PCT` | `10.0` | **Provably inert as shipped**, measured 2026-09-18 via `--runon` and unchanged under `--slotcost`. 13/50 trades reached +10% within 21 days of entry; the bot was still holding **one**. The +5% ladder rung sells at roughly half the trigger, so power hold at +10% replays byte-identically to shipped. Lowering it alone will not help — the ladder would still sell first. (The earlier "no trade ever reached +10%" claim was a truncation artefact and is **retracted**.) |
+| `STALE_EXIT_DAYS` (as a rotation discount) | `10` | The staleness discount is **unmodelled by the harness** — the replay cannot see Rank & Replace at all. `--slotcost` prices the slot *contention* Rank & Replace exists to relieve, but not the rotation rule itself. |
 | `MARKET_DIRECTION_TICKERS` | `SPY,QQQ` | Chosen on a 4,940-session **index** grid. The trade-history replay could not discriminate — all 21 closed trades fall in one six-week window where every config says BULL. |
 | `MARKET_DIRECTION_BUFFER_PCT` | `0.01` | Same caveat. 1% and 2% scored within noise of each other on index data. |
 | `MARKET_DIRECTION_SLOPE_DAYS` | `20` | Same caveat. Note the gate's mean-return edge is **negative outside 2008** — it is justified as drawdown insurance, not as a return enhancer. |
@@ -976,8 +986,9 @@ Reproduce with `python3 research/exit_rule_replay.py --insecure --proveit --top 
    because the +5% ladder rung sells them first, so the live question is no
    longer "is 10% reachable" but "do the ladder and the trigger have to move
    together". They do. Do not retune either in isolation, and not before slot
-   opportunity cost can be modelled — see
-   `decisions/2026-09-18_runon-window-winners-run.md`.
+   opportunity cost can be modelled — which as of 2026-09-22 it now is, via
+   `--slotcost`. See `decisions/2026-09-18_runon-window-winners-run.md` and
+   `decisions/2026-09-22_slot-opportunity-cost-harness.md`.
 
 **A second erratum (2026-09-15).** The replay's *input* changed, not its code:
 NBIX was re-priced (+$835.82) and NTRA was split into its three real round trips.

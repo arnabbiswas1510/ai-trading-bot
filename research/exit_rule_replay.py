@@ -82,6 +82,12 @@ ARMED_EXIT_TRAIL_PCT = 0.006
 ARMED_EXIT_DEADLINE_HOURS = 3.25
 CHECK_MINUTES = (0, 15, 30, 45)
 
+# Mirror of config.MAX_POSITIONS. The slot-opportunity-cost model (--slotcost)
+# needs the concurrent-position cap to know when a longer hold BLOCKS a later
+# entry. If the live cap changes, change it here and say so, or the slot model
+# silently prices contention against the wrong ceiling.
+MAX_POSITIONS = 5
+
 FMP_5MIN = "https://financialmodelingprep.com/stable/historical-chart/5min"
 
 
@@ -611,16 +617,23 @@ def simulate_scaleout(trade: Trade, cfg: ExitConfig) -> dict | None:
     # at the last available close instead, the same way score() does for the
     # non-scale path.
     if rem is None and trade.runon_from and trade.runon_from < len(trade.bars):
-        rem = {"price": trade.bars[-1]["close"], "reason": "runon_open"}
+        rem = {"price": trade.bars[-1]["close"], "reason": "runon_open",
+               "ts": trade.bars[-1]["ts"]}
     remainder_exit = rem["price"] if rem is not None else trade.sell_price
-    reason = (rem["reason"] if rem is not None else "held") 
+    reason = (rem["reason"] if rem is not None else "held")
+    # The position is fully closed only when the REMAINDER leaves, so that is
+    # when its portfolio slot frees. The scale leg is a partial and does not free
+    # the slot. Fall back to the real sell timestamp when the remainder never
+    # fired (no run-on window).
+    exit_ts = rem.get("ts") if rem is not None else trade.sell_ts
 
     if scale_fill is None or frac <= 0.0:
-        return {"price": remainder_exit, "reason": reason}
+        return {"price": remainder_exit, "reason": reason, "ts": exit_ts}
 
     blended = frac * scale_fill + (1 - frac) * remainder_exit
     return {"price": round(blended, 4),
-            "reason": f"scale{int(frac*100)}@{cfg.scale_trigger:.0f}%+{reason}"}
+            "reason": f"scale{int(frac*100)}@{cfg.scale_trigger:.0f}%+{reason}",
+            "ts": exit_ts}
 
 
 def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
@@ -637,15 +650,15 @@ def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
         if armed:
             level = armed["peak"] * (1 - cfg.trail)
             if armed["first"] and bar["open"] <= level:
-                return {"price": bar["open"], "reason": f"{armed['reason']}_gap"}
+                return {"price": bar["open"], "reason": f"{armed['reason']}_gap", "ts": bar["ts"]}
             if bar["low"] <= level:
-                return {"price": level, "reason": f"{armed['reason']}_trail"}
+                return {"price": level, "reason": f"{armed['reason']}_trail", "ts": bar["ts"]}
             armed["peak"] = max(armed["peak"], bar["high"])
             armed["first"] = False
             if bar["ts"].minute in CHECK_MINUTES:
                 held_h = (bar["ts"] - armed["at"]).total_seconds() / 3600.0
                 if held_h >= cfg.deadline_h:
-                    return {"price": bar["close"], "reason": f"{armed['reason']}_deadline"}
+                    return {"price": bar["close"], "reason": f"{armed['reason']}_deadline", "ts": bar["ts"]}
 
         # ── Track the daily-close follow-through latch the thesis stop uses ──
         if current_date != bar["date"]:
@@ -679,7 +692,7 @@ def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
         if not triggered:
             continue
         if cfg.mode == "market":
-            return {"price": close, "reason": f"{triggered}_market"}
+            return {"price": close, "reason": f"{triggered}_market", "ts": bar["ts"]}
         armed = {"at": bar["ts"], "peak": close, "first": True, "reason": triggered}
 
     return None
@@ -733,15 +746,15 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
         if armed:
             level = armed["peak"] * (1 - cfg.trail)
             if armed["first"] and bar["open"] <= level:
-                return {"price": bar["open"], "reason": f"{armed['reason']}_gap"}
+                return {"price": bar["open"], "reason": f"{armed['reason']}_gap", "ts": bar["ts"]}
             if bar["low"] <= level:
-                return {"price": level, "reason": f"{armed['reason']}_trail"}
+                return {"price": level, "reason": f"{armed['reason']}_trail", "ts": bar["ts"]}
             armed["peak"] = max(armed["peak"], bar["high"])
             armed["first"] = False
             if bar["ts"].minute in CHECK_MINUTES:
                 held_h = (bar["ts"] - armed["at"]).total_seconds() / 3600.0
                 if held_h >= cfg.deadline_h:
-                    return {"price": bar["close"], "reason": f"{armed['reason']}_deadline"}
+                    return {"price": bar["close"], "reason": f"{armed['reason']}_deadline", "ts": bar["ts"]}
             continue
 
         # ── Daily rollover: a position becomes "proven" on a close above entry
@@ -791,9 +804,9 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
             if power_held:
                 stop_price = peak * (1 - cfg.power_hold_trail)
                 if bar["open"] <= stop_price:
-                    return {"price": bar["open"], "reason": "power_hold_gap"}
+                    return {"price": bar["open"], "reason": "power_hold_gap", "ts": bar["ts"]}
                 if bar["low"] <= stop_price:
-                    return {"price": stop_price, "reason": "power_hold_trail"}
+                    return {"price": stop_price, "reason": "power_hold_trail", "ts": bar["ts"]}
                 peak = max(peak, bar["high"])
                 peak_close = max(peak_close, bar["close"])
                 continue
@@ -830,9 +843,9 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
 
             if stop_price is not None:
                 if bar["open"] <= stop_price:
-                    return {"price": bar["open"], "reason": "p2_gap"}
+                    return {"price": bar["open"], "reason": "p2_gap", "ts": bar["ts"]}
                 if bar["low"] <= stop_price:
-                    return {"price": stop_price, "reason": "p2_floor"}
+                    return {"price": stop_price, "reason": "p2_floor", "ts": bar["ts"]}
 
             # ── EOD give-back test ───────────────────────────────────────────
             # Evaluated only on the session's final bar, against the close. The
@@ -845,7 +858,7 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     anchor = max(peak, bar["high"])
                 if (anchor / entry - 1) * 100.0 >= cfg.p2_ladder_gain:
                     if bar["close"] <= anchor * (1 - cfg.p2_eod_trail):
-                        return {"price": bar["close"], "reason": "p2_eod"}
+                        return {"price": bar["close"], "reason": "p2_eod", "ts": bar["ts"]}
 
         elif not proven:
             pct = cfg.p1_pct_for_day(day)
@@ -880,9 +893,9 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
             if broker_level is not None and (bot_level is None
                                              or broker_level >= bot_level):
                 if bar["open"] <= broker_level:
-                    return {"price": bar["open"], "reason": "p1_ratchet_gap"}
+                    return {"price": bar["open"], "reason": "p1_ratchet_gap", "ts": bar["ts"]}
                 if bar["low"] <= broker_level:
-                    return {"price": broker_level, "reason": "p1_ratchet"}
+                    return {"price": broker_level, "reason": "p1_ratchet", "ts": bar["ts"]}
 
             if pct is not None:
                 level = bot_level
@@ -903,9 +916,9 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
 
                 if hit:
                     if hard:
-                        return {"price": fill, "reason": "p1_broker"}
+                        return {"price": fill, "reason": "p1_broker", "ts": bar["ts"]}
                     if cfg.mode == "market":
-                        return {"price": fill, "reason": "p1_market"}
+                        return {"price": fill, "reason": "p1_market", "ts": bar["ts"]}
                     armed = {"at": bar["ts"], "peak": fill,
                              "first": True, "reason": "p1"}
                     continue
@@ -916,17 +929,17 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
             if broker_level is not None and bot_level is not None \
                     and broker_level < bot_level:
                 if bar["open"] <= broker_level:
-                    return {"price": bar["open"], "reason": "p1_backstop_gap"}
+                    return {"price": bar["open"], "reason": "p1_backstop_gap", "ts": bar["ts"]}
                 if bar["low"] <= broker_level:
-                    return {"price": broker_level, "reason": "p1_backstop"}
+                    return {"price": broker_level, "reason": "p1_backstop", "ts": bar["ts"]}
 
             # The base trail also rests in Phase 1, beneath the entry band.
             # Reached only when the band did not fire/arm on this bar.
             if base_level is not None:
                 if bar["open"] <= base_level:
-                    return {"price": bar["open"], "reason": "base_gap"}
+                    return {"price": bar["open"], "reason": "base_gap", "ts": bar["ts"]}
                 if bar["low"] <= base_level:
-                    return {"price": base_level, "reason": "base_trail"}
+                    return {"price": base_level, "reason": "base_trail", "ts": bar["ts"]}
 
         peak = max(peak, bar["high"])
         # Fold this bar into the drawdown tracker LAST, so every decision above
@@ -1776,6 +1789,305 @@ def eod_configs() -> list[ExitConfig]:
     return out
 
 
+# ── Slot opportunity cost ─────────────────────────────────────────────────────
+#
+# Every other mode in this file scores each trade in ISOLATION: the delta for a
+# "hold longer" rule is (later_price - real_sell_price) * shares, credited as if
+# the extra holding time were free. It is not. The book holds at most
+# MAX_POSITIONS positions at once, so a winner held N extra days occupies one of
+# five slots for those N days, and during that window the bot could NOT have
+# taken some of the entries it historically did. Those foregone entries had their
+# own P&L. The honest value of "let winners run" is therefore:
+#
+#     (extra upside captured on the held winners)
+#   - (P&L of the real entries that a still-occupied slot would have blocked)
+#
+# The 2026-09-18 run-on analysis flagged this as "the decisive term" and left it
+# unmodelled; the ladder-5% result there was +$5,685 naive but "slot opportunity
+# cost is entirely unmodelled". This model supplies exactly that term.
+#
+# It is a GREEDY entry-ordered portfolio simulation, not a global optimiser: it
+# walks the real entries in the order the bot actually bought them and, at each
+# entry, takes the position only if a slot is free under the counterfactual exit
+# rule, otherwise the entry is blocked. That mirrors how the live agent operates
+# (buy when a trigger fires and a slot is open) and avoids a fragile combinatorial
+# cascade. It is a first-order model; see the printed caveats.
+
+
+@dataclass
+class Position:
+    """A distinct portfolio slot occupant: one entry and the shares bought under
+    it, with every scale-out partial of that same entry collapsed back in.
+
+    trade_history records a scaled-out position as several rows that share an
+    entry but sell at different times (e.g. NTRA RT1/RT2/RT3, TRV's same-day
+    partial + remainder). Left as separate rows they inflate concurrency — two
+    partials of one position look like two occupied slots — and the whole slot
+    model turns on concurrency being counted correctly. A slot is occupied by a
+    TICKER, so same-ticker rows whose holding intervals overlap are one position.
+    """
+    ticker: str
+    buy_ts: dt.datetime
+    real_sell_ts: dt.datetime
+    shares: int
+    buy_price: float
+    real_sell_price: float
+    realized_pl: float
+    sim_trade: Trade  # representative Trade (widest bar window) for replaying cfg
+
+
+def merge_positions(trades: list[Trade]) -> list[Position]:
+    """Collapse scale-out partials into parent positions.
+
+    Two trades of the same ticker belong to one position iff their
+    [buy_ts, real_sell_ts] holding intervals overlap. The live bot never holds
+    two distinct positions in the same ticker at once (a slot is keyed by
+    ticker), so any same-ticker overlap IS a partial, never a second position.
+    Sequential re-entries (sell #1 strictly before buy #2) do not overlap and
+    stay separate — which is correct, they are distinct slot occupancies.
+    """
+    positions: list[Position] = []
+    by_ticker: dict[str, list[Trade]] = {}
+    for t in trades:
+        by_ticker.setdefault(t.ticker, []).append(t)
+
+    for ticker, rows in by_ticker.items():
+        rows.sort(key=lambda t: t.buy_ts)
+        cluster: list[Trade] = []
+        cluster_end: dt.datetime | None = None
+        for t in rows:
+            if cluster and t.buy_ts <= cluster_end:
+                cluster.append(t)
+                cluster_end = max(cluster_end, t.sell_ts)
+            else:
+                if cluster:
+                    positions.append(_fold_cluster(cluster))
+                cluster = [t]
+                cluster_end = t.sell_ts
+        if cluster:
+            positions.append(_fold_cluster(cluster))
+
+    positions.sort(key=lambda p: p.buy_ts)
+    return positions
+
+
+def _fold_cluster(cluster: list[Trade]) -> Position:
+    """Aggregate one cluster of same-position partials into a Position."""
+    shares = sum(t.shares for t in cluster)
+    # Share-weighted entry and exit, so the delta math in the portfolio sim lines
+    # up with a single blended fill. For a true scale-out every partial shares
+    # the same entry, so this reduces to that entry.
+    wentry = sum(t.buy_price * t.shares for t in cluster) / shares
+    wexit = sum(t.sell_price * t.shares for t in cluster) / shares
+    # The representative trade for replaying a config is the partial that sold
+    # LAST — it carries the widest bar window (its run-on reaches furthest past
+    # the exit), which is exactly the history a "hold longer" rule needs.
+    rep = max(cluster, key=lambda t: len(t.bars))
+    sim_trade = replace(
+        rep,
+        buy_ts=min(t.buy_ts for t in cluster),
+        sell_ts=max(t.sell_ts for t in cluster),
+        shares=shares,
+        buy_price=wentry,
+        sell_price=wexit,
+        profit_loss=sum(t.profit_loss for t in cluster),
+    )
+    return Position(
+        ticker=rep.ticker,
+        buy_ts=sim_trade.buy_ts,
+        real_sell_ts=sim_trade.sell_ts,
+        shares=shares,
+        buy_price=wentry,
+        real_sell_price=wexit,
+        realized_pl=sum(t.profit_loss for t in cluster),
+        sim_trade=sim_trade,
+    )
+
+
+def slot_concurrency(positions: list[Position]) -> int:
+    """Max simultaneously-held positions across the real timeline. After merging
+    partials this MUST be <= MAX_POSITIONS; a higher number means the merge was
+    incomplete or the data has an anomaly, and the caller reports it loudly."""
+    events: list[tuple[dt.datetime, int]] = []
+    for p in positions:
+        events.append((p.buy_ts, +1))
+        # A sell frees the slot; order a same-instant sell BEFORE a buy so a
+        # hand-off on the same timestamp does not read as a phantom overlap.
+        events.append((p.real_sell_ts, -1))
+    events.sort(key=lambda e: (e[0], e[1]))
+    cur = peak = 0
+    for _, delta in events:
+        cur += delta
+        peak = max(peak, cur)
+    return peak
+
+
+def _sim_position_exit(pos: Position, cfg: ExitConfig) -> dict:
+    """Counterfactual exit for one position under `cfg`: the fill price, the
+    timestamp the slot frees, and the P&L delta vs the real blended exit."""
+    trade = pos.sim_trade
+    if cfg.scale_frac is not None:
+        sim = simulate_scaleout(trade, cfg)
+    elif cfg.proveit:
+        sim = simulate_proveit(trade, cfg)
+    else:
+        sim = simulate(trade, cfg)
+    if sim is None:
+        # Nothing fired. With a run-on window the position is still open at the
+        # end of the extended history: mark it out at the last close, slot held
+        # to the last bar. Without run-on it exits at the real fill (delta 0).
+        if trade.runon_from and trade.runon_from < len(trade.bars):
+            sim = {"price": trade.bars[-1]["close"], "reason": "runon_open",
+                   "ts": trade.bars[-1]["ts"]}
+        else:
+            sim = {"price": pos.real_sell_price, "reason": "held",
+                   "ts": pos.real_sell_ts}
+    exit_ts = sim.get("ts") or pos.real_sell_ts
+    delta = round((sim["price"] - pos.real_sell_price) * pos.shares, 2)
+    return {"exit_ts": exit_ts, "price": sim["price"], "reason": sim["reason"],
+            "delta": delta, "cf_pl": pos.realized_pl + delta}
+
+
+def _run_portfolio(order: list[Position], exit_ts_of: dict[int, dt.datetime],
+                   pl_of: dict[int, float], capacity: int) -> dict:
+    """Greedy capacity-constrained walk of the entry stream in buy order.
+
+    At each entry, slots whose exit has already passed are freed; if a slot is
+    then free the position is TAKEN (its P&L counts and it holds a slot until its
+    exit), otherwise it is BLOCKED (counts nothing). Returns the realised total
+    and the taken/blocked splits.
+    """
+    held: list[dt.datetime] = []  # exit timestamps of currently-occupied slots
+    total = 0.0
+    taken: list[Position] = []
+    blocked: list[Position] = []
+    for pos in order:
+        held = [ts for ts in held if ts > pos.buy_ts]
+        if len(held) < capacity:
+            held.append(exit_ts_of[id(pos)])
+            total += pl_of[id(pos)]
+            taken.append(pos)
+        else:
+            blocked.append(pos)
+    return {"total": round(total, 2), "taken": taken, "blocked": blocked}
+
+
+def score_slotcost(positions: list[Position], cfg: ExitConfig) -> dict[str, Any]:
+    """Score one configuration WITH the slot opportunity cost charged.
+
+    baseline   : real exits, every position taken (the book never exceeded the
+                 cap, so this reproduces the realised total and anchors the A/B).
+    counterfac : cfg exits under the MAX_POSITIONS constraint. Holding winners
+                 longer keeps slots busy, which can block later real entries.
+
+    slot_aware_net = counterfac_total - baseline_total
+    naive_net      = sum of per-position deltas, i.e. what the isolated score()
+                     would credit if every entry could always be taken.
+    slot_cost      = naive_net - slot_aware_net = the cf P&L of blocked entries.
+    """
+    order = sorted(positions, key=lambda p: p.buy_ts)
+
+    base_exit = {id(p): p.real_sell_ts for p in positions}
+    base_pl = {id(p): p.realized_pl for p in positions}
+    baseline = _run_portfolio(order, base_exit, base_pl, MAX_POSITIONS)
+
+    exits = {id(p): _sim_position_exit(p, cfg) for p in positions}
+    cf_exit = {id(p): exits[id(p)]["exit_ts"] for p in positions}
+    cf_pl = {id(p): exits[id(p)]["cf_pl"] for p in positions}
+    counterfac = _run_portfolio(order, cf_exit, cf_pl, MAX_POSITIONS)
+
+    naive_net = round(sum(exits[id(p)]["delta"] for p in positions), 2)
+    slot_aware_net = round(counterfac["total"] - baseline["total"], 2)
+    blocked = counterfac["blocked"]
+    blocked_rows = sorted(
+        ({"ticker": p.ticker,
+          "cf_pl": round(cf_pl[id(p)], 2),
+          "buy_ts": p.buy_ts.date().isoformat()} for p in blocked),
+        key=lambda r: r["cf_pl"])
+
+    return {
+        "label": cfg.label,
+        "config": cfg.describe(),
+        "baseline_total": baseline["total"],
+        "cf_total": counterfac["total"],
+        "naive_net": naive_net,
+        "slot_aware_net": slot_aware_net,
+        "slot_cost": round(naive_net - slot_aware_net, 2),
+        "n_blocked": len(blocked),
+        "blocked": blocked_rows,
+        "baseline_blocked": len(baseline["blocked"]),
+    }
+
+
+def report_slotcost(results: list[dict], positions: list[Position],
+                    concurrency: int, top: int | None = None) -> None:
+    baseline_total = results[0]["baseline_total"] if results else 0.0
+    print()
+    print("=" * 100)
+    print("SLOT OPPORTUNITY COST — 'let winners run', with the blocked entries "
+          "charged against it")
+    print("=" * 100)
+    print(f"Distinct positions (partials merged) : {len(positions)}")
+    print(f"Peak concurrent positions (real)     : {concurrency}  "
+          f"(cap MAX_POSITIONS={MAX_POSITIONS})")
+    if concurrency > MAX_POSITIONS:
+        print(f"  ⚠  peak {concurrency} EXCEEDS the cap — partial merge is "
+              f"incomplete or the data has an anomaly. Slot costs below are")
+        print(f"     overstated; investigate before trusting any row.")
+    else:
+        print(f"  ✓  within cap: the merge is consistent with the live book "
+              f"never holding more than {MAX_POSITIONS} positions.")
+    anomalous = [r for r in results if r["baseline_blocked"] > 0]
+    if anomalous:
+        print(f"  ⚠  baseline (real exits) blocked {anomalous[0]['baseline_blocked']} "
+              f"entrie(s) — the timeline disagrees with reality; treat with care.")
+    print(f"Realised total (baseline anchor)     : ${baseline_total:,.2f}")
+    print("=" * 100)
+    print()
+    print("naive_net  = upside from holding longer, slots assumed FREE (what the")
+    print("             isolated per-trade score credits).")
+    print("slot_cost  = net counterfactual P&L of the real entries a longer hold")
+    print("             would have BLOCKED. POSITIVE = the blocked entries were net")
+    print("             winners, so the naive gain was partly paid back. NEGATIVE =")
+    print("             the blocked entries were net losers, so blocking them AVOIDED")
+    print("             losses and slot_net exceeds naive_net.")
+    print("slot_net   = naive_net - slot_cost = the HONEST value of the change.")
+    print()
+    header = (f"{'configuration':<46}{'naive_net':>12}{'slot_cost':>12}"
+              f"{'slot_net':>12}{'blocked':>9}")
+    print(header)
+    print("-" * len(header))
+    ordered = sorted(results, key=lambda r: r["slot_aware_net"], reverse=True)
+    if top:
+        ordered = ordered[:top]
+    for res in ordered:
+        print(f"{res['label'][:45]:<46}"
+              f"{res['naive_net']:>12,.0f}"
+              f"{res['slot_cost']:>12,.0f}"
+              f"{res['slot_aware_net']:>12,.0f}"
+              f"{res['n_blocked']:>9}")
+    print()
+    print("  A large POSITIVE slot_cost means the naive 'winners run' number was")
+    print("  mostly paid back by blocked winners — treat that config with suspicion.")
+    print()
+    # Concentration + blocked detail for the best NON-baseline row, mirroring the
+    # standing rule that a result carried by one trade has not won.
+    non_base = [r for r in ordered if r["naive_net"] != 0.0 or r["n_blocked"]]
+    best = non_base[0] if non_base else (ordered[0] if ordered else None)
+    if best:
+        print(f"Blocked-entry detail for: {best['label']}")
+        print(f"  slot_net ${best['slot_aware_net']:+,.2f}  "
+              f"= naive ${best['naive_net']:+,.2f} - slot_cost "
+              f"${best['slot_cost']:+,.2f}  over {best['n_blocked']} blocked entrie(s)")
+        if not best["blocked"]:
+            print("  (no entry was blocked — this config holds no longer than the "
+                  "real book, so it costs no slots)")
+        for row in best["blocked"]:
+            print(f"    {row['ticker']:<8} entry {row['buy_ts']}   "
+                  f"forgone cf P/L ${row['cf_pl']:>10,.2f}")
+    print()
+
+
 def report(results: list[dict], trades: list[Trade], top: int | None = None,
            detail_label: str | None = None) -> None:
     losers = [t for t in trades if t.is_loser]
@@ -1896,7 +2208,7 @@ def main() -> None:
                              "against the shipped intraday trail")
     parser.add_argument("--basetrail", action="store_true",
                         help="measure the normal-operation cost of tightening "
-                             "the always-on base/disaster trailing stop (12% vs 5%)")
+                             "the always-on base/disaster trailing stop (12%% vs 5%%)")
     parser.add_argument("--p1ratchet", action="store_true",
                         help="measure the Phase 1 broker leg defect: the "
                              "resting IBKR TRAIL order ratchets its anchor up "
@@ -1915,6 +2227,13 @@ def main() -> None:
     parser.add_argument("--runon-days", type=int, default=30, metavar="N",
                         help="calendar days of price history to fetch past the "
                              "real exit (default 30; implied by --runon)")
+    parser.add_argument("--slotcost", action="store_true",
+                        help="re-score the \"let winners run\" sweep with the SLOT "
+                             "OPPORTUNITY COST charged: a longer hold keeps a slot "
+                             "busy and blocks later real entries. Merges scale-out "
+                             "partials into parent positions, validates concurrency "
+                             "<= MAX_POSITIONS, then runs a 5-slot portfolio sim. "
+                             "Implies a run-on window.")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -1928,13 +2247,35 @@ def main() -> None:
     print("Loading closed trades from Supabase...", file=sys.stderr)
     trades = load_trades(verify_tls=not args.insecure)
     print(f"Fetching 5-minute bars for {len(trades)} trades...", file=sys.stderr)
-    runon_days = args.runon_days if args.runon else 0
+    runon_days = args.runon_days if (args.runon or args.slotcost) else 0
     if runon_days:
         print(f"  (run-on window: +{runon_days} calendar days past each exit)",
               file=sys.stderr)
     trades = hydrate(trades, api_key, runon_days=runon_days)
     if not trades:
         sys.exit("No trades with usable price history — nothing to replay.")
+
+    # ── Slot opportunity cost is a portfolio-level model, not a per-trade one,
+    #    so it has its own scoring and reporting path and returns early.
+    if args.slotcost:
+        positions = merge_positions(trades)
+        concurrency = slot_concurrency(positions)
+        print(f"Merged {len(trades)} trade rows into {len(positions)} distinct "
+              f"positions; peak concurrency {concurrency}.", file=sys.stderr)
+        # The loosening sweep is exactly what needs a slot charge; re-score it.
+        slot_results = [score_slotcost(positions, cfg) for cfg in runon_configs()]
+        report_slotcost(slot_results, positions, concurrency, top=args.top)
+        if args.json:
+            with open(args.json, "w") as fh:
+                json.dump({
+                    "generated": dt.datetime.now(dt.timezone.utc).isoformat(),
+                    "n_positions": len(positions),
+                    "peak_concurrency": concurrency,
+                    "max_positions": MAX_POSITIONS,
+                    "results": slot_results,
+                }, fh, indent=2)
+            print(f"Full results written to {args.json}")
+        return
 
     if args.clean:
         print("\n── qualifying rate for the `clean` condition ──"
