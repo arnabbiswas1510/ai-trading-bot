@@ -76,10 +76,31 @@ def main():
         if base_cagr is None:
             base_cagr = mk["cagr"]
         tag = "" if cool == 0 else f"{mk['cagr']-base_cagr:>+9.1f}pp"
-        star = "  <- LIVE" if cool == 3 else ""
+        star = "  <- LIVE (old: block all exits)" if cool == 3 else ""
         print(f"{cool:>10}d {mk['n']:>6}{mk['exp']:>+8.2f}{mk['win']:>6.0f}%"
               f"{mk['payoff']:>8.2f}{mk['hold']:>7.0f}{mk['total']:>+10.1f}"
               f"{mk['cagr']:>+8.1f}{tag:>11}{star}")
+
+    # ── Reason-aware sweep: LOSS exits block for `cool` days, PROFIT exits block
+    #    only the same session. This is the live 2026-09-26 rule. Compare each
+    #    row to the blanket blocker at the SAME cool value to isolate the effect
+    #    of exempting profit exits.
+    print(f"\n{'REASON-AWARE (loss-only calendar block, profit=same-session)':}")
+    print(f"{'cooling-off':>12}{'n':>6}{'exp%':>8}{'win%':>7}{'payoff':>8}"
+          f"{'hold':>7}{'total%':>10}{'CAGR%':>8}{'vs blanket':>11}")
+    for cool in COOL_VALUES:
+        if cool == 0:
+            continue  # reason-aware is identical to blanket at cool=0
+        blanket = metrics(simulate(dict(BASE, cool=cool), sig, bars, emas, dix, alld), years)
+        ra = metrics(simulate(dict(BASE, cool=cool, cool_reason_aware=True),
+                              sig, bars, emas, dix, alld), years)
+        if ra is None or blanket is None:
+            continue
+        delta = ra["cagr"] - blanket["cagr"]
+        star = "  <- LIVE (reason-aware @ 3)" if cool == 3 else ""
+        print(f"{cool:>10}d {ra['n']:>6}{ra['exp']:>+8.2f}{ra['win']:>6.0f}%"
+              f"{ra['payoff']:>8.2f}{ra['hold']:>7.0f}{ra['total']:>+10.1f}"
+              f"{ra['cagr']:>+8.1f}{delta:>+9.1f}pp{star}")
 
 
 if __name__ == "__main__":

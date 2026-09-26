@@ -86,4 +86,12 @@ BUY_PRICE_DRIFT_TOLERANCE = float(os.getenv("BUY_PRICE_DRIFT_TOLERANCE", 0.01))
 # Production had run 3 via a .env override since before 2026-08-09 while this
 # default said 7; the override was the value actually earning money.
 # See decisions/2026-09-15_cooling-off-three-days.md.
+#
+# 2026-09-26: the block is now REASON-AWARE (cooling_off.compute_cooled_map).
+# The 3-day window applies only to LOSS exits (re-buying a falling name catches
+# a knife: -$1,750 / 30% win across 10 real prior-loss re-entries). A name sold
+# at a PROFIT older than today is NOT blocked — it is a proven leader left to the
+# buy-quality gates. A same-session re-buy (sold today) is ALWAYS blocked to
+# protect the IBKR averageCost basis. Length unchanged at 3; only application
+# changed. See decisions/2026-09-26_reason-aware-cooling-off.md.
 COOLING_OFF_DAYS = int(os.getenv("COOLING_OFF_DAYS", 3))

@@ -71,7 +71,7 @@ code, which is what makes the buy model auditable after the fact.
 | # | Gate | Rejection condition | Reason code |
 |---|---|---|---|
 | 1 | Duplicate | Ticker already held | `ALREADY_HELD` |
-| 2 | Cooling-off | Sold within `COOLING_OFF_DAYS` (3), per `trade_history` **or** an `ibkr_fills` SLD fill | `COOLING_OFF` |
+| 2 | Cooling-off (reason-aware) | Sold **at a loss** within `COOLING_OFF_DAYS` (3), **or** sold **today** at any P&L (same-session churn guard), per `trade_history` **or** an `ibkr_fills` SLD fill. A **profit** sale older than today does **not** block. | `COOLING_OFF` |
 | 3 | AI veto | `ai_grade == "D"` (conviction < 50) | `AI_VETO` |
 | 4 | Score present | `final_score` / `adjusted_score` is NULL | `NO_AI_SCORE` |
 | 5 | Score floor | Below the trigger-type minimum (`adjusted_score` when present) | `SCORE_FLOOR` || 6 | Capacity (in-loop) | Slots filled by an earlier buy this cycle | `SLOTS_FULL` |
@@ -106,31 +106,37 @@ See `decisions/2026-09-17_failure-penalty-disabled.md` for the measurement.
 The `history_penalty` (per-ticker recent-loss penalty, `HISTORY_LEARNING_MAX_PENALTY`)
 is unaffected and still applies.
 
-### Cooling-off reads the broker, not just our own ledger
+### Cooling-off is reason-aware, and reads the broker
 
-Gate 2 blocks a re-entry when the ticker was sold within `COOLING_OFF_DAYS` (3).
-It checks **two** sources, because `trade_history` alone is not sufficient: that
-table is written by the bot's own sell path, so an exit that happened without it
-— a resting IBKR stop firing between monitor cycles, or a failed write — leaves
-no row and the gate goes blind. `ibkr_fills` is written by the real-time fill
-hook the instant IBKR reports an execution, so it sees the sell either way. A
-`SLD` fill inside the window blocks the buy on its own.
+Gate 2 does **two separable jobs** (`cooling_off.compute_cooled_map`, shared by
+the agent, `force_buy.py` and `rotate_positions.py`):
 
-NTRA on 2026-08-31 is why: the bot sold 61 shares at 10:26 and bought 61 shares
-of the same ticker back at **10:32, six minutes later**, because the 10:26 exit
-never reached `trade_history`. The same two-source check is applied in
-`rotate_positions.py`. See
+- **(A) Same-session churn guard — unconditional.** A name sold **today** (NY
+  calendar day) is blocked whether it was a profit or a loss, because selling and
+  re-buying the same name inside one session blends the IBKR `averageCost` basis
+  and poisons every downstream stop/P&L/size calc.
+- **(B) Calendar block — loss exits only.** A name whose most-recent sale within
+  `COOLING_OFF_DAYS` (3) was a **loss** (realised P&L ≤ 0, or unrecorded) is
+  blocked for the full window — re-buying a name sold *because it was falling*
+  catches a knife (−$1,750 / 30% win across 10 real prior-loss re-entries). A
+  name sold **at a profit** older than today is **not** blocked: it is a proven
+  leader left to the buy-quality gates (extension, breakout quality, RS) to
+  judge, not idled for days. This is why Friday 2026-09-25 went from a forced
+  zero-trade day to eligible.
+
+Both jobs check **two sources**, because `trade_history` alone is not sufficient:
+that table is written by the bot's own sell path, so an exit that happened
+without it — a resting IBKR stop firing between monitor cycles, or a failed write
+— leaves no row and the gate goes blind. `ibkr_fills` is written by the
+real-time fill hook the instant IBKR reports an execution, so it sees the sell
+either way. A same-day `SLD` fill blocks on its own; an `SLD` in the window with
+no ledger row is blocked conservatively (reason unknown).
+
+NTRA on 2026-08-31 is why the same-session guard exists: the bot sold 61 shares
+at 10:26 and bought 61 shares of the same ticker back at **10:32, six minutes
+later**, because the 10:26 exit never reached `trade_history`. See
+`decisions/2026-09-26_reason-aware-cooling-off.md` and
 `decisions/2026-09-10_lot-basis-and-broker-aware-cooling-off.md`.
-
-The gate is a **data-integrity guard, not a profit rule.** Both a 5-slot
-portfolio backtest (`research/cooloff_bt.py`) and the live re-entry P&L show it is
-**return-neutral** — it earns no measurable CAGR (0.0pp on a broad universe,
-−2.2pp on a narrow one) and blocked only $60 of realised P&L in live trading,
-because the only re-entries falling inside its 3-day window are same-session
-churn like NTRA's. Three days is the correct length: shorter re-enables that
-churn, longer starts blocking the profitable 3–7 day re-entry window (+$2,803
-live). Do not re-open it as a suspected profit leak. See
-`decisions/2026-09-26_cooling-off-return-neutral.md`.
 
 ### ⚠️ `volume_surge` is an overloaded column
 

@@ -264,6 +264,67 @@ def make_ibkr_fill(ticker: str, price: float, shares: float,
 
 # ── Supabase mock ─────────────────────────────────────────────────────────────
 
+class _RowQuery:
+    """A tiny in-memory Supabase query builder for tests.
+
+    Honours eq/gt/gte/lt/lte + order + limit + execute so filters are applied
+    for real instead of being waved through by MagicMock's default truthy
+    return. Shared by the trade_history and ibkr_fills table mocks.
+    """
+
+    def __init__(self, rows):
+        self._rows = list(rows)
+        self._limit = None
+
+    def select(self, *a, **k):
+        return self
+
+    def _cmp(self, col, val, op):
+        def keep(f):
+            left = f.get(col)
+            if left is None:
+                return False
+            return op(str(left), str(val))
+        q = _RowQuery([f for f in self._rows if keep(f)])
+        q._limit = self._limit
+        return q
+
+    def eq(self, col, val):
+        q = _RowQuery([f for f in self._rows if f.get(col) == val])
+        q._limit = self._limit
+        return q
+
+    def gt(self, col, val):
+        return self._cmp(col, val, lambda a, b: a > b)
+
+    def gte(self, col, val):
+        return self._cmp(col, val, lambda a, b: a >= b)
+
+    def lt(self, col, val):
+        return self._cmp(col, val, lambda a, b: a < b)
+
+    def lte(self, col, val):
+        return self._cmp(col, val, lambda a, b: a <= b)
+
+    def order(self, col, desc=False):
+        q = _RowQuery(
+            sorted(self._rows, key=lambda f: str(f.get(col, "")), reverse=bool(desc))
+        )
+        q._limit = self._limit
+        return q
+
+    def limit(self, n):
+        q = _RowQuery(self._rows)
+        q._limit = n
+        return q
+
+    def execute(self):
+        rows = self._rows[: self._limit] if self._limit else self._rows
+        res = MagicMock()
+        res.data = rows
+        return res
+
+
 def make_supabase_mock(
     daily_triggers: list | None = None,
     portfolio: list | None = None,
@@ -337,12 +398,13 @@ def make_supabase_mock(
             t.delete.return_value.lt.return_value.execute.return_value = MagicMock()
 
         elif name == "trade_history":
-            def _th_eq(col, val):
-                m = MagicMock()
-                m.gte.return_value.execute.return_value.data = trade_history_recent
-                m.execute.return_value.data = trade_history_recent
-                return m
-            t.select.return_value.eq.side_effect = _th_eq
+            # Reason-aware cooling-off (cooling_off.compute_cooled_map) queries
+            # trade_history with .select(...).gte("sell_date", cutoff)
+            #   .order("sell_date", desc=True).execute() — NO .eq(ticker). The
+            # builder below honours gte/order/limit/eq so the window and the
+            # most-recent-per-ticker logic are exercised for real, not waved
+            # through by a truthy MagicMock.
+            t.select.return_value = _RowQuery(trade_history_recent)
             t.insert.return_value.execute.return_value = MagicMock()
 
         elif name == "account_balances":
@@ -367,55 +429,7 @@ def make_supabase_mock(
             # agent now filters fills with eq/gt/gte/lt/lte + order + limit in
             # several different orders, and MagicMock's default truthy return
             # would silently satisfy filters it never actually applied.
-            class _FillsQuery:
-                def __init__(self, rows):
-                    self._rows = list(rows)
-                    self._desc = False
-                    self._limit = None
-
-                def _cmp(self, col, val, op):
-                    def keep(f):
-                        left = f.get(col)
-                        if left is None:
-                            return False
-                        a, b = str(left), str(val)
-                        return op(a, b)
-                    return _FillsQuery([f for f in self._rows if keep(f)])
-
-                def eq(self, col, val):
-                    return _FillsQuery([f for f in self._rows if f.get(col) == val])
-
-                def gt(self, col, val):
-                    return self._cmp(col, val, lambda a, b: a > b)
-
-                def gte(self, col, val):
-                    return self._cmp(col, val, lambda a, b: a >= b)
-
-                def lt(self, col, val):
-                    return self._cmp(col, val, lambda a, b: a < b)
-
-                def lte(self, col, val):
-                    return self._cmp(col, val, lambda a, b: a <= b)
-
-                def order(self, col, desc=False):
-                    q = _FillsQuery(
-                        sorted(self._rows, key=lambda f: str(f.get(col, "")), reverse=bool(desc))
-                    )
-                    q._limit = self._limit
-                    return q
-
-                def limit(self, n):
-                    q = _FillsQuery(self._rows)
-                    q._limit = n
-                    return q
-
-                def execute(self):
-                    rows = self._rows[: self._limit] if self._limit else self._rows
-                    res = MagicMock()
-                    res.data = rows
-                    return res
-
-            t.select.return_value = _FillsQuery(ibkr_fills_data)
+            t.select.return_value = _RowQuery(ibkr_fills_data)
             t.upsert.return_value.execute.return_value = MagicMock()
             t.update.return_value.eq.return_value.execute.return_value = MagicMock()
 

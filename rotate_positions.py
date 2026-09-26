@@ -71,6 +71,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 from config import (  # noqa: E402  (single source of truth; set via .env)
     MAX_POSITIONS, STOP_LOSS_PCT, COOLING_OFF_DAYS,
 )
+import cooling_off  # noqa: E402  (reason-aware re-entry block, single source)
 
 
 TRIGGER_LOOKBACK_DAYS = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
@@ -162,7 +163,6 @@ def _select_buy_triggers(client, n: int, exclude_tickers: set) -> list[dict]:
     tz    = ZoneInfo("America/New_York")
     today = datetime.datetime.now(tz).date()
     lookback_date = (today - datetime.timedelta(days=TRIGGER_LOOKBACK_DAYS)).isoformat()
-    cooloff_date  = (today - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
 
     triggers = client.table("daily_triggers").select("*") \
                      .gte("triggered_at", lookback_date) \
@@ -174,21 +174,14 @@ def _select_buy_triggers(client, n: int, exclude_tickers: set) -> list[dict]:
 
     # Filter out what's already held / cooling off.
     #
-    # Two sources, because trade_history alone misses sells the bot's own sell
-    # path never recorded (a resting IBKR stop firing between cycles, or a
-    # failed write). ibkr_fills is written by the real-time fill hook, so it
-    # sees the exit regardless — see run_market_open_buys() and
+    # Reason-aware cooling-off (single source: cooling_off.py). A profit sale
+    # older than today is eligible for re-entry; loss/same-session exits block.
+    # Two sources inside the helper, because trade_history alone misses sells the
+    # bot's own sell path never recorded (a resting IBKR stop firing between
+    # cycles, or a failed write) — ibkr_fills is written by the real-time fill
+    # hook regardless. See decisions/2026-09-26_reason-aware-cooling-off.md and
     # decisions/2026-09-10_lot-basis-and-broker-aware-cooling-off.md.
-    recent_sells = client.table("trade_history").select("ticker,sell_date") \
-                         .gte("sell_date", cooloff_date).execute().data or []
-    cooled = {r["ticker"] for r in recent_sells}
-    try:
-        recent_fills = client.table("ibkr_fills").select("ticker,fill_time") \
-                             .eq("side", "SLD") \
-                             .gte("fill_time", cooloff_date).execute().data or []
-        cooled |= {r["ticker"] for r in recent_fills}
-    except Exception as e:
-        print(f"⚠️  ibkr_fills cooling-off lookup failed: {e} — using trade_history only.")
+    cooled = set(cooling_off.compute_cooled_map(client, today, COOLING_OFF_DAYS))
     cooled -= exclude_tickers   # sells being rotated are OK to re-buy
 
     eligible = [

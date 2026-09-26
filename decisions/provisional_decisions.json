@@ -101,8 +101,14 @@
           "genuine_reentries": 25,
           "verdict": "confirmed — keep at 3 days; NOT the scheduled review (below min_closed_trades=75)",
           "note": "Early confirmatory read prompted by the 09-25 zero-trade day. NEW harness research/cooloff_bt.py sweeps cool=0,1,2,3,4,5,7,10 on a 5-slot portfolio sim (models the SLOTS_FULL confound the 2026-09-15 FMP counterfactual could not). Broad universe (256 names): cool 0-5 IDENTICAL +26.9% CAGR, so 2/3/4/5 are indistinguishable (answers open-Q#2). Narrow universe (79): cooling-off is monotonically NEGATIVE (cool=0 +29.5%, 3d -2.2pp, 7d -2.4pp, 10d -3.6pp) — never helps returns. Live re-entries (66 trades): only 2 fall in the <3d BLOCKED window, both same-day NTRA churn, net +$60; the profitable re-entries (+$2,803) are in the 3-7d gap and are ALLOWED. Verdict: cooling-off is RETURN-NEUTRAL, justified on data-integrity (lot-basis) grounds, not profit. Caveat: port_sim uses pre-Prove-It exits (ranking fair, absolute CAGR not live); sample small and all-BULL. revisit trigger UNCHANGED. See decisions/2026-09-26_cooling-off-return-neutral.md."
+        },
+        {
+          "date": "2026-09-26",
+          "verdict": "length kept at 3; blanket (reason-blind) application superseded",
+          "note": "The 3-day LENGTH stands. The reason-BLIND application is replaced by reason-aware-cooling-off: the 3-day block now applies to loss exits only, profit exits skip it, same-session always blocks. See decisions/2026-09-26_reason-aware-cooling-off.md."
         }
-      ]
+      ],
+      "superseded_in_part_by": "reason-aware-cooling-off"
     },
     {
       "id": "rs-percentile-shadow",
@@ -508,6 +514,48 @@
       },
       "preconditions": [],
       "adr": "decisions/2026-09-18_entry-quality-open-question.md",
+      "history": []
+    },
+    {
+      "id": "reason-aware-cooling-off",
+      "title": "Cooling-off is reason-aware: loss exits block, profit exits don't",
+      "status": "active",
+      "kind": "parameter",
+      "decided": "2026-09-26",
+      "implemented": true,
+      "decision": "cooling_off.compute_cooled_map applies the COOLING_OFF_DAYS (3) calendar block ONLY to loss exits (realised P&L <= 0, or unknown). A name sold at a profit on a prior day is eligible for re-entry; the buy-quality gates decide. A same-session re-buy (sold today, any P&L) is ALWAYS blocked to protect the IBKR averageCost basis. Checked against both trade_history and ibkr_fills SLD rows.",
+      "rationale": "Live re-entries split by prior-exit reason (66 closed trades, 25 re-entries): prior-LOSS re-entries -$1,750 net / 30% win (n=10); prior-PROFIT re-entries +$61 / 53% win (n=15). Loss re-entries lose money; profit re-entries are break-even, not the systematic loser the blanket block assumed. Only 2 of 25 re-entries fell in the <3d blocked window, both same-day NTRA churn. Portfolio backtest (research/cooloff_bt.py, 5 slots, 3.09y): reason-aware DOMINATES the blanket block — broad universe identical (+26.9% CAGR), screener-pass universe +29.0% vs blanket +27.3% (+1.7pp), nearly matching no-cooling (+29.5%) while keeping the loss-exit knife guard and the same-session basis guard. Motivated by the 2026-09-25 zero-trade day: four profit-sold leaders (CDNA/HPE/TWLO/AMD) idled by the blanket 3-day block.",
+      "adr": "decisions/2026-09-26_reason-aware-cooling-off.md",
+      "revisit": {
+        "min_closed_trades": 75,
+        "not_before": "2026-11-20"
+      },
+      "baseline_at_decision": {
+        "closed_trades": 66,
+        "genuine_reentries": 25,
+        "prior_loss_reentries_n": 10,
+        "prior_loss_reentries_net_usd": -1750,
+        "prior_loss_win_rate": 0.3,
+        "prior_profit_reentries_n": 15,
+        "prior_profit_reentries_net_usd": 61,
+        "prior_profit_win_rate": 0.53,
+        "reentries_in_blocked_window": 2,
+        "backtest_pass_cagr_reason_aware": 29.0,
+        "backtest_pass_cagr_blanket": 27.3,
+        "backtest_pass_cagr_nocool": 29.5,
+        "backtest_broad_cagr_all": 26.9,
+        "regime": "all-BULL",
+        "caveat": "port_sim uses pre-Prove-It exit stack; profit-exemption upside partly unmeasured (old rule blocked those cases)"
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/cooloff_bt.py pass && python3 research/cooloff_bt.py broad",
+      "review_questions": [
+        "How many re-entries now exist, split by prior-exit reason? Report n for each bucket FIRST. Below ~25 per bucket the split is still noise.",
+        "Do prior-LOSS re-entries still lose money and prior-PROFIT re-entries still roughly break even? Is either result carried by one outlier (e.g. ECO -$1,253, CDNA +$1,439)?",
+        "Does reason-aware still dominate the blanket block on the screener-pass universe (was +1.7pp CAGR), and stay neutral on broad (was 0.0pp)?",
+        "Has the bot traded through a non-BULL regime yet? Re-buying a profit-sold name next session in a corrective tape is the untested case.",
+        "Now that profit re-entries are ALLOWED, measure their REALISED forward P&L directly (the old rule blocked them, so the decision rested on a proxy). Are same-week profit re-entries at least break-even in practice?"
+      ],
+      "last_reviewed": null,
       "history": []
     }
   ]

@@ -399,6 +399,7 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 # the growth universe, 98% -> 74% on the broad one). The CAGR/drawdown gaps
 # themselves are inside the noise floor; the concentration reduction is not.
 from config import MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS, BUY_PRICE_DRIFT_TOLERANCE  # noqa: E402  (single source of truth; set via .env)
+import cooling_off  # noqa: E402  (reason-aware re-entry block, single source)
 
 # ── Extracted modules (2026-09-18) ────────────────────────────────────────────
 # These names are re-exported into this module's namespace ON PURPOSE. The test
@@ -3608,6 +3609,17 @@ def run_market_open_buys(ib: IB):
               f"cap: ${initial_net_liq:,.2f} (cash ${initial_own_cash:,.2f} + held "
               f"${held_value:,.2f}).")
 
+    # Reason-aware cooling-off, computed ONCE for the cycle (single source in
+    # cooling_off.py, shared with force_buy.py and rotate_positions.py). Maps a
+    # blocked ticker -> the reason. A profit sale older than today is absent, so
+    # it is eligible. See decisions/2026-09-26_reason-aware-cooling-off.md.
+    try:
+        cooled_map = cooling_off.compute_cooled_map(client, today_ny, COOLING_OFF_DAYS)
+    except Exception as cool_err:
+        notifier.notify_exception("run_market_open_buys() — cooling_off", cool_err)
+        print(f"   ⚠️ Cooling-off map failed: {cool_err} — allowing all buys this cycle.")
+        cooled_map = {}
+
     for trigger in triggers:
         ticker = trigger["ticker"]
         
@@ -3626,41 +3638,22 @@ def run_market_open_buys(ib: IB):
                 detail="Already an open position")
             continue
 
-        # ── Cooling-off period: skip tickers sold within COOLING_OFF_DAYS ──────
-        # Prevents re-buying a stock that was just stopped out (trailing stop).
-        #
-        # Checked against TWO sources, because trade_history alone is not
-        # sufficient. trade_history is written by the bot's own sell path; when a
-        # resting IBKR stop fires while the agent is between cycles (or the
-        # write fails), no row appears and the gate goes blind. That is exactly
-        # what happened to NTRA on 2026-08-31: sold 61 sh at 10:26, re-bought 61
-        # sh at 10:32 — six minutes later — because the 10:26 exit never reached
-        # trade_history. ibkr_fills is written by the real-time fill hook the
-        # instant IBKR reports an execution, so it sees the sell regardless.
-        try:
-            cooling_cutoff = (today_ny - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
-            recent_sell_res = client.table("trade_history").select("ticker").eq("ticker", ticker).gte("sell_date", cooling_cutoff).execute()
-            blocker = "trade_history" if recent_sell_res.data else None
-
-            if not blocker:
-                fill_res = client.table("ibkr_fills") \
-                    .select("fill_time,price") \
-                    .eq("ticker", ticker).eq("side", "SLD") \
-                    .gte("fill_time", cooling_cutoff) \
-                    .order("fill_time", desc=True).limit(1).execute()
-                if fill_res.data:
-                    blocker = f"ibkr_fills SLD @ {fill_res.data[0].get('fill_time')}"
-
-            if blocker:
-                print(f"   ⏳ {ticker} sold within last {COOLING_OFF_DAYS} days "
-                      f"({blocker}) — cooling-off period active. Skipping.")
-                trigger_audit.record_trigger_decision(
-                    client, trigger, "SKIPPED", trigger_audit.COOLING_OFF,
-                    detail=f"Sold within {COOLING_OFF_DAYS}d (cutoff {cooling_cutoff}; source {blocker})")
-                continue
-        except Exception as cool_err:
-            notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", cool_err)
-            print(f"   ⚠️ Cooling-off check failed for {ticker}: {cool_err} — allowing buy.")
+        # ── Cooling-off: REASON-AWARE re-entry block (single source) ──────────
+        # cooled_map is computed once per cycle in cooling_off.compute_cooled_map.
+        #  (A) same-session churn guard: any name sold TODAY (profit or loss),
+        #      protecting the IBKR averageCost basis (the NTRA 2026-08-31 churn).
+        #  (B) calendar block for LOSS exits only: re-buying a name sold because
+        #      it was falling catches a knife (-$1,750 / 30% win on 25 real
+        #      re-entries); a name sold at a PROFIT is a proven leader left for
+        #      the buy-quality gates to judge, not idled for days.
+        # See decisions/2026-09-26_reason-aware-cooling-off.md.
+        cool_reason = cooled_map.get(ticker)
+        if cool_reason:
+            print(f"   ⏳ {ticker} cooling-off: {cool_reason}. Skipping.")
+            trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", trigger_audit.COOLING_OFF,
+                detail=f"Reason-aware cooling-off: {cool_reason}")
+            continue
 
         # ── AI veto: skip D-grade tickers (low-conviction AI rating < 30) ────────
         ai_grade = trigger.get("ai_grade")

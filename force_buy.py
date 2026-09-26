@@ -54,6 +54,7 @@ SUPABASE_KEY          = os.getenv("SUPABASE_KEY")
 IB_GATEWAY_HOST       = os.getenv("IB_GATEWAY_HOST", "ib-gateway")
 IB_GATEWAY_PORT       = int(os.getenv("IB_GATEWAY_PORT", 4000))
 from config import MAX_POSITIONS, STOP_LOSS_PCT, COOLING_OFF_DAYS  # noqa: E402  (single source of truth; set via .env)
+import cooling_off  # noqa: E402  (reason-aware re-entry block, single source)
 MIN_POSITION_SIZE     = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
 
 
@@ -263,7 +264,6 @@ def main():
     today  = datetime.datetime.now(tz).date()
 
     lookback_date = (today - datetime.timedelta(days=TRIGGER_LOOKBACK_DAYS)).isoformat()
-    cooloff_date  = (today - datetime.timedelta(days=COOLING_OFF_DAYS)).isoformat()
 
     # Fetch state
     positions   = client.table("portfolio_positions").select("*").execute().data or []
@@ -271,9 +271,9 @@ def main():
     stock_count = len(positions)
     free_slots  = MAX_POSITIONS - stock_count
 
-    recent_sells = client.table("trade_history").select("ticker,sell_date") \
-                         .gte("sell_date", cooloff_date).execute().data or []
-    cooled = set(r["ticker"] for r in recent_sells)
+    # Reason-aware cooling-off: loss/same-session exits block re-entry; a profit
+    # sale older than today is eligible. Single source: cooling_off.py.
+    cooled = set(cooling_off.compute_cooled_map(client, today, COOLING_OFF_DAYS))
 
     triggers = client.table("daily_triggers").select("*") \
                      .gte("triggered_at", lookback_date) \

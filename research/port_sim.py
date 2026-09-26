@@ -38,6 +38,19 @@ def simulate(cfg, sig, bars, emas, dix, alldates, track=False):
     occ = []
     blocked = {}          # sym -> index in alldates before which re-entry is blocked
     slots = cfg.get("slots", MAX_POS)
+    # Reason-aware cooling-off: when True, a PROFIT exit blocks re-entry only for
+    # the same session (di+1), while a LOSS exit blocks for the full `cool`
+    # window. Mirrors the live cooling_off.compute_cooled_map split — a name sold
+    # at a profit is a proven leader left to the buy-quality gates, not idled.
+    # When False (default), every exit blocks for `cool` days regardless of P&L.
+    reason_aware = cfg.get("cool_reason_aware", False)
+    cool = cfg.get("cool", 0)
+
+    def block_after(pct, di):
+        if reason_aware:
+            return di + (cool if pct <= 0 else 1)   # loss: full window; profit: same-session
+        return di + cool
+
     for di, day in enumerate(alldates):
         # --- manage open positions ---
         still = []
@@ -56,8 +69,9 @@ def simulate(cfg, sig, bars, emas, dix, alldates, track=False):
                 if p["ph"] and cal > PH_DUR: p["ph"] = False
             lvl = p["peak"]*(1-p["trail"])
             if bar["low"] <= lvl:
-                closed.append(((lvl/p["entry"]-1)*100, held, "trail", di))
-                blocked[p["sym"]] = di + cfg.get("cool", 0); continue
+                pct = (lvl/p["entry"]-1)*100
+                closed.append((pct, held, "trail", di))
+                blocked[p["sym"]] = block_after(pct, di); continue
             c = bar["close"]
             nt = dyn_trail(cfg, (c/p["entry"]-1)*100, cal, p["trail"])
             if nt: p["trail"] = nt
@@ -68,16 +82,19 @@ def simulate(cfg, sig, bars, emas, dix, alldates, track=False):
             if cfg.get("minimiser") and held >= 2 and not p["ph"]:
                 p["rh"] = max(p.get("rh", 0.0), c)
                 if p["rh"] >= p["entry"]*0.995 and c <= p["rh"]*(1-cfg["minimiser"]):
-                    closed.append(((c/p["entry"]-1)*100, held, "minimiser", di))
-                    blocked[p["sym"]] = di + cfg.get("cool", 0); continue
+                    pct = (c/p["entry"]-1)*100
+                    closed.append((pct, held, "minimiser", di))
+                    blocked[p["sym"]] = block_after(pct, di); continue
             st = cfg.get("stale")
             if st and not p["ph"] and held >= 7 and (j - p["last_peak"]) >= st:
-                closed.append(((c/p["entry"]-1)*100, held, "stale", di))
-                blocked[p["sym"]] = di + cfg.get("cool", 0); continue
+                pct = (c/p["entry"]-1)*100
+                closed.append((pct, held, "stale", di))
+                blocked[p["sym"]] = block_after(pct, di); continue
             if (cfg.get("ema",True) and held >= cfg.get("ema_day",7) and not p["ph"]
                     and ema[j] and c < ema[j]*(1-cfg.get("ema_buf",EMA_BUF))):
-                closed.append(((c/p["entry"]-1)*100, held, "ema", di))
-                blocked[p["sym"]] = di + cfg.get("cool", 0); continue
+                pct = (c/p["entry"]-1)*100
+                closed.append((pct, held, "ema", di))
+                blocked[p["sym"]] = block_after(pct, di); continue
             still.append(p)
         open_pos = still
         occ.append(len(open_pos))

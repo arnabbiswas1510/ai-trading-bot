@@ -648,7 +648,7 @@ Full operator guide: **[docs/backups.md](docs/backups.md)**. Rationale:
 | **Base** | Sideways consolidation where institutions accumulate before a move |
 | **Breakout verdict** | Day-3 PASS/FAIL assessment (close ≥ entry +1% on ≥ 75% of average volume). Governs how easily a position can later be rotated out |
 | **Buy zone** | Pivot to pivot +5%. Above it, `EXTENDED_ABOVE_PIVOT`; more than 2% below, `BELOW_PIVOT` |
-| **Cooling-off** | 7-day block on re-buying a name after it was sold |
+| **Cooling-off** | Reason-aware re-entry block: a name sold **at a loss** is blocked for `COOLING_OFF_DAYS` (3); a name sold **today** is always blocked (same-session basis guard); a name sold **at a profit** on a prior day is *not* blocked. See `docs/buy_logic.md` |
 | **Hive partitioning** | Encoding column values in directory names (`table_name=…/snapshot_date=…`) so a query engine reads them as real columns without them being stored in the files |
 | **HWM** | High-water mark — the position's peak price. Anchors the trailing stop, the profit lock and the staleness clock |
 | **Give-back floor** | Prove-It Phase 2: once a proven position's peak reaches +2%, a floor arms 1% below entry so a green trade never becomes a real loss |

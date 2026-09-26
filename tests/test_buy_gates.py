@@ -343,3 +343,81 @@ class TestCoolingOffSeesBrokerFills:
         _run_buys(ib, supabase)
 
         ib.placeOrder.assert_called()
+
+
+class TestReasonAwareCoolingOff:
+    """Cooling-off is reason-aware (decisions/2026-09-26_reason-aware-cooling-off.md).
+
+    A name sold at a LOSS is a failed setup — block re-entry for COOLING_OFF_DAYS.
+    A name sold at a PROFIT is a proven leader — do NOT apply the calendar block;
+    let the buy-quality gates decide. But a same-session re-buy (sold TODAY) is
+    ALWAYS blocked, profit or loss, because it corrupts the IBKR averageCost basis.
+    """
+
+    @staticmethod
+    def _recent_day(days_ago: int) -> str:
+        ny = datetime.datetime.now(ZoneInfo("America/New_York")).date()
+        return (ny - datetime.timedelta(days=days_ago)).isoformat()
+
+    @staticmethod
+    def _sale(ticker, days_ago, pnl, reason="trail"):
+        ny = datetime.datetime.now(ZoneInfo("America/New_York")).date()
+        sd = (ny - datetime.timedelta(days=days_ago)).isoformat()
+        return {"ticker": ticker, "sell_date": f"{sd}T14:00:00+00:00",
+                "net_profit_loss": pnl, "profit_loss": pnl, "sell_reason": reason}
+
+    def test_loss_sale_within_window_blocks_rebuy(self):
+        """A LOSS exit yesterday blocks re-entry (catches-a-knife protection)."""
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[self._sale("NTRA", 1, -250.0)],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_not_called()
+
+    def test_profit_sale_within_window_allows_rebuy(self):
+        """A PROFIT exit yesterday does NOT block — proven leader, gates decide."""
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[self._sale("NTRA", 1, +575.0)],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_called()
+
+    def test_profit_sale_today_still_blocks_rebuy(self):
+        """Same-session churn guard fires even on a PROFIT sale (basis integrity)."""
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[self._sale("NTRA", 0, +575.0)],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_not_called()
+
+    def test_most_recent_sale_governs(self):
+        """A profit sale yesterday overrides an older loss sale → allowed."""
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[self._sale("NTRA", 1, +575.0),
+                                  self._sale("NTRA", 2, -300.0)],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_called()
+
+    def test_none_pnl_is_treated_as_loss(self):
+        """A sale with no recorded P&L blocks conservatively (never a free re-entry)."""
+        supabase = make_supabase_mock(
+            daily_triggers=[make_trigger("NTRA")],
+            portfolio=[],
+            trade_history_recent=[self._sale("NTRA", 1, None)],
+        )
+        ib = make_ib_mock(symbols=["NTRA"])
+        _run_buys(ib, supabase)
+        ib.placeOrder.assert_not_called()
