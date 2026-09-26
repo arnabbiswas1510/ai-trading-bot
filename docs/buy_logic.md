@@ -122,6 +122,16 @@ never reached `trade_history`. The same two-source check is applied in
 `rotate_positions.py`. See
 `decisions/2026-09-10_lot-basis-and-broker-aware-cooling-off.md`.
 
+The gate is a **data-integrity guard, not a profit rule.** Both a 5-slot
+portfolio backtest (`research/cooloff_bt.py`) and the live re-entry P&L show it is
+**return-neutral** — it earns no measurable CAGR (0.0pp on a broad universe,
+−2.2pp on a narrow one) and blocked only $60 of realised P&L in live trading,
+because the only re-entries falling inside its 3-day window are same-session
+churn like NTRA's. Three days is the correct length: shorter re-enables that
+churn, longer starts blocking the profitable 3–7 day re-entry window (+$2,803
+live). Do not re-open it as a suspected profit leak. See
+`decisions/2026-09-26_cooling-off-return-neutral.md`.
+
 ### ⚠️ `volume_surge` is an overloaded column
 
 `daily_triggers.volume_surge` carries **two different metrics with opposite

@@ -93,8 +93,16 @@
         "Has the bot traded through a non-BULL regime yet? The entire decision sample sits inside one bull window; a corrective tape is the real test of whether fast re-entry is safe.",
         "Has the SLOTS_FULL confound shrunk? If capacity is still the binding constraint (was 115 of 214 skips), the dollar figures remain an upper bound and should be quoted as such."
       ],
-      "last_reviewed": null,
-      "history": []
+      "last_reviewed": "2026-09-26",
+      "history": [
+        {
+          "date": "2026-09-26",
+          "closed_trades": 66,
+          "genuine_reentries": 25,
+          "verdict": "confirmed — keep at 3 days; NOT the scheduled review (below min_closed_trades=75)",
+          "note": "Early confirmatory read prompted by the 09-25 zero-trade day. NEW harness research/cooloff_bt.py sweeps cool=0,1,2,3,4,5,7,10 on a 5-slot portfolio sim (models the SLOTS_FULL confound the 2026-09-15 FMP counterfactual could not). Broad universe (256 names): cool 0-5 IDENTICAL +26.9% CAGR, so 2/3/4/5 are indistinguishable (answers open-Q#2). Narrow universe (79): cooling-off is monotonically NEGATIVE (cool=0 +29.5%, 3d -2.2pp, 7d -2.4pp, 10d -3.6pp) — never helps returns. Live re-entries (66 trades): only 2 fall in the <3d BLOCKED window, both same-day NTRA churn, net +$60; the profitable re-entries (+$2,803) are in the 3-7d gap and are ALLOWED. Verdict: cooling-off is RETURN-NEUTRAL, justified on data-integrity (lot-basis) grounds, not profit. Caveat: port_sim uses pre-Prove-It exits (ranking fair, absolute CAGR not live); sample small and all-BULL. revisit trigger UNCHANGED. See decisions/2026-09-26_cooling-off-return-neutral.md."
+        }
+      ]
     },
     {
       "id": "rs-percentile-shadow",
