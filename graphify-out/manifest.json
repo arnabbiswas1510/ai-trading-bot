@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1790520895.0547361,
-    "ast_hash": "93eae040ceac1e22463ae151ba4ed524",
+    "mtime": 1790525012.4721186,
+    "ast_hash": "885137fb8d5253d7efc043394f755773",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -280,13 +280,13 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790520894.461516,
-    "ast_hash": "e834871cf2da2ce39d788826ac55ba82",
+    "mtime": 1790522220.2414997,
+    "ast_hash": "7cf283414b5d6b301abaf63078e7489d",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790520895.087839,
-    "ast_hash": "a506b8b639355e412dc0b7c15e099822",
+    "mtime": 1790525236.4436316,
+    "ast_hash": "4bf35e49c4e1b2a8a2468ba462f0fc98",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1790520895.0318189,
-    "ast_hash": "8bfb6806ade183bcc59f1db5f28b131c",
+    "mtime": 1790525265.1546686,
+    "ast_hash": "165f62e3510a7c7338e02ca879560770",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1790467848.1896198,
-    "ast_hash": "9e891ade5c01323edfc348a0c7b1e3b5",
+    "mtime": 1790525276.9421155,
+    "ast_hash": "42a4a4108ab4e5cc3dc67ed06eb63d70",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -740,8 +740,8 @@
     "semantic_hash": ""
   },
   "docs/tech_debt_and_requirements_tracker.md": {
-    "mtime": 1790001824.88903,
-    "ast_hash": "cd18470d70b662bbadd67c521d3d2eb2",
+    "mtime": 1790525250.1767733,
+    "ast_hash": "e95aff60c02929d9dca1a105e7ca4d67",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_hwm-profit-lock-first-leg.md": {
@@ -830,8 +830,8 @@
     "semantic_hash": ""
   },
   "tests/test_exit_context.py": {
-    "mtime": 1790001824.9124477,
-    "ast_hash": "fe3ea4bf6f84818eee27ea3c6a19720e",
+    "mtime": 1790524597.3808904,
+    "ast_hash": "1f4449f6875e68fda36d9095d05481af",
     "semantic_hash": ""
   },
   "decisions/2026-08-23_exit-detail-panel.md": {
@@ -850,8 +850,8 @@
     "semantic_hash": ""
   },
   "tests/test_exit_timestamp.py": {
-    "mtime": 1787605523.9488003,
-    "ast_hash": "46d54effd2bf613a61fe0520402e04bf",
+    "mtime": 1790524560.925304,
+    "ast_hash": "5af682a316b159d2ad0487332a8da534",
     "semantic_hash": ""
   },
   "tests/test_volatility_fit.py": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1790520895.0687337,
-    "ast_hash": "4e22eb288c4b9dbf778accc8554b2cb3",
+    "mtime": 1790525177.6228304,
+    "ast_hash": "5ca15a077f6e663328746b650246ba76",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1330,8 +1330,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-18_execution-agent-split.md": {
-    "mtime": 1790001824.8825583,
-    "ast_hash": "6f362dd62a181f7af15f76b1c519cd58",
+    "mtime": 1790525193.694292,
+    "ast_hash": "d2041904fa4336bb13b463b8e799fe4f",
     "semantic_hash": ""
   },
   "tests/test_decision_review.py": {
@@ -1395,8 +1395,8 @@
     "semantic_hash": ""
   },
   "tests/test_trade_history_insert.py": {
-    "mtime": 1790001824.916408,
-    "ast_hash": "7045da821c04c3d66bf0a852b1f8e011",
+    "mtime": 1790524336.3643909,
+    "ast_hash": "498e03445c94754b5952c545f8352522",
     "semantic_hash": ""
   },
   "decisions/2026-09-18_sell-reason-fill-derived-anchor.md": {
@@ -1522,6 +1522,66 @@
   "docs/trade_lifecycle.md": {
     "mtime": 1790487333.017053,
     "ast_hash": "a3794ad8df1fc497c456b8370f219044",
+    "semantic_hash": ""
+  },
+  "agent_logging.py": {
+    "mtime": 1790525056.2085946,
+    "ast_hash": "008212b72d7e7061e145dbd2c07d4ec0",
+    "semantic_hash": ""
+  },
+  "buying.py": {
+    "mtime": 1790524685.0128613,
+    "ast_hash": "f6538dd367bc18a8f48c72e6fad95200",
+    "semantic_hash": ""
+  },
+  "fills.py": {
+    "mtime": 1790524295.5134833,
+    "ast_hash": "49cb2e510501742fcef5a1dee90a4d49",
+    "semantic_hash": ""
+  },
+  "ibkr_data.py": {
+    "mtime": 1790523197.6621099,
+    "ast_hash": "2ce8c9048cfd4f90f02ab7d26b1686bf",
+    "semantic_hash": ""
+  },
+  "market_regime.py": {
+    "mtime": 1790522823.934692,
+    "ast_hash": "2adaa838d91a5496f0d337f56c133b04",
+    "semantic_hash": ""
+  },
+  "monitoring.py": {
+    "mtime": 1790524771.0660686,
+    "ast_hash": "ce8cdec2f807718a73dfb605b11622ac",
+    "semantic_hash": ""
+  },
+  "orders.py": {
+    "mtime": 1790524101.3601875,
+    "ast_hash": "fa243157dd8ca46a4832e31e4c9b60d3",
+    "semantic_hash": ""
+  },
+  "reconciliation.py": {
+    "mtime": 1790524493.4995208,
+    "ast_hash": "dc6eea70f205453ceb6ea3af9485b41c",
+    "semantic_hash": ""
+  },
+  "selling.py": {
+    "mtime": 1790524771.0789073,
+    "ast_hash": "e5fdac0787a54a8314515b0e8e8c0ff7",
+    "semantic_hash": ""
+  },
+  "sentiment.py": {
+    "mtime": 1790522987.5710213,
+    "ast_hash": "c55d66cdd033cf4019b44bbed6c0804f",
+    "semantic_hash": ""
+  },
+  "trade_history.py": {
+    "mtime": 1790524295.502873,
+    "ast_hash": "b501ee4aab9dc9b349ec86749df10734",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-27_execution-agent-modular-split.md": {
+    "mtime": 1790525168.1942122,
+    "ast_hash": "d4db147422eb7cde8d90d6414f68a77f",
     "semantic_hash": ""
   }
 }

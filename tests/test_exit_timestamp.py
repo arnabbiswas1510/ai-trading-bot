@@ -19,7 +19,7 @@ import types
 import pytest
 
 
-AGENT_SRC = open("execution_agent.py").read()
+AGENT_SRC = open("execution_agent.py").read() + open("reconciliation.py").read()
 FLEX_SRC = open("flex_query_sync.py").read()
 
 

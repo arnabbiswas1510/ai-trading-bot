@@ -25,17 +25,18 @@ def _load_exit_context_suffix():
     Import the helper without importing execution_agent itself.
 
     execution_agent.py connects to IBKR and reads a large amount of environment
-    at import time; this function is pure, so it is extracted and exec'd on its
-    own rather than dragging in that machinery.
+    at import time; this function is pure, so it is extracted from its module
+    (trade_history.py) and exec'd on its own rather than dragging in that
+    machinery.
     """
-    src = open("execution_agent.py").read()
+    src = open("trade_history.py").read()
     tree = ast.parse(src)
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == "_exit_context_suffix":
             namespace: dict = {}
             exec(compile(ast.Module([node], []), "<extracted>", "exec"), namespace)
             return namespace["_exit_context_suffix"]
-    raise AssertionError("_exit_context_suffix not found in execution_agent.py")
+    raise AssertionError("_exit_context_suffix not found in trade_history.py")
 
 
 exit_context_suffix = _load_exit_context_suffix()
@@ -195,7 +196,7 @@ class TestReconcileUsesTheHelper:
     """The helper is worthless if the reconcile path stops calling it."""
 
     def test_both_reconcile_branches_record_context(self):
-        src = open("execution_agent.py").read()
+        src = open("reconciliation.py").read()
         trail_branch = re.search(
             r'sell_reason\s*=\s*"Trailing stop \(IBKR GTC TRAIL order\)"([^\n]*)', src
         )

@@ -5,9 +5,12 @@ Every exit rule in the live agent, in evaluation order.
 **Source:** the decision logic — where a stop sits and whether a rule may fire — lives
 in `exit_rules.py` (Prove-It Stop, power hold, trail ladder, OCA sizing, hard stop,
 sell-state codes) together with the tunable constants behind it. Acting on those
-decisions stays in `execution_agent.py`: `monitor_portfolio_intraday()` (15-minute
-cycle), `execute_sell()` (market liquidation), `arm_exit()` (armed trailing exit),
-`enqueue_smart_exit()` (hands the exit to the Smart OCA queue).
+decisions stays in the stateful agent modules: `monitor_portfolio_intraday()`
+(`monitoring.py`, 15-minute cycle), `execute_sell()` (`selling.py`, market
+liquidation), `arm_exit()` (`orders.py`, armed trailing exit),
+`enqueue_smart_exit()` (`orders.py`, hands the exit to the Smart OCA queue). All
+are re-exported through `execution_agent` so tests patch them as
+`execution_agent.<name>`.
 
 `exit_rules.py` is pure — it reads no database and holds no brokerage connection — so
 every threshold here can be read and replayed without connecting to IBKR.
@@ -772,8 +775,8 @@ tracking is lost.
 ## Sell-state transition notifications
 
 **Source:** `sell_state_code()` in `exit_rules.py` + `maybe_notify_sell_state()` in
-`execution_agent.py`, called once per position at the end of
-`monitor_portfolio_intraday()`.
+`orders.py`, called once per position at the end of
+`monitor_portfolio_intraday()` (`monitoring.py`).
 
 Every cycle a position sits under exactly one **governing exit regime**. When it
 changes, the agent sends one concise Telegram and latches the new regime in
@@ -1060,7 +1063,7 @@ re-anchored floor is reported, not the fiction. See
 `decisions/2026-09-09_reconcile-fill-window-and-trail-display.md`.
 
 > **Format contract.** The agent writes this suffix in `_exit_context_suffix()`
-> (`execution_agent.py`) and the dashboard parses it in `extractReasonFacts()`.
+> (`trade_history.py`) and the dashboard parses it in `extractReasonFacts()`.
 > The two are pinned from both sides — `tests/test_exit_context.py` and
 > `frontend/scripts/test-exit-details.mjs` — so a drift in the agent's format
 > fails a test instead of silently degrading the panel back to "not recorded".

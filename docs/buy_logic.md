@@ -2,7 +2,8 @@
 
 The complete gate stack a trigger must clear before an order reaches the market.
 
-**Source:** `execution_agent.py` — `run_market_open_buys()`, executed once at 09:30 ET.
+**Source:** `buying.py` — `run_market_open_buys()`, executed once at 09:30 ET
+(re-exported through `execution_agent`).
 Manual equivalent: `force_buy.py`.
 
 ---

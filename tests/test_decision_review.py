@@ -137,13 +137,20 @@ def test_registry_ids_are_unique():
     assert len(ids) == len(set(ids))
 
 
-def test_orchestrator_split_is_registered_and_blocked_by_a_live_book():
-    """The deferral recorded on 2026-09-18 must be machine-tracked, not prose."""
+def test_orchestrator_split_is_registered_and_resolved():
+    """The deferral recorded on 2026-09-18 was machine-tracked, not prose, and the
+    work was completed on 2026-09-27 — the entry must now read as resolved with an
+    audit trail, not silently disappear."""
     reg = json.load(open(REGISTRY))
     entry = next(d for d in reg["decisions"] if d["id"] == "orchestrator-split")
     assert entry["kind"] == "work-item"
-    assert entry["status"] == "active"
-    # Five fresh day-0 positions -- exactly the state it was deferred in.
+    assert entry["status"] == "resolved"
+    assert entry["implemented"] is True
+    # The completion is logged in history so a future reader sees when and how.
+    assert any(h.get("verdict") == "resolved" for h in entry.get("history", []))
+    # The precondition block is retained, and its evaluator still rejects the
+    # live-book state it was deferred in — the machinery stays correct even though
+    # the entry no longer fires.
     assert dr.check_preconditions(entry, _state(5, 0))[0] is False
 
 

@@ -3,6 +3,13 @@
 **Date:** 2026-09-18
 **Status:** Accepted
 
+> **2026-09-27 follow-up:** the orchestrator split this ADR deferred (the three
+> I/O-coupled functions `monitor_portfolio_intraday`, `reconcile_with_ibkr`,
+> `run_market_open_buys`) has now been completed against a flat book. This
+> pure/impure decision is unchanged and still in force; see
+> decisions/2026-09-27_execution-agent-modular-split.md for the follow-on work.
+
+
 ## Context
 
 `execution_agent.py` had grown to **5,828 lines** holding 82 functions, 69

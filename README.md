@@ -382,28 +382,55 @@ allowed to stop trailing-stop maintenance. Only the agent holds brokerage write 
 
 ### Agent module map
 
-The agent is split along a **pure/impure seam**. Everything in the first group takes
-values and returns values — no database, no brokerage, no network — which is what makes
-the trading rules readable and replayable without an IBKR connection.
+The agent is split along a **pure/impure seam**, and the stateful side is further
+split into focused modules so a 32GB local LLM can hold any one in context. Everything
+in the first group takes values and returns values — no database, no brokerage, no
+network — which is what makes the trading rules readable and replayable without an IBKR
+connection.
 
 | Module | Lines | Owns |
 |---|---|---|
 | `exit_rules.py` | 577 | **Pure.** Prove-It Stop, power hold, trail ladder, OCA sizing, hard stop, sell-state codes — and the constants behind them, each beside the replay result that chose it |
 | `indicators.py` | 277 | **Pure.** SMA/EMA/RSI, candlestick reversals, Momentum Health Score |
 | `market_calendar.py` | 125 | **Pure.** NYSE holidays, trading-day arithmetic, RTH check |
-| `execution_agent.py` | 4,952 | **Stateful.** Order placement, IBKR/Supabase reconciliation, the buy loop, the 15-minute monitor loop, and `main_loop()` |
 | `config.py` | 89 | Constants shared **across containers** (`MAX_POSITIONS`, `STOP_LOSS_PCT`) |
+| `execution_agent.py` | 852 | **Stateful core.** Module init (env, TeeLogger bootstrap, IBKR/Supabase/notifier singletons), `main_loop()`, and re-export shims for the modules below |
+| `market_regime.py` | 158 | Index bull/bear gate, IBKR delayed-price fetch |
+| `sentiment.py` | 240 | RS / volume / distribution health inputs |
+| `ibkr_data.py` | 503 | Live pricing + account/cash rollup (IBKR-first) |
+| `orders.py` | 742 | Order & exit primitives — trail/protective stops, arm, OCA, power-hold, cancel, sell-state notify |
+| `trade_history.py` | 246 | Trade-history insert + exit-context formatting |
+| `fills.py` | 327 | Fill ingestion + commission accounting |
+| `reconciliation.py` | 694 | `reconcile_with_ibkr` + `_sync_ibkr_position_values` |
+| `buying.py` | 667 | `run_market_open_buys` + schema / position-size gates |
+| `monitoring.py` | 807 | `monitor_portfolio_intraday` + breakout-learning helpers |
+| `selling.py` | 300 | `execute_sell` + `execute_scale_out` |
+| `agent_logging.py` | 435 | `TeeLogger` + Supabase log ship/purge |
 
-Start at `exit_rules.py` to answer *"why did this position exit?"*, and at
-`execution_agent.py` to answer *"what did the agent actually do?"*.
+Start at `exit_rules.py` to answer *"why did this position exit?"*, at `monitoring.py`
+for *"what did the 15-minute loop do?"*, and at `execution_agent.py` for module wiring
+and `main_loop()`.
 
-> **Note for contributors and AI assistants.** The extracted names are re-exported into
-> `execution_agent`'s namespace on purpose: the test suite patches ~214 call sites as
-> `execution_agent.<name>`, and the orchestrators resolve them from those globals. Do not
-> convert them to `exit_rules.foo()` call sites without re-pointing the tests — the
-> patches would silently become no-ops. Use `patch_everywhere()` from `tests/conftest.py`
-> for any constant read across module boundaries.
-> See `decisions/2026-09-18_execution-agent-split.md`.
+> **Note for contributors and AI assistants.** Every stateful module does
+> `import execution_agent as ea` and references patched siblings, patched constants and
+> the (test-frozen) `datetime` clock as `ea.<name>` — a live attribute lookup — while
+> `execution_agent` re-exports every moved symbol. The test suite patches ~260 call sites
+> as `execution_agent.<name>`; resolving through `ea.` is what keeps those patches live
+> **by construction** rather than by luck. Do not bind a patched name locally
+> (`from orders import arm_exit` then calling `arm_exit()` inside another module) — the
+> patch would silently become a no-op. Mutable flags patched on the module
+> (`_IBKR_VALUATION_WARNING_SHOWN`, `_schema_alert_sent`, `_last_log_purge_at`, the
+> installed `_tee`) keep their definitions in `execution_agent` and are read *and written*
+> as `ea.<flag>`. Use `patch_everywhere()` from `tests/conftest.py` for any constant read
+> across module boundaries.
+> See `decisions/2026-09-27_execution-agent-modular-split.md` (and the original
+> pure/impure split, `decisions/2026-09-18_execution-agent-split.md`).
+
+> **`Dockerfile.agent` copies source files individually.** Any new module must be added to
+> its `COPY` line or it will not exist in the container.
+> `tests/test_agent_image_completeness.py` walks the import closure and fails if one is
+> missing — it exists because `flex_query_sync.py` was absent from the image for its
+> entire life, silently disabling Tier 3 sell-price recovery in production.
 
 > **`Dockerfile.agent` copies source files individually.** Any new module must be added to
 > its `COPY` line or it will not exist in the container.

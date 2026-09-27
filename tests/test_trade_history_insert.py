@@ -9,7 +9,7 @@ position row and leaving no trade record at all.
 import ast
 import pytest
 
-_SRC = open("execution_agent.py").read()
+_SRC = open("trade_history.py").read()
 _NS = {"print": print}
 for _node in ast.parse(_SRC).body:
     if isinstance(_node, ast.FunctionDef) and _node.name in (

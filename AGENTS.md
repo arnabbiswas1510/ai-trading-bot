@@ -705,11 +705,41 @@ the highest number ever used — check the surviving files *and*
 
 ## 🧹 MANDATORY: Delete Applied Patch Files on Pull + Hard Reset
 
-> **Trigger.** Whenever I ask you to *pull and hard reset* (or any equivalent
-> phrasing: "pull and reset", "reset to remote", "sync with origin",
-> "discard local and pull"), you must — after the reset — determine which
-> `NNN_*.patch` files in the repository root have already landed on the
-> remote, and delete exactly those.
+> **Trigger.** Whenever I ask you to *pull* — plain "pull", "pull again",
+> "retry the pull", or any of the explicit variants ("pull and hard reset",
+> "pull and reset", "reset to remote", "sync with origin", "discard local and
+> pull") — treat it as **pull + hard-reset-to-origin, when that is safe**, and
+> then delete the `NNN_*.patch` files in the repository root that have already
+> landed on the remote.
+>
+> A plain "pull" no longer means a passive fetch. I do not distinguish "pull"
+> from "pull and hard reset" in my head, and every reconcile in practice ends in
+> a `git reset --hard`, so the two must behave the same. The word "pull" is the
+> trigger; the explicit hard-reset phrasings are just louder ways of saying it.
+
+### "When that is safe" — the non-destructive gate
+
+Hard-reset only when it **cannot destroy anything**. Concretely, `git reset
+--hard origin/<branch>` is safe when **both** hold:
+
+1. **No uncommitted work would be lost.** The working tree has no tracked
+   modifications or staged changes. (Untracked files such as `NNN_*.patch` and
+   new docs are unaffected by a hard reset — they are fine.)
+2. **No unique local commit would be lost.** Every commit reachable from local
+   `HEAD` is either already on `origin/<branch>` or is *content-identical* to a
+   commit that is (the common case here: local and remote hold the same logical
+   change under different hashes, differing only in regenerated `graphify-out/`
+   artifacts — verify with `git diff --stat origin/<branch> HEAD` showing only
+   `graphify-out/` paths, or an empty diff).
+
+If either condition fails — real uncommitted edits, or a genuinely unpushed
+local commit whose content is **not** on the remote — a hard reset **is**
+destructive. Do **not** reset. Stop, report exactly what diverges, and ask how
+to proceed (fast-forward only, rebase, or keep the local commit). Losing unpushed
+work is the one outcome this rule must never cause.
+
+When local is simply behind or equal (a clean fast-forward), reset is trivially
+safe. When it has diverged, run the two checks above before resetting.
 
 `git reset --hard` does not touch untracked files, so patch files survive the
 reset and accumulate. Once a patch's contents are in `origin`, the file is
@@ -717,9 +747,12 @@ dead weight and actively confusing: it looks like outstanding work.
 
 ### Procedure
 
-1. `git fetch origin` then `git reset --hard origin/<branch>`.
-   Warn me first if the working tree has uncommitted changes — a hard reset
-   destroys them.
+1. `git fetch origin` then, **only if the non-destructive gate above is
+   satisfied**, `git reset --hard origin/<branch>`.
+   If the gate fails (uncommitted tracked changes, or a unique unpushed local
+   commit whose content is not on the remote), do **not** reset — stop and
+   report what diverges. A hard reset destroys uncommitted tracked work and
+   unpushed commits.
 2. **Verify the reset actually happened before classifying anything:**
 
    ```bash
@@ -787,8 +820,11 @@ into one commit before pushing.
 - Delete only files matching `NNN_*.patch` in the repository root. Never touch
   `migrations/*.sql`, and never treat a `.patch` file elsewhere in the tree as
   in scope.
-- This cleanup runs **only** on an explicit pull/hard-reset request. Do not
-  opportunistically delete patch files during unrelated work.
+- This cleanup runs on any pull request (plain "pull" included), but **only
+  after a hard reset actually happened**. If the non-destructive gate blocked
+  the reset, do not classify or delete any patch files — the tree was not
+  reconciled, so nothing is proven applied. Never opportunistically delete patch
+  files during unrelated work.
 
 ---
 
