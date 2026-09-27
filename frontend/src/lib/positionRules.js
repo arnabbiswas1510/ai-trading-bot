@@ -256,11 +256,12 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
               ? `The give-back floor is armed: a static sell rests at $${hard.toFixed(2)}, one `
                 + `backstop slack (${(C.PROVE_IT_BACKSTOP_SLACK_PCT * 100).toFixed(0)}%) below the Prove-It floor. `
               : phase1
-              ? `Phase 1 backstop: a static sell rests at $${hard.toFixed(2)}, one backstop slack `
-                + `(${(C.PROVE_IT_BACKSTOP_SLACK_PCT * 100).toFixed(0)}%) below the `
-                + `${(proveItP1ThresholdPct(daysHeld) * 100).toFixed(0)}% Prove-It band, so it cannot `
-                + `fire before the bot does. It is a STATIC order, not a trailing one — a trailing `
-                + `anchor ratchets up with price and would turn this loss cap into a profit-taker. `
+              ? `Phase 1 stop: a static sell rests AT the `
+                + `${(proveItP1ThresholdPct(daysHeld) * 100).toFixed(0)}% Prove-It band ($${hard.toFixed(2)}), `
+                + `so IBKR is the primary enforcer of the stop — it fills at the band on a gap-open or `
+                + `intraday touch, closing the overnight-gap hole that the bot's 15-minute poll could not. `
+                + `It is a STATIC order, not a trailing one — a trailing anchor ratchets up with price and `
+                + `would turn this loss cap into a profit-taker. `
               : `Pre-proof disaster floor: a static sell rests ${(C.MAX_LOSS_PCT * 100).toFixed(0)}% below the `
                 + `$${buy.toFixed(2)} entry, at $${hard.toFixed(2)}. `)
               + `It ratchets up only and never trails the peak, so it cannot clip a winner. `

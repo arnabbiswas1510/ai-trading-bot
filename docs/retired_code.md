@@ -28,7 +28,43 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
-## 2026-09-04 — Prove-It Stop consolidation
+---
+
+## 2026-09-26 — Phase 1 backstop-slack widening (behaviour retired, constant kept)
+
+| | |
+|---|---|
+| **Identifier** | The Phase 1 application of `PROVE_IT_BACKSTOP_SLACK_PCT` — the `band × (1 − PROVE_IT_BACKSTOP_SLACK_PCT)` term in `hard_stop_price()` |
+| **Location** | `exit_rules.py` `hard_stop_price()` (unproven/Phase 1 branch); mirrored in `frontend/src/lib/positionRules.js`, `tests/test_hard_stop.py`, `tests/test_sell_logic.py`, `docs/sell_logic.md`, `docs/configuration.md`, `.env.template`, `README.md` |
+| **Status when retired** | Active and firing live — it set the resting overnight/gap floor for every unproven position |
+| **ADR** | `decisions/2026-09-26_phase1-broker-primary-stop.md` |
+
+**What it did.** In Phase 1 (unproven), the resting broker `STP` was parked one
+backstop slack (1%) **below** the entry-anchored Prove-It band — `entry − 1.99%`
+day 0, `entry − 3.97%` day 1+ — so the bot's 15-minute poll + `arm_exit()` fired
+first in normal operation and the resting order was a mere outage/gap backstop.
+
+**Why retired.** That left the tight stop blind between polls and overnight: ECO
+and TNK gapped down past the poll's reach on 2026-09-22 (−$1,250 / −$1,100). The
+resting STP now sits **at** the band (IBKR is the primary enforcer). Re-measured on
+66 closed trades this is worth **+$1,526** and cuts the worst single loss from
+−$1,418 to −$1,150.
+
+**Relocated, not deleted.** The constant `PROVE_IT_BACKSTOP_SLACK_PCT` is **still
+live** — it now governs **only** the Phase 2 armed give-back floor
+(`armed_floor = floor × (1 − PROVE_IT_BACKSTOP_SLACK_PCT)`). Only its Phase 1
+usage was removed.
+
+**Restore path.** `git show <pre-2026-09-26-commit>:exit_rules.py` — the Phase 1
+branch returned `round(max(disaster, band × (1 − PROVE_IT_BACKSTOP_SLACK_PCT)), 2)`.
+
+**What would bring it back.** Evidence that broker-primary Phase 1 stops are being
+shaken out by intraday wicks (sub-5-minute spikes the replay cannot see) for more
+than the ~$1,500 the gap protection is worth — i.e. if the wick-shakeout cost, once
+enough trades exist to measure it, exceeds the gap-protection gain. Tracked in the
+provisional register as `phase1-broker-primary-stop`.
+
+
 
 Seven exit rules retired at once, replaced by the two-phase **Prove-It Stop**.
 See `decisions/2026-09-04_prove-it-stop.md` for the full reasoning and the

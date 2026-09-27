@@ -42,7 +42,13 @@ def _armed_floor(entry=ENTRY):
 
 class TestHardStopPrice:
     def test_unproven_uses_phase1_static_backstop(self):
-        """Unproven -> the Phase 1 band, one backstop-slack wider, held STATIC.
+        """Unproven -> the Phase 1 band ITSELF, held STATIC.
+
+        The resting STP sits AT the entry-anchored band (no backstop-slack
+        widening), so IBKR is the PRIMARY enforcer of the Phase 1 stop rather
+        than a wider gap-backstop beneath the bot's 15-minute poll. This closes
+        the overnight-gap hole (ECO/TNK, 2026-09-22).
+        See decisions/2026-09-26_phase1-broker-primary-stop.md.
 
         This leg used to be carried by the IBKR TRAIL order, whose anchor
         ratchets up with price; a stop written to cap a loss climbed into profit
@@ -51,15 +57,28 @@ class TestHardStopPrice:
         See decisions/2026-09-18_phase1-static-backstop.md.
         """
         pos = {"closed_above_entry": False}
-        expected = round(ENTRY * (1 - ea.PROVE_IT_P1_LATER_PCT)
-                               * (1 - ea.PROVE_IT_BACKSTOP_SLACK_PCT), 2)
+        expected = round(ENTRY * (1 - ea.PROVE_IT_P1_LATER_PCT), 2)
         assert ea.hard_stop_price(pos, ENTRY, 0.0, False, 3) == expected
         # Day 0 uses the tighter band.
-        expected_d0 = round(ENTRY * (1 - ea.PROVE_IT_P1_DAY0_PCT)
-                                  * (1 - ea.PROVE_IT_BACKSTOP_SLACK_PCT), 2)
+        expected_d0 = round(ENTRY * (1 - ea.PROVE_IT_P1_DAY0_PCT), 2)
         assert ea.hard_stop_price(pos, ENTRY, 0.0, False, 0) == expected_d0
         # Never looser than the disaster floor.
         assert ea.hard_stop_price(pos, ENTRY, 0.0, False, 0) >= _disaster()
+
+    def test_phase1_rests_at_band_not_slack_wider(self):
+        """The change this locks in: the Phase 1 resting STP sits AT the band,
+        NOT one PROVE_IT_BACKSTOP_SLACK_PCT below it. IBKR is the primary
+        enforcer, so the level must equal the band the bot itself polls.
+        See decisions/2026-09-26_phase1-broker-primary-stop.md."""
+        pos = {"closed_above_entry": False}
+        for day in (0, 1, 3, 6):
+            band = ENTRY * (1 - ea.prove_it_p1_threshold_pct(day))
+            slack_wider = round(band * (1 - ea.PROVE_IT_BACKSTOP_SLACK_PCT), 2)
+            got = ea.hard_stop_price(pos, ENTRY, 0.0, False, day)
+            # It rests at the band (max with disaster), never at the old wider level.
+            assert got == round(max(ENTRY * (1 - ea.MAX_LOSS_PCT), band), 2)
+            if band > ENTRY * (1 - ea.MAX_LOSS_PCT):
+                assert got > slack_wider, f"day {day}: still slack-wider {got} vs band {band}"
 
     def test_phase1_backstop_never_rises_above_entry(self):
         """THE REGRESSION THIS FIXES. Whatever the position does, the Phase 1

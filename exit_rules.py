@@ -105,17 +105,16 @@ PROVE_IT_P1_DAY0_LAST_DAY  = int(os.getenv("PROVE_IT_P1_DAY0_LAST_DAY",       0)
 # relative to entry (negative = below entry).
 PROVE_IT_P2_ARM_GAIN_PCT   = float(os.getenv("PROVE_IT_P2_ARM_GAIN_PCT",   0.02))  # +2.0%
 PROVE_IT_P2_FLOOR_PCT      = float(os.getenv("PROVE_IT_P2_FLOOR_PCT",     -0.01))  # -1.0%
-# How far BELOW the Phase 1 trigger the resting IBKR stop is parked.
+# How far BELOW the Phase 2 ARMED give-back floor the resting IBKR stop is parked.
 #
-# Phase 1 is enforced by the bot: on the 15-minute cycle it arms a tight 0.6%
-# trailing exit (arm_exit()) rather than selling at what is often a local trough.
-# The replay shows that armed exit beats an immediate market sell by roughly
-# $600 across the sample, so the bot must get first refusal.
+# Phase 1 no longer uses this: its resting STP sits AT the band (IBKR is the
+# primary enforcer), so the broker fills at the band on a gap-open or intraday
+# touch that the 15-minute poll could miss — this closed the ECO/TNK overnight-gap
+# hole (2026-09-22). See decisions/2026-09-26_phase1-broker-primary-stop.md.
 #
-# But the bot only looks every 15 minutes and cannot act at all when it is down
-# or the market gaps. So a GTC order rests at the broker one slack-width below
-# the same level: wide enough that it never front-runs the armed exit, tight
-# enough to cap an overnight gap. Belt and braces, in that order.
+# In Phase 2, a proven+armed position's give-back floor is broker-guaranteed by a
+# GTC stop resting one slack-width below it: wide enough that the bot's tighter
+# live exit gets first refusal, tight enough to cap a gap while the bot is dark.
 PROVE_IT_BACKSTOP_SLACK_PCT = float(os.getenv("PROVE_IT_BACKSTOP_SLACK_PCT", 0.01))
 
 # ── Smart OCA Managed Exit (queue-driven, see migrations/20260818_add_exit_requests.sql) ─
@@ -252,8 +251,16 @@ def hard_stop_price(pos: dict, buy_price: float,
 
     Three levels, entry-anchored in every case:
 
-      • PHASE 1 (unproven only): the Prove-It band, one backstop-slack wider —
-        entry * (1 - p1_pct(days_held)) * (1 - PROVE_IT_BACKSTOP_SLACK_PCT).
+      • PHASE 1 (unproven only): the Prove-It band ITSELF, entry-anchored —
+        entry * (1 - p1_pct(days_held)). The resting STP sits AT the band, not
+        one backstop-slack below it, so IBKR is the PRIMARY enforcer of the
+        Phase 1 stop rather than a wider outage/gap backstop beneath the bot's
+        15-minute poll. This closes the overnight-gap hole that let ECO and TNK
+        fall past the poll's reach on 2026-09-22 — the resting order now fills
+        at the band on a gap-open or intraday touch. Measured +$1,526 vs the
+        faithful resting-backstop model, and it cuts the worst single loss from
+        -$1,418 to -$1,150; see
+        decisions/2026-09-26_phase1-broker-primary-stop.md.
         This leg USED to be carried by the trailing order, which ratcheted its
         anchor up with price and converted a loss cap into a profit-taker; see
         decisions/2026-09-18_phase1-static-backstop.md. It is static here, so it
@@ -293,9 +300,18 @@ def hard_stop_price(pos: dict, buy_price: float,
         armed_floor = floor * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
         return round(max(disaster, armed_floor), 2)
     if PROVE_IT_ENABLED and not prove_it_is_proven(pos, highest_unrealized_pct):
-        # PHASE 1 ONLY — unproven. The entry-anchored band, set one
-        # backstop-slack below the level the bot itself polls, so the resting
-        # order is a genuine backstop and cannot fire before the bot does.
+        # PHASE 1 ONLY — unproven. The entry-anchored band ITSELF: the resting
+        # broker STP sits AT the band, making IBKR the primary enforcer of the
+        # Phase 1 stop. It PREVIOUSLY sat one PROVE_IT_BACKSTOP_SLACK_PCT below
+        # the band so the bot's 15-minute poll (arm-then-trail) fired first and
+        # the resting order was a mere outage/gap backstop. That left the tight
+        # stop blind between polls and overnight: ECO/TNK gapped down past the
+        # poll's reach on 2026-09-22. Resting at the band lets the broker order
+        # fill at the band on a gap-open or intraday touch. Measured +$1,526 vs
+        # the faithful resting-backstop model and it cuts the worst single loss
+        # from -$1,418 to -$1,150; see
+        # decisions/2026-09-26_phase1-broker-primary-stop.md.
+        # (PROVE_IT_BACKSTOP_SLACK_PCT still widens the Phase 2 armed floor below.)
         #
         # Deliberately NOT extended to proven-but-unarmed positions. Giving that
         # window the Phase 1 band is the `p2_unarmed_keeps_p1` hypothesis, which
@@ -304,8 +320,7 @@ def hard_stop_price(pos: dict, buy_price: float,
         # That window keeps the disaster floor until the re-run owed on the
         # post-backfill sample says otherwise.
         band = buy_price * (1.0 - prove_it_p1_threshold_pct(days_held))
-        p1_backstop = band * (1.0 - PROVE_IT_BACKSTOP_SLACK_PCT)
-        return round(max(disaster, p1_backstop), 2)
+        return round(max(disaster, band), 2)
     return round(disaster, 2)
 
 def safe_hard_stop(desired: float, current_price: float,

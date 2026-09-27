@@ -246,7 +246,7 @@ above what we paid? See `docs/sell_logic.md` for the full behaviour and
 | `PROVE_IT_P1_DAY0_LAST_DAY` | `0` | Last day the tighter Phase 1 band applies |
 | `PROVE_IT_P2_ARM_GAIN_PCT` | `0.02` | Peak gain that arms the Phase 2 give-back floor |
 | `PROVE_IT_P2_FLOOR_PCT` | `-0.01` | Floor relative to entry; **negative = below entry** |
-| `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | How far *wider* the Phase 1 resting IBKR order sits |
+| `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | How far *wider* the **Phase 2 armed** resting order sits (Phase 1 no longer uses it — see below) |
 
 Two of these are counter-intuitive and were measured, not guessed:
 
@@ -256,10 +256,17 @@ Two of these are counter-intuitive and were measured, not guessed:
 - **`PROVE_IT_P2_FLOOR_PCT` must stay negative.** An exact-breakeven floor flushes any
   position that pokes green and immediately retests entry, forfeiting +$1,189 on CPAY alone.
 
-`PROVE_IT_BACKSTOP_SLACK_PCT` keeps the resting broker order *behind* the bot-side armed
-exit in Phase 1. Reducing it to 0 lets the broker fire first, which loses the ~$600 the
-armed exit is worth across the sample. In Phase 2 the resting order is the floor, so the
-slack does not apply.
+`PROVE_IT_BACKSTOP_SLACK_PCT` applies **only to the Phase 2 armed floor** now, where
+the resting order sits one slack below the give-back floor. **It no longer applies in
+Phase 1.** Until 2026-09-26 it also parked the Phase 1 resting order 1% *below* the band
+so the bot-side armed exit fired first; that page then read *"Reducing it to 0 lets the
+broker fire first, which loses the ~$600 the armed exit is worth across the sample."*
+That claim is **superseded**: re-measured on 66 closed trades (up from the earlier
+sample), resting the Phase 1 stop **at** the band — IBKR firing first — is worth
+**+$1,526** and cuts the worst single loss from −$1,418 to −$1,150, because the resting
+order fills at the band on an overnight gap or intraday touch that the 15-minute poll
+missed (ECO/TNK, 2026-09-22). Phase 1 is now broker-primary. See
+`decisions/2026-09-26_phase1-broker-primary-stop.md`.
 
 **In Phase 1 that resting order is a static `STP`, not a trailing order.** Expressed
 as a trailing percentage it becomes an IBKR `TRAIL` whose anchor ratchets up with

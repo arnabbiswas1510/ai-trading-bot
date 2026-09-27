@@ -286,12 +286,22 @@ static floor keeps protecting the position at its resting price.
 
 | Position state | Static floor |
 |---|---|
-| **Phase 1 — unproven** (never closed above entry) | the Prove-It band, one backstop slack wider: `entry × (1 − p1_pct(days_held)) × (1 − PROVE_IT_BACKSTOP_SLACK_PCT)` = **entry − 1.99%** on day 0, **entry − 3.97%** from day 1 |
+| **Phase 1 — unproven** (never closed above entry) | the Prove-It band **itself**, entry-anchored: `entry × (1 − p1_pct(days_held))` = **entry − 1%** on day 0, **entry − 3%** from day 1. IBKR is the **primary** enforcer here — the resting STP sits AT the band, not below it. |
 | Proven but **not** armed (peak gain < +2%) | `entry × (1 − MAX_LOSS_PCT)` = **entry − 7%** |
 | Proven **and** armed (closed above entry, peak gain ≥ +2%) | ratchets up to `entry × (1 + PROVE_IT_P2_FLOOR_PCT) × (1 − PROVE_IT_BACKSTOP_SLACK_PCT)` ≈ **entry − 2%** |
 | Power Hold | widens back to the entry − 7% disaster floor |
 
 No level is ever looser than the entry − 7% disaster floor.
+
+**Phase 1 rests AT the band — IBKR is the primary enforcer.** The resting STP sits
+at the entry-anchored band itself (`entry − 1%` day 0, `entry − 3%` from day 1),
+**not** one backstop slack below it. Previously the resting order sat 1% wider so the
+bot's 15-minute poll fired first and the broker order was a mere outage/gap backstop —
+which left the tight stop blind between polls and overnight. ECO and TNK gapped down
+past the poll's reach on 2026-09-22. Resting at the band lets IBKR fill at the band on
+a gap-open or intraday touch. Measured **+$1,526** vs the faithful resting-backstop
+model on 66 closed trades, and it cuts the worst single loss from **−$1,418 to
+−$1,150**. See `decisions/2026-09-26_phase1-broker-primary-stop.md`.
 
 **Phase 1 lives on this leg, not on the trailing one.** It used to be expressed as
 a trailing percentage, which IBKR submits as an `orderType='TRAIL'` whose anchor
@@ -842,7 +852,7 @@ See `decisions/2026-08-22_market-direction-gate-spy-qqq.md` for why.
 | `PROVE_IT_P1_DAY0_LAST_DAY` | `0` | Last day the tighter Phase 1 band applies |
 | `PROVE_IT_P2_ARM_GAIN_PCT` | `0.02` | Peak gain that arms the give-back floor |
 | `PROVE_IT_P2_FLOOR_PCT` | `-0.01` | Floor relative to entry (negative = below) |
-| `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | How far wider the Phase 1 resting IBKR order sits |
+| `PROVE_IT_BACKSTOP_SLACK_PCT` | `0.01` | How far wider the **Phase 2 armed** resting order sits (Phase 1 rests at the band) |
 | `ARMED_EXIT_TRAIL_PCT` | `0.006` | Armed trail distance |
 | `ARMED_EXIT_DEADLINE_HOURS` | `3.25` | Forced-sale deadline |
 | `STALE_EXIT_DAYS` | `10` | Staleness threshold (discounts the rotation bar) |

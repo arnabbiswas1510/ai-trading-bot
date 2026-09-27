@@ -193,7 +193,7 @@ exact price*" — which is what makes it genuinely disconnect-proof. Its price:
 
 | Position state | Static floor |
 |---|---|
-| **Phase 1 — unproven** (never closed above entry) | the Prove-It band one backstop slack wider: **entry − 1.99%** on day 0, **entry − 3.97%** from day 1 |
+| **Phase 1 — unproven** (never closed above entry) | the Prove-It band **itself** (IBKR is the primary enforcer): **entry − 1%** on day 0, **entry − 3%** from day 1 |
 | Proven but **not** armed (peak gain < +2%) | `entry × (1 − MAX_LOSS_PCT)` = **entry − 7%** |
 | Proven **and** armed (closed above entry, peak gain ≥ +2%) | ratchets up to ≈ **entry − 2%** (one backstop slack wider than the Prove-It floor) |
 | Power Hold | widens back to the entry − 7% disaster floor |

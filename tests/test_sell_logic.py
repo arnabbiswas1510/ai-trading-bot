@@ -104,14 +104,14 @@ class TestSelfHealingTrailingStop:
         and the only possible call path is the self-heal block.
 
         hard_stop_price is seeded at the level the CURRENT rule produces for an
-        unproven position — the Phase 1 static backstop, not the bare disaster
-        floor. Seeding the disaster floor would leave the static leg genuinely
-        stale, so the hard-stop ratchet would re-place the bracket and defeat the
-        premise above. See decisions/2026-09-18_phase1-static-backstop.md."""
+        unproven position — the Phase 1 static band (IBKR-primary enforcement),
+        not the bare disaster floor. Seeding the disaster floor would leave the
+        static leg genuinely stale, so the hard-stop ratchet would re-place the
+        bracket and defeat the premise above.
+        See decisions/2026-09-26_phase1-broker-primary-stop.md."""
         pos = make_position("AAPL", buy_price=100.0, buy_date="2026-06-10T12:00:00+00:00")
         pos["hard_stop_price"] = round(
-            100.0 * (1 - execution_agent.PROVE_IT_P1_LATER_PCT)
-                  * (1 - execution_agent.PROVE_IT_BACKSTOP_SLACK_PCT), 2)
+            100.0 * (1 - execution_agent.PROVE_IT_P1_LATER_PCT), 2)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["AAPL"])
 

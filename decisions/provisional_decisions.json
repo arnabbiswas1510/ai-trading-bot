@@ -293,6 +293,43 @@
       "history": []
     },
     {
+      "id": "phase1-broker-primary-stop",
+      "title": "Phase 1 resting STP sits AT the band — IBKR is the primary enforcer",
+      "status": "active",
+      "decided": "2026-09-26",
+      "implemented": true,
+      "kind": "parameter",
+      "decision": "In hard_stop_price() (exit_rules.py) the Phase 1 / unproven resting broker STP level changed from band*(1-PROVE_IT_BACKSTOP_SLACK_PCT) to the band itself: entry*(1-prove_it_p1_threshold_pct(days_held)), floored at the entry*(1-MAX_LOSS_PCT) disaster level. IBKR is now the primary enforcer of the Phase 1 stop; the bot's 15-minute poll + arm_exit() remains a fallback for when safe_hard_stop() blocks a placement. PROVE_IT_BACKSTOP_SLACK_PCT now applies ONLY to the Phase 2 armed give-back floor. Phase 2 unchanged. Still a static STP (cannot ratchet); proven-but-unarmed still uses the disaster floor.",
+      "rationale": "ECO/TNK gapped down on 2026-09-22 (-$1,250 / -$1,100) past the poll's reach while the resting STP sat 1% below the band. Measured on 66 closed trades: --day0 'BROKER-HARD all Phase 1 days' nets +$10,609 (worst -$1,150) vs the faithful current-live model (--p1ratchet 'leg ratchet OFF') at +$9,083 (worst -$1,418). Honest incremental gain +$1,526, worst single loss -$1,418 -> -$1,150, 30 helped / 16 harmed, largest contributor CDNA 17%, net ex-largest still +$8,814 -- not outlier-carried. This REVERSES the earlier ~$600 'keep the broker 1% behind the bot' finding in docs/configuration.md, which was measured on a smaller sample and is now superseded.",
+      "adr": "decisions/2026-09-26_phase1-broker-primary-stop.md",
+      "revisit": {
+        "min_closed_trades": 90,
+        "not_before": "2026-11-20"
+      },
+      "baseline": {
+        "closed_trades": 66,
+        "broker_hard_all_days_net": 10609,
+        "faithful_live_model_net": 9083,
+        "delta": 1526,
+        "worst_loss_before": -1418,
+        "worst_loss_after": -1150,
+        "trades_helped": 30,
+        "trades_harmed": 16,
+        "largest_contributor": "CDNA 17%",
+        "net_ex_largest": 8814
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure --day0 && python3 research/exit_rule_replay.py --insecure --p1ratchet",
+      "review_questions": [
+        "WICK-SHAKEOUT CHECK, ask this first: the harness only sees 5-minute bars, so a sub-5-minute spike-down-and-recover that a 15-minute CLOSE poll would survive is invisible to it. Have any NEW live Phase 1 trades been stopped out at the band and then closed the day materially higher? If a pattern of band-touch shakeouts appears live, the +$1,526 is overstated and this must be revisited.",
+        "Does broker-hard-at-band still beat the faithful current-live model (--p1ratchet 'ratchet OFF') by more than the ~$500 noise bar, on the larger sample?",
+        "Is the gain still spread (>=3 trades, largest contributor <25%), or has it collapsed onto one or two names?",
+        "Has the worst-single-loss improvement (-1,418 -> -1,150) held or grown as more gap-down events enter the sample? Gap protection is the whole point.",
+        "Report n first. If the trade count has barely moved, say so and skip rather than re-reading noise."
+      ],
+      "last_reviewed": null,
+      "history": []
+    },
+    {
       "id": "ladder-width-runon",
       "title": "Phase 2 ladder width and the power-hold trigger must be retuned together, and not before slot cost is modelled",
       "status": "active",
