@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1790037416.2759907,
-    "ast_hash": "f4e272735f0ea30a7cedd3422d94da3e",
+    "mtime": 1790520895.0547361,
+    "ast_hash": "93eae040ceac1e22463ae151ba4ed524",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -50,8 +50,8 @@
     "semantic_hash": ""
   },
   "force_buy.py": {
-    "mtime": 1787599185.2661192,
-    "ast_hash": "36ac9fc33856b86df053d791d438a484",
+    "mtime": 1790520895.032289,
+    "ast_hash": "df8547478c9e92b86edc0166aa888b8c",
     "semantic_hash": ""
   },
   "force_sell.py": {
@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "rotate_positions.py": {
-    "mtime": 1789091106.5293226,
-    "ast_hash": "d8e3d5028d9b779ad9ae717b68e2f9bc",
+    "mtime": 1790520895.0436733,
+    "ast_hash": "61f2583c048d9e58eab1575875ef9425",
     "semantic_hash": ""
   },
   "run_app.py": {
@@ -170,8 +170,8 @@
     "semantic_hash": ""
   },
   "tests/conftest.py": {
-    "mtime": 1790001824.9113948,
-    "ast_hash": "8173ac924a8ca5d83a3f31e4cc245586",
+    "mtime": 1790520895.044284,
+    "ast_hash": "3a90f513c7fcb0e8ae0256155af3741c",
     "semantic_hash": ""
   },
   "tests/test_breakout_verdict.py": {
@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "tests/test_buy_gates.py": {
-    "mtime": 1789090976.2163064,
-    "ast_hash": "ef652ba8e681877515bc3e68d41235d5",
+    "mtime": 1790520895.0448608,
+    "ast_hash": "4869f8ddcb3a88f0cbbe8023dc8a50e7",
     "semantic_hash": ""
   },
   "tests/test_dynamic_trail.py": {
@@ -230,8 +230,8 @@
     "semantic_hash": "c6399e27028dd7316d27a6d535b2244e"
   },
   "tests/test_sell_logic.py": {
-    "mtime": 1790001824.915424,
-    "ast_hash": "cd251e3123b68b0d3e823f040ec70191",
+    "mtime": 1790467639.2709548,
+    "ast_hash": "47beb9f86e6306125e4b20a238773c9c",
     "semantic_hash": ""
   },
   "tests/test_short_fix_and_new_logic.py": {
@@ -280,13 +280,13 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790037416.2722266,
-    "ast_hash": "4e97e5ca7f246dee78aad494657c9577",
+    "mtime": 1790520894.461516,
+    "ast_hash": "e834871cf2da2ce39d788826ac55ba82",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790037416.2727022,
-    "ast_hash": "a1edbc389723d60b91f5e09ada78b25e",
+    "mtime": 1790520895.087839,
+    "ast_hash": "a506b8b639355e412dc0b7c15e099822",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -300,13 +300,13 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1790037416.274092,
-    "ast_hash": "5f5e82dea8bc080973c346d5b9ccb21c",
+    "mtime": 1790520895.0318189,
+    "ast_hash": "8bfb6806ade183bcc59f1db5f28b131c",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790037416.2745187,
-    "ast_hash": "4dca134c68f71c2f19cc36c6bea8dfac",
+    "mtime": 1790482894.6229646,
+    "ast_hash": "c5db5c536a6e6954318c672f66b5b05a",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1790037416.2750776,
-    "ast_hash": "477326cf92a34127dde097e110959bf8",
+    "mtime": 1790467848.1896198,
+    "ast_hash": "9e891ade5c01323edfc348a0c7b1e3b5",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "research/port_sim.py": {
-    "mtime": 1785968920.2648878,
-    "ast_hash": "c1e58be16d09334e8ab6d8404fbcc062",
+    "mtime": 1790520895.0430882,
+    "ast_hash": "1890311c875fb2787d97760e6eb5d409",
     "semantic_hash": ""
   },
   "research/rerun.py": {
@@ -610,8 +610,8 @@
     "semantic_hash": ""
   },
   "config.py": {
-    "mtime": 1789493074.6966248,
-    "ast_hash": "ec6221d4f342c3259bda80705a8f9c4c",
+    "mtime": 1790520895.0306146,
+    "ast_hash": "9bbfcf344f45a3b1c40b55916e7fc820",
     "semantic_hash": ""
   },
   "tests/test_max_positions_config.py": {
@@ -665,8 +665,8 @@
     "semantic_hash": ""
   },
   "frontend/src/lib/positionRules.js": {
-    "mtime": 1790001824.893389,
-    "ast_hash": "6faf271f88a28b41d6c11d92fd1d58bf",
+    "mtime": 1790467639.2749605,
+    "ast_hash": "a447e0cd3b04712ac7203548b95d9d62",
     "semantic_hash": ""
   },
   "decisions/2026-08-14_position-lifecycle-visibility.md": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "research/exit_rule_replay.py": {
-    "mtime": 1790001824.9097514,
-    "ast_hash": "8357fae21a4b9919a0483cb88be15be3",
+    "mtime": 1790520894.4732945,
+    "ast_hash": "fef2f0487ea12d079180a7c8e8d04d6f",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_slot-derived-early-dollar-stop.md": {
@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "supabase_backup.py": {
-    "mtime": 1790001824.9105973,
-    "ast_hash": "4513fdfd4bbc2d31d995b42b2b9c0d7d",
+    "mtime": 1790482985.114159,
+    "ast_hash": "fb2feaf51c21e62ba1cf991e666bc939",
     "semantic_hash": ""
   },
   "tests/test_supabase_backup.py": {
@@ -900,8 +900,8 @@
     "semantic_hash": ""
   },
   "docs/retired_code.md": {
-    "mtime": 1790001824.887865,
-    "ast_hash": "65cfc05940d5534ebd7a49405fb36767",
+    "mtime": 1790467739.8213153,
+    "ast_hash": "077c8648e04e3554e6c56a6f8fb99bc7",
     "semantic_hash": ""
   },
   "tests/test_dashboard_pricing.py": {
@@ -970,8 +970,8 @@
     "semantic_hash": ""
   },
   "tests/test_hard_stop.py": {
-    "mtime": 1790001824.9128046,
-    "ast_hash": "7b6f1228d19382e668fcfb2282635374",
+    "mtime": 1790467576.1366632,
+    "ast_hash": "8e251a2355488a12af87560b6c617624",
     "semantic_hash": ""
   },
   "decisions/2026-09-07_static-hard-stop.md": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1790001824.8856258,
-    "ast_hash": "35c882787605d72154dbc710eb1a10fc",
+    "mtime": 1790520895.0687337,
+    "ast_hash": "4e22eb288c4b9dbf778accc8554b2cb3",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1310,8 +1310,8 @@
     "semantic_hash": ""
   },
   "exit_rules.py": {
-    "mtime": 1790001824.8917224,
-    "ast_hash": "c09c4f610e6fa50fae8c23b14623e617",
+    "mtime": 1790467848.183629,
+    "ast_hash": "fe506837ce48d3be9131bd9f703b7d11",
     "semantic_hash": ""
   },
   "indicators.py": {
@@ -1385,8 +1385,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-18_runon-window-winners-run.md": {
-    "mtime": 1790001824.8836918,
-    "ast_hash": "1940edae51c8967ae76dd4331f2a09c2",
+    "mtime": 1790520894.4621305,
+    "ast_hash": "b6e369b3357cbde75e8b7cd0997deec2",
     "semantic_hash": ""
   },
   "migrations/20260918_widen_sell_reason.sql": {
@@ -1450,18 +1450,78 @@
     "semantic_hash": ""
   },
   "tests/golden/exit_path_monitor.json": {
-    "mtime": 1790041369.0180564,
+    "mtime": 1790041607.6166255,
     "ast_hash": "58557e15bbbe1f37d3840fd414e64276",
     "semantic_hash": ""
   },
   "tests/golden_log.py": {
-    "mtime": 1790041340.647585,
+    "mtime": 1790041607.6168404,
     "ast_hash": "e42ff94e191f8cf383ad04436d88c627",
     "semantic_hash": ""
   },
   "tests/test_exit_path_golden.py": {
-    "mtime": 1790041364.4928017,
+    "mtime": 1790041607.6170652,
     "ast_hash": "0dfafd014bdecf58131bf6798c1c6d4a",
+    "semantic_hash": ""
+  },
+  "cooling_off.py": {
+    "mtime": 1790520895.0309582,
+    "ast_hash": "ce3f823b107bd23d2744a12e7d06efd5",
+    "semantic_hash": ""
+  },
+  "exit_shadow.py": {
+    "mtime": 1790482650.1164224,
+    "ast_hash": "211d046d3c6804f927521aa7f14bd8f6",
+    "semantic_hash": ""
+  },
+  "migrations/20260927_add_exit_shadow_log.sql": {
+    "mtime": 1790482670.3793356,
+    "ast_hash": "a53869a5c5ac4dcd8760b29c82e7efef",
+    "semantic_hash": ""
+  },
+  "research/cooloff_bt.py": {
+    "mtime": 1790520895.0426354,
+    "ast_hash": "19573413b97952d5c14d25e9c6f95741",
+    "semantic_hash": ""
+  },
+  "research/exit_shadow_review.py": {
+    "mtime": 1790482862.0227091,
+    "ast_hash": "aba0626c0ed61b550fa3f1d5ea14b8b4",
+    "semantic_hash": ""
+  },
+  "tests/test_exit_shadow.py": {
+    "mtime": 1790482735.431187,
+    "ast_hash": "25f8b1c00503e449746fd2f338b7a4b0",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-22_slot-opportunity-cost-harness.md": {
+    "mtime": 1790520894.462529,
+    "ast_hash": "f4840f6c95ef1e0051400f5c103c6fc1",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-26_cooling-off-return-neutral.md": {
+    "mtime": 1790520894.7538822,
+    "ast_hash": "5c860d77ba156de97736bcc3ae2f23c2",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-26_phase1-broker-primary-stop.md": {
+    "mtime": 1790467717.9566617,
+    "ast_hash": "c96288451dc5b0a6eb2c8db6024e0578",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-26_reason-aware-cooling-off.md": {
+    "mtime": 1790520895.0313098,
+    "ast_hash": "66cb9533993734e5a71def598d50ac96",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-27_exit-shadow-log.md": {
+    "mtime": 1790482786.0583723,
+    "ast_hash": "a22fe002493c1a63542e461cb0218dcd",
+    "semantic_hash": ""
+  },
+  "docs/trade_lifecycle.md": {
+    "mtime": 1790487333.017053,
+    "ast_hash": "a3794ad8df1fc497c456b8370f219044",
     "semantic_hash": ""
   }
 }
