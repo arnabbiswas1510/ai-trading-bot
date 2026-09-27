@@ -290,6 +290,27 @@ Prove-It stop. Fires once per position; suppressed for power-held leaders. **PRO
 `decisions/provisional_decisions.json` for revisit at ≥50 trades. See
 `decisions/2026-09-08_partial-scale-out.md`.
 
+### Exit-rule shadow logger
+
+| Variable | Default | Effect |
+|---|---|---|
+| `EXIT_SHADOW_LOG_ENABLED` | `true` | Master switch for the side-effect-free exit-rule shadow log |
+
+**Measurement only — this never places, cancels or modifies an order, and no
+live rule reads its output.** Every monitor cycle, the agent records to the
+Supabase `exit_shadow_log` table what the live Prove-It rule and two candidates
+*would* do to each open position: **Q1** = Phase 2 arms at **+3%** instead of the
+live +2% (`PROVE_IT_P2_ARM_GAIN_PCT`); **Q2** = a **5%** give-back trail from the
+high-water mark instead of the live 1.5% profit-lock. It exists to feed the
+`exit-parameters-proveit` and `ladder-width-runon` scheduled reviews with live,
+out-of-regime evidence the 5-minute single-regime backtest cannot produce. The
+call is fully exception-wrapped: if
+`migrations/20260927_add_exit_shadow_log.sql` is not yet applied, it no-ops
+silently and trading is unaffected. A live shadow only observes divergence up to
+the real exit, so it captures the wick/timing side of these rules but not the
+run-on upside of holding a winner past the live exit — that stays harness-only
+(`--runon`). See `decisions/2026-09-27_exit-shadow-log.md`.
+
 ### Armed exit
 
 | Variable | Default | Effect |

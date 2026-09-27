@@ -431,6 +431,7 @@ from exit_rules import (  # noqa: F401  (re-exported for patch compatibility)
     _compute_dynamic_trail_pct, is_power_hold_active, sell_state_code,
     _infer_exit_type,
 )
+from exit_shadow import compute_exit_shadows
 
 # ── Exit & hold parameters ──────────────────────────────────────────────────
 # Base trailing stop, measured from the position's PEAK (not from entry — this
@@ -580,6 +581,14 @@ BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0
 SCALE_OUT_ENABLED       = os.getenv("SCALE_OUT_ENABLED", "true").lower() == "true"
 SCALE_OUT_TRIGGER_PCT   = float(os.getenv("SCALE_OUT_TRIGGER_PCT", 0.04))   # +4% peak gain
 SCALE_OUT_FRACTION      = float(os.getenv("SCALE_OUT_FRACTION",    0.33))   # sell 33%
+
+# ── Exit-rule shadow logger (measurement only — never places an order) ─────────
+# Logs, every monitor cycle, what two register-tracked exit CANDIDATES would do
+# to each open position: Q1 arm@+3% (exit-parameters-proveit) and Q2 5% give-back
+# trail (ladder-width-runon). Feeds forward, live evidence into those reviews
+# that the 5-minute single-regime backtest cannot produce. Gated + fully
+# exception-wrapped so it can never disturb trading. See exit_shadow.py.
+EXIT_SHADOW_LOG_ENABLED = os.getenv("EXIT_SHADOW_LOG_ENABLED", "true").lower() == "true"
 
 # ── Armed Trailing Exit (Day 0-6 loss-cutting) ─────────────────────────────────
 # When the Prove-It Stop fires, we do NOT sell instantly at the trigger price — that price is
@@ -4455,6 +4464,26 @@ def monitor_portfolio_intraday(ib: IB):
         # position is always proven and far above the Phase 2 floor.
         prove_it_level, prove_it_phase = (None, "power-hold") if power_held else \
             prove_it_stop_level(pos, buy_price, days_held, highest_unrealized_pct)
+
+        # ── Exit-rule shadow log (measurement only, NEVER an order) ───────────
+        # Record what the two register-tracked candidates would do this cycle.
+        # Fully guarded: any failure here must never touch the live decision.
+        if EXIT_SHADOW_LOG_ENABLED:
+            try:
+                shadow = compute_exit_shadows(
+                    pos, buy_price, current_price,
+                    float(pos.get("hwm_price") or buy_price),
+                    highest_unrealized_pct, prove_it_level, prove_it_phase,
+                    days_held,
+                )
+                shadow["cycle_ts"] = now_ny.isoformat()
+                client.table("exit_shadow_log").insert(shadow).execute()
+            except Exception as _shadow_err:
+                # Missing table (migration not yet applied) or any transient
+                # error: degrade silently, do NOT fire Telegram, do NOT spam.
+                es = str(_shadow_err)
+                if not ("exit_shadow_log" in es or "PGRST" in es or "42P01" in es):
+                    print(f"   ⚠️ exit-shadow log skipped for {ticker}: {es}")
 
         if (prove_it_level is not None
                 and current_price <= prove_it_level

@@ -1,22 +1,22 @@
 {
-  "_README": "PROVISIONAL DECISION REGISTER \u2014 the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else \u2014 add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process. Entries are of two KINDS. A 'parameter' entry is a tuned number awaiting more evidence; a 'work-item' entry is a piece of engineering work deliberately deferred until the bot is in a safe state to absorb it. Both use `revisit` as the trigger (when to look), and may additionally declare `preconditions` (whether it is safe to act today) which are evaluated against LIVE portfolio state. A due-but-blocked entry is still reported -- never silently skipped.",
+  "_README": "PROVISIONAL DECISION REGISTER — the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else — add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process. Entries are of two KINDS. A 'parameter' entry is a tuned number awaiting more evidence; a 'work-item' entry is a piece of engineering work deliberately deferred until the bot is in a safe state to absorb it. Both use `revisit` as the trigger (when to look), and may additionally declare `preconditions` (whether it is safe to act today) which are evaluated against LIVE portfolio state. A due-but-blocked entry is still reported -- never silently skipped.",
   "_schema": {
     "id": "kebab-case unique key; also the GitHub-issue marker",
     "title": "one-line human label",
     "status": "active | resolved | superseded  (only 'active' is ever alerted on)",
     "decided": "YYYY-MM-DD the decision was taken",
-    "implemented": "bool \u2014 true once the decision is live in production code; false = approved config still on the shelf",
+    "implemented": "bool — true once the decision is live in production code; false = approved config still on the shelf",
     "decision": "what we decided to do, stated as current fact",
     "rationale": "why, and on how large a sample",
     "adr": "path to the ADR that records the reasoning (may be null until written)",
     "revisit": {
-      "min_closed_trades": "int | null \u2014 becomes due once trade_history has >= this many rows",
-      "not_before": "YYYY-MM-DD | null \u2014 a date floor; due only once BOTH this and min_closed_trades are satisfied"
+      "min_closed_trades": "int | null — becomes due once trade_history has >= this many rows",
+      "not_before": "YYYY-MM-DD | null — a date floor; due only once BOTH this and min_closed_trades are satisfied"
     },
     "baseline": "the numbers measured at decision time, so a future review compares like-for-like",
     "review_command": "the exact command that reproduces the measurement",
     "review_questions": "the specific questions the review must answer",
-    "last_reviewed": "YYYY-MM-DD | null \u2014 set when a review is completed",
+    "last_reviewed": "YYYY-MM-DD | null — set when a review is completed",
     "history": "append-only log of {date, closed_trades, verdict, note} from each completed review",
     "kind": "parameter | work-item | investigation  -- 'parameter' is a tuned value awaiting more trades; 'work-item' is deferred engineering work; 'investigation' is an OPEN QUESTION to be settled by measurement, where 'no signal, do nothing' is a valid and expected outcome. Defaults to 'parameter' when absent, so pre-existing entries are unaffected.",
     "preconditions": {
@@ -33,7 +33,7 @@
       "decided": "2026-09-08",
       "implemented": true,
       "decision": "When an open position's PEAK gain first reaches +4%, sell 33% of the shares at market; the remaining ~67% rides the unchanged Prove-It stop. Fires once per position (scaled_out latch); suppressed for power-held leaders. Freed capital stays as reserve until a full slot opens, then redeploys via normal available_cash / remaining_slots sizing. Live in execute_scale_out() + monitor_portfolio_intraday(); ADR and docs shipped.",
-      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped \u2014 those are an entry-quality problem, tracked separately.",
+      "rationale": "Chosen on a 33-closed-trade exit replay. +4%/33% was net-free vs the shipped Prove-It stop (-$64, deep in noise), had the lowest harmed count (6), and captured the winner->loser give-back band with the benefit SPREAD over 3 trades (LPG +$317, SGHC +$514, CDNA +$275) rather than carried by one. 33% over 50% because the replay understates runner upside (bars stop at each trade's actual sell), so over-booking has a hidden cost. KNOWN LIMITATION: it rescues only 3 of 7 faders; GNK (+2.85%) and FRO (+3.91%) peaked below +4% and are NOT helped — those are an entry-quality problem, tracked separately.",
       "adr": "decisions/2026-09-08_partial-scale-out.md",
       "revisit": {
         "min_closed_trades": 50,
@@ -52,7 +52,7 @@
       "review_questions": [
         "Does +4%/33% still match or beat the SHIPPED net? (was -$64 = free)",
         "Is the fader benefit still spread over >=3 trades, or is it now carried by one? (single-trade-carry check)",
-        "Has the winner-clip grown \u2014 is harmed or winners_hurt higher than the baseline 6?",
+        "Has the winner-clip grown — is harmed or winners_hurt higher than the baseline 6?",
         "Do enough faders now peak in the +4-5% band to justify the trigger, or has the fader distribution shifted (argue the trigger up/down with the new peaks)?",
         "Would a different fraction (25% / 50%) now win, given the larger sample?"
       ],
@@ -66,7 +66,7 @@
       "decided": "2026-09-15",
       "implemented": true,
       "decision": "COOLING_OFF_DAYS defaults to 3 in config.py and .env.template, matching what production has run via a .env override since before 2026-08-09. Buy gate 2 continues to block re-entry for 3 days after a sale, checking BOTH trade_history and ibkr_fills SLD fills. The gate is NOT retired.",
-      "rationale": "Measured on 9 genuine re-entries (43 closed trades) plus a 26-trigger FMP counterfactual. 7 days blocks 7 of the 9 re-entries, worth +$1,736.67 net (4 winners / 3 losers, winners ~5x losers), including NTRA's 4-day re-entry of 2026-09-14 (+$575.44) \u2014 so 7 is measurably too wide, and its original justification in the 2026-08-09 ADR was asserted, never measured. But 0 is worse: of 26 blocked re-entries with forward bars, 16 (62%) break the Prove-It 1% day-0 band on their FIRST session, so the headline +2.17% mean 5-day return is unreachable \u2014 the bot exits on the band long before it. 0 also re-enables the same-session churn (NTRA sold 10:26, re-bought 10:32) that corrupted the lot basis. MAJOR CONFOUND: SLOTS_FULL accounts for 115 of 214 logged skips vs COOLING_OFF's 28, so capacity is the real binding constraint and +$1,736.67 is an UPPER BOUND on what 7 costs, not realised foregone profit. Sample is one month, entirely inside a BULL regime.",
+      "rationale": "Measured on 9 genuine re-entries (43 closed trades) plus a 26-trigger FMP counterfactual. 7 days blocks 7 of the 9 re-entries, worth +$1,736.67 net (4 winners / 3 losers, winners ~5x losers), including NTRA's 4-day re-entry of 2026-09-14 (+$575.44) — so 7 is measurably too wide, and its original justification in the 2026-08-09 ADR was asserted, never measured. But 0 is worse: of 26 blocked re-entries with forward bars, 16 (62%) break the Prove-It 1% day-0 band on their FIRST session, so the headline +2.17% mean 5-day return is unreachable — the bot exits on the band long before it. 0 also re-enables the same-session churn (NTRA sold 10:26, re-bought 10:32) that corrupted the lot basis. MAJOR CONFOUND: SLOTS_FULL accounts for 115 of 214 logged skips vs COOLING_OFF's 28, so capacity is the real binding constraint and +$1,736.67 is an UPPER BOUND on what 7 costs, not realised foregone profit. Sample is one month, entirely inside a BULL regime.",
       "adr": "decisions/2026-09-15_cooling-off-three-days.md",
       "revisit": {
         "min_closed_trades": 75,
@@ -86,10 +86,10 @@
       },
       "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_rule_replay.py --insecure && python3 research/decision_review.py --insecure",
       "review_questions": [
-        "How many GENUINE re-entries now exist? (was 9; exclude split-fill duplicates sharing a buy timestamp, e.g. the TRV 2026-07-21 pair.) Below ~25 the comparison is still noise \u2014 report n FIRST.",
+        "How many GENUINE re-entries now exist? (was 9; exclude split-fill duplicates sharing a buy timestamp, e.g. the TRV 2026-07-21 pair.) Below ~25 the comparison is still noise — report n FIRST.",
         "Would a 7-day rule still be net-negative? (was -$1,736.67 across 7 blocked re-entries.) Is that result still spread across several trades, or is it now carried by one outlier like LPG's +$882?",
         "Does the 62% day-0-band break rate still hold for triggers the 3-day gate blocks? If it has fallen well below ~40%, retirement becomes arguable and should be swept properly.",
-        "Sweep 2, 3, 4 and 5 days \u2014 not just 3 vs 7 vs 0. Adjacent values were never discriminated because the sample was too small.",
+        "Sweep 2, 3, 4 and 5 days — not just 3 vs 7 vs 0. Adjacent values were never discriminated because the sample was too small.",
         "Has the bot traded through a non-BULL regime yet? The entire decision sample sits inside one bull window; a corrective tape is the real test of whether fast re-entry is safe.",
         "Has the SLOTS_FULL confound shrunk? If capacity is still the binding constraint (was 115 of 214 skips), the dollar figures remain an upper bound and should be quoted as such."
       ],
@@ -186,6 +186,9 @@
           "verdict": "holds",
           "note": "Scheduled 2026-09-20 review run two days early (the 20th is a Sunday, so no new data would arrive). n=52 (26 losers, 26 winners). Prove-It SHIPPED (stop only) +$10,669; LIVE BASELINE incl. scale-out +$10,762; retired pre-Prove-It ruleset +$1,643. 24 trades helped, 8 harmed, and ALL 8 harmed were already losers - zero winners harmed. Not carried by one trade: largest contributor CDNA +$1,795 is 17% of net, and net ex-largest is still +$8,874, with seven trades over $1,000 each. Best challenger was arming Phase 2 at a +3.0% peak (+$202, harmed 6 not 8) - inside the ~$500 noise bar, so NOT shipped; flagged to re-check next review. NO PARAMETER CHANGED. The review's main product was a repair to the harness: --proveit's baseline row was labelled SHIPPED but modelled the RETIRED pre-2026-09-04 ruleset, the grid omitted the live Phase 1 later-tier (3.0%) and the live Phase 2 floor (-1.0%), and the default --top 25 hid the baselines. Renamed to retired_pre_proveit_config(), added the live shape/floor to the grid, and added live_baseline() + shipped_proveit() as scored rows."
         }
+      ],
+      "fed_by": [
+        "exit-shadow-log"
       ]
     },
     {
@@ -384,7 +387,54 @@
           "verdict": "rejected",
           "note": "Drawdown-conditional rung tested (--clean --runon-days 30) against the FULL live bot incl. scale-out. LIVE BASELINE wins outright at +$10,762; every loosening scores lower (3% flat +$8,426; 5% flat +$6,611) and harms more trades (8 -> 11-13). The condition is a flat widening in disguise: 14/15 (93%) of trades reaching +5% qualify at dd<=3%, because Phase 1 already exits at -1%/-3% so survivors are shallow-drawdown by construction. Loosening also REDUCES the winner delta (+4,209 -> +1,872): a wider rung rides faders down rather than holding runners. Loss side identical in every row (worst -$1,269, >300 = 10). Exit is not the bottleneck."
         }
+      ],
+      "fed_by": [
+        "exit-shadow-log"
       ]
+    },
+    {
+      "id": "exit-shadow-log",
+      "title": "Live shadow log of Q1 arm@+3% and Q2 5% give-back trail — measured in production, traded on nowhere",
+      "status": "active",
+      "decided": "2026-09-27",
+      "implemented": true,
+      "kind": "investigation",
+      "decision": "NO live rule changed. A new pure module exit_shadow.py and a new exit_shadow_log table record, every 15-minute monitor cycle, what the LIVE Prove-It rule and two candidates WOULD do to each open position: Q1 = Phase 2 arms at +3% (Q1_SHADOW_ARM_GAIN_PCT=0.03) vs live +2%; Q2 = a 5% give-back trail from the high-water mark (Q2_SHADOW_TRAIL_PCT=0.05) vs the live 1.5% profit-lock. compute_exit_shadows() is side-effect-free; monitor_portfolio_intraday() does the insert, gated by EXIT_SHADOW_LOG_ENABLED (default true) and fully exception-wrapped so a missing table or transient error can never disturb trading. tests/test_exit_shadow.py asserts the shadow constants DIFFER from live, so if anyone points the shadow at the live values (making it measure nothing) a test fails.",
+      "rationale": "Both candidates are stuck for the same reason: their only evidence is exit_rule_replay.py, which sees 5-minute bars in ONE bull-tape regime. Q1 arm@+3% scored +$768 over shipped (27 helped / 10 harmed, 3 fewer harmed) and is strengthening (was +$202 at n=52), but top 9 trades = 100% of net and the largest (CDNA 18%) is a two-sided wash. Q2 5% trail scored slot_net +$25,386 vs shipped +$21,844, but ~65% is ECO alone, harmed rises 12->18, and it is one regime. A live shadow adds the two things the replay cannot: sub-5-minute WICK behaviour (does a tighter rule fire on an intraday spike-down that recovers?) and OUT-OF-REGIME behaviour as trades accumulate. HARD LIMIT, stated honestly: a live shadow only sees divergence UP TO the real exit — once the live rule sells there are no shares to watch — so it captures the wick/timing cost but NOT the run-on upside of holding a winner past the live exit (that stays harness-only, --runon). Q1 arm-timing is FULLY observable live; Q2 5% trail is only PARTIALLY observable (wick-avoidance yes, hold-longer-upside no).",
+      "adr": "decisions/2026-09-27_exit-shadow-log.md",
+      "feeds": [
+        "exit-parameters-proveit",
+        "ladder-width-runon"
+      ],
+      "revisit": {
+        "min_closed_trades": null,
+        "not_before": "2026-10-27"
+      },
+      "baseline": {
+        "q1_arm3_backtest_vs_shipped": 768,
+        "q1_helped": 27,
+        "q1_harmed": 10,
+        "q1_top9_share_of_net_pct": 100,
+        "q2_trail5_slot_net": 25386,
+        "q2_shipped_slot_net": 21844,
+        "q2_largest_contributor": "ECO ~65% of net",
+        "q2_harmed_shipped": 12,
+        "q2_harmed_trail5": 18,
+        "regimes_in_sample": 1,
+        "rows_at_decision": 0,
+        "note": "Logger shipped 2026-09-27; zero rows until the first monitor cycle after the migration is applied in production."
+      },
+      "review_command": "set -a && . ~/.config/ai-trading-bot/secrets.env && set +a && python3 research/exit_shadow_review.py --insecure",
+      "review_questions": [
+        "How many exit_shadow_log rows exist, over how many DISTINCT open positions and how many DISTINCT market days/regimes? Below a few dozen positions across more than one regime this is still one cohort — report the counts first, every time, and skip rather than read noise.",
+        "Q1 (fully observable): in how many cycles did the +3% arm DIVERGE from live (q1_diverges), and on which tickers? Every divergence is a proven position with peak in [+2%,+3%) where live armed the -1% floor and Q1 held. Did holding through that window help or hurt on each such trade, measured to the real exit?",
+        "Q2 (partially observable): in how many cycles did the 5% trail hold where live would have cut (q2_diverges with live_would_exit true, q2_would_exit false)? On those, did price recover before the real exit (wick the live rule cut) or keep falling (give-back the live rule correctly avoided)? Report the wick-vs-genuine-giveback split — this is the ONLY part of Q2 a live shadow can settle.",
+        "Is any divergence result carried by one ticker or one day? Drop the largest contributor and re-check the sign, for both Q1 and Q2.",
+        "STATE THE LIMIT: the run-on upside of Q2 (holding a winner PAST the live exit) is NOT in this log by construction. Do not conclude 'Q2 helps/hurts overall' from shadow data — only 'Q2's wick-avoidance helps/hurts'. The overall question stays with ladder-width-runon and --runon.",
+        "If Q1 arm@+3% diverges rarely and the divergences net positive across more than one regime, feed that into the exit-parameters-proveit review as live corroboration — do NOT ship from this entry alone."
+      ],
+      "last_reviewed": null,
+      "history": []
     },
     {
       "id": "entry-quality-right-tail",

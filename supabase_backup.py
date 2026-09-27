@@ -83,6 +83,7 @@ TABLES: dict[str, tuple[str, ...]] = {
     "cash_flows":          ("id",),
     "daily_triggers":      ("triggered_at", "ticker"),
     "exit_requests":       ("id",),
+    "exit_shadow_log":     ("id",),
     "ibkr_fills":          ("exec_id",),
     "portfolio_positions": ("ticker",),
     "trade_history":       ("id",),
