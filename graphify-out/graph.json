@@ -17162,7 +17162,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_position",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "make_position()"
     },
     {
@@ -17173,7 +17173,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_trigger",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "make_trigger()"
     },
     {
@@ -17184,7 +17184,7 @@
       "_origin": "ast",
       "id": "tests_conftest_make_ibkr_fill",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "make_ibkr_fill()"
     },
     {
@@ -17326,7 +17326,7 @@
       "source_location": "L328",
       "_origin": "ast",
       "id": "tests_conftest_make_supabase_mock",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": "make_supabase_mock()"
     },
@@ -17426,7 +17426,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_179",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "factory for a portfolio_positions supabase row.      hwm_rs_score: rs score on t"
     },
     {
@@ -17437,7 +17437,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_220",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "factory for a daily_triggers supabase row.      final_score defaults to 75 (a no"
     },
     {
@@ -17448,7 +17448,7 @@
       "_origin": "ast",
       "id": "tests_conftest_rationale_247",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "factory for an ibkr_fills supabase row.      fill_time: full iso timestamp overr"
     },
     {
@@ -17469,7 +17469,7 @@
       "source_location": "L335",
       "_origin": "ast",
       "id": "tests_conftest_rationale_335",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": "returns a magicmock supabase client where each table's queries return     realis"
     },
@@ -19098,7 +19098,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "test_buy_gates.py"
     },
     {
@@ -19109,7 +19109,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_run_buys",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "_run_buys()"
     },
     {
@@ -19120,7 +19120,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "testgate1stockslots"
     },
     {
@@ -19131,7 +19131,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots_test_gate1_full_portfolio_blocks_all_buys",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_gate1_full_portfolio_blocks_all_buys()"
     },
     {
@@ -19142,7 +19142,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testgate1stockslots_test_gate1_one_free_slot_allows_a_buy",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_gate1_one_free_slot_allows_a_buy()"
     },
     {
@@ -19153,7 +19153,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "testtriggerrankingandvetting"
     },
     {
@@ -19164,7 +19164,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_buys_highest_scored_trigger_first",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_buys_highest_scored_trigger_first()"
     },
     {
@@ -19175,7 +19175,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_unvetted_trigger_is_skipped_not_bought_on_technicals",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_unvetted_trigger_is_skipped_not_bought_on_technicals()"
     },
     {
@@ -19186,7 +19186,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_unvetted_trigger_skipped_even_when_pre_breakout",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_unvetted_trigger_skipped_even_when_pre_breakout()"
     },
     {
@@ -19197,7 +19197,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testtriggerrankingandvetting_test_adjusted_score_still_takes_precedence",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_adjusted_score_still_takes_precedence()"
     },
     {
@@ -19208,7 +19208,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testmarketdirectiongate",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "testmarketdirectiongate"
     },
     {
@@ -19219,7 +19219,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testmarketdirectiongate_test_bearish_market_blocks_buys",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_bearish_market_blocks_buys()"
     },
     {
@@ -19229,7 +19229,7 @@
       "source_location": "L157",
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": "testscorefloorgate"
     },
@@ -19240,7 +19240,7 @@
       "source_location": "L158",
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate_test_breakout_below_min_score_is_skipped",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": ".test_breakout_below_min_score_is_skipped()"
     },
@@ -19251,7 +19251,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "tests_test_buy_gates_testscorefloorgate_test_pre_breakout_relaxed_uses_relaxed_floor",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": ".test_pre_breakout_relaxed_uses_relaxed_floor()"
     },
@@ -19417,7 +19417,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testcoolingoffseesbrokerfills",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "testcoolingoffseesbrokerfills"
     },
     {
@@ -19428,7 +19428,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testcoolingoffseesbrokerfills_recent_day",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "._recent_day()"
     },
     {
@@ -19439,7 +19439,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testcoolingoffseesbrokerfills_test_sell_fill_alone_blocks_the_rebuy",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_sell_fill_alone_blocks_the_rebuy()"
     },
     {
@@ -19450,7 +19450,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testcoolingoffseesbrokerfills_test_sell_fill_outside_the_window_does_not_block",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_sell_fill_outside_the_window_does_not_block()"
     },
     {
@@ -19461,7 +19461,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testcoolingoffseesbrokerfills_test_buy_fill_does_not_block",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_buy_fill_does_not_block()"
     },
     {
@@ -19472,7 +19472,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testcoolingoffseesbrokerfills_test_another_tickers_sell_does_not_block",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_another_tickers_sell_does_not_block()"
     },
     {
@@ -19483,7 +19483,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testreasonawarecoolingoff",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "testreasonawarecoolingoff"
     },
     {
@@ -19494,7 +19494,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testreasonawarecoolingoff_recent_day",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "._recent_day()"
     },
     {
@@ -19505,7 +19505,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testreasonawarecoolingoff_sale",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "._sale()"
     },
     {
@@ -19516,7 +19516,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testreasonawarecoolingoff_test_loss_sale_within_window_blocks_rebuy",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_loss_sale_within_window_blocks_rebuy()"
     },
     {
@@ -19527,7 +19527,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testreasonawarecoolingoff_test_profit_sale_within_window_allows_rebuy",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_profit_sale_within_window_allows_rebuy()"
     },
     {
@@ -19538,7 +19538,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testreasonawarecoolingoff_test_profit_sale_today_still_blocks_rebuy",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_profit_sale_today_still_blocks_rebuy()"
     },
     {
@@ -19549,7 +19549,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testreasonawarecoolingoff_test_most_recent_sale_governs",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_most_recent_sale_governs()"
     },
     {
@@ -19560,7 +19560,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_testreasonawarecoolingoff_test_none_pnl_is_treated_as_loss",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": ".test_none_pnl_is_treated_as_loss()"
     },
     {
@@ -19571,7 +19571,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_34",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "runs run_market_open_buys() with standard patches applied.     returns the mock_"
     },
     {
@@ -19582,7 +19582,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_67",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "gate 1: max_positions stock positions \u2192 portfolio full \u2192 no order placed."
     },
     {
@@ -19593,7 +19593,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_81",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "one slot short of max_positions \u2192 the trigger is bought."
     },
     {
@@ -19604,7 +19604,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_107",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "regression: ai_evaluator.py silently drops tickers from its batch         (\"lost"
     },
     {
@@ -19615,7 +19615,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_134",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "adjusted_score (post-penalty) remains the primary gate input."
     },
     {
@@ -19692,7 +19692,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_274",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "cooling-off must see sells that never reached trade_history.      ntra, 2026-08-"
     },
     {
@@ -19703,7 +19703,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_291",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "the regression: a broker fill with no trade_history row still blocks."
     },
     {
@@ -19714,7 +19714,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_305",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "a fill older than cooling_off_days must not block a legitimate entry."
     },
     {
@@ -19725,7 +19725,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_320",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "only sld fills trigger cooling-off; a recent bot fill must not."
     },
     {
@@ -19736,7 +19736,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_334",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "cooling-off is per-ticker."
     },
     {
@@ -19747,7 +19747,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_349",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "cooling-off is reason-aware (decisions/2026-09-26_reason-aware-cooling-off.md)."
     },
     {
@@ -19758,7 +19758,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_370",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "a loss exit yesterday blocks re-entry (catches-a-knife protection)."
     },
     {
@@ -19769,7 +19769,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_381",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "a profit exit yesterday does not block \u2014 proven leader, gates decide."
     },
     {
@@ -19780,7 +19780,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_392",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "same-session churn guard fires even on a profit sale (basis integrity)."
     },
     {
@@ -19791,7 +19791,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_403",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "a profit sale yesterday overrides an older loss sale \u2192 allowed."
     },
     {
@@ -19802,7 +19802,7 @@
       "_origin": "ast",
       "id": "tests_test_buy_gates_rationale_415",
       "community": 34,
-      "community_name": "make_trigger",
+      "community_name": "make_supabase_mock",
       "norm_label": "a sale with no recorded p&l blocks conservatively (never a free re-entry)."
     },
     {
@@ -25378,8 +25378,8 @@
       "source_location": "L154",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 6,
+      "community_name": "make_ib_mock",
       "norm_label": "testexecutesellcancelstrailingstopfirst"
     },
     {
@@ -25389,8 +25389,8 @@
       "source_location": "L156",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst_test_cancel_called_before_market_order",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 6,
+      "community_name": "make_ib_mock",
       "norm_label": ".test_cancel_called_before_market_order()"
     },
     {
@@ -25400,8 +25400,8 @@
       "source_location": "L192",
       "_origin": "ast",
       "id": "tests_test_oca_helpers_testexecutesellcancelstrailingstopfirst_test_supabase_not_updated_if_sell_not_confirmed",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 6,
+      "community_name": "make_ib_mock",
       "norm_label": ".test_supabase_not_updated_if_sell_not_confirmed()"
     },
     {
@@ -28987,7 +28987,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "test_reconcile.py"
     },
     {
@@ -28998,7 +28998,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_reconcile",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "_reconcile()"
     },
     {
@@ -29009,7 +29009,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase1",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testreconcilecase1"
     },
     {
@@ -29020,7 +29020,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase1_test_case1_removes_from_portfolio_and_logs_trade",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_case1_removes_from_portfolio_and_logs_trade()"
     },
     {
@@ -29031,7 +29031,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase1_test_case1_uses_fmp_price_when_no_execution",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_case1_uses_fmp_price_when_no_execution()"
     },
     {
@@ -29041,8 +29041,8 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase2",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": "testreconcilecase2"
     },
     {
@@ -29052,8 +29052,8 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase2_test_case2_inserts_new_position_with_hwm_date",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": ".test_case2_inserts_new_position_with_hwm_date()"
     },
     {
@@ -29063,8 +29063,8 @@
       "source_location": "L114",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase2_test_case2_uses_averagecost_attribute_not_avgcost",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": ".test_case2_uses_averagecost_attribute_not_avgcost()"
     },
     {
@@ -29074,8 +29074,8 @@
       "source_location": "L131",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase2_test_case2_skips_position_with_zero_avg_cost",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": ".test_case2_skips_position_with_zero_avg_cost()"
     },
     {
@@ -29085,8 +29085,8 @@
       "source_location": "L140",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase2_test_case2_trail_pct_recorded_not_stale_price",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": ".test_case2_trail_pct_recorded_not_stale_price()"
     },
     {
@@ -29097,7 +29097,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase3",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testreconcilecase3"
     },
     {
@@ -29108,7 +29108,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase3_test_case3_updates_share_count_on_mismatch",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_case3_updates_share_count_on_mismatch()"
     },
     {
@@ -29119,7 +29119,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilecase3_test_case3_no_update_when_shares_match",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_case3_no_update_when_shares_match()"
     },
     {
@@ -29130,7 +29130,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testibkrvaluationsync",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testibkrvaluationsync"
     },
     {
@@ -29141,7 +29141,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testibkrvaluationsync_valuation_writes",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "._valuation_writes()"
     },
     {
@@ -29152,7 +29152,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testibkrvaluationsync_test_writes_broker_valuation_for_held_position",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_writes_broker_valuation_for_held_position()"
     },
     {
@@ -29163,7 +29163,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testibkrvaluationsync_test_market_value_is_stored_not_recomputed",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_market_value_is_stored_not_recomputed()"
     },
     {
@@ -29174,7 +29174,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testibkrvaluationsync_test_skips_position_without_a_broker_mark",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_skips_position_without_a_broker_mark()"
     },
     {
@@ -29185,7 +29185,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testibkrvaluationsync_test_missing_migration_disables_write_without_failing",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_missing_migration_disables_write_without_failing()"
     },
     {
@@ -29196,7 +29196,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testibkrvaluationsync_test_write_resumes_after_migration_without_a_restart",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_write_resumes_after_migration_without_a_restart()"
     },
     {
@@ -29251,7 +29251,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcileusesportfolionotpositions",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testreconcileusesportfolionotpositions"
     },
     {
@@ -29262,7 +29262,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcileusesportfolionotpositions_test_reconcile_calls_ib_portfolio_not_ib_positions",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_reconcile_calls_ib_portfolio_not_ib_positions()"
     },
     {
@@ -29273,7 +29273,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilebuypricedriftguard",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testreconcilebuypricedriftguard"
     },
     {
@@ -29284,7 +29284,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilebuypricedriftguard_buy_price_updates",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "._buy_price_updates()"
     },
     {
@@ -29295,7 +29295,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilebuypricedriftguard_test_corrects_buy_price_when_drift_exceeds_tolerance",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_corrects_buy_price_when_drift_exceeds_tolerance()"
     },
     {
@@ -29306,7 +29306,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilebuypricedriftguard_test_no_correction_within_tolerance",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_no_correction_within_tolerance()"
     },
     {
@@ -29317,7 +29317,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilebuypricedriftguard_test_peak_and_proven_survive_when_hwm_clears_corrected_cost",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_peak_and_proven_survive_when_hwm_clears_corrected_cost()"
     },
     {
@@ -29328,7 +29328,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "testaveragecostcontamination"
     },
     {
@@ -29339,7 +29339,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_buy_price_updates",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "._buy_price_updates()"
     },
     {
@@ -29350,7 +29350,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_ntra_fills",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "._ntra_fills()"
     },
     {
@@ -29361,7 +29361,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_ntra_ib",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "._ntra_ib()"
     },
     {
@@ -29372,7 +29372,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_test_contaminated_average_cost_never_overwrites_the_real_fill",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_contaminated_average_cost_never_overwrites_the_real_fill()"
     },
     {
@@ -29383,7 +29383,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_test_bot_fills_win_over_average_cost_when_stored_price_is_wrong",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_bot_fills_win_over_average_cost_when_stored_price_is_wrong()"
     },
     {
@@ -29394,7 +29394,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_test_lot_basis_ignores_the_previous_round_trips_buy",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_lot_basis_ignores_the_previous_round_trips_buy()"
     },
     {
@@ -29405,7 +29405,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_test_refuses_average_cost_when_round_tripped_and_no_fills",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": ".test_refuses_average_cost_when_round_tripped_and_no_fills()"
     },
     {
@@ -29415,7 +29415,7 @@
       "source_location": "L588",
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_test_partial_fill_coverage_is_rejected_rather_than_averaged",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": ".test_partial_fill_coverage_is_rejected_rather_than_averaged()"
     },
@@ -29426,7 +29426,7 @@
       "source_location": "L598",
       "_origin": "ast",
       "id": "tests_test_reconcile_testaveragecostcontamination_test_multiple_child_fills_are_share_weighted",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": ".test_multiple_child_fills_are_share_weighted()"
     },
@@ -29437,8 +29437,8 @@
       "source_location": "L614",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilesellpriceexcludespriorroundtrip",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 403,
+      "community_name": ".test_prior_round_trip_sell_is_excluded_from_the_close",
       "norm_label": "testreconcilesellpriceexcludespriorroundtrip"
     },
     {
@@ -29448,8 +29448,8 @@
       "source_location": "L626",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilesellpriceexcludespriorroundtrip_logged_sell_price",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 403,
+      "community_name": ".test_prior_round_trip_sell_is_excluded_from_the_close",
       "norm_label": "._logged_sell_price()"
     },
     {
@@ -29459,8 +29459,8 @@
       "source_location": "L631",
       "_origin": "ast",
       "id": "tests_test_reconcile_testreconcilesellpriceexcludespriorroundtrip_test_prior_round_trip_sell_is_excluded_from_the_close",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 403,
+      "community_name": ".test_prior_round_trip_sell_is_excluded_from_the_close",
       "norm_label": ".test_prior_round_trip_sell_is_excluded_from_the_close()"
     },
     {
@@ -29471,7 +29471,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_1",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "test_reconcile.py \u2014 tests for reconcile_with_ibkr() four reconcile cases.  criti"
     },
     {
@@ -29482,7 +29482,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_27",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "runs reconcile_with_ibkr with the given mocks."
     },
     {
@@ -29493,7 +29493,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_36",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "case 1: in supabase, not in ibkr \u2192 closed by ibkr (trailing stop / limit / tws)."
     },
     {
@@ -29504,7 +29504,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_39",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "position in supabase but not ibkr \u2192 archived to trade_history.         ibkr port"
     },
     {
@@ -29515,7 +29515,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_64",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "case 1 fallback: uses fmp live price when reqexecutions() has no sld fill."
     },
     {
@@ -29525,8 +29525,8 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_83",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": "case 2: in ibkr, not in supabase \u2192 manual buy detected."
     },
     {
@@ -29536,8 +29536,8 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_86",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": "case 2 must set hwm_date = today (iso string) when inserting a manually-opened"
     },
     {
@@ -29547,8 +29547,8 @@
       "source_location": "L115",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_115",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": "bug #5 related: portfolioitem uses .averagecost (not .avgcost).         the code"
     },
     {
@@ -29558,8 +29558,8 @@
       "source_location": "L132",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_132",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": "case 2: averagecost = 0 \u2192 skip insert (prevents ghost $0 positions)."
     },
     {
@@ -29569,8 +29569,8 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_141",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 401,
+      "community_name": "TestReconcileCase2",
       "norm_label": "case 2: no absolute stop_loss price is stored.          the `stop_loss` column w"
     },
     {
@@ -29581,7 +29581,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_164",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "case 3: in both, share count differs \u2192 update supabase."
     },
     {
@@ -29592,7 +29592,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_167",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "ibkr has 150 shares, supabase says 100 \u2192 update supabase to 150."
     },
     {
@@ -29603,7 +29603,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_188",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "case 3: ibkr and supabase both have 100 shares \u2192 no share-count write."
     },
     {
@@ -29614,7 +29614,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_206",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "the ibkr valuation columns are what let the read-only web container render     t"
     },
     {
@@ -29625,7 +29625,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_220",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "marketprice/marketvalue/unrealizedpnl are persisted verbatim from ibkr."
     },
     {
@@ -29636,7 +29636,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_241",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "ibkr is the authority on both share count and price. recomputing         shares"
     },
     {
@@ -29647,7 +29647,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_262",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "the positions() fallback yields objects with no marketprice. writing a         f"
     },
     {
@@ -29658,7 +29658,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_280",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "pgrst204 must degrade gracefully, not break reconciliation."
     },
     {
@@ -29669,7 +29669,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_297",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "applying the migration must take effect on a *running* agent.          the failu"
     },
     {
@@ -29724,7 +29724,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_394",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "critical: when ib.portfolio() carries live marks (the single-account case),"
     },
     {
@@ -29735,7 +29735,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_407",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "with a populated portfolio() (live marks), reconcile must only call         ib.p"
     },
     {
@@ -29746,7 +29746,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_422",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "case 3: buy_price drift guard.      a stored buy_price that drifts from what the"
     },
     {
@@ -29757,7 +29757,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_484",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "the ntra incident (2026-08-31 \u2192 2026-09-10), reproduced exactly.      ntra was r"
     },
     {
@@ -29768,7 +29768,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_529",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "ibkr mock holding exactly the 61-share lot, reporting a contaminated avg."
     },
     {
@@ -29779,7 +29779,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_538",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "the regression: 317.43 must survive ibkr's 331.70."
     },
     {
@@ -29790,7 +29790,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_551",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "if buy_price is wrong, it is corrected to the fill \u2014 not averagecost."
     },
     {
@@ -29801,7 +29801,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_564",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "only the 10:32 entry prices the lot; the 09:46 buy is 46 min away."
     },
     {
@@ -29812,7 +29812,7 @@
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_577",
       "community": 22,
-      "community_name": "make_supabase_mock",
+      "community_name": "make_position",
       "norm_label": "no bot fills + a prior sell \u2192 refuse to touch buy_price at all."
     },
     {
@@ -29822,7 +29822,7 @@
       "source_location": "L589",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_589",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": "fills covering only part of the lot must return none, not a partial."
     },
@@ -29833,7 +29833,7 @@
       "source_location": "L599",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_599",
-      "community": 22,
+      "community": 34,
       "community_name": "make_supabase_mock",
       "norm_label": "one order filled in two children averages by share count."
     },
@@ -29844,8 +29844,8 @@
       "source_location": "L615",
       "_origin": "ast",
       "id": "tests_test_reconcile_rationale_615",
-      "community": 22,
-      "community_name": "make_supabase_mock",
+      "community": 403,
+      "community_name": ".test_prior_round_trip_sell_is_excluded_from_the_close",
       "norm_label": "case 1: the close price must be built only from this position's sell fills."
     },
     {
@@ -32077,8 +32077,8 @@
       "source_location": "L205",
       "_origin": "ast",
       "id": "tests_test_sell_logic_testplateaurotation",
-      "community": 286,
-      "community_name": "test_sell_logic.py",
+      "community": 402,
+      "community_name": "._eod_monitor",
       "norm_label": "testplateaurotation"
     },
     {
@@ -32088,8 +32088,8 @@
       "source_location": "L212",
       "_origin": "ast",
       "id": "tests_test_sell_logic_testplateaurotation_eod_monitor",
-      "community": 286,
-      "community_name": "test_sell_logic.py",
+      "community": 402,
+      "community_name": "._eod_monitor",
       "norm_label": "._eod_monitor()"
     },
     {
@@ -32099,8 +32099,8 @@
       "source_location": "L257",
       "_origin": "ast",
       "id": "tests_test_sell_logic_testplateaurotation_test_rank_and_replace_skips_when_no_triggers",
-      "community": 286,
-      "community_name": "test_sell_logic.py",
+      "community": 402,
+      "community_name": "._eod_monitor",
       "norm_label": ".test_rank_and_replace_skips_when_no_triggers()"
     },
     {
@@ -32110,8 +32110,8 @@
       "source_location": "L273",
       "_origin": "ast",
       "id": "tests_test_sell_logic_testplateaurotation_test_rank_and_replace_skips_when_portfolio_not_full",
-      "community": 286,
-      "community_name": "test_sell_logic.py",
+      "community": 402,
+      "community_name": "._eod_monitor",
       "norm_label": ".test_rank_and_replace_skips_when_portfolio_not_full()"
     },
     {
@@ -32242,8 +32242,8 @@
       "source_location": "L206",
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_206",
-      "community": 286,
-      "community_name": "test_sell_logic.py",
+      "community": 402,
+      "community_name": "._eod_monitor",
       "norm_label": "eod plateau rotation: at 3:45-4pm, if portfolio is full and fresh breakout     t"
     },
     {
@@ -32253,8 +32253,8 @@
       "source_location": "L213",
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_213",
-      "community": 286,
-      "community_name": "test_sell_logic.py",
+      "community": 402,
+      "community_name": "._eod_monitor",
       "norm_label": "helper: run monitor in eod window."
     },
     {
@@ -32264,8 +32264,8 @@
       "source_location": "L258",
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_258",
-      "community": 286,
-      "community_name": "test_sell_logic.py",
+      "community": 402,
+      "community_name": "._eod_monitor",
       "norm_label": "days 3-6 position with decay is not swapped if no triggers exist."
     },
     {
@@ -32275,8 +32275,8 @@
       "source_location": "L274",
       "_origin": "ast",
       "id": "tests_test_sell_logic_rationale_274",
-      "community": 286,
-      "community_name": "test_sell_logic.py",
+      "community": 402,
+      "community_name": "._eod_monitor",
       "norm_label": "days 3-6 position with decay is not swapped if portfolio has open slots (not ful"
     },
     {
@@ -45601,21 +45601,21 @@
       "norm_label": "decision"
     },
     {
-      "label": "Why deploy wiring is deferred",
+      "label": "Why the deploy delivers the tooling but does not auto-render",
       "file_type": "document",
       "source_file": "decisions/2026-09-27_bitwarden-secret-resolution.md",
       "source_location": "L58",
       "_origin": "ast",
-      "id": "decisions_2026_09_27_bitwarden_secret_resolution_why_deploy_wiring_is_deferred",
+      "id": "decisions_2026_09_27_bitwarden_secret_resolution_why_the_deploy_delivers_the_tooling_but_does_not_auto_render",
       "community": 352,
       "community_name": "2026-09-27 \u2014 Secrets resolved from Bitwarden at deploy time (`@bws` sentinel)",
-      "norm_label": "why deploy wiring is deferred"
+      "norm_label": "why the deploy delivers the tooling but does not auto-render"
     },
     {
       "label": "Consequences",
       "file_type": "document",
       "source_file": "decisions/2026-09-27_bitwarden-secret-resolution.md",
-      "source_location": "L70",
+      "source_location": "L78",
       "_origin": "ast",
       "id": "decisions_2026_09_27_bitwarden_secret_resolution_consequences",
       "community": 352,
@@ -122833,7 +122833,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "decisions/2026-09-27_bitwarden-secret-resolution.md",
-      "source_location": "L70",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast",
       "source": "decisions_2026_09_27_bitwarden_secret_resolution_2026_09_27_secrets_resolved_from_bitwarden_at_deploy_time_bws_sentinel",
@@ -122870,7 +122870,7 @@
       "weight": 1.0,
       "_origin": "ast",
       "source": "decisions_2026_09_27_bitwarden_secret_resolution_2026_09_27_secrets_resolved_from_bitwarden_at_deploy_time_bws_sentinel",
-      "target": "decisions_2026_09_27_bitwarden_secret_resolution_why_deploy_wiring_is_deferred",
+      "target": "decisions_2026_09_27_bitwarden_secret_resolution_why_the_deploy_delivers_the_tooling_but_does_not_auto_render",
       "confidence_score": 1.0
     },
     {
@@ -125359,5 +125359,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "8fcc120c49b9306d9d6692412da646d31ace3aa5"
+  "built_at_commit": "860c9781cac86b459fb73fdafe74498fa4a3ff15"
 }

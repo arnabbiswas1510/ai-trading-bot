@@ -21,7 +21,7 @@
   "19": "FMPClient",
   "20": "ibkr_data.py",
   "21": "breakout_bt.py",
-  "22": "make_supabase_mock",
+  "22": "make_position",
   "23": "orders.py",
   "24": "README.md",
   "25": "Technical Triggers",
@@ -33,7 +33,7 @@
   "31": "Buy Logic",
   "32": "rank_percentiles",
   "33": "Backtest-corrected exit parameters; keep the entry tightening",
-  "34": "make_trigger",
+  "34": "make_supabase_mock",
   "35": "IBKR TOTP Setup Guide — Automated 2FA for Live Trading Bot",
   "36": "Decision: Early Loss Kill-switch + Day-2 Universal Intraday Minimiser",
   "37": "Sell Logic",
@@ -399,5 +399,8 @@
   "397": "test_ordinary_lines_are_captured",
   "398": "trade_history.py",
   "399": "fail",
-  "400": "render"
+  "400": "render",
+  "401": "TestReconcileCase2",
+  "402": "._eod_monitor",
+  "403": ".test_prior_round_trip_sell_is_excluded_from_the_close"
 }

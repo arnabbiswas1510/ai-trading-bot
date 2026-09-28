@@ -529,10 +529,12 @@ cp .env.template .env        # copies the config shape; secret lines read `@bws`
 
 Secret values are **not** in the repo. In `.env.template` every credential line
 is the sentinel `KEY=@bws`, resolved from the Bitwarden Secrets Manager project
-`ai-trading-bot` at deploy time. On the production host, generate the real `.env`
-with:
+`ai-trading-bot` at deploy time. The production host has no git checkout — the
+deploy workflow SCPs `render_env.sh`, `render_env.py` and `.env.template` onto it
+alongside `docker-compose.yml`. To generate the real `.env` on the host, run:
 
 ```bash
+cd /home/pom/docker/ai-trading-bot
 scripts/render_env.sh         # reads ~/.config/ai-trading-bot/bws.env, fills @bws lines
 ```
 

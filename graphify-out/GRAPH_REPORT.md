@@ -1,16 +1,16 @@
 # Graph Report - ai-trading-bot  (2026-09-27)
 
 ## Corpus Check
-- 308 files · ~432,477 words
+- 308 files · ~432,682 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4379 nodes · 6771 edges · 401 communities (360 shown, 41 thin omitted)
+- 4379 nodes · 6771 edges · 404 communities (362 shown, 42 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 148 edges (avg confidence: 0.76)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8fcc120c`
+- Built from commit: `860c9781`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -37,7 +37,7 @@
 - FMPClient
 - ibkr_data.py
 - breakout_bt.py
-- make_supabase_mock
+- make_position
 - orders.py
 - Technical Triggers
 - technical_screener.py
@@ -48,7 +48,7 @@
 - Buy Logic
 - rank_percentiles
 - Backtest-corrected exit parameters; keep the entry tightening
-- make_trigger
+- make_supabase_mock
 - IBKR TOTP Setup Guide — Automated 2FA for Live Trading Bot
 - Decision: Early Loss Kill-switch + Day-2 Universal Intraday Minimiser
 - Sell Logic
@@ -409,6 +409,9 @@
 - trade_history.py
 - fail
 - render
+- TestReconcileCase2
+- ._eod_monitor
+- .test_prior_round_trip_sell_is_excluded_from_the_close
 
 ## God Nodes (most connected - your core abstractions)
 1. `per_symbol` - 124 edges
@@ -437,7 +440,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (401 total, 41 thin omitted)
+## Communities (404 total, 42 thin omitted)
 
 ### Community 0 - "compute_liquidity_score"
 Cohesion: 0.12
@@ -465,7 +468,7 @@ Nodes (15): Snapshot for persistence/display. Pure — performs no network I/O.,
 
 ### Community 6 - "make_ib_mock"
 Cohesion: 0.08
-Nodes (22): build_ibkr_price_map(), get_position_price(), IBKR-first live price for an OPEN position, with FMP fallback.      Live trades, Return {symbol: mark} for the TARGET account's open positions only.      The bot, make_ib_mock(), make_portfolio_item(), Creates a mock IB instance whose portfolio() always returns the given symbols., Mimics an ib_insync PortfolioItem.     IMPORTANT: uses .averageCost (PortfolioIt (+14 more)
+Nodes (23): build_ibkr_price_map(), get_position_price(), IBKR-first live price for an OPEN position, with FMP fallback.      Live trades, Return {symbol: mark} for the TARGET account's open positions only.      The bot, make_ib_mock(), make_portfolio_item(), Creates a mock IB instance whose portfolio() always returns the given symbols., Mimics an ib_insync PortfolioItem.     IMPORTANT: uses .averageCost (PortfolioIt (+15 more)
 
 ### Community 7 - "_compute_dynamic_trail_pct"
 Cohesion: 0.14
@@ -527,9 +530,9 @@ Nodes (28): _compute_ibkr_price_map(), fetch_historical_closes_with_dates(), get
 Cohesion: 0.19
 Nodes (16): daily(), dyn_trail(), find_breakouts(), indicators(), Breakout-population backtest.  Addresses a selection-bias problem: the exit para, Daily bars from the committed benchmark dataset — no network, no rate limit., Enter at the open the day after the signal; exit per cfg on daily bars., run() (+8 more)
 
-### Community 22 - "make_supabase_mock"
-Cohesion: 0.05
-Nodes (46): make_position(), make_supabase_mock(), Factory for a portfolio_positions Supabase row.      hwm_rs_score: RS score on t, Returns a MagicMock Supabase client where each table's queries return     realis, TestScoreFloorGate, TestExecuteSellCancelsTrailingStopFirst, test_reconcile.py — Tests for reconcile_with_ibkr() four reconcile cases.  Criti, Bug #5 related: PortfolioItem uses .averageCost (NOT .avgCost).         The code (+38 more)
+### Community 22 - "make_position"
+Cohesion: 0.07
+Nodes (32): make_position(), Factory for a portfolio_positions Supabase row.      hwm_rs_score: RS score on t, test_reconcile.py — Tests for reconcile_with_ibkr() four reconcile cases.  Criti, Case 3: In both, share count differs → update Supabase., IBKR has 150 shares, Supabase says 100 → update Supabase to 150., Case 3: IBKR and Supabase both have 100 shares → no share-count write., The IBKR valuation columns are what let the read-only web container render     t, marketPrice/marketValue/unrealizedPNL are persisted verbatim from IBKR. (+24 more)
 
 ### Community 23 - "orders.py"
 Cohesion: 0.11
@@ -571,9 +574,9 @@ Nodes (8): assign_rs_percentiles(), rank_percentiles(), Percentile rank (1-99) o
 Cohesion: 0.14
 Nodes (13): Backtest-corrected exit parameters; keep the entry tightening, Consequences, Context, Decision, Fidelity limits (important), Finding 1 — there was no right tail to protect, Finding 2 — ablation: only one of the four exit changes helps, Finding 3 — the early-loss reasoning was simply wrong (+5 more)
 
-### Community 34 - "make_trigger"
-Cohesion: 0.09
-Nodes (26): make_ibkr_fill(), make_trigger(), Factory for a daily_triggers Supabase row.      final_score defaults to 75 (a no, Factory for an ibkr_fills Supabase row.      fill_time: full ISO timestamp overr, Regression: ai_evaluator.py silently drops tickers from its batch         ("lost, adjusted_score (post-penalty) remains the primary gate input., Cooling-off must see sells that never reached trade_history.      NTRA, 2026-08-, The regression: a broker fill with no trade_history row still blocks. (+18 more)
+### Community 34 - "make_supabase_mock"
+Cohesion: 0.08
+Nodes (31): make_ibkr_fill(), make_supabase_mock(), make_trigger(), Factory for a daily_triggers Supabase row.      final_score defaults to 75 (a no, Factory for an ibkr_fills Supabase row.      fill_time: full ISO timestamp overr, Returns a MagicMock Supabase client where each table's queries return     realis, Regression: ai_evaluator.py silently drops tickers from its batch         ("lost, adjusted_score (post-penalty) remains the primary gate input. (+23 more)
 
 ### Community 35 - "IBKR TOTP Setup Guide — Automated 2FA for Live Trading Bot"
 Cohesion: 0.11
@@ -1512,8 +1515,8 @@ Cohesion: 0.25
 Nodes (7): 1. `ibkr_fills` had been empty since the day it was created, 2. Reported P&L was gross, and the dashboard already knew, Commission accounting, and the RLS policy gap that hid it, Consequences, Context, Decision, Files
 
 ### Community 286 - "test_sell_logic.py"
-Cohesion: 0.08
-Nodes (20): test_sell_logic.py -- Tests for monitor_portfolio_intraday() and run_market_open, Both protective legs already in IBKR -> no self-healing.         Use price=buy_p, Even when price is below stop level, Python does NOT call execute_sell., hwm_date (date of last intraday high) is the only HWM data Python tracks.     IB, New intraday high (price > buy_price) -> hwm_date written to Supabase., Price does not exceed buy_price (or last seen peak) -> no hwm_date update., EOD plateau rotation: at 3:45-4pm, if portfolio is full AND fresh breakout     t, Helper: run monitor in EOD window. (+12 more)
+Cohesion: 0.10
+Nodes (15): test_sell_logic.py -- Tests for monitor_portfolio_intraday() and run_market_open, Both protective legs already in IBKR -> no self-healing.         Use price=buy_p, Even when price is below stop level, Python does NOT call execute_sell., hwm_date (date of last intraday high) is the only HWM data Python tracks.     IB, New intraday high (price > buy_price) -> hwm_date written to Supabase., Price does not exceed buy_price (or last seen peak) -> no hwm_date update., run_market_open_buys() must NOT submit any LimitOrder (profit target).     Only, run_market_open_buys() must place exactly 1 TRAIL sell -- no LMT. (+7 more)
 
 ### Community 287 - "conftest.py"
 Cohesion: 0.21
@@ -1729,7 +1732,7 @@ Nodes (13): check_volume_distribution(), _fetch_current_rs(), fetch_held_positio
 
 ### Community 352 - "2026-09-27 — Secrets resolved from Bitwarden at deploy time (`@bws` sentinel)"
 Cohesion: 0.33
-Nodes (5): 2026-09-27 — Secrets resolved from Bitwarden at deploy time (`@bws` sentinel), Consequences, Context, Decision, Why deploy wiring is deferred
+Nodes (5): 2026-09-27 — Secrets resolved from Bitwarden at deploy time (`@bws` sentinel), Consequences, Context, Decision, Why the deploy delivers the tooling but does not auto-render
 
 ### Community 353 - "test_reconcile_detects_short_positions"
 Cohesion: 0.50
@@ -1851,10 +1854,18 @@ Nodes (3): fail(), log(), render_env.sh script
 Cohesion: 0.67
 Nodes (3): main(), Return the rendered .env text, or raise KeyError listing unmet sentinels., render()
 
+### Community 401 - "TestReconcileCase2"
+Cohesion: 0.20
+Nodes (6): Bug #5 related: PortfolioItem uses .averageCost (NOT .avgCost).         The code, Case 2: averageCost = 0 → skip insert (prevents ghost $0 positions)., Case 2: no absolute stop_loss price is stored.          The `stop_loss` column w, Case 2: In IBKR, NOT in Supabase → manual buy detected., Case 2 must set hwm_date = today (ISO string) when inserting a manually-opened, TestReconcileCase2
+
+### Community 402 - "._eod_monitor"
+Cohesion: 0.32
+Nodes (5): EOD plateau rotation: at 3:45-4pm, if portfolio is full AND fresh breakout     t, Helper: run monitor in EOD window., Days 3-6 position with decay is NOT swapped if no triggers exist., Days 3-6 position with decay is NOT swapped if portfolio has open slots (not ful, TestPlateauRotation
+
 ## Knowledge Gaps
 - **1169 isolated node(s):** `bar_interval`, `bytes`, `dataset`, `date_max`, `date_min` (+1164 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **41 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **42 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_

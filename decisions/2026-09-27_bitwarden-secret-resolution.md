@@ -55,17 +55,25 @@ Both leaked tokens were **rotated** before this change: a fresh IBKR Flex token
 was generated, and the hijacked Telegram bot was abandoned and replaced with a
 new bot and chat ID.
 
-## Why deploy wiring is deferred
+## Why the deploy delivers the tooling but does not auto-render
 
-`deploy_to_server.yml` is deliberately **not** changed here. Pushing to `main`
-auto-triggers a build+deploy; if render were wired into it, the host `.env` would
-be regenerated from Bitwarden automatically — clobbering any hand-tuned host
-config with template defaults, and doing so before the operator has validated the
-output. The current deploy only SCPs `docker-compose.yml` and never touches
-`.env`, so shipping this change is safe. The first cutover is run **by hand** on
-the host (render, `diff` against the live `.env`, then
-`docker compose up -d --force-recreate`). Wiring render into the deploy is a
-follow-up once that manual cutover is proven.
+The production host has **no git checkout by design** — pushing to `main`
+auto-triggers the build+deploy, and the deploy is the *only* delivery path onto
+the host. So `deploy_to_server.yml` SCPs the resolver tooling
+(`scripts/render_env.sh`, `scripts/render_env.py`) and the scrubbed
+`.env.template` alongside `docker-compose.yml`. Without this the host could never
+obtain `render_env.sh`.
+
+What the deploy deliberately does **not** do is *run* the resolver. Rendering
+`.env` unattended on every push would overwrite any hand-tuned host `.env` with
+template defaults before the operator can diff it, and would make a routine
+redeploy silently depend on Bitwarden reachability. So the SCP delivers the
+files, `chmod +x`es them, and stops. The operator runs `scripts/render_env.sh`
+by hand for the cutover, diffs the result against the live `.env`, and only then
+`docker compose up -d --force-recreate`. Wiring render into the deploy as an
+automatic step remains a future decision, to be taken only after the manual
+cutover is proven and any host-only `.env` divergence is reconciled into the
+template.
 
 ## Consequences
 
