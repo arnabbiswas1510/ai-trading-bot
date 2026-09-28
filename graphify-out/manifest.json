@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1790627509.8771672,
-    "ast_hash": "a8a3354e968f9d53f2638a5fb92567bd",
+    "mtime": 1790628811.573449,
+    "ast_hash": "b512f16045e663e889025e37452f4ee0",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1682,6 +1682,16 @@
   "decisions/2026-09-28_earnings-blackout-and-news-veto.md": {
     "mtime": 1790627690.8262174,
     "ast_hash": "d80ae233f9394a47dd4c9b59f1007218",
+    "semantic_hash": ""
+  },
+  "research/ai_value_replay.py": {
+    "mtime": 1790628668.473756,
+    "ast_hash": "4ca0eb830fffea60ec6b4dd5e503371d",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-28_ai-value-replay-harness.md": {
+    "mtime": 1790628843.1652396,
+    "ast_hash": "a778b870c1fc492af384aab8cc7b0b15",
     "semantic_hash": ""
   }
 }

@@ -585,7 +585,7 @@
         "ai_veto_redundant": 14,
         "note": "corr and veto figures are INFERRED from breakout_learnings (35 rows) and trigger_decisions (287 rows, 5 buys), not from archived per-trade AI grades, which did not exist before migration 20260928. They are a reason to measure, NOT a finding."
       },
-      "review_command": "python3 research/ai_value_replay.py --insecure   # harness NOT yet built; build it when this comes due, modelled on research/market_gate_bt.py",
+      "review_command": "python3 research/ai_value_replay.py --insecure --veto-audit   # start here (per-name veto counterfactual); then `python3 research/ai_value_replay.py --insecure` for the full A/B",
       "review_questions": [
         "How many closed trades now carry a non-null entry_ai_grade? Below ~30 this is noise -- report the count first and stop if too few.",
         "Arm A (AI on) vs Arm B (AI off): what is the dollar difference in replayed P&L over the same candidate history?",
@@ -601,7 +601,14 @@
       "preconditions": [],
       "adr": "decisions/2026-09-28_archive-entry-scores-to-trade-history.md",
       "last_reviewed": null,
-      "history": []
+      "history": [
+        {
+          "date": "2026-09-28",
+          "closed_trades": 67,
+          "verdict": "harness-built / preliminary-only",
+          "note": "Built research/ai_value_replay.py (the tool this entry was waiting on). PRELIMINARY read on the current tiny, capacity-dominated sample, NOT a finding and NOT due until 2026-12-01/90 trades: --veto-audit shows the 17 grade-D vetoes were net LOSERS (14 lost / 3 won; the veto GAVE UP -$2,140 at $20k/name, i.e. it SAVED money), the notable removed winner being DELL 2026-09-04 +8.28% (quality 72). Full A/B: Arm A AI-on -$7,018 vs Arm B AI-off -$8,328 => AI contribution +$1,310, achieved by trading LESS (24 vs 42 picks, same 17% win rate) not by better hit-rate. Both arms lose in absolute terms; capacity (SLOTS_FULL) still dominates. Do NOT ship any change on this \u2014 re-run when the sample and the archived per-trade grades (migration 20260928) have grown."
+        }
+      ]
     },
     {
       "id": "earnings-blackout-window",
