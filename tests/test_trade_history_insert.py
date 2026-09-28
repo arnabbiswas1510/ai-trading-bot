@@ -13,14 +13,16 @@ _SRC = open("trade_history.py").read()
 _NS = {"print": print}
 for _node in ast.parse(_SRC).body:
     if isinstance(_node, ast.FunctionDef) and _node.name in (
-            "_clamp_reason", "insert_trade_history"):
+            "_clamp_reason", "insert_trade_history", "entry_provenance"):
         exec(compile(ast.Module([_node], []), "<x>", "exec"), _NS)
     if isinstance(_node, ast.Assign) and getattr(
-            _node.targets[0], "id", "").startswith("SELL_REASON_"):
+            _node.targets[0], "id", "").startswith(
+                ("SELL_REASON_", "_ENTRY_PROVENANCE_KEYS")):
         exec(compile(ast.Module([_node], []), "<x>", "exec"), _NS)
 
 clamp = _NS["_clamp_reason"]
 insert_trade_history = _NS["insert_trade_history"]
+entry_provenance = _NS["entry_provenance"]
 LEGACY = _NS["SELL_REASON_LEGACY_LIMIT"]
 
 LONG_REASON = (
@@ -127,3 +129,38 @@ class TestInsertTradeHistory:
         c = FakeClient(limit=None)
         insert_trade_history(c, {"ticker": "X", "sell_reason": "a, " * 5000})
         assert len(c.stored["sell_reason"]) <= _NS["SELL_REASON_RUNAWAY_LIMIT"]
+
+
+class TestEntryProvenance:
+    """The entry-decision grade must survive the position row it was written on,
+    so a closed trade's realised return can be correlated against how the AI and
+    the screener graded it at entry."""
+
+    def test_copies_all_four_entry_columns(self):
+        pos = {
+            "ticker": "CDNA", "shares": 283, "buy_price": 12.0,
+            "entry_quality_score": 66, "entry_ai_rating": 58,
+            "entry_ai_grade": "B", "entry_final_score": 71,
+        }
+        assert entry_provenance(pos) == {
+            "entry_quality_score": 66, "entry_ai_rating": 58,
+            "entry_ai_grade": "B", "entry_final_score": 71,
+        }
+
+    def test_omits_keys_that_are_absent_or_none(self):
+        # A sparse row must never write NULLs over columns that hold a value.
+        pos = {"entry_quality_score": 60, "entry_ai_grade": None}
+        assert entry_provenance(pos) == {"entry_quality_score": 60}
+
+    def test_ignores_unrelated_columns(self):
+        pos = {"ticker": "X", "shares": 10, "buy_price": 5.0}
+        assert entry_provenance(pos) == {}
+
+    def test_none_row_yields_empty_dict(self):
+        # execute_sell's pos_row defaults to None; that must not raise.
+        assert entry_provenance(None) == {}
+
+    def test_zero_score_is_preserved_not_dropped(self):
+        # 0 is a real score; only None means "not captured".
+        assert entry_provenance({"entry_quality_score": 0}) == {
+            "entry_quality_score": 0}

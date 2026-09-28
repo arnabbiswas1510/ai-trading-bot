@@ -82,6 +82,9 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
             "profit_loss": profit_loss,
             "percent_return": percent_return
         }
+        # Archive the screener + AI entry grade so it outlives the deleted
+        # position row and can be correlated against this trade's real return.
+        trade_log.update(ea.entry_provenance(pos_row))
         
         # Database transaction — only reached after confirmed IBKR fill
         sell_commission = ea.trade_commission(ib, trade)
@@ -274,6 +277,7 @@ def execute_scale_out(ib: IB, client: Client, pos: dict, ticker: str,
             "profit_loss":    profit_loss,
             "percent_return": percent_return,
         }
+        trade_log.update(ea.entry_provenance(pos))
         sell_commission = ea.trade_commission(ib, trade)
         _th_resp = ea.insert_trade_history(client, trade_log)
         _th_id = ((_th_resp.data or [{}])[0] or {}).get("id")

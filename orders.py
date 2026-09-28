@@ -728,6 +728,7 @@ def handle_mock_sell(ticker: str, price: float, reason: str):
         "profit_loss": profit_loss,
         "percent_return": percent_return
     }
+    trade_log.update(ea.entry_provenance(pos))
     
     try:
         # Delete from portfolio

@@ -149,6 +149,17 @@ sequenceDiagram
 - **Winner that stalls:** **Rank & Replace** swaps the dead-money slot for a
   stronger breakout from day 7 onward.
 
+## What a closed trade records
+
+When `execute_sell()` writes a `trade_history` row it archives the **entry
+provenance** off the position before deleting it — `entry_quality_score`,
+`entry_ai_rating`, `entry_ai_grade`, `entry_final_score` (the technical and AI
+grades the setup was bought on). These sit alongside the outcome columns
+(`percent_return`, `profit_loss`), so each closed trade's realised return can be
+correlated directly against how the screener and the AI graded it at entry. This
+is what makes an honest "is the AI helping pick winners?" review possible without
+inference — see `decisions/2026-09-28_archive-entry-scores-to-trade-history.md`.
+
 ## Related pages
 
 - `docs/buy_logic.md` — entry gates, trigger ranking, slot allocation, cooling-off

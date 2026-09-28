@@ -526,6 +526,14 @@ reports the gap as advisory only. Reviewed 2026-10-19 — see
 | `HISTORY_LEARNING_MAX_PENALTY` | `12` | Cap for history-based adjusted-score penalty |
 | `PRE_BREAKOUT_SCORE_BOOST` | `0` | Optional additive boost for coil setups |
 
+The AI rating maps to a letter grade and a `final_score` bonus: **A ≥70 (+15),
+B ≥55 (+5), C ≥50 (0), D <50 (veto)**. At buy time all four entry-decision values
+— `entry_quality_score`, `entry_ai_rating`, `entry_ai_grade`, `entry_final_score`
+— are written onto `portfolio_positions`, and since 2026-09-28 they are **also
+archived onto `trade_history` at close** so the AI's grade can be correlated
+against each trade's realised return. See
+`decisions/2026-09-28_archive-entry-scores-to-trade-history.md`.
+
 ---
 
 ## Managed exit tool
@@ -599,7 +607,7 @@ for why.
 | `watchlist_history` | Point-in-time fundamental snapshots, with sector |
 | `trigger_history` | Every trigger ever emitted, fully scored, plus forward-return outcomes |
 | `trigger_decisions` | Every buy and skip with a reason code — the control group |
-| `trade_history` | Closed trades. `profit_loss` is **gross** (no fee term); `buy_commission` / `sell_commission` hold the IBKR fees and generated columns `net_profit_loss` / `commission_complete` derive net (`migrations/20260906_add_commission_tracking.sql`) |
+| `trade_history` | Closed trades. `profit_loss` is **gross** (no fee term); `buy_commission` / `sell_commission` hold the IBKR fees and generated columns `net_profit_loss` / `commission_complete` derive net (`migrations/20260906_add_commission_tracking.sql`). Entry provenance `entry_quality_score` / `entry_ai_rating` / `entry_ai_grade` / `entry_final_score` is archived from the position row at close (`migrations/20260928_add_entry_scores_to_trade_history.sql`) so the screener/AI grade can be correlated against the realised return; `NULL` on trades closed before that migration means *not captured*, never zero |
 | `cash_flows` | Deposits and withdrawals |
 | `ibkr_fills` | Every IBKR execution with its commission. Tier 1 of the sell-price ladder — the only fill record that survives an agent or Gateway restart |
 | `breakout_learnings` | Post-close outcome rows fed back into screener tuning |

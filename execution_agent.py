@@ -466,6 +466,7 @@ from trade_history import (
     SELL_REASON_LEGACY_LIMIT,
     _clamp_reason,
     insert_trade_history,
+    entry_provenance,
     _exit_context_suffix,
 )
 

@@ -103,7 +103,7 @@ def monitor_portfolio_intraday(ib: IB):
                     f"not stopped out after {hours_armed:.2f}h, forcing sell"
                 )
                 print(f"🚨 {ticker}: Armed Exit Deadline firing — {reason}")
-                ea.execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason)
+                ea.execute_sell(ib, client, ticker, shares, buy_price, buy_date, buy_reason, current_price, reason, pos_row=pos)
             else:
                 print(f"   \U0001f3af {ticker}: exit armed {hours_armed:.2f}h ago "
                       f"({pos.get('exit_armed_reason')}) — awaiting trail or deadline.")

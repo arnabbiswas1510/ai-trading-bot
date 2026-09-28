@@ -67,6 +67,44 @@ def insert_trade_history(client, trade_log: dict):
         return client.table("trade_history").insert(retry).execute()
 
 
+# The entry-decision provenance captured on the portfolio_positions row at buy
+# time (buying.py / force_buy.py). These four columns record WHAT THE SCREENER
+# AND THE AI THOUGHT of the setup at the moment it was bought:
+#   entry_quality_score  the technical CAN SLIM quality score (0-100)
+#   entry_ai_rating      the raw AI rating 1-100 (ai_evaluator.py)
+#   entry_ai_grade       the AI letter grade A/B/C/D the rating mapped to
+#   entry_final_score    quality_score + the AI grade bonus, the value slots rank on
+_ENTRY_PROVENANCE_KEYS = (
+    "entry_quality_score",
+    "entry_ai_rating",
+    "entry_ai_grade",
+    "entry_final_score",
+)
+
+
+def entry_provenance(pos: dict | None) -> dict:
+    """Copy the entry-decision provenance off a portfolio_positions row so it
+    survives into trade_history.
+
+    These columns are written at buy time and DELETED with the position row at
+    close, so without this copy the only durable record of how the screener and
+    the AI graded each *closed* trade is lost. That loss is exactly what blocked
+    the 2026-09-28 "is the AI helping pick winners?" review: entry quality could
+    only be recovered for 35 of 67 closed trades (via breakout_learnings) and the
+    raw AI grade for none of them, forcing the analysis to infer the AI's
+    contribution rather than correlate it against realised returns directly.
+
+    Returns only the keys actually present on the row, so a sparse or partial
+    position (e.g. the ``pos_row=None`` default on execute_sell) never writes
+    NULLs over columns that already hold a value. See
+    decisions/2026-09-28_archive-entry-scores-to-trade-history.md.
+    """
+    if not isinstance(pos, dict):
+        return {}
+    return {k: pos[k] for k in _ENTRY_PROVENANCE_KEYS
+            if pos.get(k) is not None}
+
+
 def _exit_context_suffix(pos: dict, sell_price: float,
                          broker_trail_fill: bool = False) -> str:
     """

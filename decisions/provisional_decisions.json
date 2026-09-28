@@ -564,6 +564,44 @@
       ],
       "last_reviewed": null,
       "history": []
+    },
+    {
+      "id": "ai-value-ab-replay",
+      "title": "Does the AI actually add value? Settle it with an AI-on/AI-off A/B replay once enough closed trades carry the archived grade",
+      "status": "active",
+      "kind": "investigation",
+      "decided": "2026-09-28",
+      "implemented": false,
+      "decision": "NOTHING shipped as a trading change. The AI's grade is now ARCHIVED onto every closed trade (entry_quality_score / entry_ai_rating / entry_ai_grade / entry_final_score on trade_history, migration 20260928). This entry records the OPEN QUESTION that archival exists to answer: does the AI's +5/+15 bonus and grade-D veto change the SET of trades taken in a way that improves P&L? It is settled by an A/B replay of the same logged candidates -- Arm A applies the real AI bonus+veto and fills 5 slots; Arm B strips the bonus and ignores the veto and ranks on quality_score alone. The dollar difference between the arms IS the AI's contribution. 'No measurable difference' is a valid and expected outcome.",
+      "rationale": "The 2026-09-28 review 'is the AI helping pick winners?' could not answer cleanly: entry_final_score survived for only 35 of 67 closed trades (via breakout_learnings) and the raw AI grade for NONE, so the AI's contribution had to be INFERRED from the veto log and the composite score, not correlated against realised returns. The preliminary inference was unfavourable -- composite entry score corr with return = -0.05, the two best trades (CDNA +8.6%, LPG +6.47%) had among the LOWEST scores, the highest score (MPC 91) lost, and 14/17 AI vetoes were redundant while the one non-redundant veto rejected CDNA, the single best trade -- but on this exit regime NO entry signal has room to show skill (64% of trades exit within +/-3% over 0-3 days). The archival closes the data gap; this must not be asserted until enough trades carry the grade.",
+      "baseline_at_decision": {
+        "closed_trades": 67,
+        "closed_trades_with_archived_ai_grade": 0,
+        "win_rate_pct": 46,
+        "avg_return_pct": -0.16,
+        "total_net_usd": -5259.96,
+        "composite_score_return_corr": -0.05,
+        "ai_veto_total": 17,
+        "ai_veto_redundant": 14,
+        "note": "corr and veto figures are INFERRED from breakout_learnings (35 rows) and trigger_decisions (287 rows, 5 buys), not from archived per-trade AI grades, which did not exist before migration 20260928. They are a reason to measure, NOT a finding."
+      },
+      "review_command": "python3 research/ai_value_replay.py --insecure   # harness NOT yet built; build it when this comes due, modelled on research/market_gate_bt.py",
+      "review_questions": [
+        "How many closed trades now carry a non-null entry_ai_grade? Below ~30 this is noise -- report the count first and stop if too few.",
+        "Arm A (AI on) vs Arm B (AI off): what is the dollar difference in replayed P&L over the same candidate history?",
+        "Is any difference carried by a single trade? Print per-trade deltas -- a result that rests on one outlier has not been shown.",
+        "Does the AI's grade-D VETO remove trades that would have lost, or trades that would have won? (CDNA, the best trade, was vetoed -- watch for the AI cutting winners.)",
+        "Within the current tight-exit regime, is entry selection even the binding constraint, or does the answer only matter once exits are loosened (see ladder-width-runon / entry-quality-right-tail)?"
+      ],
+      "revisit": {
+        "min_closed_trades": 90,
+        "not_before": "2026-12-01",
+        "why": "67 trades are closed today but ZERO carry the archived AI grade (archival is forward-looking, not backfilled). 90 closed trades leaves ~23 that post-date the migration on the optimistic assumption archival starts immediately -- thin, but the point at which an AI-on/off split has any discriminating power. Gated on closed trades because the A/B replay is over TAKEN trades, unlike entry-quality-right-tail which is gated on the faster-growing trigger population."
+      },
+      "preconditions": [],
+      "adr": "decisions/2026-09-28_archive-entry-scores-to-trade-history.md",
+      "last_reviewed": null,
+      "history": []
     }
   ]
 }

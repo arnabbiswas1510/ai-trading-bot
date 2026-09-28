@@ -546,6 +546,7 @@ def reconcile_with_ibkr(ib: IB):
             "profit_loss":    profit_loss,
             "percent_return": percent_return,
         }
+        trade_log.update(ea.entry_provenance(pos))
         try:
             # Delete from portfolio FIRST, independently of trade history
             client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
