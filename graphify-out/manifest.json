@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790525236.4436316,
-    "ast_hash": "4bf35e49c4e1b2a8a2468ba462f0fc98",
+    "mtime": 1790561863.4908965,
+    "ast_hash": "841bc356bf75c9c3d4930572afe0c6b3",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790482894.6229646,
-    "ast_hash": "c5db5c536a6e6954318c672f66b5b05a",
+    "mtime": 1790561857.4619226,
+    "ast_hash": "ebdf986574e0e205ebcbf336fc628485",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -1335,8 +1335,8 @@
     "semantic_hash": ""
   },
   "tests/test_decision_review.py": {
-    "mtime": 1790001824.912006,
-    "ast_hash": "8810996aaf8a0905eb536e14c6b7f162",
+    "mtime": 1790525358.6912243,
+    "ast_hash": "21fd7cd5976b7e77b12f48abee1b3db7",
     "semantic_hash": ""
   },
   "decisions/2026-09-18_register-preconditions.md": {
@@ -1360,8 +1360,8 @@
     "semantic_hash": ""
   },
   "tests/test_log_shipping.py": {
-    "mtime": 1790001824.913162,
-    "ast_hash": "058767f00c69c96a51a1cf8be630c54e",
+    "mtime": 1790561730.9388337,
+    "ast_hash": "61b9e3218b3fdf0434a040be617247ab",
     "semantic_hash": ""
   },
   "decisions/2026-09-18_supabase-log-shipping.md": {
@@ -1525,8 +1525,8 @@
     "semantic_hash": ""
   },
   "agent_logging.py": {
-    "mtime": 1790525056.2085946,
-    "ast_hash": "008212b72d7e7061e145dbd2c07d4ec0",
+    "mtime": 1790561737.766176,
+    "ast_hash": "aaa14f0bd346ee3d460682357c5cf046",
     "semantic_hash": ""
   },
   "buying.py": {
@@ -1582,6 +1582,31 @@
   "decisions/2026-09-27_execution-agent-modular-split.md": {
     "mtime": 1790525168.1942122,
     "ast_hash": "d4db147422eb7cde8d90d6414f68a77f",
+    "semantic_hash": ""
+  },
+  "scripts/render_env.py": {
+    "mtime": 1790561698.8116355,
+    "ast_hash": "b72ef5b5774a6e292287761bc9c959fb",
+    "semantic_hash": ""
+  },
+  "scripts/render_env.sh": {
+    "mtime": 1790561680.03475,
+    "ast_hash": "16d66d6cd45960320b820b4d4e24a5f6",
+    "semantic_hash": ""
+  },
+  "tests/test_no_secrets_committed.py": {
+    "mtime": 1790561770.9495547,
+    "ast_hash": "31c2874848c8d71d1a6d949f7459d878",
+    "semantic_hash": ""
+  },
+  "tests/test_render_env.py": {
+    "mtime": 1790561812.997547,
+    "ast_hash": "e8ed3320fc7fa8c1a6485c146ef2d5c1",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-27_bitwarden-secret-resolution.md": {
+    "mtime": 1790561849.2136958,
+    "ast_hash": "e07b0f4571c58795b62e95b4688e4a94",
     "semantic_hash": ""
   }
 }

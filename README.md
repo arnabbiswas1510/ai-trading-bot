@@ -524,8 +524,22 @@ needs no key.
 
 ```bash
 git clone <repo> && cd ai-trading-bot
-cp .env.template .env        # populate credentials and strategy parameters
+cp .env.template .env        # copies the config shape; secret lines read `@bws`
 ```
+
+Secret values are **not** in the repo. In `.env.template` every credential line
+is the sentinel `KEY=@bws`, resolved from the Bitwarden Secrets Manager project
+`ai-trading-bot` at deploy time. On the production host, generate the real `.env`
+with:
+
+```bash
+scripts/render_env.sh         # reads ~/.config/ai-trading-bot/bws.env, fills @bws lines
+```
+
+`render_env.sh` is fail-closed and writes atomically, so a vault error leaves the
+existing `.env` in place. Non-secret strategy parameters remain literal values in
+the template and can be hand-edited. See `docs/configuration.md` and
+`decisions/2026-09-27_bitwarden-secret-resolution.md`.
 
 Apply the SQL in `migrations/` to your Supabase project **in filename order**,
 then:

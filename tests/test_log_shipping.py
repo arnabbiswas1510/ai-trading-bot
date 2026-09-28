@@ -45,8 +45,8 @@ def _emit(tee, text):
 @pytest.mark.parametrize("raw,must_not_contain", [
     ("Balance synced [U12941651]: own_cash=$5000", "U12941651"),
     ("Balance synced [DU9876543]", "DU9876543"),
-    ("url=https://api.telegram.org/bot8997092181:AAGXDp59Eb6oRExBJyrCmDEjk5Rmfl9gLeU/sendMessage",
-     "AAGXDp59Eb6oRExBJyrCmDEjk5Rmfl9gLeU"),
+    ("url=https://api.telegram.org/bot1234567890:AAFAKE_PLACEHOLDER_TOKEN_DO_NOT_USE_x0/sendMessage",
+     "AAFAKE_PLACEHOLDER_TOKEN_DO_NOT_USE_x0"),
     ("apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijk",
      "eyJzdWIiOiIxMjM0NTY3ODkwIn0"),
     ("Connection failed token: sk-abcdef123456789", "sk-abcdef123456789"),

@@ -28,6 +28,27 @@ parameter requires a code change.**
 
 TradingView requires no credentials.
 
+### Where secrets come from — the `@bws` sentinel
+
+Real credential values are **not** stored in the repo. In `.env.template` every
+secret line reads `KEY=@bws`, a sentinel meaning "resolve this from the Bitwarden
+Secrets Manager project `ai-trading-bot` by this key name at deploy time." Only
+non-secret config (thresholds, `MAX_POSITIONS`, etc.) is a literal value in the
+template.
+
+On the production host the real `.env` is produced by `scripts/render_env.sh`,
+which reads the machine-account token from `~/.config/ai-trading-bot/bws.env`
+(outside the repo, chmod 600), pulls the vault via `bws secret list -o json`, and
+substitutes each `@bws` line with its value. The resolver is **fail-closed**: if
+any secret is missing or empty it writes nothing and exits non-zero, leaving the
+existing `.env` untouched. `OPENAI_API_KEY` is left blank in the template (it is
+optional and not stored in Bitwarden).
+
+This exists because live IBKR Flex and Telegram tokens were once committed to the
+public repo and one was hijacked; `tests/test_no_secrets_committed.py` now fails
+if any secret line is a literal or if a known-leaked token reappears in a tracked
+file. See `decisions/2026-09-27_bitwarden-secret-resolution.md` for why.
+
 ### Alert-channel health
 
 Telegram is the only alerting channel, so its own failures are made visible

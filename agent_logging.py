@@ -80,7 +80,7 @@ class TeeLogger:
         (re.compile(r"\b(D?U)\d{6,}\b"), r"\1[redacted]"),
         # Telegram bot token (12345678:AA...) — grants full control of the bot.
         # No leading \b: the token's most likely appearance is inside a request
-        # URL as ".../bot8997092181:AAG...", where the digits are preceded by a
+        # URL as ".../bot1234567890:AAG...", where the digits are preceded by a
         # letter and \b does not match. Caught by test_secrets_are_redacted.
         (re.compile(r"(?<!\d)\d{8,10}:[A-Za-z0-9_\-]{30,}"), "[bot-token-redacted]"),
         # JWTs (Supabase keys) — appear in request URLs inside tracebacks.
