@@ -215,6 +215,91 @@ class TestPivotBuyZoneFloor:
             "Extended stocks must still be rejected"
 
 
+# ── Gate: earnings blackout ───────────────────────────────────────────────────
+
+class TestEarningsBlackoutGate:
+    """A fresh position sits under the Prove-It stop's tight −1%/−3% floor, so
+    buying just before a report is close to a guaranteed stop-out on the gap plus
+    a cooling-off lockout. The bot DEFERS any buy whose next earnings date is
+    within EARNINGS_BLACKOUT_TRADING_DAYS trading days; a missing/past date fails
+    OPEN so a per-name data gap never blocks every buy."""
+
+    def _run_with_earnings(self, earnings_date):
+        import datetime
+        from zoneinfo import ZoneInfo
+        trig = make_trigger("TSLA", close_price=100.0, final_score=80)
+        trig["ai_grade"] = "A"
+        if earnings_date is not None:
+            trig["next_earnings_date"] = earnings_date
+        supabase = make_supabase_mock(portfolio=[], daily_triggers=[trig])
+        ib = make_ib_mock()
+        _run_buys(ib, supabase)
+        return ib
+
+    def test_earnings_today_defers_the_buy(self):
+        import datetime
+        from zoneinfo import ZoneInfo
+        today = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+        self._run_with_earnings(today).placeOrder.assert_not_called()
+
+    def test_earnings_far_out_is_bought(self):
+        import datetime
+        from zoneinfo import ZoneInfo
+        far = (datetime.datetime.now(ZoneInfo("America/New_York")).date()
+               + datetime.timedelta(days=60)).isoformat()
+        self._run_with_earnings(far).placeOrder.assert_called()
+
+    def test_missing_earnings_date_fails_open(self):
+        # No next_earnings_date at all → the guard must not block the buy.
+        self._run_with_earnings(None).placeOrder.assert_called()
+
+    def test_past_earnings_date_fails_open(self):
+        import datetime
+        from zoneinfo import ZoneInfo
+        past = (datetime.datetime.now(ZoneInfo("America/New_York")).date()
+                - datetime.timedelta(days=5)).isoformat()
+        self._run_with_earnings(past).placeOrder.assert_called()
+
+
+class TestEarningsBlackoutHelper:
+    """Unit tests for the pure trading-day distance used by the gate."""
+
+    def _today(self):
+        import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.datetime.now(ZoneInfo("America/New_York")).date()
+
+    def test_none_date_returns_none(self):
+        from buying import _earnings_blackout_days_until
+        assert _earnings_blackout_days_until(None, self._today()) is None
+
+    def test_empty_string_returns_none(self):
+        from buying import _earnings_blackout_days_until
+        assert _earnings_blackout_days_until("", self._today()) is None
+
+    def test_unparseable_date_returns_none(self):
+        from buying import _earnings_blackout_days_until
+        assert _earnings_blackout_days_until("not-a-date", self._today()) is None
+
+    def test_past_date_returns_none(self):
+        import datetime
+        from buying import _earnings_blackout_days_until
+        today = self._today()
+        assert _earnings_blackout_days_until(
+            (today - datetime.timedelta(days=3)).isoformat(), today) is None
+
+    def test_today_is_zero_days(self):
+        from buying import _earnings_blackout_days_until
+        today = self._today()
+        assert _earnings_blackout_days_until(today.isoformat(), today) == 0
+
+    def test_datetime_string_is_truncated_to_date(self):
+        from buying import _earnings_blackout_days_until
+        today = self._today()
+        # A full ISO datetime must not raise — only the date part is used.
+        assert _earnings_blackout_days_until(today.isoformat() + "T00:00:00", today) == 0
+
+
 # ── Volume gate: overloaded column semantics ──────────────────────────────────
 
 class TestVolumeGateRespectsTriggerType:

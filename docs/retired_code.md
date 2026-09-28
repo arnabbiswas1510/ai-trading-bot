@@ -438,3 +438,42 @@ direction reversing once CPAY stops dominating, reopen it. Tracked as `FU-011` i
 `decisions/provisional_decisions.json`. Note that even then the fix would be to
 *widen* the slack, not to restore the ratchet: a stop that can rise above entry
 is wrong independently of its expected value.
+
+---
+
+## The "+10 pts for near-term earnings" AI scoring boost
+
+**Retired:** 2026-09-28 · **ADR:** `decisions/2026-09-28_earnings-blackout-and-news-veto.md`
+
+**Identifier removed:** the prompt line in `ai_evaluator.py`'s scoring rules:
+
+> `Near-term catalyst (earnings, product launch) within 2-3 weeks: boost 10 pts`
+
+**Where it lived:** the `SCORING RULES → OTHER FACTORS` block of the AI evaluator
+prompt string in `ai_evaluator.py` (cloud screener).
+
+**Status when retired:** active in the shipped prompt on every screener run. Its
+effect was diffuse — it nudged the model to rate names with imminent earnings
+higher — and it was never isolated in a measurement, because the AI's news feed
+was simultaneously dead (see the endpoint-403 bug in the same ADR), so its
+real-world influence on realised trades cannot be quantified after the fact.
+
+**What it did:** instructed the model to add ~10 rating points when a report or
+launch was 2–3 weeks out, on the theory that a near catalyst is bullish.
+
+**Why it was retired:** it is backwards for this bot's exit regime. A fresh
+position sits under the Prove-It stop's tight floor (−1% day 0, −3% day 1+), so an
+earnings gap is far more likely to stop the position out at a loss than to help
+it. Rewarding proximity to earnings steered capital toward the highest-gap-risk
+names. It is **replaced**, not merely deleted, by two things: (1) a prompt
+instruction that imminent earnings are a RISK, not a bonus, and (2) a
+deterministic buy-side **earnings blackout** (`EARNINGS_BLACKOUT_TRADING_DAYS`,
+default 3 trading days) that defers the buy regardless of what the model says.
+
+**Restore path:** `git show 3060fda:ai_evaluator.py` contains the boost line (the
+commit immediately before this change).
+
+**What would have to be true to bring it back:** the bot would need a materially
+looser exit regime in which holding through an earnings report is the norm rather
+than an almost-certain stop-out. Under the current tight Prove-It stop it should
+stay retired.

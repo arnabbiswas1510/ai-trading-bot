@@ -162,3 +162,88 @@ class TestTradeHistoryLearning:
         penalty, reason = ai_evaluator.compute_trade_history_penalty("MSFT", idx)
         assert penalty == 0
         assert reason is None
+
+
+class TestNextEarningsExtraction:
+    """`_next_earnings_from_rows` picks the earliest UPCOMING earnings date from
+    FMP `/stable/earnings` rows (which are newest-first and mix past + future)."""
+
+    def _today(self):
+        import datetime
+        return datetime.date(2026, 9, 28)
+
+    def test_picks_earliest_future_date(self):
+        rows = [
+            {"symbol": "AAPL", "date": "2026-10-29", "epsActual": None},
+            {"symbol": "AAPL", "date": "2026-07-30", "epsActual": 2.02},
+            {"symbol": "AAPL", "date": "2027-01-28", "epsActual": None},
+        ]
+        assert ai_evaluator._next_earnings_from_rows(rows, self._today()) == "2026-10-29"
+
+    def test_date_equal_to_today_counts_as_upcoming(self):
+        rows = [{"date": "2026-09-28"}, {"date": "2026-06-01"}]
+        assert ai_evaluator._next_earnings_from_rows(rows, self._today()) == "2026-09-28"
+
+    def test_all_past_returns_none(self):
+        rows = [{"date": "2026-07-30"}, {"date": "2026-04-30"}]
+        assert ai_evaluator._next_earnings_from_rows(rows, self._today()) is None
+
+    def test_empty_or_malformed_rows_return_none(self):
+        assert ai_evaluator._next_earnings_from_rows([], self._today()) is None
+        assert ai_evaluator._next_earnings_from_rows(None, self._today()) is None
+        assert ai_evaluator._next_earnings_from_rows(
+            [{"date": None}, {"nodate": 1}, {"date": "bad"}], self._today()) is None
+
+
+class TestNewsAndEarningsEndpoints:
+    """The AI was news-blind because the legacy /api/v3/stock_news endpoint now
+    403s; the fetchers must call the supported `stable` endpoints and fail soft."""
+
+    def test_news_uses_stable_endpoint(self):
+        captured = {}
+
+        class _Resp:
+            status_code = 200
+            def json(self): return [{"title": "Headline A"}, {"title": ""}]
+
+        def _fake_get(url, timeout=8):
+            captured["url"] = url
+            return _Resp()
+
+        with patch("ai_evaluator.FMP_API_KEY", "k"), \
+             patch("ai_evaluator.requests.get", _fake_get):
+            out = ai_evaluator.fetch_news_headlines("AAPL")
+        assert "/stable/news/stock" in captured["url"]
+        assert "symbols=AAPL" in captured["url"]
+        assert out == ["Headline A"]
+
+    def test_news_non_200_returns_empty(self):
+        class _Resp:
+            status_code = 403
+            def json(self): return []
+        with patch("ai_evaluator.FMP_API_KEY", "k"), \
+             patch("ai_evaluator.requests.get", return_value=_Resp()):
+            assert ai_evaluator.fetch_news_headlines("AAPL") == []
+
+    def test_earnings_uses_stable_symbol_endpoint(self):
+        captured = {}
+
+        class _Resp:
+            status_code = 200
+            def json(self): return [{"date": "2099-01-01", "epsActual": None}]
+
+        def _fake_get(url, timeout=8):
+            captured["url"] = url
+            return _Resp()
+
+        with patch("ai_evaluator.FMP_API_KEY", "k"), \
+             patch("ai_evaluator.requests.get", _fake_get):
+            out = ai_evaluator.fetch_next_earnings_date("AAPL")
+        assert "/stable/earnings" in captured["url"]
+        assert "symbol=AAPL" in captured["url"]
+        assert out == "2099-01-01"
+
+    def test_earnings_failure_returns_none(self):
+        with patch("ai_evaluator.FMP_API_KEY", "k"), \
+             patch("ai_evaluator.requests.get", side_effect=RuntimeError("boom")):
+            assert ai_evaluator.fetch_next_earnings_date("AAPL") is None

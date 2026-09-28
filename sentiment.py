@@ -73,9 +73,15 @@ def _fetch_ohlcv(ticker: str, days: int = 100) -> list:
 def fetch_held_position_sentiment(ticker: str) -> int:
     """Fetch live sentiment score (1-100) for a held position using FMP news + GPT-4o-mini.
 
-    Calls FMP /api/v3/stock_news (limit=8, 1 credit) and asks GPT-4o-mini to score
+    Calls FMP /stable/news/stock (limit=8, 1 credit) and asks GPT-4o-mini to score
     headline tone on a 1-100 scale. Falls back to 50 (neutral) on any failure.
     Called once per position at EOD (3:45 PM) — ~4 calls/day, ~80/month.
+
+    Endpoint note: the legacy /api/v3/stock_news endpoint this used to call now
+    returns HTTP 403 on the current FMP plan, which silently pinned every held
+    position's sentiment at the neutral 50 fallback. The supported replacement is
+    /stable/news/stock?symbols= (same `title` field). See
+    decisions/2026-09-28_earnings-blackout-and-news-veto.md.
     """
     import json as _json_sent
     from openai import OpenAI as _OpenAI
@@ -86,8 +92,8 @@ def fetch_held_position_sentiment(ticker: str) -> int:
 
     # ── 1. Fetch headlines ───────────────────────────────────────────────────
     try:
-        url = (f"https://financialmodelingprep.com/api/v3/stock_news"
-               f"?tickers={ticker}&limit=8&apikey={ea.FMP_API_KEY}")
+        url = (f"https://financialmodelingprep.com/stable/news/stock"
+               f"?symbols={ticker}&limit=8&apikey={ea.FMP_API_KEY}")
         r = ea.fmp_session.get(url, timeout=8)
         if r.status_code != 200:
             return 50

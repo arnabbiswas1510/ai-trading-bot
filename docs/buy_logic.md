@@ -74,21 +74,33 @@ code, which is what makes the buy model auditable after the fact.
 | 1 | Duplicate | Ticker already held | `ALREADY_HELD` |
 | 2 | Cooling-off (reason-aware) | Sold **at a loss** within `COOLING_OFF_DAYS` (3), **or** sold **today** at any P&L (same-session churn guard), per `trade_history` **or** an `ibkr_fills` SLD fill. A **profit** sale older than today does **not** block. | `COOLING_OFF` |
 | 3 | AI veto | `ai_grade == "D"` (conviction < 50) | `AI_VETO` |
-| 4 | Score present | `final_score` / `adjusted_score` is NULL | `NO_AI_SCORE` |
-| 5 | Score floor | Below the trigger-type minimum (`adjusted_score` when present) | `SCORE_FLOOR` || 6 | Capacity (in-loop) | Slots filled by an earlier buy this cycle | `SLOTS_FULL` |
-| 7 | Cash floor | `available_cash < MIN_POSITION_SIZE` ($5,000) | `INSUFFICIENT_CASH` |
-| 8 | Volume surge | **`BREAKOUT` only:** `volume_surge < MIN_VOL_SURGE_GATE` (0.75×) | `SCORE_FLOOR` |
-| 9 | PRE_BREAKOUT 52W distance | PRE_BREAKOUT > `MAX_PRE_BREAKOUT_PIVOT_DIST` (5%) below 52W high | `BELOW_PIVOT` |
-| 10 | Contract | IBKR cannot qualify the contract | `LOOP_HALTED` *(halts loop)* |
-| 11 | Price | No IBKR price and no trigger close | `NO_PRICE` |
-| 12 | Buy zone — ceiling | `> pivot × (1 + MAX_PIVOT_EXTENSION)` | `EXTENDED_ABOVE_PIVOT` |
-| 13 | Buy zone — floor | `< pivot × (1 − MAX_PIVOT_BREAKDOWN)` | `BELOW_PIVOT` |
-| 14 | Share count | `shares ≤ 0` after safety reserve | `SHARES_ZERO` |
-| 15 | Fill | Order filled 0 shares | `BUY_FAILED` *(halts loop)* |
+| 4 | Earnings blackout | Next scheduled earnings within `EARNINGS_BLACKOUT_TRADING_DAYS` (3) NYSE trading days. **Deferral, not veto** — the breakout can be re-bought after the report. **Fails OPEN**: a missing/unparseable/past `next_earnings_date` allows the buy. | `EARNINGS_IMMINENT` |
+| 5 | Score present | `final_score` / `adjusted_score` is NULL | `NO_AI_SCORE` |
+| 6 | Score floor | Below the trigger-type minimum (`adjusted_score` when present) | `SCORE_FLOOR` |
+| 7 | Capacity (in-loop) | Slots filled by an earlier buy this cycle | `SLOTS_FULL` |
+| 8 | Cash floor | `available_cash < MIN_POSITION_SIZE` ($5,000) | `INSUFFICIENT_CASH` |
+| 9 | Volume surge | **`BREAKOUT` only:** `volume_surge < MIN_VOL_SURGE_GATE` (0.75×) | `SCORE_FLOOR` |
+| 10 | PRE_BREAKOUT 52W distance | PRE_BREAKOUT > `MAX_PRE_BREAKOUT_PIVOT_DIST` (5%) below 52W high | `BELOW_PIVOT` |
+| 11 | Contract | IBKR cannot qualify the contract | `LOOP_HALTED` *(halts loop)* |
+| 12 | Price | No IBKR price and no trigger close | `NO_PRICE` |
+| 13 | Buy zone — ceiling | `> pivot × (1 + MAX_PIVOT_EXTENSION)` | `EXTENDED_ABOVE_PIVOT` |
+| 14 | Buy zone — floor | `< pivot × (1 − MAX_PIVOT_BREAKDOWN)` | `BELOW_PIVOT` |
+| 15 | Share count | `shares ≤ 0` after safety reserve | `SHARES_ZERO` |
+| 16 | Fill | Order filled 0 shares | `BUY_FAILED` *(halts loop)* |
 | — | Success | Order filled | `BOUGHT` |
 
-Capacity is re-checked **inside** the loop (gate 6) because an earlier fill in the same
+Capacity is re-checked **inside** the loop (gate 7) because an earlier fill in the same
 cycle may have consumed the last slot.
+
+The **earnings blackout** (gate 4) exists because a fresh position sits under the Prove-It
+stop's tight floor (−1% day 0, −3% day 1+), so opening just before a report is close to a
+guaranteed stop-out on the post-earnings gap — plus the loss then trips the reason-aware
+cooling-off lockout, compounding an avoidable, fully knowable cost. `next_earnings_date` is
+fetched per trigger by `ai_evaluator.py` from FMP `/stable/earnings` and stored on
+`daily_triggers`; the local buy loop enforces the deferral as a pure trading-day date
+comparison, so the protection is deterministic and independent of the AI. It fails **open**
+so a per-name data gap never blocks every buy (contrast the market-direction gate, which
+fails **closed**). See `decisions/2026-09-28_earnings-blackout-and-news-veto.md`.
 
 ### Gate 5 scores on `final_score` — the failure penalty is off
 
@@ -248,6 +260,7 @@ converges to even weighting after full turnover.
 | `PRICE_SAFETY_RESERVE` | `1000` | Withheld per order to absorb quote lag |
 | `TRIGGER_LOOKBACK_DAYS` | `3` | Trigger freshness window |
 | `COOLING_OFF_DAYS` | `3` | Re-entry block after a sale |
+| `EARNINGS_BLACKOUT_TRADING_DAYS` | `3` | Defer opening a position when its next earnings is within this many NYSE trading days; fails open on a missing/past date |
 | `MAX_PIVOT_EXTENSION` | `0.05` | Buy-zone ceiling above pivot |
 | `MAX_PIVOT_BREAKDOWN` | `0.02` | Buy-zone floor below pivot |
 | `MIN_VOL_SURGE_GATE` | `0.75` | Minimum volume surge multiple, **confirmed `BREAKOUT` triggers only** (AI-independent hard gate) |
@@ -272,6 +285,7 @@ an `is_capacity` flag:
 | Class | Codes | Interpretation |
 |---|---|---|
 | Quality | `AI_VETO`, `SCORE_FLOOR`, `NO_AI_SCORE`, `EXTENDED_ABOVE_PIVOT`, `BELOW_PIVOT` | The model judged the candidate |
+| Timing | `EARNINGS_IMMINENT` | A good setup deferred until after its earnings report |
 | Capacity | `SLOTS_FULL`, `INSUFFICIENT_CASH`, `SHARES_ZERO` | The model never got to judge |
 
 The distinction is what allows the opportunity cost of `MAX_POSITIONS` to be measured

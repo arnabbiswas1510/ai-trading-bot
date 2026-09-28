@@ -114,7 +114,7 @@ IB_GATEWAY_PORT = int(os.getenv("IB_GATEWAY_PORT", 4000))  # 4000 = live gateway
 # handful of outlier trades (top-10 trades fall from 109% -> 92% of total P/L on
 # the growth universe, 98% -> 74% on the broad one). The CAGR/drawdown gaps
 # themselves are inside the noise floor; the concentration reduction is not.
-from config import MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS, BUY_PRICE_DRIFT_TOLERANCE  # noqa: E402  (single source of truth; set via .env)
+from config import MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS, EARNINGS_BLACKOUT_TRADING_DAYS, BUY_PRICE_DRIFT_TOLERANCE  # noqa: E402  (single source of truth; set via .env)
 import cooling_off  # noqa: E402  (reason-aware re-entry block, single source)
 
 # ── Extracted modules (2026-09-18) ────────────────────────────────────────────

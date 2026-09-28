@@ -183,7 +183,7 @@ def compute_momentum_health_score(
         ≥ 1.5x → 100 | 1.0-1.5x → 50-100 | 0.5-1.0x → 0-50 | < 0.5x → 0
 
     Sentiment component (0-100):
-        live_sentiment from GPT-4o-mini / FMP stock_news.
+        live_sentiment from GPT-4o-mini / FMP /stable/news/stock.
 
     RSI Divergence penalty (Day 7+, applied post-blend):
         Price made higher high vs 5 days ago, but RSI made lower high.

@@ -162,14 +162,21 @@ def fetch_watchlist_data(tickers):
 
 def fetch_news_headlines(ticker: str, limit: int = 8) -> list[str]:
     """
-    Fetch recent news headlines for a ticker via FMP /v3/stock_news.
+    Fetch recent news headlines for a ticker via FMP's `stable` news endpoint.
     Returns an empty list on failure — sentiment will default to neutral (50).
+
+    Endpoint note: the legacy `/api/v3/stock_news` endpoint this used to call now
+    returns HTTP 403 Forbidden on the current FMP plan, which silently starved
+    the AI of ALL news — every ticker was presented as "No recent news" and every
+    sentiment defaulted to 50 (verified 2026-09-28 against live triggers). The
+    supported replacement is `/stable/news/stock?symbols=`, which returns the same
+    `title` field. See decisions/2026-09-28_earnings-blackout-and-news-veto.md.
     """
     if not FMP_API_KEY:
         return []
     try:
-        url = (f"{FMP_BASE_URL}/api/v3/stock_news"
-               f"?tickers={ticker}&limit={limit}&apikey={FMP_API_KEY}")
+        url = (f"{FMP_BASE_URL}/stable/news/stock"
+               f"?symbols={ticker}&limit={limit}&apikey={FMP_API_KEY}")
         resp = requests.get(url, timeout=8)
         if resp.status_code != 200:
             return []
@@ -178,6 +185,50 @@ def fetch_news_headlines(ticker: str, limit: int = 8) -> list[str]:
     except Exception as e:
         print(f"  ⚠️ News fetch failed for {ticker}: {e}")
         return []
+
+
+def _next_earnings_from_rows(rows: list, today: datetime.date) -> str | None:
+    """Pick the next upcoming earnings date from FMP `/stable/earnings` rows.
+
+    FMP returns a symbol's full earnings history, newest first, with future dates
+    carrying `epsActual: null`. The next report is the EARLIEST date that is not
+    in the past. Returns an ISO `YYYY-MM-DD` string, or None when nothing upcoming
+    is found — the buy-side guard treats None as "no known earnings" and fails
+    OPEN, so a data gap never blocks every buy.
+    """
+    upcoming = []
+    for r in rows or []:
+        d = r.get("date")
+        if not d:
+            continue
+        try:
+            ed = datetime.date.fromisoformat(str(d)[:10])
+        except (ValueError, TypeError):
+            continue
+        if ed >= today:
+            upcoming.append(ed)
+    return min(upcoming).isoformat() if upcoming else None
+
+
+def fetch_next_earnings_date(ticker: str) -> str | None:
+    """Return the ticker's next scheduled earnings date as `YYYY-MM-DD`, or None.
+
+    Uses FMP `/stable/earnings?symbol=` (the bulk `/stable/earnings-calendar`
+    ignores the symbol filter). Any failure returns None — the earnings blackout
+    is a per-name protection and must fail open, never take the bot offline.
+    """
+    if not FMP_API_KEY:
+        return None
+    try:
+        url = f"{FMP_BASE_URL}/stable/earnings?symbol={ticker}&apikey={FMP_API_KEY}"
+        resp = requests.get(url, timeout=8)
+        if resp.status_code != 200:
+            return None
+        today = datetime.datetime.now(ZoneInfo("America/New_York")).date()
+        return _next_earnings_from_rows(resp.json(), today)
+    except Exception as e:
+        print(f"  ⚠️ Earnings-date fetch failed for {ticker}: {e}")
+        return None
 
 
 def update_trigger_scores(ticker: str, fields: dict):
@@ -296,6 +347,19 @@ SCORING RULES (non-negotiable):
    - Analyst consensus = "Sell": reduce rating by 20 pts (institutional consensus is actively bearish)
    - Float > 1 billion shares: reduce rating by 20 pts (giant institutional stocks rarely produce a clean multi-day breakout thrust; they are index components, not growth leaders)
 
+   MANDATORY NEWS DISQUALIFIERS (hard veto — if the RecentNews clearly reports any
+   of these, set rating <= 45 so the trade is vetoed, and NAME the event in the
+   rationale; do NOT let a strong technical setup override a broken story):
+     * Secondary offering, ATM/at-the-market program, or other equity DILUTION announced
+     * Going-concern doubt, bankruptcy, restructuring, or debt default
+     * SEC/DOJ investigation, accounting probe, fraud allegation, or auditor resignation
+     * Guidance CUT or withdrawn; a profit warning
+     * Material adverse litigation or regulatory ruling (e.g. FDA rejection/CRL, antitrust action)
+     * Delisting notice
+   Only apply these to REAL, ticker-specific reporting in the headlines — do NOT
+   infer an event that is not stated. If RecentNews is "No recent news", apply no
+   news adjustment at all.
+
    MANDATORY LIQUIDITY PENALTIES:
    - Stock price under $15: cap rating at 45 (gap risk, no institutional interest)
    - Avg daily volume under 500,000: reduce rating by at least 20 points
@@ -303,8 +367,14 @@ SCORING RULES (non-negotiable):
 
    OTHER FACTORS:
    - Stock lagging SPY (RS < 50): reduce 10-20 points (fighting the tape)
-   - Negative/concerning news: reduce rating accordingly
-   - Near-term catalyst (earnings, product launch) within 2-3 weeks: boost 10 pts
+   - Negative/concerning news (short of the hard disqualifiers above): reduce rating accordingly
+   - IMMINENT EARNINGS ARE A RISK, NOT A BONUS: do NOT boost a rating because a
+     report is near. A fresh position sits under a tight −1%/−3% stop, so an
+     earnings gap is far more likely to stop it out at a loss than to help. The
+     bot already DEFERS any buy inside the earnings blackout window
+     deterministically, so your job is only to judge the setup — never reward
+     proximity to earnings. A confirmed, already-released catalyst (e.g. a prior
+     earnings BEAT now in the rear-view) may still be viewed positively.
 
 2. Sentiment (1-100): How positive is the recent news for this stock?
    80-100 = very positive (earnings beat, upgrade, product launch, momentum story)
@@ -416,11 +486,19 @@ def main():
 
     # Fetch news headlines per ticker (up to 8 headlines each)
     news_by_ticker = {}
+    earnings_by_ticker = {}
     for ticker in tickers:
         headlines = fetch_news_headlines(ticker)
         news_by_ticker[ticker] = headlines
         if headlines:
             print(f"  📰 {ticker}: {len(headlines)} headlines fetched")
+        # Next scheduled earnings date — consumed by the buy-side earnings
+        # blackout (buying.py) and shown to the AI so it stops rewarding a name
+        # for reporting soon.
+        edate = fetch_next_earnings_date(ticker)
+        earnings_by_ticker[ticker] = edate
+        if edate:
+            print(f"  📅 {ticker}: next earnings {edate}")
 
     # ── Batched AI evaluation (with completeness validation + retry) ──────────
     ratings_raw, missing = evaluate_triggers(
@@ -533,6 +611,7 @@ def main():
             "atr_pct":            atr_pct,
             "est_days_to_target": est_days,
             "trigger_type":       trigger_type,
+            "next_earnings_date": earnings_by_ticker.get(ticker),
         }
         update_trigger_scores(ticker, fields)
 

@@ -206,7 +206,7 @@ def compute_final_score(technical_score: int, liquidity_score: int,
       Technical  30% -- breakout mechanics (volume surge, pivot proximity, SMA)
       Liquidity  25% -- stock price, avg daily volume, company size
       AI         25% -- fundamental quality rated by GPT-4o-mini with full context
-      Sentiment  10% -- recent news headline tone (FMP stock_news)
+      Sentiment  10% -- recent news headline tone (FMP /stable/news/stock)
       RS vs SPY  10% -- 12-week relative strength vs S&P 500
     """
     raw = (

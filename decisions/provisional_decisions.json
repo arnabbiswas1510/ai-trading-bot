@@ -602,6 +602,39 @@
       "adr": "decisions/2026-09-28_archive-entry-scores-to-trade-history.md",
       "last_reviewed": null,
       "history": []
+    },
+    {
+      "id": "earnings-blackout-window",
+      "title": "Is a 3-trading-day earnings blackout the right width, and does deferring earnings-adjacent buys actually improve P&L?",
+      "status": "active",
+      "kind": "parameter",
+      "decided": "2026-09-28",
+      "implemented": true,
+      "decision": "The bot now DEFERS opening any new position whose next scheduled earnings date is within EARNINGS_BLACKOUT_TRADING_DAYS (default 3) NYSE trading days. next_earnings_date is fetched per trigger by ai_evaluator.py from FMP /stable/earnings and stored on daily_triggers; buying.py enforces the gate (audit reason EARNINGS_IMMINENT) after the AI veto and before the score floor. It is a DEFERRAL, not a veto (the breakout re-triggers post-report), and it FAILS OPEN on a missing/unparseable/past date. See decisions/2026-09-28_earnings-blackout-and-news-veto.md.",
+      "rationale": "A fresh position sits under the Prove-It stop's tight floor (-1% day 0, -3% day 1+), so an earnings gap-down is close to a guaranteed stop-out at a loss that then trips the reason-aware cooling-off lockout -- a compounding, knowable-in-advance cost. 3 trading days covers the report plus settle without idling capital for a week. But it was chosen on essentially ZERO in-sample earnings-adjacent losses: no closed trade in the current history was demonstrably stopped out on an earnings gap, so the window width is a reasoned first guess, not a measured optimum.",
+      "baseline_at_decision": {
+        "closed_trades": 67,
+        "earnings_adjacent_losses_observed": 0,
+        "window_trading_days": 3,
+        "note": "No harness yet distinguishes earnings-gap stop-outs from ordinary stops in the closed-trade history. The window is a prior, not a fit. When enough trades are DEFERRED by this gate, compare the realised outcome of the deferred-then-rebought breakouts against a counterfactual of buying pre-earnings."
+      },
+      "review_command": "python3 research/exit_rule_replay.py --insecure   # plus: count trigger_decisions rows with reason EARNINGS_IMMINENT and trace whether the same breakout was later bought and how it fared",
+      "review_questions": [
+        "How many buys has the EARNINGS_IMMINENT gate actually deferred? Below ~10 this is noise -- report the count first.",
+        "Of the deferred breakouts, how many re-triggered and were bought after the report, and what was their realised P&L vs an estimate of buying just before earnings?",
+        "Is the 3-day width right? Would 2 or 5 trading days have avoided more gap losses without discarding more good continuation setups?",
+        "Did any deferred name gap UP through the blackout (opportunity cost of the deferral)? A deferral that repeatedly skips winners is as wrong as one that never fires.",
+        "Is the fail-open behaviour ever masking a systemic FMP earnings-feed outage (many NULL next_earnings_date at once)? If so the gate is silently inert and needs an alert."
+      ],
+      "revisit": {
+        "min_closed_trades": 90,
+        "not_before": "2026-12-01",
+        "why": "The gate only fires when a rated trigger reports within 3 sessions, which is rare relative to trade flow, so evidence accrues slowly. 90 closed trades / Dec 2026 is the earliest point a handful of deferrals should exist to trace. Gated on closed trades as a proxy for overall activity; the true limiting population is the count of EARNINGS_IMMINENT deferrals, which the review must report explicitly."
+      },
+      "preconditions": [],
+      "adr": "decisions/2026-09-28_earnings-blackout-and-news-veto.md",
+      "last_reviewed": null,
+      "history": []
     }
   ]
 }

@@ -116,6 +116,7 @@ _SKIP_REASON_TEXT = {
     "ALREADY_HELD":         "already an open position",
     "COOLING_OFF":          "in cooling-off after a recent exit",
     "AI_VETO":              "vetoed by the AI evaluator (D-grade)",
+    "EARNINGS_IMMINENT":    "earnings within the blackout window (deferred)",
     "NO_AI_SCORE":          "not scored by the AI evaluator",
     "SCORE_FLOOR":          "below the quality-score / volume floor",
     "SLOTS_FULL":           "no slot free when it was evaluated",
@@ -241,6 +242,26 @@ def maybe_report_unfilled_slots(client, standdown_reason: str | None = None) -> 
 
     if delivered:
         _slot_report_mark_sent(client, report_date, body)
+
+
+def _earnings_blackout_days_until(next_earnings_date, today) -> int | None:
+    """Trading days from `today` until the ticker's next earnings, or None.
+
+    None means "no known upcoming earnings" — missing, unparseable, or a date
+    already in the past — and the caller FAILS OPEN on None: a per-name data gap
+    must never block every buy. Returns 0 when earnings is today. Uses NYSE
+    trading days (via ``ea.trading_days_between``) so a weekend/holiday does not
+    make an imminent report look further away than it is.
+    """
+    if not next_earnings_date:
+        return None
+    try:
+        edate = ea.datetime.date.fromisoformat(str(next_earnings_date)[:10])
+    except (ValueError, TypeError):
+        return None
+    if edate < today:
+        return None
+    return ea.trading_days_between(today, edate)
 
 
 def run_market_open_buys(ib: IB):
@@ -424,6 +445,26 @@ def run_market_open_buys(ib: IB):
             print(f"   🟢 {ticker} AI grade: {ai_grade} | "
                   f"quality={trigger.get('quality_score', 'N/A')} | "
                   f"final={trigger.get('final_score', 'N/A')}")
+
+        # ── Earnings blackout: defer buys within N trading days of a report ──────
+        # A fresh position sits under the Prove-It stop's tight −1%/−3% floor, so
+        # an earnings gap is an almost-certain stop-out at a loss PLUS a cooling-off
+        # lockout — a compounding, avoidable cost. This is a DEFERRAL: the breakout
+        # re-triggers and can be bought once the report clears. next_earnings_date
+        # is populated by ai_evaluator.py from FMP; a missing/past date fails OPEN
+        # so a per-name data gap never blocks every buy. See
+        # decisions/2026-09-28_earnings-blackout-and-news-veto.md.
+        days_to_earnings = _earnings_blackout_days_until(
+            trigger.get("next_earnings_date"), today_ny)
+        if (days_to_earnings is not None
+                and days_to_earnings <= ea.EARNINGS_BLACKOUT_TRADING_DAYS):
+            print(f"   📅 {ticker} earnings in {days_to_earnings} trading day(s) "
+                  f"(≤ {ea.EARNINGS_BLACKOUT_TRADING_DAYS}-day blackout). Deferring buy.")
+            ea.trigger_audit.record_trigger_decision(
+                client, trigger, "SKIPPED", ea.trigger_audit.EARNINGS_IMMINENT,
+                detail=f"earnings in {days_to_earnings} trading day(s) "
+                       f"(<= {ea.EARNINGS_BLACKOUT_TRADING_DAYS}-day blackout)")
+            continue
 
         # 🛡️ Final score floor (quality guardrail) ──────────────────────────────
         trigger_type = str(trigger.get("trigger_type") or "BREAKOUT")

@@ -95,3 +95,17 @@ BUY_PRICE_DRIFT_TOLERANCE = float(os.getenv("BUY_PRICE_DRIFT_TOLERANCE", 0.01))
 # protect the IBKR averageCost basis. Length unchanged at 3; only application
 # changed. See decisions/2026-09-26_reason-aware-cooling-off.md.
 COOLING_OFF_DAYS = int(os.getenv("COOLING_OFF_DAYS", 3))
+
+# ── Earnings blackout ─────────────────────────────────────────────────────────
+# Refuse to OPEN a new position when a scheduled earnings report is within this
+# many NYSE trading days. Rationale: the Prove-It stop floors a fresh position at
+# −1% (day 0) / −3% (day 1+), so an earnings gap-down is an almost-certain
+# stop-out at a loss AND triggers the reason-aware cooling-off lockout — a
+# compounding, entirely avoidable cost decided BEFORE the buy. This is a
+# DEFERRAL, not a permanent veto: the same breakout can re-trigger and be bought
+# once the report has cleared. next_earnings_date is populated per trigger by
+# ai_evaluator.py from FMP; a missing/unparseable/past date fails OPEN (a per-name
+# data gap must never block every buy). Provisional on a tiny sample — see the
+# `earnings-blackout-window` register entry.
+# See decisions/2026-09-28_earnings-blackout-and-news-veto.md.
+EARNINGS_BLACKOUT_TRADING_DAYS = int(os.getenv("EARNINGS_BLACKOUT_TRADING_DAYS", 3))
