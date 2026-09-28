@@ -1,7 +1,17 @@
 # Weekly Supabase backup to Parquet on the production server
 
 - **Date:** 2026-08-21
-- **Status:** Accepted — with one erratum (see below)
+- **Status:** Accepted — with two errata (see below)
+
+> **Erratum, 2026-09-28.** The paragraph below describing the ship step as
+> pinning the host key with `ssh-keyscan` is **superseded**. That scan-then-
+> strict-check was only trust-on-first-use (a MITM would answer the scan and pass
+> the check), and its separate ~5-second scan was a spurious failure point that
+> sank several scheduled runs when the home network was briefly unreachable. The
+> step now accepts the key on connect with `StrictHostKeyChecking=accept-new` —
+> the same actual security, minus the fragile scan. Do not cite this ADR as the
+> current host-key design. See
+> `decisions/2026-09-28_backup-ship-host-key-trust.md`.
 
 > **Erratum, 2026-09-06.** This ADR treats `ibkr_fills` and `breakout_learnings`
 > being empty as an ordinary state to be represented honestly in the manifest.

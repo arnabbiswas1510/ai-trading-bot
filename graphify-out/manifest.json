@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790522220.2414997,
-    "ast_hash": "7cf283414b5d6b301abaf63078e7489d",
+    "mtime": 1790610499.744646,
+    "ast_hash": "a48e5b545d1f87f79c4085f9be32e894",
     "semantic_hash": ""
   },
   "README.md": {
@@ -775,18 +775,18 @@
     "semantic_hash": ""
   },
   ".github/workflows/weekly_supabase_backup.yml": {
-    "mtime": 1787599185.2601068,
-    "ast_hash": "d6bc31e406e3e24ad84e005bdb7ea191",
+    "mtime": 1790610444.9737494,
+    "ast_hash": "e7682345ef0d9e7bde4fb00576e2abd1",
     "semantic_hash": ""
   },
   "decisions/2026-08-21_weekly-supabase-backup.md": {
-    "mtime": 1789682042.2383568,
-    "ast_hash": "ffffb1d5bc5ab3248254e4d574207123",
+    "mtime": 1790610494.9382887,
+    "ast_hash": "6b81b8907de61ef5e770cb3db953e7a1",
     "semantic_hash": ""
   },
   "docs/backups.md": {
-    "mtime": 1787599185.2644908,
-    "ast_hash": "ce47bb1cd6453e6a0699ceb9ccbc7ef3",
+    "mtime": 1790610488.9553382,
+    "ast_hash": "887c6a3d31c6a3bce2613f8f8520ac3b",
     "semantic_hash": ""
   },
   "ag-stop-probe.json": {
@@ -1627,6 +1627,11 @@
   "decisions/2026-09-27_startup-crash-shipping.md": {
     "mtime": 1790564103.7439485,
     "ast_hash": "0d705cb457ce0161329dd3c52a2613ba",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-28_backup-ship-host-key-trust.md": {
+    "mtime": 1790610476.1795723,
+    "ast_hash": "681fcaf47fcdc92a826921e38d03df7d",
     "semantic_hash": ""
   }
 }

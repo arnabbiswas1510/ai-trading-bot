@@ -176,7 +176,13 @@ The application uses a decoupled cloud screening and local execution environment
    * Weekend fundamental scans and daily technical breakout scans run on GitHub Actions.
    * Scans write results directly to a Supabase cloud database (`watchlist` and `daily_triggers` tables).
 2. **Local Self-Hosted Execution (DietPi Docker at `192.168.1.2`)**:
-   * **Host Server**: Production DietPi host at `192.168.1.2` (SSH port 2222).
+   * **Host Server**: Production DietPi host at `192.168.1.2`. **SSH gotcha:**
+     the host's `sshd` listens on **port 22**; the router forwards *external*
+     port **2222 → internal 22**. GitHub Actions (`deploy_to_server.yml`, the
+     weekly backup) connect over the internet on **2222**, but **on the LAN you
+     connect on 22** (`ssh -p 22 … pom@192.168.1.2`). Connecting to
+     `192.168.1.2:2222` from inside the LAN is *refused* — that is expected, not
+     a fault.
    * **`ib-gateway`**: Headless Interactive Brokers Gateway container (`ghcr.io/gnzsnz/ib-gateway`) managing the live brokerage connection (port 4000).
    * **`execution-agent`**: Python daemon (`execution_agent.py`) checking daily triggers, placing live orders at market open, and monitoring positions every 15 minutes.
    * **`trading-bot`**: FastAPI backend and React dashboard served at `http://localhost:8000` (or `http://192.168.1.2:8000`).
@@ -624,6 +630,14 @@ a deleted constant name returns **zero** hits repo-wide, the entry is missing.
 ---
 
 ## 📦 MANDATORY: Clean Patch Files Whenever a Patch Is Requested
+
+> **⛔ THIS MACHINE CANNOT PUSH TO THE REMOTE.** The workstation these sessions
+> run on has no push access to `origin`, and pushing is what triggers the
+> build→deploy pipeline to the git-free prod host. Therefore **every change you
+> deliver MUST be packaged as a numbered patch file** for the operator to apply
+> and push from their own machine. Never assume a direct `git push`, never
+> present "commit + push" as an option, and never leave a change only in the
+> working tree. Default to producing the patch — do not ask whether to push.
 
 > **Whenever asked to create a patch file (instead of pushing directly),
 > the patch must contain ONLY valid code artifacts — never noisy or

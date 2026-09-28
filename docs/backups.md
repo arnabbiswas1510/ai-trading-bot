@@ -23,8 +23,29 @@ The export runs in the GitHub Actions runner and is rsynced to the server, so
 the DietPi host needs no Python, no pyarrow and no Supabase credentials. It
 reuses the existing `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_KEY` secrets on
 port 2222 — no new secrets, and no new third-party action sees the production
-key: the rsync is plain shell, with the host key pinned via `ssh-keyscan` and
-the key deleted from the runner in an `always()` step.
+key: the rsync is plain shell, accepting the host key on first connect
+(`StrictHostKeyChecking=accept-new`, the same trust-on-use model
+`deploy_to_server.yml` uses for this host), with the key deleted from the runner
+in an `always()` step.
+
+> **Port 2222 is the router's external NAT to the host's internal port 22.**
+> GitHub Actions connect over the internet on 2222; on the LAN you connect on
+> **22** (`ssh -p 22 … pom@192.168.1.2`) and 2222 is refused — that is expected.
+
+### Why past runs failed
+
+Two unrelated causes, for the record:
+
+- **Export step (2026-09-27):** a table was added to `TABLES` before its
+  migration was applied in Supabase, so PostgREST returned a 404 and the
+  "loud on partial failure" export aborted. Fix: apply the migration. This is
+  why a new table must exist in Supabase before it is added to `TABLES`.
+- **Ship step (Aug–Sep 2026):** the step used to run a separate one-shot
+  `ssh-keyscan` and then require a strict host-key match; if that ~5-second scan
+  hit a momentarily slow or unreachable home network it returned nothing and the
+  rsync failed even though the host was reachable moments later. Replaced with
+  `accept-new` (same trust-on-first-use, no fragile separate scan). See
+  `decisions/2026-09-28_backup-ship-host-key-trust.md`.
 
 Run it by hand from the Actions tab. `dry_run` reports row counts without
 writing or shipping anything; `snapshot_date` overrides the partition date.

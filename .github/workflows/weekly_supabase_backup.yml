@@ -93,12 +93,22 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Pin the host key instead of disabling host verification, so the
-          # backup cannot be silently rsynced to an impostor host.
-          ssh-keyscan -p 2222 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-
+          # Trust the host key on first connect (accept-new) — the same lenient
+          # trust-on-use model deploy_to_server.yml already uses for this host.
+          #
+          # The previous design ran a separate one-shot `ssh-keyscan` and then
+          # required a strict match. If that ~5-second scan hit a momentarily
+          # slow or unreachable home network it returned nothing, known_hosts
+          # stayed empty, and rsync then failed "Host key verification failed"
+          # even when the host was reachable a second later — with no retry.
+          # accept-new removes that separate failure point without weakening
+          # security: scan-then-check was only trust-on-first-use anyway (a MITM
+          # would answer the scan with its own key and pass the check), so this
+          # is the same TOFU minus the fragile scan. A real pin would need the
+          # host key stored as a DEPLOY_KNOWN_HOSTS secret, not a live scan.
+          # See decisions/2026-09-28_backup-ship-host-key-trust.md.
           rsync -avz \
-            -e "ssh -p 2222 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
+            -e "ssh -p 2222 -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new" \
             ./backup-staging/ \
             "$DEPLOY_USER@$DEPLOY_HOST:/home/pom/docker/ai-trading-bot/backups/"
 
