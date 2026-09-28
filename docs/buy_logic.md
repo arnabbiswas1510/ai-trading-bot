@@ -279,3 +279,33 @@ separately from the accuracy of the scoring model. A name skipped for want of a 
 nothing about scoring quality — but a lot about the cost of concentration.
 
 All audit writes are non-fatal: research instrumentation must never interrupt live trading.
+
+---
+
+## Daily "unfilled slots" summary
+
+While the market is open the buy check runs every 15 minutes. At the **first**
+cycle of each ET day on which the portfolio has at least one idle slot, the agent
+sends a single Telegram summary explaining why the empty slots were not filled.
+It is silent when the book is full (five positions held) and never fires more than
+once per day.
+
+The reason it reports is either:
+
+- the **single top-level cause** when the whole cycle stood down early — market
+  direction bearish (CAN SLIM 'M' gate), margin loan active, schema degraded, or
+  the screener produced no breakout triggers; or
+- an **aggregated per-reason breakdown** of that day's `trigger_decisions` when
+  candidates were evaluated but none cleared the gates, e.g. *"2 below the
+  quality-score floor (XYZ, QRS); 1 extended too far above the pivot (TUV)"*.
+
+Once-per-day delivery is deduplicated in the `daily_notifications` table
+(`report_type='unfilled_slots'`, one row per ET date), so it survives container
+restarts rather than re-sending after every deploy. The dedup probe fails **safe**:
+if the table is missing the summary is suppressed, never spammed, until
+`migrations/20260928_add_daily_notifications.sql` is applied. The day is marked
+sent only after Telegram accepts the message, so a transient failure retries.
+
+The feature is always on and has no environment variable. See
+`decisions/2026-09-28_unfilled-slot-daily-alert.md` for why.
+

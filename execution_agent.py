@@ -527,6 +527,7 @@ _schema_alert_sent = False
 from buying import (
     assert_schema_ok,
     equity_capped_position_size,
+    maybe_report_unfilled_slots,
     run_market_open_buys,
 )
 

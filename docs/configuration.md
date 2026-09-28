@@ -603,6 +603,7 @@ for why.
 | `cash_flows` | Deposits and withdrawals |
 | `ibkr_fills` | Every IBKR execution with its commission. Tier 1 of the sell-price ladder — the only fill record that survives an agent or Gateway restart |
 | `breakout_learnings` | Post-close outcome rows fed back into screener tuning |
+| `daily_notifications` | Dedup ledger for once-per-day operator alerts (`report_type`,`report_date` PK). Backs the "unfilled slots" summary so it fires once per ET day across restarts. Regenerable state — **not** in `supabase_backup.py`. See `migrations/20260928_add_daily_notifications.sql` |
 
 Key `portfolio_positions` columns driving exits: `hwm_price`, `hwm_date`, `stop_loss_pct`,
 `entry_atr_pct`, `closed_above_entry`, `power_hold`, `exit_armed*`, `breakout_verdict`,

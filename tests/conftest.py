@@ -331,6 +331,8 @@ def make_supabase_mock(
     trade_history_recent: list | None = None,
     cash_balance: float | None = None,
     ibkr_fills: list | None = None,
+    trigger_decisions: list | None = None,
+    slot_report_sent: bool = False,
 ) -> MagicMock:
     """
     Returns a MagicMock Supabase client where each table's queries return
@@ -347,6 +349,7 @@ def make_supabase_mock(
     portfolio            = portfolio or []
     trade_history_recent = trade_history_recent or []
     ibkr_fills_data      = ibkr_fills or []
+    trigger_decisions_data = trigger_decisions or []
 
     stock_positions = portfolio
 
@@ -432,6 +435,19 @@ def make_supabase_mock(
             t.select.return_value = _RowQuery(ibkr_fills_data)
             t.upsert.return_value.execute.return_value = MagicMock()
             t.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+        elif name == "trigger_decisions":
+            # Read by buying._summarize_today_skips (.select(...).eq(decision_date)).
+            t.select.return_value.eq.return_value.execute.return_value.data = trigger_decisions_data
+            t.upsert.return_value.execute.return_value = MagicMock()
+
+        elif name == "daily_notifications":
+            # Once-per-day dedup ledger for maybe_report_unfilled_slots.
+            # .select(...).eq(report_type).eq(report_date).limit(1).execute()
+            _sent = [{"report_date": "x"}] if slot_report_sent else []
+            (t.select.return_value.eq.return_value.eq.return_value
+             .limit.return_value.execute.return_value.data) = _sent
+            t.upsert.return_value.execute.return_value = MagicMock()
 
         _cache[name] = t
         return t

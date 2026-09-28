@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1790563786.3033085,
-    "ast_hash": "4087fe5d6eed8f43777c6a51992d16a4",
+    "mtime": 1790617832.8979897,
+    "ast_hash": "d50ff6a6eb4295c7b7e1d8d544f6c886",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "telegram_notifier.py": {
-    "mtime": 1790001824.9109714,
-    "ast_hash": "a9724a2fc934329181992a842e9ed3b8",
+    "mtime": 1790617758.3175685,
+    "ast_hash": "13e433cfbfa534cf5dba36230e0ec336",
     "semantic_hash": ""
   },
   "tests/__init__.py": {
@@ -170,8 +170,8 @@
     "semantic_hash": ""
   },
   "tests/conftest.py": {
-    "mtime": 1790520895.044284,
-    "ast_hash": "3a90f513c7fcb0e8ae0256155af3741c",
+    "mtime": 1790617849.69544,
+    "ast_hash": "e6bdf947757993967c79c77efe5f7dd6",
     "semantic_hash": ""
   },
   "tests/test_breakout_verdict.py": {
@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790610499.744646,
-    "ast_hash": "a48e5b545d1f87f79c4085f9be32e894",
+    "mtime": 1790610830.4827662,
+    "ast_hash": "2a50e7a46e1ad36625dd7e7930592e82",
     "semantic_hash": ""
   },
   "README.md": {
@@ -300,13 +300,13 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1790525265.1546686,
-    "ast_hash": "165f62e3510a7c7338e02ca879560770",
+    "mtime": 1790618063.877006,
+    "ast_hash": "836ae8ff6946ac6c7ef4dd44d58cca51",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790564116.4163008,
-    "ast_hash": "457cd92e38ca700f806ffb50ace9404c",
+    "mtime": 1790618073.982299,
+    "ast_hash": "91af315c3dcf4864793ec4259c7126d6",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -775,17 +775,17 @@
     "semantic_hash": ""
   },
   ".github/workflows/weekly_supabase_backup.yml": {
-    "mtime": 1790610444.9737494,
+    "mtime": 1790610830.482206,
     "ast_hash": "e7682345ef0d9e7bde4fb00576e2abd1",
     "semantic_hash": ""
   },
   "decisions/2026-08-21_weekly-supabase-backup.md": {
-    "mtime": 1790610494.9382887,
+    "mtime": 1790610830.483319,
     "ast_hash": "6b81b8907de61ef5e770cb3db953e7a1",
     "semantic_hash": ""
   },
   "docs/backups.md": {
-    "mtime": 1790610488.9553382,
+    "mtime": 1790610830.4839764,
     "ast_hash": "887c6a3d31c6a3bce2613f8f8520ac3b",
     "semantic_hash": ""
   },
@@ -1530,8 +1530,8 @@
     "semantic_hash": ""
   },
   "buying.py": {
-    "mtime": 1790563886.0312197,
-    "ast_hash": "51a18e62dffe71b54b2716a3516e2983",
+    "mtime": 1790617828.9145122,
+    "ast_hash": "cffd83bc5e3abd400f33b704730958f9",
     "semantic_hash": ""
   },
   "fills.py": {
@@ -1630,8 +1630,23 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-28_backup-ship-host-key-trust.md": {
-    "mtime": 1790610476.1795723,
+    "mtime": 1790610830.4836118,
     "ast_hash": "681fcaf47fcdc92a826921e38d03df7d",
+    "semantic_hash": ""
+  },
+  "migrations/20260928_add_daily_notifications.sql": {
+    "mtime": 1790617750.649057,
+    "ast_hash": "8ec2f4ba528a871a000027baa58ee280",
+    "semantic_hash": ""
+  },
+  "tests/test_unfilled_slots.py": {
+    "mtime": 1790617914.411093,
+    "ast_hash": "381c438d88d2690a578623c61114c9c3",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-28_unfilled-slot-daily-alert.md": {
+    "mtime": 1790618053.778621,
+    "ast_hash": "5bcd91539df4114d21598b04ffd84d6b",
     "semantic_hash": ""
   }
 }

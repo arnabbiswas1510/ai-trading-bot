@@ -104,6 +104,145 @@ def equity_capped_position_size(available_cash: float, remaining_slots: int,
     return base
 
 
+# ── Once-daily "why are slots empty?" operator summary ────────────────────────
+# The buy check runs every 15 minutes, so this must dedup to at most one message
+# per ET day and survive restarts. Persistence is the daily_notifications table
+# (migrations/20260928_add_daily_notifications.sql); an in-memory flag would
+# resend after every deploy or crash-loop. See
+# decisions/2026-09-28_unfilled-slot-daily-alert.md.
+
+# reason_code (trigger_audit) → human phrase for the per-reason breakdown.
+_SKIP_REASON_TEXT = {
+    "ALREADY_HELD":         "already an open position",
+    "COOLING_OFF":          "in cooling-off after a recent exit",
+    "AI_VETO":              "vetoed by the AI evaluator (D-grade)",
+    "NO_AI_SCORE":          "not scored by the AI evaluator",
+    "SCORE_FLOOR":          "below the quality-score / volume floor",
+    "SLOTS_FULL":           "no slot free when it was evaluated",
+    "INSUFFICIENT_CASH":    "insufficient cash to size a position",
+    "NO_PRICE":             "no valid live price available",
+    "EXTENDED_ABOVE_PIVOT": "extended too far above the pivot (chase guard)",
+    "BELOW_PIVOT":          "fallen back below the pivot (failed breakout)",
+    "SHARES_ZERO":          "price too high for the position size",
+    "BUY_FAILED":           "order failed at the broker",
+    "LOOP_HALTED":          "buy loop halted after a broker error",
+}
+
+_SLOT_REPORT_TYPE = "unfilled_slots"
+
+
+def _slot_report_already_sent(client, report_date: str) -> bool:
+    """True when today's unfilled-slot summary has already gone out.
+
+    Fails SAFE: on any probe error (including the table not existing yet) it
+    returns True so the summary is suppressed rather than sent every cycle. The
+    cost of a missing migration is silence for a day, not 26 duplicate alerts.
+    """
+    try:
+        res = (client.table("daily_notifications")
+               .select("report_date")
+               .eq("report_type", _SLOT_REPORT_TYPE)
+               .eq("report_date", report_date)
+               .limit(1).execute())
+        return bool(res.data)
+    except Exception as e:
+        print(f"   ⚠️ daily_notifications probe failed ({e}) — suppressing the "
+              f"unfilled-slot summary this cycle. Apply "
+              f"migrations/20260928_add_daily_notifications.sql.")
+        return True
+
+
+def _slot_report_mark_sent(client, report_date: str, detail: str) -> None:
+    """Latch today's summary as sent. Non-fatal."""
+    try:
+        client.table("daily_notifications").upsert({
+            "report_type": _SLOT_REPORT_TYPE,
+            "report_date": report_date,
+            "detail":      (detail or "")[:1000],
+        }, on_conflict="report_type,report_date").execute()
+    except Exception as e:
+        print(f"   ⚠️ Could not persist daily_notifications (non-fatal): {e}")
+
+
+def _summarize_today_skips(client, decision_date: str) -> list[str]:
+    """Bulleted per-reason breakdown of today's SKIPPED trigger decisions.
+
+    Reads the trigger_decisions rows the buy loop already writes each cycle and
+    groups them by reason_code, most common first, with up to five sample
+    tickers per reason. Returns [] when nothing is recorded.
+    """
+    try:
+        res = (client.table("trigger_decisions")
+               .select("ticker,reason_code,decision")
+               .eq("decision_date", decision_date).execute())
+        rows = res.data or []
+    except Exception:
+        return []
+
+    groups: dict[str, list[str]] = {}
+    for r in rows:
+        if r.get("decision") == "BOUGHT":
+            continue
+        code = r.get("reason_code") or "OTHER"
+        groups.setdefault(code, []).append(r.get("ticker"))
+
+    lines = []
+    for code, tickers in sorted(groups.items(), key=lambda kv: len(kv[1]), reverse=True):
+        uniq = [t for t in dict.fromkeys(t for t in tickers if t)]
+        text = _SKIP_REASON_TEXT.get(code, code.replace("_", " ").lower())
+        sample = ", ".join(uniq[:5])
+        more = f" +{len(uniq) - 5} more" if len(uniq) > 5 else ""
+        suffix = f" ({sample}{more})" if sample else ""
+        lines.append(f"• {len(uniq)} {text}{suffix}")
+    return lines
+
+
+def maybe_report_unfilled_slots(client, standdown_reason: str | None = None) -> None:
+    """Send ONE Telegram summary per ET day when the book has idle slots.
+
+    Called at every stand-down (`return`) inside run_market_open_buys and once
+    at the end of a normal cycle. Self-contained: it re-reads holdings so it can
+    run even on the early returns that fire before holdings are fetched. A no-op
+    when the portfolio is full (free <= 0) or the summary already went out today.
+
+    `standdown_reason` is a single top-level cause (market bearish, margin loan,
+    schema degraded, no triggers). When None, the reasons are aggregated from
+    today's per-trigger decisions instead.
+    """
+    tz = ZoneInfo("America/New_York")
+    report_date = ea.datetime.datetime.now(tz).date().isoformat()
+
+    try:
+        holdings = client.table("portfolio_positions").select("ticker").execute().data or []
+    except Exception:
+        return  # cannot determine capacity → say nothing rather than guess
+    held = len(holdings)
+    free = ea.MAX_POSITIONS - held
+    if free <= 0:
+        return
+
+    if _slot_report_already_sent(client, report_date):
+        return
+
+    if standdown_reason:
+        body = standdown_reason
+    else:
+        lines = _summarize_today_skips(client, ea.trigger_audit._today())
+        body = ("\n".join(lines) if lines
+                else "No breakout candidate cleared all buy gates today.")
+
+    delivered = False
+    try:
+        delivered = ea.notifier.notify_unfilled_slots(
+            free, ea.MAX_POSITIONS, held, body)
+    except Exception as e:
+        print(f"   ⚠️ Unfilled-slot notification failed (non-fatal): {e}")
+        delivered = False
+
+    if delivered:
+        _slot_report_mark_sent(client, report_date, body)
+
+
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
     print("⏳ Running Market Open Buy checks...")
@@ -118,6 +257,11 @@ def run_market_open_buys(ib: IB):
     # Re-checked every cycle (it is a handful of LIMIT 1 queries), so applying the
     # migration clears this automatically without restarting the container.
     if not assert_schema_ok(client):
+        maybe_report_unfilled_slots(
+            client,
+            standdown_reason=("Schema degraded — a column a live risk rule depends "
+                              "on is missing, so new buys are blocked until the "
+                              "pending migration is applied in Supabase."))
         return
 
     # ── Margin-loan hard block ────────────────────────────────────────────────
@@ -139,12 +283,22 @@ def run_market_open_buys(ib: IB):
             ea.notifier.notify_error(msg)
         except Exception:
             pass
+        maybe_report_unfilled_slots(
+            client,
+            standdown_reason=(f"Margin loan active (${margin_loan:,.2f} borrowed) — "
+                              f"all new buys are blocked until the loan is repaid."))
         return
 
     # ── Market direction hard gate (fail-closed on data errors) ─────────────────
     if ea.MARKET_DIRECTION_FILTER_ENABLED and not ea.is_market_bullish():
         print("📊 Market bearish (benchmark below SMA-200 buffer, falling SMA-200, "
               "or data unavailable). Standing down from new buys.")
+        maybe_report_unfilled_slots(
+            client,
+            standdown_reason=("Market direction is bearish — a benchmark index is "
+                              "below its SMA-200 buffer, its SMA-200 is falling, or "
+                              "the data was unavailable. The bot stands down from "
+                              "new buys (CAN SLIM 'M' gate)."))
         return
 
     
@@ -665,3 +819,17 @@ def run_market_open_buys(ib: IB):
             # Stop the entire buy loop — same reasoning as the 0-fill case above.
             ea.notifier.notify_buy_loop_halted(ticker=ticker, reason=str(order_err))
             break
+
+    # ── End-of-cycle: explain any slots still empty (once per ET day) ──────────
+    # Reached after a normal pass through the trigger loop (including the empty
+    # loop when there were no triggers, and the mid-cycle capacity break). The
+    # early `return`s above report their own single stand-down reason; this call
+    # aggregates the per-trigger skip reasons for the day.
+    if not triggers:
+        maybe_report_unfilled_slots(
+            client,
+            standdown_reason=(f"The screener produced no breakout triggers in the "
+                              f"last {ea.TRIGGER_LOOKBACK_DAYS} days, so there was "
+                              f"nothing to buy."))
+    else:
+        maybe_report_unfilled_slots(client)

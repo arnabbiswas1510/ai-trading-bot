@@ -609,6 +609,32 @@ class TelegramNotifier:
         )
         self._send(msg)
 
+    def notify_unfilled_slots(self, free_slots: int, max_slots: int,
+                              held_count: int, reason_body: str) -> bool:
+        """Once-daily summary of why open portfolio slots were not filled.
+
+        Sent at most once per ET day by buying.maybe_report_unfilled_slots (the
+        buy check itself runs every 15 minutes). ``reason_body`` is either a
+        single top-level stand-down reason (market bearish, margin loan, schema
+        degraded, no triggers) or a bulleted per-reason breakdown aggregated from
+        today's trigger_decisions. Returns the _send() delivery bool so the
+        caller only marks the day done when the message actually went out.
+        """
+        plural = "s" if free_slots != 1 else ""
+        msg = (
+            f"📭 <b>UNFILLED SLOTS — {free_slots} of {max_slots} open</b>\n"
+            f"\n"
+            f"Holding {held_count}/{max_slots} position"
+            f"{'s' if held_count != 1 else ''}; "
+            f"{free_slots} slot{plural} idle today.\n"
+            f"\n"
+            f"<b>Why the idle slot{plural} weren't filled:</b>\n"
+            f"{reason_body}\n"
+            f"\n"
+            f"🕒 {self._now_et()}"
+        )
+        return self._send(msg)
+
     def notify_exception(self, context: str, error: Exception) -> None:
         """
         Rate-limited exception alert. Suppresses duplicate (same context + error type)
