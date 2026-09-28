@@ -67,11 +67,11 @@ Requires a configured FMP API key (dashboard Settings, or `FMP_API_KEY`).
 ### Known divergence from live — read before trusting a result
 
 The backtester's market filter is **more permissive than production**. It gates
-on SPY `close > EMA-21`. The live bot uses a multi-index rule: every benchmark in
-`MARKET_DIRECTION_TICKERS` (SPY, QQQ) more than
-`MARKET_DIRECTION_BUFFER_PCT` above its SMA-200, with at least one non-falling
+on SPY `close > EMA-21`. The live bot uses an SMA-200 regime rule: every benchmark
+in `MARKET_DIRECTION_TICKERS` (SPY) more than
+`MARKET_DIRECTION_BUFFER_PCT` (0.5%) above its SMA-200, with at least one non-falling
 SMA-200, failing closed. A backtest will therefore take trades the live bot would
-have skipped. See `decisions/2026-08-22_market-direction-gate-spy-qqq.md`.
+have skipped. See `decisions/2026-09-28_market-gate-spy-only-tighter-band.md`.
 
 `max_positions` defaults to the `MAX_POSITIONS` env var so a backtest cannot
 silently simulate a different portfolio shape than production.

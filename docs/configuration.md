@@ -257,9 +257,9 @@ closed as a result) — see `docs/retired_code.md`.
 | `MIN_PRE_BREAKOUT_SCORE` | `65` | Score floor, `PRE_BREAKOUT` |
 | `MIN_RELAXED_TRIGGER_SCORE` | `58` | Score floor, `PRE_BREAKOUT_RELAXED` |
 | `MARKET_DIRECTION_FILTER_ENABLED` | `true` | Master switch for the CANSLIM "M" buy gate. `false` is the only bypass |
-| `MARKET_DIRECTION_TICKERS` | `SPY,QQQ` | Comma-separated benchmarks. **Every** one must clear the buffer for a bull verdict. Replaces the singular `MARKET_DIRECTION_TICKER`, which is no longer read |
+| `MARKET_DIRECTION_TICKERS` | `SPY` | Comma-separated benchmarks. **Every** one must clear the buffer for a bull verdict. SPY-only since 2026-09-28 (QQQ dropped). Replaces the singular `MARKET_DIRECTION_TICKER`, which is no longer read |
 | `MARKET_DIRECTION_SMA_WINDOW` | `200` | Regime lookback |
-| `MARKET_DIRECTION_BUFFER_PCT` | `0.01` | Dead-band: price must exceed `SMA-200 × (1 + buffer)`. Prevents regime flapping on marginal crosses |
+| `MARKET_DIRECTION_BUFFER_PCT` | `0.005` | Dead-band: price must exceed `SMA-200 × (1 + buffer)`. Prevents regime flapping on marginal crosses |
 | `MARKET_DIRECTION_SLOPE_DAYS` | `20` | Sessions used for the SMA-200 slope test. **At least one** benchmark's SMA-200 must be non-falling |
 | `MARKET_DIRECTION_MAX_STALE_DAYS` | `5` | Price data older than this is unusable → bearish |
 

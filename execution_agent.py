@@ -319,18 +319,25 @@ ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25)) 
 
 
 # ── CANSLIM "M" — market direction gate ───────────────────────────────────────
-# Both benchmarks must close above their SMA-200 by MARKET_DIRECTION_BUFFER_PCT,
-# and at least one SMA-200 must be non-falling over MARKET_DIRECTION_SLOPE_DAYS.
-# Grid-tested over 4,940 sessions (2007-2026): this configuration sits out 67.8%
-# of the worst-5% forward-20d windows vs 59.3% for the old bare SPY>SMA200 rule.
+# The benchmark(s) in MARKET_DIRECTION_TICKERS must close above their SMA-200 by
+# MARKET_DIRECTION_BUFFER_PCT, and at least one SMA-200 must be non-falling over
+# MARKET_DIRECTION_SLOPE_DAYS. Default is SPY-only, 0.5% buffer, 20-day slope —
+# retuned 2026-09-28 to keep the bot ACTIVE in more markets. A SPY×buffer×slope
+# grid over 4,965 sessions (2007-2026) showed activity and total return are
+# strongly correlated (+0.88): the tighter 0.5% band is more active (70.8% of
+# sessions vs 69.0%), higher-returning and lower-drawdown than the old SPY+QQQ /
+# 1.0% / 20 configuration, while a 2-3% band lost return AND worsened drawdown.
+# QQQ was dropped (it barely moved any metric). The gate remains drawdown
+# insurance, not an alpha source — its forward-return edge is ~0.1% (noise).
 # A 50>200 requirement and an "either index" (OR) combination were both tested
-# and rejected — see decisions/2026-08-22_market-direction-gate-spy-qqq.md.
+# and rejected. See decisions/2026-09-28_market-gate-spy-only-tighter-band.md
+# (retune) and decisions/2026-08-22_market-direction-gate-spy-qqq.md (original).
 MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
 MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
 MARKET_DIRECTION_TICKERS        = [t.strip().upper() for t in
-                                   os.getenv("MARKET_DIRECTION_TICKERS", "SPY,QQQ").split(",")
+                                   os.getenv("MARKET_DIRECTION_TICKERS", "SPY").split(",")
                                    if t.strip()]
-MARKET_DIRECTION_BUFFER_PCT     = float(os.getenv("MARKET_DIRECTION_BUFFER_PCT", 0.01))
+MARKET_DIRECTION_BUFFER_PCT     = float(os.getenv("MARKET_DIRECTION_BUFFER_PCT", 0.005))
 MARKET_DIRECTION_SLOPE_DAYS     = max(1, int(os.getenv("MARKET_DIRECTION_SLOPE_DAYS", 20)))
 MARKET_DIRECTION_MAX_STALE_DAYS = int(os.getenv("MARKET_DIRECTION_MAX_STALE_DAYS", 5))
 

@@ -1,8 +1,19 @@
 # Market direction gate: SPY+QQQ, 1% buffer, non-falling SMA-200, fail-closed
 
 - **Date:** 2026-08-22
-- **Status:** Accepted
+- **Status:** Superseded in part by [decisions/2026-09-28_market-gate-spy-only-tighter-band.md](2026-09-28_market-gate-spy-only-tighter-band.md)
 - **Supersedes:** the original single-index `is_market_bullish()` rule (SPY close > SMA-200, no ADR)
+
+> **2026-09-28 erratum — the parameter values below are no longer live.** The
+> *structure* of this gate (every benchmark above an SMA-200 buffer AND at least
+> one non-falling SMA-200, uniformly fail-closed) still stands and is unchanged.
+> What changed: the benchmark set was narrowed from **SPY+QQQ to SPY-only** and
+> the buffer was tightened from **1% to 0.5%**, to keep the bot active in more
+> markets. On a re-swept ~4,965-session index grid, 0.5% SPY-only is more active,
+> higher-returning and lower-drawdown than 1% SPY+QQQ; dropping QQQ moved every
+> metric negligibly. The "SPY+QQQ, 1% buffer" figures in the tables below are the
+> *decision-time* measurement and are retained as history — **do not cite them as
+> the current configuration.** See the superseding ADR for the new grid.
 
 ## Context
 

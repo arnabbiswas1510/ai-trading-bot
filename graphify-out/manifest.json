@@ -35,13 +35,13 @@
     "semantic_hash": ""
   },
   "backend/screener.py": {
-    "mtime": 1787434065.7839231,
-    "ast_hash": "9953902359ac1c2f311f7be8959468c7",
+    "mtime": 1790618652.3068025,
+    "ast_hash": "691201513d80f1cc16608850e2caf99c",
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1790617832.8979897,
-    "ast_hash": "d50ff6a6eb4295c7b7e1d8d544f6c886",
+    "mtime": 1790618573.957426,
+    "ast_hash": "fc40b4741b3d518c684948c3049ff636",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -280,13 +280,13 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790610830.4827662,
-    "ast_hash": "2a50e7a46e1ad36625dd7e7930592e82",
+    "mtime": 1790618703.7641354,
+    "ast_hash": "0d4f7135f91324bc3002161dc9f19b05",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790564145.2342663,
-    "ast_hash": "8bc02b097fa7c212dc27316a27b50ea5",
+    "mtime": 1790618934.2212179,
+    "ast_hash": "42c31ecad52e08b4793a73b32e91eea2",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -300,13 +300,13 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1790618063.877006,
-    "ast_hash": "836ae8ff6946ac6c7ef4dd44d58cca51",
+    "mtime": 1790618802.4900718,
+    "ast_hash": "63b0cbd2616804bbd93e164ee53a7a4b",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790618073.982299,
-    "ast_hash": "91af315c3dcf4864793ec4259c7126d6",
+    "mtime": 1790618683.07535,
+    "ast_hash": "49ee208905981706d36afe7c2505e50d",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1790525276.9421155,
-    "ast_hash": "42a4a4108ab4e5cc3dc67ed06eb63d70",
+    "mtime": 1790618674.640127,
+    "ast_hash": "a2e677e23b427c74c9a1901084242094",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -740,8 +740,8 @@
     "semantic_hash": ""
   },
   "docs/tech_debt_and_requirements_tracker.md": {
-    "mtime": 1790525250.1767733,
-    "ast_hash": "e95aff60c02929d9dca1a105e7ca4d67",
+    "mtime": 1790618719.1125164,
+    "ast_hash": "4b044a962f0d27fdf0318c026dfc061c",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_hwm-profit-lock-first-leg.md": {
@@ -810,8 +810,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-08-22_market-direction-gate-spy-qqq.md": {
-    "mtime": 1787434231.458775,
-    "ast_hash": "33a13df437bd4309a43d4db6a109a24f",
+    "mtime": 1790618731.1816928,
+    "ast_hash": "020b5090bac1810b804a3e2adbde8df1",
     "semantic_hash": ""
   },
   "frontend/scripts/test-exit-details.mjs": {
@@ -950,8 +950,8 @@
     "semantic_hash": ""
   },
   "docs/backtesting.md": {
-    "mtime": 1790037416.2738333,
-    "ast_hash": "118bffb532d03effb962e66bc751fea2",
+    "mtime": 1790618690.494279,
+    "ast_hash": "3f257874e6f206da586cf44caa125add",
     "semantic_hash": ""
   },
   "tests/test_datasource_unavailable.py": {
@@ -1647,6 +1647,16 @@
   "decisions/2026-09-28_unfilled-slot-daily-alert.md": {
     "mtime": 1790618053.778621,
     "ast_hash": "5bcd91539df4114d21598b04ffd84d6b",
+    "semantic_hash": ""
+  },
+  "research/market_gate_bt.py": {
+    "mtime": 1790618919.47524,
+    "ast_hash": "f60e7bff7b0dff578fd7b1b47a4b514a",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-28_market-gate-spy-only-tighter-band.md": {
+    "mtime": 1790618769.1443076,
+    "ast_hash": "dc54270d9bafeb44026d28adb744ce4c",
     "semantic_hash": ""
   }
 }

@@ -816,11 +816,11 @@ See `decisions/2026-09-08_sell-state-transitions.md` for why.
 ## Market direction filter
 
 `is_market_bullish()` evaluates the CANSLIM "M" gate at market open against
-`MARKET_DIRECTION_TICKERS` (default `SPY,QQQ`).
+`MARKET_DIRECTION_TICKERS` (default `SPY`).
 
 The market is **bullish** only when:
 
-- **every** benchmark closes more than `MARKET_DIRECTION_BUFFER_PCT` (1%) above its
+- **every** benchmark closes more than `MARKET_DIRECTION_BUFFER_PCT` (0.5%) above its
   SMA-200, **and**
 - **at least one** of those SMA-200s is non-falling over `MARKET_DIRECTION_SLOPE_DAYS`
   (20) sessions.

@@ -9,8 +9,18 @@ from fmp_client import FMPClient
 # from the same env vars so the dashboard and the agent cannot drift apart.
 # Source of truth: execution_agent.py — see docs/configuration.md.
 MARKET_DIRECTION_SMA_WINDOW = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
-MARKET_DIRECTION_BUFFER_PCT = float(os.getenv("MARKET_DIRECTION_BUFFER_PCT", 0.01))
+MARKET_DIRECTION_BUFFER_PCT = float(os.getenv("MARKET_DIRECTION_BUFFER_PCT", 0.005))
 MARKET_DIRECTION_SLOPE_DAYS = max(1, int(os.getenv("MARKET_DIRECTION_SLOPE_DAYS", 20)))
+MARKET_DIRECTION_TICKERS = [t.strip().upper() for t in
+                            os.getenv("MARKET_DIRECTION_TICKERS", "SPY").split(",")
+                            if t.strip()]
+
+# The agent's gate prices ETFs (SPY, QQQ); the dashboard reads the underlying
+# indices from FMP. Map the configured ETF tickers onto their index symbols so
+# the dashboard evaluates the SAME benchmark set the agent gates on — dropping
+# QQQ from MARKET_DIRECTION_TICKERS must drop Nasdaq here too, or the dashboard
+# gate silently becomes stricter than the live agent.
+_ETF_TO_INDEX = {"SPY": ("S&P 500", "^GSPC"), "QQQ": ("Nasdaq", "^IXIC")}
 
 def get_market_direction():
     """
@@ -35,7 +45,11 @@ def get_market_direction():
                                "reason": "FMP API key not configured (fail-closed)"}
         }
 
-    indices = {"S&P 500": "^GSPC", "Nasdaq": "^IXIC"}
+    indices = {name: sym for etf in MARKET_DIRECTION_TICKERS
+               if etf in _ETF_TO_INDEX
+               for name, sym in [_ETF_TO_INDEX[etf]]}
+    if not indices:
+        indices = {"S&P 500": "^GSPC"}
     status_summary = []
     total_score = 15
     market_status = "Confirmed Uptrend"

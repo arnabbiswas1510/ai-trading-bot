@@ -41,7 +41,7 @@ their price structure signals accumulation, and exit fast when that signal fails
 | **S** | Supply and demand | Volume ≥ 1.50× the 50-day average on the breakout bar |
 | **L** | Leader, not laggard | 12-week relative strength vs SPY, `rs_score ≥ 50` (i.e. excess return ≥ 0) |
 | **I** | Institutional sponsorship | $300M market-cap floor, 250K average daily volume |
-| **M** | Market direction | Buys suspended unless **both** SPY and QQQ close >1% above their 200-day SMA with at least one 200-DMA non-falling; fails closed on any data error |
+| **M** | Market direction | Buys suspended unless **SPY** closes >0.5% above its 200-day SMA with a non-falling 200-DMA; fails closed on any data error |
 
 The revenue-growth filter deserves note: EPS growth alone can be manufactured through
 cost-cutting and buybacks. Requiring **top-line growth alongside it** distinguishes a
