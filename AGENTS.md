@@ -255,6 +255,23 @@ The application uses a decoupled cloud screening and local execution environment
   **Primary**: live `ibkr_cash_balance` synced from IBKR by the execution agent (stored in `account_balances` table).
   **Fallback** (when no synced value yet): `Initial Balance + Realized P&L − Open Position Cost`
 
+* **Account total is anchored to IBKR `NetLiquidation`, never reconstructed**:
+  `reconcile_with_ibkr()` stores `ibkr_total_value` = IBKR's authoritative
+  `NetLiquidation` tag (read via `get_net_liquidation()`), and derives the
+  displayed cash line as `ibkr_cash_balance = net_liq − positions_value` so
+  **cash + positions always reconciles to the broker's own total**. It must
+  **not** reconstruct the total as `own_cash + positions_value`: IBKR's
+  `TotalCashValue` (what `get_own_cash()` reads, stored separately as
+  `ibkr_own_cash` for margin diagnostics) still includes cash committed to an
+  **unsettled** purchase (US equities settle T+1), while the freshly-bought
+  shares already carry a market value — so adding the two double-counts the
+  purchase. This is exactly what produced the 2026-09-28 discrepancy: a single
+  CDNA position ($18,219.54) plus an unsettled-inflated `own_cash` ($93,259.06)
+  reported a $111,478.60 total against IBKR's real $94,712.78. If the
+  `NetLiquidation` tag is momentarily unavailable the sync falls back to the old
+  reconstruction so the balance write never blocks. See
+  `decisions/2026-09-28_anchor-account-total-to-ibkr-netliquidation.md`.
+
 * **Portfolio Balance Reset**:
   To reset tracked balances, clear rows from the Supabase `trade_history` table.
   ⚠️ This does **NOT** affect live IBKR positions — only local accounting state.

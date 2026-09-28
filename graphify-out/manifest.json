@@ -220,8 +220,8 @@
     "semantic_hash": ""
   },
   "tests/test_reconcile.py": {
-    "mtime": 1789090929.8968825,
-    "ast_hash": "6d757333e5190cac04842fe9d1d1f8fb",
+    "mtime": 1790623961.6515105,
+    "ast_hash": "660649f201422929d617803872539592",
     "semantic_hash": ""
   },
   "tests/test_score_components.py": {
@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790618703.7641354,
-    "ast_hash": "0d4f7135f91324bc3002161dc9f19b05",
+    "mtime": 1790624029.9055111,
+    "ast_hash": "99494b7c3f3c638bb4def65b7b19b000",
     "semantic_hash": ""
   },
   "README.md": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790618683.07535,
-    "ast_hash": "49ee208905981706d36afe7c2505e50d",
+    "mtime": 1790624037.211408,
+    "ast_hash": "75750ec4b9230b431de4add980d1e55a",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -1560,8 +1560,8 @@
     "semantic_hash": ""
   },
   "reconciliation.py": {
-    "mtime": 1790563886.0536578,
-    "ast_hash": "a850a2bf9f44656e710a18d999e260ad",
+    "mtime": 1790623978.5709252,
+    "ast_hash": "36c6f31513e6ca02616ac9775719e469",
     "semantic_hash": ""
   },
   "selling.py": {
@@ -1657,6 +1657,11 @@
   "decisions/2026-09-28_market-gate-spy-only-tighter-band.md": {
     "mtime": 1790618769.1443076,
     "ast_hash": "dc54270d9bafeb44026d28adb744ce4c",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-28_anchor-account-total-to-ibkr-netliquidation.md": {
+    "mtime": 1790624063.161352,
+    "ast_hash": "ad3b0b16f6b0bb9d6f7884d1078c33c5",
     "semantic_hash": ""
   }
 }

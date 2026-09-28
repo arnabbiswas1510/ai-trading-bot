@@ -589,7 +589,7 @@ for why.
 | `watchlist` | Current fundamental survivors. **Truncated and rewritten daily** |
 | `daily_triggers` | Today's technical triggers, enriched with scores. **Truncated daily** |
 | `portfolio_positions` | Open positions and all exit-rule state. Also carries IBKR's own valuation (`current_price`, `market_value`, `unrealized_pnl`, `ibkr_synced_at`) written by `reconcile_with_ibkr()` — these are broker marks, never FMP quotes (`migrations/20260904_add_ibkr_position_values.sql`) |
-| `account_balances` | IBKR cash and equity snapshots |
+| `account_balances` | IBKR cash and equity snapshots written by `reconcile_with_ibkr()` every ~15 min. `ibkr_total_value` is IBKR's authoritative `NetLiquidation`; `ibkr_cash_balance` is derived as `net_liq − positions_value` so cash + positions always reconciles to the broker total; `ibkr_own_cash` preserves the raw `TotalCashValue` for margin diagnostics. The total is **never** reconstructed as `own_cash + positions_value` — that double-counts an unsettled purchase. See `decisions/2026-09-28_anchor-account-total-to-ibkr-netliquidation.md` |
 | `exit_requests` | Smart OCA managed-exit queue. Outlives the position it refers to, so it doubles as the exit audit trail (`migrations/20260818_add_exit_requests.sql`) |
 
 ### Append-only research tables

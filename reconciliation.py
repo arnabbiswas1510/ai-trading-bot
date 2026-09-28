@@ -110,8 +110,11 @@ def reconcile_with_ibkr(ib: IB):
         # margin_loan: borrowed amount when TotalCashValue < 0 (0 if no loan).
         own_cash    = ea.get_own_cash(ib, target_account)
         margin_loan = ea.get_margin_loan(ib, target_account)
-        # ibkr_cash_balance historically stored AvailableFunds; we now write own_cash
-        # so the column remains meaningful (own money only, no margin).
+        # cash_balance (the displayed cash line) is finalised further down: it is
+        # derived from IBKR's NetLiquidation minus position value so cash +
+        # positions always reconciles to the broker's own account total. own_cash
+        # (raw TotalCashValue) is preserved separately in ibkr_own_cash for
+        # margin diagnostics. Initialise to own_cash as the fallback value.
         cash_balance = own_cash
 
         db_pos = client.table("portfolio_positions").select(
@@ -131,7 +134,43 @@ def reconcile_with_ibkr(ib: IB):
                 price = float(p["buy_price"])   # final fallback: cost basis
             pos_value += int(p["shares"]) * price
 
-        net_liq = cash_balance + pos_value
+        # ── Anchor the account total to IBKR's authoritative NetLiquidation ────
+        # Do NOT reconstruct net_liq as own_cash + pos_value. IBKR's TotalCashValue
+        # (what get_own_cash reads) still includes cash committed to an UNSETTLED
+        # purchase (US equities settle T+1), while the freshly bought shares
+        # already appear in ib.portfolio() with a market value. Adding the two
+        # therefore double-counts that purchase — e.g. CDNA on 2026-09-28 read
+        # own_cash $93,259.06 AND positions $18,219.54, giving $111,478.60 when
+        # IBKR's real NetLiquidation was $94,712.78 (an overstatement of the
+        # ~$16.8k tied up in the position). IBKR's NetLiquidation tag nets the
+        # pending settlement, so it is the only figure that always reconciles.
+        # We take it as the source of truth for the total and derive the
+        # displayed cash as (net_liq - pos_value) so cash + positions == net_liq
+        # exactly, whatever the settlement state.
+        ibkr_net_liq = ea.get_net_liquidation(ib, target_account)
+        if ibkr_net_liq > 0:
+            net_liq      = round(ibkr_net_liq, 2)
+            derived_cash = round(net_liq - pos_value, 2)
+            if derived_cash < 0:
+                # pos_value exceeds IBKR's own equity — only possible if a
+                # position is valued off stale cost basis because IBKR has no
+                # mark for it (it should have been reconciled away). Keep the
+                # authoritative total but fall back to raw own_cash for the
+                # cash line rather than displaying negative cash.
+                print(f"   ⚠️ derived cash negative (net_liq ${net_liq:,.2f} - "
+                      f"positions ${pos_value:,.2f}); using raw own_cash "
+                      f"${own_cash:,.2f} for the cash line.")
+                cash_balance = own_cash
+            else:
+                cash_balance = derived_cash
+        else:
+            # NetLiquidation tag momentarily unavailable — fall back to the old
+            # reconstruction so the sync still runs (may transiently overstate
+            # during unsettled purchases, but never blocks the balance write).
+            print("   ⚠️ NetLiquidation unavailable — reconstructing total from "
+                  "own_cash + positions (may overstate during T+1 settlement).")
+            cash_balance = own_cash
+            net_liq      = round(cash_balance + pos_value, 2)
 
         if net_liq > 0:
             upsert_payload = {
@@ -163,8 +202,9 @@ def reconcile_with_ibkr(ib: IB):
                 if not ("PGRST204" in str(_tg_err) or "telegram_" in str(_tg_err)):
                     print(f"   ⚠️ could not persist Telegram health: {_tg_err}")
             margin_note = f" ⚠️ MARGIN LOAN: ${margin_loan:,.2f}" if margin_loan > 0 else ""
-            print(f"   💰 Balance synced [{target_account}]: own_cash=${cash_balance:,.2f} "
+            print(f"   💰 Balance synced [{target_account}]: cash=${cash_balance:,.2f} "
                   f"positions=${pos_value:,.2f} net_liq=${net_liq:,.2f} "
+                  f"(IBKR NetLiquidation; raw TotalCashValue=${own_cash:,.2f}) "
                   f"({len(db_pos)} position(s)){margin_note}")
     except Exception as e:
         ea.notifier.notify_exception("reconcile_with_ibkr() cash sync — execution_agent.py", e)

@@ -389,6 +389,62 @@ class TestReconcileCase4:
         # Supabase should not insert anything unless it is an automated deposit (which isn't tested here)
         supabase.table("cash_flows").insert.assert_not_called()
 
+    def test_case4_total_anchors_to_ibkr_net_liquidation(self):
+        """Regression: the stored account total must equal IBKR's NetLiquidation
+        tag, and cash + positions must reconcile to it — NOT own_cash + positions.
+
+        Real incident (2026-09-28): a single position CDNA (283 sh) was worth
+        $18,219.54 while get_own_cash (TotalCashValue) still read $93,259.06
+        because the purchase had not settled. Reconstructing net_liq as
+        own_cash + pos_value gave $111,478.60 — an overstatement of the ~$16.8k
+        tied up in the position — while IBKR's real NetLiquidation was
+        $94,712.78. The fix anchors the total to IBKR's NetLiquidation and
+        derives the cash line as net_liq - pos_value.
+        """
+        position = make_position("CDNA", shares=283, buy_price=63.16)
+        supabase = make_supabase_mock(portfolio=[position], cash_balance=80_000.00)
+        ib = make_ib_mock(["CDNA"])
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.build_ibkr_price_map", return_value={}), \
+             patch("execution_agent.get_position_price", return_value=(64.38, "IBKR")), \
+             patch("execution_agent.get_own_cash", return_value=93_259.06), \
+             patch("execution_agent.get_net_liquidation", return_value=94_712.78), \
+             patch("execution_agent.get_margin_loan", return_value=0.0):
+            execution_agent.reconcile_with_ibkr(ib)
+
+        payload = supabase.table("account_balances").upsert.call_args[0][0]
+        pos_value = round(283 * 64.38, 2)          # 18,219.54
+        assert payload["ibkr_positions_value"] == pos_value
+        # Total is IBKR's authoritative NetLiquidation, not own_cash + positions.
+        assert payload["ibkr_total_value"] == 94_712.78
+        # Cash line derived so cash + positions == net_liq exactly.
+        assert payload["ibkr_cash_balance"] == round(94_712.78 - pos_value, 2)  # 76,493.24
+        assert payload["ibkr_cash_balance"] + payload["ibkr_positions_value"] == \
+            payload["ibkr_total_value"]
+        # Raw TotalCashValue is preserved untouched for margin diagnostics.
+        assert payload["ibkr_own_cash"] == 93_259.06
+
+    def test_case4_falls_back_to_reconstruction_without_net_liq_tag(self):
+        """If IBKR's NetLiquidation tag is momentarily unavailable (returns 0),
+        the sync still runs by reconstructing total = own_cash + positions."""
+        position = make_position("CDNA", shares=283, buy_price=63.16)
+        supabase = make_supabase_mock(portfolio=[position], cash_balance=80_000.00)
+        ib = make_ib_mock(["CDNA"])
+
+        with patch("execution_agent.supabase", supabase), \
+             patch("execution_agent.build_ibkr_price_map", return_value={}), \
+             patch("execution_agent.get_position_price", return_value=(64.38, "IBKR")), \
+             patch("execution_agent.get_own_cash", return_value=93_259.06), \
+             patch("execution_agent.get_net_liquidation", return_value=0.0), \
+             patch("execution_agent.get_margin_loan", return_value=0.0):
+            execution_agent.reconcile_with_ibkr(ib)
+
+        payload = supabase.table("account_balances").upsert.call_args[0][0]
+        pos_value = round(283 * 64.38, 2)
+        assert payload["ibkr_cash_balance"] == 93_259.06
+        assert payload["ibkr_total_value"] == round(93_259.06 + pos_value, 2)
+
 
 class TestReconcileUsesPortfolioNotPositions:
     """
