@@ -18,7 +18,7 @@ import os
 import datetime
 from zoneinfo import ZoneInfo
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 
 def _get_entry_rs(ticker: str, trigger_rs_score) -> int | None:

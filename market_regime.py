@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 from ib_insync import IB
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 
 def _fetch_market_closes(ticker: str) -> list[tuple[str, float]]:

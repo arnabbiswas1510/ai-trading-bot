@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from supabase import Client
 from ib_insync import IB
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
     """

@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 
 from ib_insync import IB
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 
 def get_live_price(ticker: str) -> float:

@@ -15,12 +15,15 @@ RUN pip install --no-cache-dir \
     openai>=1.0.0
 
 # Copy script files into the container (include trigger_audit for execution_agent import)
-COPY execution_agent.py exit_rules.py exit_shadow.py indicators.py market_calendar.py \
+COPY agent_entrypoint.py execution_agent.py execution_agent_ref.py exit_rules.py exit_shadow.py indicators.py market_calendar.py \
      market_regime.py sentiment.py ibkr_data.py orders.py \
     trade_history.py fills.py reconciliation.py buying.py \
     monitoring.py selling.py agent_logging.py \
      telegram_notifier.py force_buy.py scoring.py config.py \
      trigger_audit.py schema_guard.py flex_query_sync.py cooling_off.py ./
 
-# Execute the agent loop
-CMD ["python", "execution_agent.py"]
+# Execute the agent via the fatal-safe wrapper: it ships any startup crash
+# (including import-time errors, before log shipping is up) to Supabase
+# agent_logs, so a boot failure is diagnosable without SSHing into the host.
+# See decisions/2026-09-27_startup-crash-shipping.md.
+CMD ["python", "agent_entrypoint.py"]

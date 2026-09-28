@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from supabase import Client
 from ib_insync import IB, Stock, MarketOrder
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float,
                  buy_date, buy_reason: str, current_price: float, reason: str,

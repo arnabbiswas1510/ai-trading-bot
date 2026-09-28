@@ -11,7 +11,7 @@ execution_agent) instead of a local ``global``.
 from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock, MarketOrder
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 def assert_schema_ok(client) -> bool:
     """Verify risk-rule columns exist. Returns False when new buys must be blocked.

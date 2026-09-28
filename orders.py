@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from supabase import Client
 from ib_insync import IB, Stock, Order
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 def TrailingStopOrder(action: str, totalQuantity: float,
                      trailingPercent: float = None,

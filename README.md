@@ -406,15 +406,22 @@ connection.
 | `monitoring.py` | 807 | `monitor_portfolio_intraday` + breakout-learning helpers |
 | `selling.py` | 300 | `execute_sell` + `execute_scale_out` |
 | `agent_logging.py` | 435 | `TeeLogger` + Supabase log ship/purge |
+| `execution_agent_ref.py` | 71 | Lazy, entrypoint-safe `ea` proxy — resolves `execution_agent` via `sys.modules` at access time so siblings never form a load-time import cycle |
+| `agent_entrypoint.py` | 96 | Container `CMD`. Runs the agent inside `try/except` and ships any **startup** crash (incl. import-time) to `agent_logs` as `[STARTUP-CRASH]` before exiting |
 
 Start at `exit_rules.py` to answer *"why did this position exit?"*, at `monitoring.py`
 for *"what did the 15-minute loop do?"*, and at `execution_agent.py` for module wiring
 and `main_loop()`.
 
 > **Note for contributors and AI assistants.** Every stateful module does
-> `import execution_agent as ea` and references patched siblings, patched constants and
+> `from execution_agent_ref import ea` and references patched siblings, patched constants and
 > the (test-frozen) `datetime` clock as `ea.<name>` — a live attribute lookup — while
-> `execution_agent` re-exports every moved symbol. The test suite patches ~260 call sites
+> `execution_agent` re-exports every moved symbol. `ea` is a lazy proxy
+> (`execution_agent_ref.py`) that resolves the running `execution_agent` module through
+> `sys.modules` at attribute-access time; a plain `import execution_agent as ea` is a
+> load-time import cycle that crash-loops the container when `execution_agent.py` is the
+> entrypoint (it registers as `__main__`, not `execution_agent`) — see
+> `decisions/2026-09-27_startup-crash-shipping.md`. The test suite patches ~260 call sites
 > as `execution_agent.<name>`; resolving through `ea.` is what keeps those patches live
 > **by construction** rather than by luck. Do not bind a patched name locally
 > (`from orders import arm_exit` then calling `arm_exit()` inside another module) — the

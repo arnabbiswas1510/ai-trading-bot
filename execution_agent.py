@@ -832,14 +832,14 @@ def main_loop():
                     _connect_silent_attempts = 0   # reset so we dont spam after each threshold
                 time.sleep(60)
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="CANSLIM Local execution agent CLI.")
     parser.add_argument("--mock-sell", type=str, help="Mock close a position in Supabase (e.g. AAPL)")
     parser.add_argument("--price", type=float, help="Mock sale price (required with --mock-sell)")
     parser.add_argument("--reason", type=str, default="Mock exit", help="Mock sale reason")
-    
+
     args = parser.parse_args()
-    
+
     if args.mock_sell:
         if not args.price:
             print("❌ Error: --price is required when mocking a sale.")
@@ -850,3 +850,7 @@ if __name__ == "__main__":
             print("❌ Error: FMP_API_KEY environment variable is not set.")
             sys.exit(1)
         main_loop()
+
+
+if __name__ == "__main__":
+    main()

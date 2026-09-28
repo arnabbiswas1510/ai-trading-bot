@@ -11,7 +11,8 @@ discovered that live credentials had been committed to `.env.template` in the
 - the Telegram bot token `8997092181:AAG…` — which was **actively abused**: the
   bot had been renamed to a scam handle ("CTT TYT yoon19000 ❤️❤️❤️") by whoever
   scraped the token; and
-- the IBKR Flex Web Service token `744951508262970976219401`, plus the live
+- the IBKR Flex Web Service token (`744951…9401`, redacted here — the full value
+  was in `.env.template`), plus the live
   account number `U12941651`, the Flex username, and the Flex query IDs.
 
 The Supabase keys, FMP key and IBKR password were **not** leaked — they were

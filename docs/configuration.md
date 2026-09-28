@@ -137,6 +137,28 @@ Telegram bot tokens, Supabase JWTs and generic `key=value` secrets are stripped.
 Blank and separator-only lines are dropped, and consecutive identical lines are
 collapsed so one stuck retry loop cannot fill the retention window.
 
+#### Startup crashes
+
+Cycle-time shipping only covers what happens *after* `TeeLogger` is installed. A
+crash during **import or startup** — a bad config, a missing dependency, an
+import error — happens before that pipeline exists, so it would otherwise appear
+only in `docker logs` (an SSH session on the home-network host). To close that
+blind spot the container's entrypoint is `agent_entrypoint.py`, a thin wrapper
+that runs the agent inside a `try/except` and, on any startup failure, writes a
+single `CRITICAL` row prefixed `[STARTUP-CRASH]` — carrying the full traceback —
+straight to `agent_logs` before exiting non-zero. It depends only on the standard
+library and `supabase`, never on the agent code that may have failed to load, and
+reads `SUPABASE_URL`/`SUPABASE_KEY` from the environment. A deliberate exit (e.g.
+missing `FMP_API_KEY`) is not treated as a crash.
+
+```sql
+-- Did the last boot fail, and why?
+SELECT logged_at, message FROM agent_logs
+WHERE message LIKE '[STARTUP-CRASH]%' ORDER BY logged_at DESC LIMIT 5;
+```
+
+See `decisions/2026-09-27_startup-crash-shipping.md` for why.
+
 #### Keeping the table small
 
 | Variable | Default | Effect |

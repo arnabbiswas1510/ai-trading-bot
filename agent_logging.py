@@ -15,7 +15,7 @@ import datetime
 from collections import deque
 from zoneinfo import ZoneInfo
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 class TeeLogger:
     """Mirrors stdout to a daily rotating log file without touching print() calls.

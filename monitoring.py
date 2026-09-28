@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from supabase import Client
 from ib_insync import IB, Stock
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 def monitor_portfolio_intraday(ib: IB):
     """Monitors open positions: updates hwm_date, self-heals trailing stops,

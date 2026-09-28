@@ -1,9 +1,21 @@
 # Split execution_agent.py orchestrators into focused modules
 
 **Date:** 2026-09-27
-**Status:** Accepted
+**Status:** Accepted — with one mechanism amended (see erratum below)
 **Supersedes the deferral in:** decisions/2026-09-18_execution-agent-split.md (the
 follow-on work it explicitly deferred is now done)
+
+> **Erratum (2026-09-27, same day):** the mechanism described below as "each
+> module does `import execution_agent as ea`" was found to crash-loop the
+> container. A top-level `import execution_agent` in a sibling is a load-time
+> import cycle that fails when `execution_agent.py` is the process entrypoint (it
+> registers in `sys.modules` as `__main__`, not `execution_agent`). The
+> `ea.<name>` invariant and everything this ADR argues about it **still hold** —
+> only the *binding* changed: siblings now do `from execution_agent_ref import ea`,
+> a lazy proxy that resolves the module through `sys.modules` at access time.
+> Wherever this document says `import execution_agent as ea`, read
+> `from execution_agent_ref import ea`. See
+> `decisions/2026-09-27_startup-crash-shipping.md`.
 
 ## Context
 

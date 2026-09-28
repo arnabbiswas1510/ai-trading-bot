@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "execution_agent.py": {
-    "mtime": 1790525012.4721186,
-    "ast_hash": "885137fb8d5253d7efc043394f755773",
+    "mtime": 1790563786.3033085,
+    "ast_hash": "4087fe5d6eed8f43777c6a51992d16a4",
     "semantic_hash": ""
   },
   "flex_query_sync.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790562804.6534152,
-    "ast_hash": "799a1d2763698e21d6f7977e2ad7b822",
+    "mtime": 1790564145.2342663,
+    "ast_hash": "8bc02b097fa7c212dc27316a27b50ea5",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790561857.4619226,
-    "ast_hash": "ebdf986574e0e205ebcbf336fc628485",
+    "mtime": 1790564116.4163008,
+    "ast_hash": "457cd92e38ca700f806ffb50ace9404c",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -1525,53 +1525,53 @@
     "semantic_hash": ""
   },
   "agent_logging.py": {
-    "mtime": 1790561737.766176,
-    "ast_hash": "aaa14f0bd346ee3d460682357c5cf046",
+    "mtime": 1790563882.0658982,
+    "ast_hash": "b0f51cbb5431cc2c518d4324a267b18e",
     "semantic_hash": ""
   },
   "buying.py": {
-    "mtime": 1790524685.0128613,
-    "ast_hash": "f6538dd367bc18a8f48c72e6fad95200",
+    "mtime": 1790563886.0312197,
+    "ast_hash": "51a18e62dffe71b54b2716a3516e2983",
     "semantic_hash": ""
   },
   "fills.py": {
-    "mtime": 1790524295.5134833,
-    "ast_hash": "49cb2e510501742fcef5a1dee90a4d49",
+    "mtime": 1790563886.035284,
+    "ast_hash": "6b4a4bd044c0af938f07327e3c69ab8d",
     "semantic_hash": ""
   },
   "ibkr_data.py": {
-    "mtime": 1790523197.6621099,
-    "ast_hash": "2ce8c9048cfd4f90f02ab7d26b1686bf",
+    "mtime": 1790563886.038823,
+    "ast_hash": "65a67c5ead4220284c887567bd2042c9",
     "semantic_hash": ""
   },
   "market_regime.py": {
-    "mtime": 1790522823.934692,
-    "ast_hash": "2adaa838d91a5496f0d337f56c133b04",
+    "mtime": 1790563886.042146,
+    "ast_hash": "5a8aea4585342ad574f3a1c9f1c04cfe",
     "semantic_hash": ""
   },
   "monitoring.py": {
-    "mtime": 1790524771.0660686,
-    "ast_hash": "ce8cdec2f807718a73dfb605b11622ac",
+    "mtime": 1790563886.0456324,
+    "ast_hash": "c123fe341bf6442b5f86ed542d31b011",
     "semantic_hash": ""
   },
   "orders.py": {
-    "mtime": 1790524101.3601875,
-    "ast_hash": "fa243157dd8ca46a4832e31e4c9b60d3",
+    "mtime": 1790563886.04966,
+    "ast_hash": "c4ef8a30d06b7de7b9531fd43cac2baa",
     "semantic_hash": ""
   },
   "reconciliation.py": {
-    "mtime": 1790524493.4995208,
-    "ast_hash": "dc6eea70f205453ceb6ea3af9485b41c",
+    "mtime": 1790563886.0536578,
+    "ast_hash": "a850a2bf9f44656e710a18d999e260ad",
     "semantic_hash": ""
   },
   "selling.py": {
-    "mtime": 1790524771.0789073,
-    "ast_hash": "e5fdac0787a54a8314515b0e8e8c0ff7",
+    "mtime": 1790563886.057092,
+    "ast_hash": "b3b2316c6ecdb57f94b02c8d5974c6eb",
     "semantic_hash": ""
   },
   "sentiment.py": {
-    "mtime": 1790522987.5710213,
-    "ast_hash": "c55d66cdd033cf4019b44bbed6c0804f",
+    "mtime": 1790563886.060645,
+    "ast_hash": "3fbe147ca05c44d7d01fba1fa797befa",
     "semantic_hash": ""
   },
   "trade_history.py": {
@@ -1580,8 +1580,8 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-27_execution-agent-modular-split.md": {
-    "mtime": 1790525168.1942122,
-    "ast_hash": "d4db147422eb7cde8d90d6414f68a77f",
+    "mtime": 1790564170.0383453,
+    "ast_hash": "be84caaa546dd01fbcd03198c2a8ca6f",
     "semantic_hash": ""
   },
   "scripts/render_env.py": {
@@ -1605,8 +1605,28 @@
     "semantic_hash": ""
   },
   "decisions/2026-09-27_bitwarden-secret-resolution.md": {
-    "mtime": 1790562798.8533237,
-    "ast_hash": "4ac5685c1ba5eb37ffa5f13205713d5c",
+    "mtime": 1790564053.807279,
+    "ast_hash": "e3f8ee04f135c1ebe3900072426e6cb2",
+    "semantic_hash": ""
+  },
+  "agent_entrypoint.py": {
+    "mtime": 1790563808.4570677,
+    "ast_hash": "b8aa51adcd0aed794d83bdc28d9b19ed",
+    "semantic_hash": ""
+  },
+  "execution_agent_ref.py": {
+    "mtime": 1790563870.637219,
+    "ast_hash": "e101a4d1120793e653bb982d857c76fb",
+    "semantic_hash": ""
+  },
+  "tests/test_startup_crash_shipping.py": {
+    "mtime": 1790563985.2042077,
+    "ast_hash": "9b6271c18eaf179ecc15f20d7ed67ca7",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-27_startup-crash-shipping.md": {
+    "mtime": 1790564103.7439485,
+    "ast_hash": "0d705cb457ce0161329dd3c52a2613ba",
     "semantic_hash": ""
   }
 }

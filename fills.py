@@ -9,7 +9,7 @@ on execution_agent stays live. ``_FILL_SINK_ALERTED`` is this module's own state
 import time
 from supabase import Client
 
-import execution_agent as ea
+from execution_agent_ref import ea
 
 def extract_fill_commission(fill) -> float | None:
     """
