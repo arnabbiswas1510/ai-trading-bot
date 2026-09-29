@@ -93,6 +93,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import statistics
 import sys
 from dataclasses import dataclass, replace
@@ -189,7 +190,8 @@ def _universe(kind: str) -> list[str]:
 def simulate(tickers: list[str], start: str, end: str,
              initial_capital: float = INITIAL_CAPITAL,
              max_positions: int = MAX_POSITIONS,
-             costs: CostModel | None = None) -> dict:
+             costs: CostModel | None = None,
+             rng: "random.Random | None" = None) -> dict:
     cfg = build_exit_config()
     costs = costs if costs is not None else build_cost_model()
 
@@ -308,13 +310,21 @@ def simulate(tickers: list[str], start: str, end: str,
                     continue
                 if None in (bar.sma_fast, bar.sma_slow, bar.vol_sma, bar.high_prior):
                     continue
+                if rng is not None:
+                    # RANDOM-ENTRY NULL (item #6): pick from names that merely have
+                    # valid indicators today — the breakout / volume / RS conditions
+                    # are DELIBERATELY dropped so this isolates what the breakout
+                    # selection rule is worth. Everything downstream (market filter,
+                    # slots, sizing, LIVE exits, costs) is identical to the real run.
+                    candidates.append((tk, rng.random()))
+                    continue
                 is_breakout = bar.high > bar.high_prior
                 is_above_ma = bar.close > bar.sma_fast and bar.close > bar.sma_slow
                 is_high_vol = bar.volume > bar.vol_sma * VOL_SURGE
                 if is_breakout and is_above_ma and is_high_vol:
                     dist = (bar.rs_max - bar.close) / bar.rs_max if bar.rs_max else 1.0
                     candidates.append((tk, dist))
-            candidates.sort(key=lambda x: x[1])   # closest to 52w high first
+            candidates.sort(key=lambda x: x[1])   # closest to 52w high first (random key when null)
             open_slots = max_positions - len(positions) - len(pending)
             for tk, _ in candidates[:open_slots]:
                 if cash > 0:

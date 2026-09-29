@@ -9,6 +9,7 @@ different questions. Picking the wrong one wastes time.
 | "How does the **dashboard** backtester score these tickers?" (live exits too, since Option A) | **Web strategy backtester** (`backend/backtester.py`) |
 | "Would a different *exit rule* have made my **actual** trades better?" | **Exit replay** (`research/exit_rule_replay.py`) |
 | "Does an entry/ranking/exit idea hold up across a large universe?" | **Research harnesses** (`research/*_bt.py`) |
+| "Is a strategy backtest result **real**, or a lucky window / one outlier?" | **Validation harness** (`research/strategy_validate.py`) |
 
 > **Which strategy backtester?** Both now exit with the **live** engine.
 > `research/strategy_backtest.py` and `backend/backtester.py` (the dashboard
@@ -228,7 +229,44 @@ by a single trade, and check `winners_hurt`.
 
 ---
 
-## 3. Research harnesses
+## 3. Validation harness — is a strategy backtest result REAL?
+
+`research/strategy_validate.py` runs the strategy backtester through the four
+AGENTS.md money-decision questions, so a single lucky window can never be shipped
+as an edge. It is fully offline over the committed `benchmark_data` daily bars
+(free, deterministic, no FMP key) and prints evidence for a human — it never
+returns a verdict by exit code.
+
+```bash
+python3 research/strategy_validate.py
+python3 research/strategy_validate.py --start 2023-08-01 --end 2026-08-04 \
+    --trials 200 --folds 4 --universe all
+```
+
+The four questions it answers, in order:
+
+1. **n first.** Closed-trade count before any P&L, with an `n < 30` noise warning.
+2. **Does the breakout selection beat a NULL?** A permutation baseline: many
+   random-entry runs with identical slots, sizing, market filter, LIVE exits and
+   costs, but entries drawn at random from names that merely have valid indicators
+   that day (`strategy_backtest.simulate(rng=...)`). Reports the real strategy's
+   percentile in the null distribution. Below ~95th percentile, the *selection*
+   rule is not the edge and no exit tuning will rescue it.
+3. **Is it carried by one trade?** Re-scores the run with its top-k richest exits
+   removed (drop-top-1..k), naming each. An edge that evaporates when the best few
+   trades are dropped is an outlier, not a process.
+4. **Is the edge stable out of sample?** Groups trades by `buy_date` into
+   contiguous walk-forward folds and reports per-fold net / expectancy / win-rate
+   plus a "profitable folds k/N" summary. A result from one regime window is
+   clustered, not persistent.
+
+A change is only allowed to justify capital when it clears **all four** on a
+date-grouped, out-of-sample basis. See
+`decisions/2026-09-29_backtest-statistical-rigor.md`.
+
+---
+
+## 4. Research harnesses
 
 `research/*_bt.py` are standalone studies backing specific ADRs — entry
 selection (`entry_bt.py`), breakout population (`breakout_bt.py`), portfolio
