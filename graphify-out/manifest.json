@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1790618674.640127,
-    "ast_hash": "a2e677e23b427c74c9a1901084242094",
+    "mtime": 1790695704.3985422,
+    "ast_hash": "11ca96d1d40bab103e190f28083575c0",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -1727,6 +1727,21 @@
   "decisions/2026-09-29_decision-core-extraction.md": {
     "mtime": 1790658012.940524,
     "ast_hash": "08f8f30ee2d5a0a8fdb890a7687c1575",
+    "semantic_hash": ""
+  },
+  "exit_core.py": {
+    "mtime": 1790695665.1358662,
+    "ast_hash": "68b77eadcf8842a5e9555c7693cd7139",
+    "semantic_hash": ""
+  },
+  "tests/test_exit_core.py": {
+    "mtime": 1790695651.2963955,
+    "ast_hash": "9e01456488c6d2acb84ae5655af67652",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-29_exit-core-extraction.md": {
+    "mtime": 1790695735.802015,
+    "ast_hash": "cc3db50488722e47b9001f547521f2be",
     "semantic_hash": ""
   }
 }

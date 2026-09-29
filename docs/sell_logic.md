@@ -16,6 +16,22 @@ are re-exported through `execution_agent` so tests patch them as
 every threshold here can be read and replayed without connecting to IBKR.
 See `decisions/2026-09-18_execution-agent-split.md`.
 
+**Exit core:** the *per-cycle exit verdict* — which single action a position takes
+this cycle (force-sell an armed exit at its deadline, arm the Prove-It Stop, scale
+out a winner, or hold and re-resolve the trail/hard-stop) — is assembled by the
+pure, I/O-free module `exit_core.py`. It orchestrates the `exit_rules.py`
+primitives in `monitor_portfolio_intraday()`'s exact order and returns an
+`ExitDecision`; it never touches IBKR, Supabase, the clock, or the notifier.
+`monitoring.py` computes the live inputs (price, days held, hours armed) and
+performs the order/DB/notify side effects the verdict implies. This is the exit
+twin of `decision_core.py`: the single source the research backtester also calls,
+so live and backtest exits are identical by construction. A parity test
+(`tests/test_exit_core.py`) pins `exit_core`'s verdict to the live monitor's
+recorded money-path actions on the golden book, so the two cannot silently drift.
+The live monitor's delegation to `exit_core` is staged behind the
+orchestrator-split safety window (a quiet book); until then `exit_core` is proven
+equal, not yet wired in. See `decisions/2026-09-29_exit-core-extraction.md` for why.
+
 ## Price source: IBKR first, FMP fallback
 
 Every exit rule below prices the position from IBKR's own mark — the same
