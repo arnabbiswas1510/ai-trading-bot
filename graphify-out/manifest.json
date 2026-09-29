@@ -1530,7 +1530,7 @@
     "semantic_hash": ""
   },
   "buying.py": {
-    "mtime": 1790627434.9169466,
+    "mtime": 1790656476.7875113,
     "ast_hash": "8c767d72d88788a4e5986d8647ded8bc",
     "semantic_hash": ""
   },
@@ -1707,6 +1707,11 @@
   "decisions/2026-09-28_jackknife-fragility-test.md": {
     "mtime": 1790655520.284174,
     "ast_hash": "40fbeda3b6ee2bb71be232ff5b233548",
+    "semantic_hash": ""
+  },
+  "tests/test_buy_decision_golden.py": {
+    "mtime": 1790656458.4851515,
+    "ast_hash": "0a7a0d68df04851a2da0f93c190cd102",
     "semantic_hash": ""
   }
 }
