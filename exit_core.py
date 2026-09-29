@@ -6,16 +6,19 @@ WHY THIS MODULE EXISTS (backtest fidelity, Phase 2)
 ───────────────────────────────────────────────────
 This is the exit twin of ``decision_core.py``. For a backtest to be trustworthy
 enough to size real money against, its EXITS must match what the live bot does —
-not an approximation. Today three separate pieces of code decide exits:
+not an approximation. The live money path and both backtesters now decide exits
+through this same code:
 
   • ``monitoring.monitor_portfolio_intraday`` — the LIVE money path;
-  • ``backend/backtester.py`` — a RESEARCH reimplementation that still models the
-    RETIRED 7%-trail + EMA-21 rules and never imports ``exit_rules``;
-  • ``research/exit_rule_replay.py`` — a third copy that MIRRORS the ``PROVE_IT_*``
-    constants in its own code.
+  • ``backend/backtester.py`` and ``research/strategy_backtest.py`` — both resolve
+    exits via the shared ``daily_exit_sim`` module, which imports and calls THIS
+    ``exit_core`` / ``exit_rules`` (Option A, 2026-09-29). No re-implemented
+    7%-trail / EMA-21 rules remain in either backtester.
 
-Any profitability number the backtester produces is therefore an answer about a
-strategy the bot no longer runs. This module extracts the live per-cycle exit
+The remaining outlier is ``research/exit_rule_replay.py``, which still MIRRORS the
+``PROVE_IT_*`` constants in its own code for its real-trade replay.
+
+This module extracts the live per-cycle exit
 VERDICT — armed-exit deadline, power-hold widening, the Prove-It Stop firing
 check, partial scale-out, and the trailing/hard-stop resolution — into a single
 **pure function with no I/O**. It takes plain data (a position dict, the runtime

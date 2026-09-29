@@ -477,3 +477,47 @@ commit immediately before this change).
 looser exit regime in which holding through an earnings report is the norm rather
 than an almost-certain stop-out. Under the current tight Prove-It stop it should
 stay retired.
+
+---
+
+## The backtester's 7% trailing-stop-from-peak + EMA-21×0.99 exit
+
+**Retired:** 2026-09-29 · **ADR:** `decisions/2026-09-29_backtester-option-a-live-exits.md`
+
+**Identifiers removed:** the exit half of `backend/backtester.py` — the
+`stop_trail_factor = 1 - stop_loss_pct/100` trailing stop, the
+`close < EMA-21 × (1 - DEFAULT_EXIT_BUFFER)` exit, and the module constants
+`DEFAULT_STOP_LOSS_PCT = 7.0` and `DEFAULT_EXIT_BUFFER = 0.01`. The per-ticker
+`EMA21` column computed only to feed that exit was also dropped.
+
+**Where it lived:** `backend/backtester.py`, the "B. Update trailing stops &
+check exits" block (roughly lines 205–260 before this change), inside the
+dashboard/web image. This was NOT a live-trading code path — the live bot exits
+via `execution_agent`/`monitoring.py`, never this file.
+
+**Status when retired:** active in the dashboard **backtester** on every run. It
+never touched real orders, but it silently answered exit-behaviour questions
+about a strategy the bot **stopped running when the Prove-It Stop shipped on
+2026-09-04**. It was a parallel re-implementation, not the live rules.
+
+**What it did:** exited a backtest position when the day's low crossed a fixed
+7%-below-peak trailing stop, or when the close fell 1% below its EMA-21. No
+Prove-It phases, no dynamic trail ladder, no power-hold, no scale-out.
+
+**Why it was retired:** it drifted from production by construction — two separate
+exit code paths cannot stay in sync. Option A replaced it with a call to the
+shared `daily_exit_sim.resolve_position_day`, the SAME engine
+`research/strategy_backtest.py` uses, which drives the live `exit_core`/
+`exit_rules`. The dashboard backtester now exits byte-for-byte the way the bot
+does. The behaviour is **replaced, not merely deleted** — its new home is the
+live exit engine, so this is a relocation of responsibility, not a lost feature.
+
+**Restore path:** `git show fe8b505:backend/backtester.py` (the commit
+immediately before Option A) contains the 7%-trail + EMA-21 exit block and the
+two constants.
+
+**What would have to be true to bring it back:** nothing foreseeable. A fixed
+7%/EMA exit is not what the bot runs; reinstating it would re-open the exact
+drift this change closed. If a *comparison* baseline is ever wanted, add it as an
+explicit labelled alternative in the research harness, not as the dashboard's
+default exit.

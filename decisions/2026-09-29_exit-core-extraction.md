@@ -12,6 +12,15 @@
 
 ## Context
 
+> **Update 2026-09-29 (later same day):** the "three separate pieces of code
+> decide exits" framing below was true when this ADR was written. It is now
+> partly closed: `backend/backtester.py` and `research/strategy_backtest.py` both
+> exit via the shared `daily_exit_sim` engine that calls this `exit_core` (Option
+> A — `decisions/2026-09-29_backtester-option-a-live-exits.md`), and the retired
+> 7%-trail + EMA-21 exit was deleted. Only `research/exit_rule_replay.py` still
+> carries its own copy of the constants. The body below is left as the record of
+> the state at extraction time.
+
 For a backtest to be trustworthy enough to size real money against, its **exits**
 must match what the live bot does — not an approximation. Today three separate
 pieces of code decide exits:

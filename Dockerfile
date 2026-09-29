@@ -41,6 +41,14 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 # Copy backend python code
 COPY backend/ ./backend/
 
+# The dashboard backtester (backend/backtester.py) exits positions with the LIVE
+# exit engine, so the web image must carry those root modules too. Without them
+# the container crashes on startup at `import daily_exit_sim`. tests/
+# test_web_image_completeness.py fails the moment backtester's import closure
+# grows a module not listed here. See
+# decisions/2026-09-29_backtester-option-a-live-exits.md.
+COPY config.py exit_rules.py exit_core.py daily_exit_sim.py ./backend/
+
 # Copy compiled frontend assets from Stage 1
 COPY --from=frontend-builder /frontend/dist ./frontend/dist
 

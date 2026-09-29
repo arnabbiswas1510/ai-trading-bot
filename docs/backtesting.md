@@ -6,17 +6,19 @@ different questions. Picking the wrong one wastes time.
 | You want to know | Use |
 |---|---|
 | "How would the strategy have performed, with the **live exit rules**, over a period?" | **Strategy backtest (exit-parity)** (`research/strategy_backtest.py`) |
-| "How does the **dashboard** backtester score these tickers?" (⚠ still retired exits) | **Web strategy backtester** (`backend/backtester.py`) |
+| "How does the **dashboard** backtester score these tickers?" (live exits too, since Option A) | **Web strategy backtester** (`backend/backtester.py`) |
 | "Would a different *exit rule* have made my **actual** trades better?" | **Exit replay** (`research/exit_rule_replay.py`) |
 | "Does an entry/ranking/exit idea hold up across a large universe?" | **Research harnesses** (`research/*_bt.py`) |
 
-> **Which strategy backtester?** `research/strategy_backtest.py` calls the **live**
-> `exit_core` / `exit_rules` code, so its exits are the Prove-It Stop, the dynamic
-> ladder, power-hold and scale-out — byte-for-byte what production runs.
-> `backend/backtester.py` (the dashboard button) still models the **retired**
-> 7%-trail + EMA-21 rules and is being kept only until it is repointed at the same
-> engine (Option A — see `decisions/2026-09-29_backtester-exit-core-adoption.md`).
-> Trust the research tool for any exit-behaviour question.
+> **Which strategy backtester?** Both now exit with the **live** engine.
+> `research/strategy_backtest.py` and `backend/backtester.py` (the dashboard
+> button) share one daily-bar exit engine — the root module `daily_exit_sim`,
+> which calls `exit_core` / `exit_rules` — so their exits are the Prove-It Stop,
+> the dynamic ladder, power-hold and scale-out, byte-for-byte what production
+> runs (Option A — see
+> `decisions/2026-09-29_backtester-option-a-live-exits.md`). They differ only in
+> DATA source (the research tool reads the committed offline dataset; the
+> dashboard reads FMP) and in the entry/market-filter, not exits.
 
 ---
 
@@ -41,7 +43,9 @@ No secrets required — it reads the committed `benchmark_data/` daily bars (313
 names, 2023-07 → 2026-08), so it runs offline, free and reproducible with **no
 FMP key at all**. Entries mirror `backend/backtester.py` (20-day-high breakout,
 above SMA50/200, ≥1.4× volume, SPY-above-EMA21 filter) so the two agree on
-entries; entry parity against `decision_core` is a separate follow-up.
+entries; entry parity against `decision_core` is a separate follow-up. The exit
+engine is shared verbatim with the dashboard backtester (section 1) via the root
+module `daily_exit_sim`, so both cannot drift apart.
 
 ### Fidelity — read before trusting a dollar figure
 
@@ -63,19 +67,23 @@ change (see `resolve_position_day`). The register work-item
 
 ---
 
-## 1. Web strategy backtester (dashboard — ⚠ retired exits)
+## 1. Web strategy backtester (dashboard — live exit parity)
 
-> **This still models the retired 7%-trail-from-peak + EMA-21×0.99 rules and does
-> NOT import `exit_rules`.** Its exits are not what production runs. Use it for the
-> dashboard/API convenience view only; for any exit-behaviour question use
-> `research/strategy_backtest.py` above. It will be repointed at the live
-> `exit_core` engine in a later change (Option A).
+> **As of Option A (2026-09-29) this exits with the LIVE engine too.** It calls
+> `daily_exit_sim.resolve_position_day` — the same shared code
+> `research/strategy_backtest.py` uses — so the Prove-It Stop, the dynamic trail
+> ladder, power-hold and scale-out are byte-for-byte production. The retired
+> 7%-trail-from-peak + EMA-21×0.99 exit was removed (see `docs/retired_code.md`).
+> Its remaining divergence from live is on the **entry/market-filter** side, not
+> exits — see "Known divergence" below. See
+> `decisions/2026-09-29_backtester-option-a-live-exits.md`.
 
 Simulates the full CAN SLIM breakout strategy over historical FMP data.
 Entries are detected on day T's close and filled at day T+1's **open** (no
 look-ahead). Sizing is `min(available_cash / remaining_slots, equity / MAX_POSITIONS)`,
 matching the live bot — the second term caps each position at one equal-weight share of
-equity (see `decisions/2026-09-21_equity-capped-position-size.md`).
+equity (see `decisions/2026-09-21_equity-capped-position-size.md`). Exits are the
+live rules, resolved once per daily bar (same fidelity caveat as section 0).
 
 ### From the dashboard
 
@@ -98,9 +106,10 @@ curl -X POST http://192.168.1.2:8000/api/backtest \
       }'
 ```
 
-`tickers` is optional — omit it to use the watchlist. `profit_target_pct` is
-accepted for frontend compatibility but **ignored**: the live bot has no fixed
-profit target.
+`tickers` is optional — omit it to use the watchlist. `stop_loss_pct` and
+`profit_target_pct` are accepted for frontend compatibility but **ignored**: the
+live exit engine uses the config `STOP_LOSS_PCT` as the trail base and has no
+fixed profit target.
 
 Returns `summary`, `trades` and `equity_curve`. The summary includes CAGR,
 max drawdown, Sharpe/Sortino/Calmar, win rate, expectancy, average hold days,

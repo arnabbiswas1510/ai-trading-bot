@@ -1,8 +1,18 @@
 # Backtester exit parity: a research backtest that calls the live exit engine
 
 **Date:** 2026-09-29
-**Status:** Accepted
+**Status:** Accepted — the "Option A" follow-up it names is now **done**, see
+`decisions/2026-09-29_backtester-option-a-live-exits.md`.
 **Scope:** backtest fidelity (roadmap item #1 — parity — for the EXIT side)
+
+> **Update 2026-09-29 (same day, later):** this ADR describes `backend/backtester.py`
+> as *still* modelling the retired 7%-trail + EMA-21 rules and names bringing the
+> live engine into the web image as the deferred "Option A". That follow-up has
+> since shipped: the daily-bar exit engine was extracted to the shared root module
+> `daily_exit_sim`, both backtesters now call it, and the retired exit was deleted
+> from `backend/backtester.py` (logged in `docs/retired_code.md`). Wherever the body
+> below says the dashboard backtester still runs the retired exits, read it as the
+> state *before* Option A. The body is left intact as the record of that state.
 
 ## Context
 

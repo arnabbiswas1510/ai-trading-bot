@@ -6,13 +6,24 @@ Runs a historical simulation of the CAN SLIM breakout trading strategy.
 Key design decisions (matching live execution_agent.py behaviour):
   - Entry:  Breakout detected on day T using EOD data; buy at day T+1 OPEN
             (no look-ahead bias — screener runs after close, bot buys next morning)
-  - Stops:  Trailing stop from peak price (rises with winners, never drops)
+  - Exit:   The LIVE exit engine — Prove-It Stop (Phase 1 band / Phase 2 give-back
+            floor), the dynamic profit-ladder trail, power-hold widening and the
+            partial scale-out — resolved once per daily bar by
+            daily_exit_sim.resolve_position_day (shared with
+            research/strategy_backtest.py; it calls exit_core/exit_rules directly).
+            There is NO fixed trailing-stop % or EMA-21 exit here any more; those
+            retired rules were removed in Option A (see docs/retired_code.md and
+            decisions/2026-09-29_backtester-option-a-live-exits.md).
   - Size:   min(available_cash / remaining_slots, equity / MAX_POSITIONS)  (equal-weight cap — matches live bot)
-  - Exit:   Trailing stop fires OR close < EMA-21 × 0.99 (no fixed profit target)
-  - Market: Bullish when SPY close > SPY EMA-21 (matches live market filter)
+  - Market: Bullish when SPY close > SPY EMA-21 (a coarse ENTRY filter; the live
+            market gate is richer — SPY/QQQ slope. Exit-side only is at parity).
   - Slots:  MAX_POSITIONS concurrent positions, read from the same env var
             the live bot uses (default 5) so a backtest cannot silently
             simulate a different portfolio shape than production runs
+
+  FIDELITY: daily bars give exit-RULE parity, not exact fill-price fidelity (the
+  0.6% arm-trail bounce and 15-minute timing need intraday bars). Trust RELATIVE
+  comparisons; see the fidelity note in research/strategy_backtest.py.
 """
 from __future__ import annotations
 
@@ -24,18 +35,26 @@ import pandas as pd
 
 from fmp_client import FMPClient
 
+# The daily-bar EXIT engine is the LIVE code, shared with research/strategy_backtest.py
+# via the root module daily_exit_sim (which drives exit_core/exit_rules). Option A
+# (decisions/2026-09-29_backtester-option-a-live-exits.md) brought config.py,
+# exit_rules.py, exit_core.py and daily_exit_sim.py into THIS image (see the Dockerfile
+# COPY line + tests/test_web_image_completeness.py) so the dashboard backtester exits
+# positions byte-for-byte the way production does, instead of the retired 7%-trail +
+# EMA-21 rules it used to re-implement here.
+from daily_exit_sim import build_exit_config, new_position, resolve_position_day, DayBar
+
 # ── Constants matching execution_agent.py ─────────────────────────────────────
-# Mirrors config.MAX_POSITIONS. backend/ ships as its own image that does not
-# contain config.py, so the env var is read directly rather than imported — the
-# .env stays the single operational switch. Keep the default in sync with
-# config.py: a backtest run against a different slot count than live silently
-# answers a question nobody asked.
+# Mirrors config.MAX_POSITIONS. backend/ ships as its own image; the env var is
+# read directly so .env stays the single operational switch. Keep the default in
+# sync with config.py: a backtest run against a different slot count than live
+# silently answers a question nobody asked.
 DEFAULT_MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", 5))
-DEFAULT_STOP_LOSS_PCT = 7.0      # trailing stop % from peak price
-DEFAULT_EMA_WINDOW    = 21       # EMA for market direction + exit signal
-DEFAULT_EXIT_BUFFER   = 0.01     # exit when close < EMA × (1 - buffer)
+DEFAULT_EMA_WINDOW    = 21       # EMA-21 for the SPY market-direction ENTRY filter
 MIN_VOLUME_MULTIPLIER = 1.4      # breakout volume must be ≥ 1.4× 50d avg
 # No fixed position size — sizing: min(cash / remaining_slots, equity / MAX_POSITIONS)
+# Exits are the LIVE Prove-It Stop + dynamic trail ladder + scale-out via
+# daily_exit_sim.resolve_position_day — there is no fixed trailing-stop % or EMA exit.
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -77,12 +96,38 @@ def _max_underwater_days(equity_series: pd.Series) -> int:
 
 # ── Main simulation ───────────────────────────────────────────────────────────
 
+def _make_trade(ticker: str, pos: dict, shares: int, sell_price: float,
+                sell_date: str, hold_days: int, exit_reason: str) -> dict:
+    """One closed (or partially closed) trade record, in the shape the API/UI
+    and the summary metrics expect. ``shares`` is the quantity SOLD in this event
+    (the whole position on a full exit, the scaled fraction on a partial)."""
+    buy_price = float(pos["buy_price"])
+    pnl = (sell_price - buy_price) * shares
+    pct = (sell_price / buy_price - 1.0) * 100.0
+    return {
+        "ticker":         ticker,
+        "shares":         shares,
+        "buy_price":      round(buy_price, 2),
+        "buy_date":       pos["buy_date"],
+        "sell_price":     round(sell_price, 2),
+        "sell_date":      sell_date,
+        "profit_loss":    round(pnl, 2),
+        "percent_return": round(pct, 2),
+        "hold_days":      hold_days,
+        "exit_reason":    exit_reason,
+        "alloc":          round(pos.get("alloc", 0), 2),
+    }
+
+
 def run_backtest(
     tickers: list[str],
     start_date_str: str,
     end_date_str: str,
     initial_capital: float = 100_000.0,
-    stop_loss_pct: float   = DEFAULT_STOP_LOSS_PCT,
+    # Legacy — accepted for API/UI backward-compat but IGNORED for exits. The live
+    # exit engine uses config STOP_LOSS_PCT as the trail BASE (via daily_exit_sim),
+    # not a caller-supplied fixed trailing stop.
+    stop_loss_pct: float   = 7.0,
     max_positions: int     = DEFAULT_MAX_POSITIONS,
     # kept for API backward-compat; ignored — live bot has no fixed profit target
     profit_target_pct: float = 25.0,
@@ -104,8 +149,9 @@ def run_backtest(
     start_date_str    Backtest window start  (YYYY-MM-DD)
     end_date_str      Backtest window end    (YYYY-MM-DD)
     initial_capital   Starting cash          (default $100,000)
-    stop_loss_pct     Trailing stop % from peak price (default 7.0)
-    max_positions     Max concurrent positions (default 4)
+    stop_loss_pct     Legacy — accepted but IGNORED for exits (the live exit
+                      engine uses config STOP_LOSS_PCT as the trail base)
+    max_positions     Max concurrent positions (default 5)
     profit_target_pct Legacy — accepted but unused (live bot has no fixed target)
 
     Returns
@@ -136,7 +182,6 @@ def run_backtest(
             if not df.empty:
                 df["SMA50"]   = df["Close"].rolling(50).mean()
                 df["SMA200"]  = df["Close"].rolling(200).mean()
-                df[ema_col]   = _ema(df["Close"], DEFAULT_EMA_WINDOW)
                 df["VolSMA50"] = df["Volume"].rolling(50).mean()
                 # shift(1) so today's high can legitimately break yesterday's 20d high
                 df["High20"]  = df["High"].rolling(20).max().shift(1)
@@ -155,7 +200,8 @@ def run_backtest(
     trades:    list[dict]      = []
     equity_history: list[dict] = []
 
-    stop_trail_factor = 1.0 - stop_loss_pct / 100.0
+    # The live exit thresholds, snapshot once for the shared exit engine.
+    exit_cfg = build_exit_config()
 
     for i, current_date in enumerate(all_dates):
         date_str = current_date.strftime("%Y-%m-%d")
@@ -193,66 +239,45 @@ def run_backtest(
                     continue
                 cost = shares * open_price
                 cash -= cost
-                positions[ticker] = {
-                    "shares":     shares,
-                    "buy_price":  open_price,
-                    "peak_price": open_price,   # trailing stop tracks this
-                    "buy_date":   date_str,
-                    "alloc":      alloc,         # record allocation for expectancy calc
-                }
+                # Live-shaped position carrying every field the exit engine reads.
+                positions[ticker] = new_position(
+                    ticker, shares, open_price, date_str, alloc, exit_cfg)
         pending = still_pending   # keep any that couldn't fill
 
-        # ── B. Update trailing stops & check exits ────────────────────────────
+        # ── B. Resolve exits via the LIVE engine (shared daily_exit_sim) ──────
+        # resolve_position_day computes the Prove-It level, the dynamic trail
+        # ladder and the static hard stop from live exit_rules functions each day,
+        # folds today's high into the peak AFTER the low is resolved (no
+        # look-ahead), and takes the partial scale-out at the close — byte-for-byte
+        # the production exit decisions.
         tickers_to_close: list[str] = []
         for ticker, pos in positions.items():
             if ticker not in data or current_date not in data[ticker].index:
                 continue
-            row   = data[ticker].loc[current_date]
-            high  = float(row["High"])
-            low   = float(row["Low"])
-            close = float(row["Close"])
-            ema21 = float(row.get(ema_col, float("nan")))
+            row = data[ticker].loc[current_date]
+            bar = DayBar(
+                open=float(row.get("Open", row["Close"])),
+                high=float(row["High"]),
+                low=float(row["Low"]),
+                close=float(row["Close"]),
+            )
+            buy_dt        = datetime.strptime(pos["buy_date"], "%Y-%m-%d")
+            calendar_days = (current_date - buy_dt).days
+            res           = resolve_position_day(pos, bar, calendar_days, exit_cfg)
 
-            # Advance peak price (trailing stop rises, never falls)
-            if high > pos["peak_price"]:
-                pos["peak_price"] = high
+            # Partial scale-out: bank the sold fraction, keep the position open.
+            if res.scale_shares and res.scale_price is not None:
+                trades.append(_make_trade(
+                    ticker, pos, res.scale_shares, res.scale_price,
+                    date_str, calendar_days, "Partial scale-out (+trigger)"))
+                cash += res.scale_shares * res.scale_price
 
-            stop_level  = pos["peak_price"] * stop_trail_factor
-            exit_price  = None
-            exit_reason = None
-
-            # Priority 1 — Trailing stop
-            if low <= stop_level:
-                exit_price  = max(stop_level, low)   # realistic: can gap through
-                exit_reason = f"Trailing Stop ({stop_loss_pct:.0f}% from peak ${pos['peak_price']:.2f})"
-
-            # Priority 2 — EMA-21 exit with 1% buffer (EOD candle)
-            elif not pd.isna(ema21) and close < ema21 * (1.0 - DEFAULT_EXIT_BUFFER):
-                exit_price  = close
-                exit_reason = (
-                    f"EMA-{DEFAULT_EMA_WINDOW} Exit "
-                    f"(close ${close:.2f} < MA ${ema21:.2f} × {1-DEFAULT_EXIT_BUFFER:.2f})"
-                )
-
-            if exit_price is not None:
-                pnl       = (exit_price - pos["buy_price"]) * pos["shares"]
-                pct       = (exit_price / pos["buy_price"] - 1.0) * 100.0
-                buy_dt    = datetime.strptime(pos["buy_date"], "%Y-%m-%d")
-                hold_days = (current_date - buy_dt).days
-                trades.append({
-                    "ticker":         ticker,
-                    "shares":         pos["shares"],
-                    "buy_price":      round(pos["buy_price"], 2),
-                    "buy_date":       pos["buy_date"],
-                    "sell_price":     round(exit_price, 2),
-                    "sell_date":      date_str,
-                    "profit_loss":    round(pnl, 2),
-                    "percent_return": round(pct, 2),
-                    "hold_days":      hold_days,
-                    "exit_reason":    exit_reason,
-                    "alloc":          round(pos.get("alloc", 0), 2),
-                })
-                cash += pos["shares"] * exit_price
+            # Full exit: close the remaining position.
+            if res.exit_price is not None:
+                trades.append(_make_trade(
+                    ticker, pos, pos["shares"], res.exit_price,
+                    date_str, calendar_days, res.exit_reason))
+                cash += pos["shares"] * res.exit_price
                 tickers_to_close.append(ticker)
 
         for t in tickers_to_close:

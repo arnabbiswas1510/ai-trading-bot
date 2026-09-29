@@ -24,13 +24,17 @@ primitives in `monitor_portfolio_intraday()`'s exact order and returns an
 `ExitDecision`; it never touches IBKR, Supabase, the clock, or the notifier.
 `monitoring.py` computes the live inputs (price, days held, hours armed) and
 performs the order/DB/notify side effects the verdict implies. This is the exit
-twin of `decision_core.py`: the single source the research backtest
-(`research/strategy_backtest.py`) also calls, so live and backtest exits are
-identical by construction on the rules that fire (see
-`decisions/2026-09-29_backtester-exit-core-adoption.md`; daily-bar fill-price
-fidelity is a documented limitation there). A parity test
-(`tests/test_exit_core.py`) pins `exit_core`'s verdict to the live monitor's
-recorded money-path actions on the golden book, so the two cannot silently drift.
+twin of `decision_core.py`: the single source BOTH backtesters call — the research
+tool (`research/strategy_backtest.py`) and the dashboard tool
+(`backend/backtester.py`) share one daily-bar exit engine, the root module
+`daily_exit_sim`, which drives `exit_core`/`exit_rules` — so live and backtest
+exits are identical by construction on the rules that fire (see
+`decisions/2026-09-29_backtester-exit-core-adoption.md` for the research adoption
+and `decisions/2026-09-29_backtester-option-a-live-exits.md` for bringing it into
+the web image; daily-bar fill-price fidelity is a documented limitation there). A
+parity test (`tests/test_exit_core.py`) pins `exit_core`'s verdict to the live
+monitor's recorded money-path actions on the golden book, so the two cannot
+silently drift.
 The live monitor's delegation to `exit_core` is staged behind the
 orchestrator-split safety window (a quiet book); until then `exit_core` is proven
 equal, not yet wired in. See `decisions/2026-09-29_exit-core-extraction.md` for why.
