@@ -888,6 +888,7 @@ python3 research/exit_rule_replay.py --insecure --proveit --top 80  # Prove-It p
 python3 research/exit_rule_replay.py --insecure --day0     # Phase 1: bot-enforced vs broker-resting
 python3 research/exit_rule_replay.py --insecure --runon    # "let winners run": the LOOSENING direction
 python3 research/exit_rule_replay.py --insecure --slotcost # "let winners run" WITH the blocked-entry slot cost charged
+python3 research/exit_rule_replay.py --insecure --jackknife # leave-one-out: is a loosening edge carried by one trade/name?
 ```
 
 > ⚠️ **Use `--runon` for any question of the form "should we hold longer?"**

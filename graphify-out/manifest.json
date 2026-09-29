@@ -280,8 +280,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790651465.4319668,
-    "ast_hash": "2b22be32eb8cb3edc90719b7d619046d",
+    "mtime": 1790655526.4284782,
+    "ast_hash": "ac39b6ec042add2e46d88ffb03ad1904",
     "semantic_hash": ""
   },
   "README.md": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "research/exit_rule_replay.py": {
-    "mtime": 1790520894.4732945,
-    "ast_hash": "fef2f0487ea12d079180a7c8e8d04d6f",
+    "mtime": 1790655275.8816848,
+    "ast_hash": "a47a87c0a49d106b879ac9d03d9bbb83",
     "semantic_hash": ""
   },
   "decisions/2026-08-20_slot-derived-early-dollar-stop.md": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1790644590.5265791,
-    "ast_hash": "3f50ce3f32a3ceef44f62ea1b1b30cfa",
+    "mtime": 1790655485.1481493,
+    "ast_hash": "75984bd849b390dd0e2b1c7c26d48e70",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1697,6 +1697,16 @@
   "decisions/2026-09-28_bitwarden-project-scoped-secret-list.md": {
     "mtime": 1790650527.7318993,
     "ast_hash": "67eff6374d392555d01dbecfbfea15ba",
+    "semantic_hash": ""
+  },
+  "tests/test_jackknife.py": {
+    "mtime": 1790655451.1656227,
+    "ast_hash": "7666cb0d031f2897f1b922713466c996",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-28_jackknife-fragility-test.md": {
+    "mtime": 1790655520.284174,
+    "ast_hash": "40fbeda3b6ee2bb71be232ff5b233548",
     "semantic_hash": ""
   }
 }

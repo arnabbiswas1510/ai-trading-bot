@@ -952,6 +952,36 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
     return None
 
 
+def _trade_delta(trade: Trade, cfg: ExitConfig) -> tuple[float, dict | None]:
+    """The dollar delta ONE trade would see under `cfg`, vs its realised exit.
+
+    This is the single source of truth for a per-trade result. `score()` sums it
+    into an aggregate and `jackknife()` re-sums it across leave-one-out samples;
+    keeping both on this one function is what guarantees the two can never drift
+    (an earlier design duplicated the simulate/run-on-mark logic and they did).
+
+    Returns (delta, sim). `sim` carries the exit reason for the per-trade table;
+    it is None only when the position never exited AND has no run-on bars to be
+    marked out at — in which case the delta is 0 (the realised exit stands).
+    """
+    if cfg.scale_frac is not None:
+        sim = simulate_scaleout(trade, cfg)
+    elif cfg.proveit:
+        sim = simulate_proveit(trade, cfg)
+    else:
+        sim = simulate(trade, cfg)
+    # With a run-on window a configuration can survive past the REAL exit.
+    # `sim is None` then means "still open at the end of the extended window",
+    # which must be marked out at the last available close. Scoring it at the
+    # realised sell price (delta 0) would silently hand every loosened rule the
+    # live exit for free — the exact bias the run-on window exists to remove.
+    if sim is None and trade.runon_from and trade.runon_from < len(trade.bars):
+        sim = {"price": trade.bars[-1]["close"], "reason": "runon_open"}
+    delta = 0.0 if sim is None else round(
+        (sim["price"] - trade.sell_price) * trade.shares, 2)
+    return delta, sim
+
+
 def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
     """Aggregate one configuration into a comparable result.
 
@@ -971,22 +1001,7 @@ def score(trades: list[Trade], cfg: ExitConfig) -> dict[str, Any]:
     over_500 = 0
 
     for trade in trades:
-        if cfg.scale_frac is not None:
-            sim = simulate_scaleout(trade, cfg)
-        elif cfg.proveit:
-            sim = simulate_proveit(trade, cfg)
-        else:
-            sim = simulate(trade, cfg)
-        # With a run-on window a configuration can survive past the REAL exit.
-        # `sim is None` then means "still open at the end of the extended
-        # window", which must be marked out at the last available close. Scoring
-        # it at the realised sell price (delta 0) would silently hand every
-        # loosened rule the live exit for free — the exact bias the run-on
-        # window exists to remove.
-        if sim is None and trade.runon_from and trade.runon_from < len(trade.bars):
-            sim = {"price": trade.bars[-1]["close"], "reason": "runon_open"}
-        delta = 0.0 if sim is None else round(
-            (sim["price"] - trade.sell_price) * trade.shares, 2)
+        delta, sim = _trade_delta(trade, cfg)
         # Resulting P&L for this trade under `cfg`. This is what answers "how
         # big is my worst loss", which an aggregate net deliberately hides.
         result_pl = trade.profit_loss + delta
@@ -2176,6 +2191,182 @@ def report(results: list[dict], trades: list[Trade], top: int | None = None,
     print()
 
 
+def jackknife(trades: list[Trade], configs: list[ExitConfig],
+              baseline: ExitConfig) -> list[dict[str, Any]]:
+    """Leave-one-out fragility test of every challenger against `baseline`.
+
+    The standing failure mode of every loosening result so far is that it is
+    "carried by one trade" — ladder 5% beats shipped by +$5,685 but ECO alone is
+    +$3,794 of it (decisions/2026-09-18_runon-window-winners-run.md). AGENTS.md
+    makes "is any result carried by a single trade?" a mandatory review question.
+    This answers it arithmetically instead of by eyeballing the per-trade table.
+
+    `net` is exactly the sum of every trade's delta (see score()), so the edge of
+    a challenger over the baseline is additive per trade:
+
+        edge_i = delta(challenger, trade_i) - delta(baseline, trade_i)
+        full_edge = Σ edge_i = challenger.net - baseline.net
+
+    Because it is additive, leave-one-out is closed-form — dropping trade j simply
+    removes edge_j from the sum, so the worst single trade to lose is the one with
+    the largest positive edge. We report:
+
+      • full_edge                — the headline advantage over shipped
+      • edge after dropping the single best-contributing trade  (leave-one-out)
+      • edge after dropping the best THREE  (AGENTS.md: an edge must be spread
+        over 3+ trades to count)
+      • the three trades carrying the most edge, with their share
+
+    A challenger is only a real candidate if full_edge > ~$500 AND it stays
+    positive after leave-one-out AND no single trade is most of it.
+    """
+    base_deltas = [_trade_delta(t, baseline)[0] for t in trades]
+
+    def _tid(t: Trade) -> str:
+        return f"{t.ticker} {t.buy_ts:%y-%m-%d %H:%M}"
+
+    out = []
+    for cfg in configs:
+        if cfg.label == baseline.label:
+            continue
+        cand_deltas = [_trade_delta(t, cfg)[0] for t in trades]
+        edges = [(round(c - b, 2), _tid(t))
+                 for c, b, t in zip(cand_deltas, base_deltas, trades)]
+        full_edge = round(sum(e for e, _ in edges), 2)
+        # Sorted most-favorable-to-the-challenger first: these are the trades
+        # whose removal hurts the edge most.
+        ranked = sorted(edges, key=lambda e: e[0], reverse=True)
+        drop1 = round(full_edge - ranked[0][0], 2) if ranked else full_edge
+        drop3 = round(full_edge - sum(e for e, _ in ranked[:3]), 2)
+        top_contrib = [{"trade": tid, "edge": e} for e, tid in ranked[:3]]
+        top1_share = (ranked[0][0] / full_edge * 100.0
+                      if full_edge > 0 and ranked else None)
+        # Per-ROW concentration understates a multi-leg position: NTRA exits in
+        # five round trips, so no single row can be >50% of the edge even when
+        # the NAME carries all of it. Aggregate by ticker for the honest check.
+        by_ticker: dict[str, float] = {}
+        for (e, _), t in zip(edges, trades):
+            by_ticker[t.ticker] = round(by_ticker.get(t.ticker, 0.0) + e, 2)
+        ranked_names = sorted(by_ticker.items(), key=lambda kv: kv[1], reverse=True)
+        top_name, top_name_edge = (ranked_names[0] if ranked_names else ("", 0.0))
+        top_name_share = (top_name_edge / full_edge * 100.0
+                          if full_edge > 0 else None)
+        n_positive = sum(1 for e, _ in edges if e > 0.005)
+        n_negative = sum(1 for e, _ in edges if e < -0.005)
+        out.append({
+            "label": cfg.label,
+            "full_edge": full_edge,
+            "drop1": drop1,          # leave-one-out worst case
+            "drop3": drop3,          # leave-three-out worst case
+            "top_contrib": top_contrib,
+            "top1_share": round(top1_share, 1) if top1_share is not None else None,
+            "top_name": top_name,
+            "top_name_edge": top_name_edge,
+            "top_name_share": (round(top_name_share, 1)
+                               if top_name_share is not None else None),
+            "n_helped": n_positive,
+            "n_hurt": n_negative,
+        })
+    return sorted(out, key=lambda r: r["full_edge"], reverse=True)
+
+
+def report_jackknife(trades: list[Trade], configs: list[ExitConfig],
+                     baseline: ExitConfig, top: int | None = None) -> list[dict]:
+    results = jackknife(trades, configs, baseline)
+    losers = [t for t in trades if t.is_loser]
+    print()
+    print("=" * 92)
+    print("JACKKNIFE (leave-one-out) — is any loosening edge carried by one trade?")
+    print("=" * 92)
+    print(f"Closed trades replayed : {len(trades)}  "
+          f"({len(losers)} losers, {len(trades) - len(losers)} winners)")
+    print(f"Baseline               : {baseline.label}")
+    if len(trades) < 30:
+        print()
+        print(f"  ⚠  n={len(trades)} is small. Even a leave-one-out that survives is")
+        print("     thin evidence until the sample and a second regime grow.")
+    print("=" * 92)
+    print()
+    print("Every figure is a delta vs the BASELINE above (not vs realised exits).")
+    print("  full   = edge over baseline across all trades (= challenger.net - baseline.net)")
+    print("  -1     = edge after DROPPING the single best-contributing trade")
+    print("  -3     = edge after dropping the best THREE trades")
+    print("  top1%  = share of the edge carried by its single best trade")
+    print("A challenger only counts if it clears ~$500 AND stays positive at -1")
+    print("AND no single trade is most of it (AGENTS.md: spread over 3+ trades).")
+    print()
+    header = (f"{'challenger configuration':<44}{'full':>9}{'-1':>9}"
+              f"{'-3':>9}{'top1%':>7}{'helped':>8}{'hurt':>6}")
+    print(header)
+    print("-" * len(header))
+    ordered = results[:top] if top else results
+    for res in ordered:
+        share = f"{res['top1_share']:.0f}" if res['top1_share'] is not None else "-"
+        print(f"{res['label'][:43]:<44}"
+              f"{res['full_edge']:>9,.0f}"
+              f"{res['drop1']:>9,.0f}"
+              f"{res['drop3']:>9,.0f}"
+              f"{share:>7}"
+              f"{res['n_helped']:>8}"
+              f"{res['n_hurt']:>6}")
+    print()
+
+    # Verdict on the best positive-edge challenger — the one a review would
+    # actually consider shipping — stated in the four-question language.
+    candidates = [r for r in results if r["full_edge"] > 0]
+    if not candidates:
+        print("No challenger beats the baseline. Nothing to jackknife further.")
+        print()
+        return results
+    best = candidates[0]
+    print(f"Best challenger: {best['label']}")
+    print(f"  full edge over baseline    : ${best['full_edge']:+,.2f}")
+    print(f"  after dropping best 1 trade : ${best['drop1']:+,.2f}   (leave-one-out)")
+    print(f"  after dropping best 3 trades: ${best['drop3']:+,.2f}")
+    if best["top_contrib"]:
+        print("  edge carried by:")
+        for c in best["top_contrib"]:
+            print(f"     {c['trade']:<20} ${c['edge']:+,.2f}")
+    if best["top_name_share"] is not None:
+        print(f"  single biggest NAME: {best['top_name']} "
+              f"${best['top_name_edge']:+,.2f} "
+              f"({best['top_name_share']:.0f}% of the edge across all its legs)")
+    print(f"  helped {best['n_helped']} trades, hurt {best['n_hurt']}")
+    print()
+    reasons = []
+    if best["full_edge"] < 500:
+        reasons.append(f"edge ${best['full_edge']:,.0f} is inside the ~$500 noise bar")
+    if best["drop1"] <= 0:
+        reasons.append("edge goes NON-POSITIVE after dropping one trade — carried by it")
+    elif best["top1_share"] is not None and best["top1_share"] >= 50:
+        reasons.append(f"one trade is {best['top1_share']:.0f}% of the edge")
+    # The decisive check for multi-leg positions: is the edge really one NAME?
+    # NTRA carrying 93% across three of its legs is "carried by one trade" in
+    # every sense that matters, even though no single row is >50%.
+    if best["top_name_share"] is not None and best["top_name_share"] >= 50:
+        reasons.append(f"{best['top_name']} alone is {best['top_name_share']:.0f}% "
+                       f"of the edge (${best['top_name_edge']:,.0f}) — one name, not an edge")
+    # AGENTS.md: an edge must be spread over 3+ trades. If removing the best
+    # three collapses it below the noise bar, it IS those three trades — the
+    # single most common way a loosening result flatters itself here.
+    if best["drop3"] < 500:
+        reasons.append(f"edge collapses to ${best['drop3']:,.0f} after removing its "
+                       f"best 3 trades — it IS those trades, not a repeatable edge")
+    if best["n_helped"] < 3:
+        reasons.append(f"only {best['n_helped']} trades benefit (need 3+)")
+    if reasons:
+        print("  VERDICT: NOT SHIPPABLE —")
+        for r in reasons:
+            print(f"    • {r}")
+    else:
+        print("  VERDICT: SURVIVES the jackknife — edge stays positive after")
+        print("    leave-one-out, clears the noise bar, and is spread over 3+")
+        print("    trades. Still gate on slot cost (--slotcost) and a 2nd regime")
+        print("    before shipping, and promote via shadow first.")
+    print()
+    return results
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--detail", metavar="SUBSTRING", default=None,
@@ -2234,6 +2425,12 @@ def main() -> None:
                              "partials into parent positions, validates concurrency "
                              "<= MAX_POSITIONS, then runs a 5-slot portfolio sim. "
                              "Implies a run-on window.")
+    parser.add_argument("--jackknife", action="store_true",
+                        help="leave-one-out fragility test of the loosening sweep: "
+                             "for every challenger, report its edge over SHIPPED "
+                             "after dropping its single best (and best three) "
+                             "trades. Answers the mandatory 'carried by one trade?' "
+                             "question arithmetically. Implies a run-on window.")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -2247,7 +2444,8 @@ def main() -> None:
     print("Loading closed trades from Supabase...", file=sys.stderr)
     trades = load_trades(verify_tls=not args.insecure)
     print(f"Fetching 5-minute bars for {len(trades)} trades...", file=sys.stderr)
-    runon_days = args.runon_days if (args.runon or args.slotcost) else 0
+    runon_days = args.runon_days if (args.runon or args.slotcost
+                                     or args.jackknife) else 0
     if runon_days:
         print(f"  (run-on window: +{runon_days} calendar days past each exit)",
               file=sys.stderr)
@@ -2273,6 +2471,24 @@ def main() -> None:
                     "peak_concurrency": concurrency,
                     "max_positions": MAX_POSITIONS,
                     "results": slot_results,
+                }, fh, indent=2)
+            print(f"Full results written to {args.json}")
+        return
+
+    # ── Jackknife shares the loosening sweep with --runon but answers a
+    #    different question (fragility, not ranking), so it has its own early
+    #    path. Baseline is shipped_proveit(), which runon_configs() puts first.
+    if args.jackknife:
+        configs = runon_configs()
+        baseline = configs[0]
+        jk = report_jackknife(trades, configs, baseline, top=args.top)
+        if args.json:
+            with open(args.json, "w") as fh:
+                json.dump({
+                    "generated": dt.datetime.now(dt.timezone.utc).isoformat(),
+                    "n_trades": len(trades),
+                    "baseline": baseline.label,
+                    "results": jk,
                 }, fh, indent=2)
             print(f"Full results written to {args.json}")
         return
