@@ -197,6 +197,24 @@ class TelegramNotifier:
         delivery counts as failure: if one of two recipients is silently
         dropping alerts, that is a fault worth surfacing, not rounding up.
         """
+        all_ok, _any_ok = self._send_multi(message)
+        return all_ok
+
+    def _send_multi(self, message: str) -> tuple[bool, bool]:
+        """Send to all configured chat IDs and report delivery two ways.
+
+        Returns ``(all_delivered, any_delivered)``:
+          • ``all_delivered`` is the strict AND used by ``_send`` — every
+            recipient confirmed. This is the right signal for "did the alert
+            fully go out".
+          • ``any_delivered`` is True when AT LEAST ONE recipient confirmed. This
+            is the right signal for a once-a-day DEDUP latch: once any operator
+            has seen the message, re-sending it every cycle only spams the
+            working recipients to satisfy a second, misconfigured one — the
+            partial-delivery fault is already recorded via _record_failure and
+            must not be "fixed" by resending. Only a TOTAL failure
+            (any_delivered False) should retry next cycle.
+        """
         self.sends_attempted += 1
         if not self._is_configured():
             missing = []
@@ -208,15 +226,18 @@ class TelegramNotifier:
             # produced no output whatsoever, so a deployment that simply lost
             # its env vars looked identical to a quiet trading day.
             self._record_failure(f"not configured: {' and '.join(missing)} unset")
-            return False
+            return False, False
 
         all_ok = True
+        any_ok = False
         for chat_id in self.chat_ids:
-            if not self._send_one(chat_id, message):
+            if self._send_one(chat_id, message):
+                any_ok = True
+            else:
                 all_ok = False
         if all_ok:
             self._record_success()
-        return all_ok
+        return all_ok, any_ok
 
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -617,8 +638,10 @@ class TelegramNotifier:
         buy check itself runs every 15 minutes). ``reason_body`` is either a
         single top-level stand-down reason (market bearish, margin loan, schema
         degraded, no triggers) or a bulleted per-reason breakdown aggregated from
-        today's trigger_decisions. Returns the _send() delivery bool so the
-        caller only marks the day done when the message actually went out.
+        today's trigger_decisions. Returns True when the summary reached AT LEAST
+        ONE recipient, so the caller latches the day (and stops re-sending to the
+        working chats) even if a second, misconfigured recipient keeps failing. A
+        TOTAL delivery failure returns False so the summary is retried next cycle.
         """
         plural = "s" if free_slots != 1 else ""
         msg = (
@@ -633,7 +656,8 @@ class TelegramNotifier:
             f"\n"
             f"🕒 {self._now_et()}"
         )
-        return self._send(msg)
+        _all_ok, any_ok = self._send_multi(msg)
+        return any_ok
 
     def notify_exception(self, context: str, error: Exception) -> None:
         """

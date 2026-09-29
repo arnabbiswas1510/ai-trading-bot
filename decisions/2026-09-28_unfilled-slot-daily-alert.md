@@ -45,6 +45,21 @@ the table is missing or the query errors, the summary is *suppressed*, never
 spammed. The day is only marked done when Telegram actually accepted the message
 (`_send()` returned true), so a transient delivery failure retries next cycle.
 
+> **Addendum 2026-09-29 — latch on ANY delivery, not ALL.** The line above
+> ("`_send()` returned true") was a latent bug. `_send()` returns true only when
+> **every** configured `TELEGRAM_CHAT_IDS` recipient is delivered to; with a
+> second, misconfigured recipient that always fails, `_send()` returned false on
+> every cycle even though the operator's working chat received the summary. The
+> day therefore never latched and the summary re-fired every 15 minutes to the
+> working chat — observed live on 2026-09-29 (the `daily_notifications` latch row
+> for the day was absent while the message kept arriving). The dedup now latches
+> when the message reached **at least one** recipient
+> (`notify_unfilled_slots` returns `any_delivered` via the new
+> `TelegramNotifier._send_multi`). A **total** failure (no recipient) still
+> returns false and retries next cycle, preserving transient-failure recovery.
+> The partial-delivery fault is not hidden — it is still recorded by
+> `_record_failure` and surfaced through the delivery-alarm path.
+
 `daily_notifications` is deliberately **excluded** from `supabase_backup.py` —
 it is regenerable operational state, and coupling it to the weekly backup would
 reintroduce the exact PGRST205 failure `exit_shadow_log` caused on 2026-09-27.

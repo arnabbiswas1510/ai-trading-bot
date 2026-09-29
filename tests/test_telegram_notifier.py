@@ -217,6 +217,43 @@ def test_timeout_retries_once_then_records_failure(mock_post, notifier):
     assert "timed out after retry" in notifier.last_error
 
 
+@patch('requests.post')
+def test_unfilled_slots_latches_on_partial_delivery(mock_post):
+    """The dedup bug: two recipients, one broken. The operator DID see the alert
+    on the working chat, so notify_unfilled_slots must return True — otherwise the
+    caller never latches the day and re-sends every 15-minute cycle, spamming the
+    working chat to satisfy the broken one. _send() still reports strict failure."""
+    n = TelegramNotifier(bot_token="t", chat_ids=["good", "bad"])
+    good = MagicMock(); good.status_code = 200
+    bad = MagicMock(); bad.status_code = 403; bad.text = "bot was blocked by the user"
+    mock_post.side_effect = lambda url, **kw: good if kw["data"]["chat_id"] == "good" else bad
+
+    # Reached at least one recipient -> latch the day.
+    assert n.notify_unfilled_slots(4, 5, 1, "no candidate cleared the gates") is True
+    # But the strict all-recipients signal still flags the fault.
+    all_ok, any_ok = n._send_multi("x")
+    assert (all_ok, any_ok) == (False, True)
+
+
+@patch('requests.post')
+def test_unfilled_slots_retries_on_total_failure(mock_post):
+    """A TOTAL delivery failure (no recipient got it) must NOT latch — the summary
+    should be retried next cycle, so notify_unfilled_slots returns False."""
+    n = TelegramNotifier(bot_token="t", chat_ids=["a", "b"])
+    dead = MagicMock(); dead.status_code = 500; dead.text = "server error"
+    mock_post.return_value = dead
+    assert n.notify_unfilled_slots(4, 5, 1, "body") is False
+
+
+@patch('requests.post')
+def test_unfilled_slots_returns_true_on_full_delivery(mock_post):
+    """Every recipient delivered -> latch the day."""
+    n = TelegramNotifier(bot_token="t", chat_ids=["a", "b"])
+    ok = MagicMock(); ok.status_code = 200
+    mock_post.return_value = ok
+    assert n.notify_unfilled_slots(4, 5, 1, "body") is True
+
+
 # ── verify_delivery: the startup self-test ───────────────────────────────────
 
 def test_verify_delivery_reports_missing_token():
