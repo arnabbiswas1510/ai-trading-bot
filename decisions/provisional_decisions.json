@@ -642,6 +642,59 @@
       "adr": "decisions/2026-09-28_earnings-blackout-and-news-veto.md",
       "last_reviewed": null,
       "history": []
+    },
+    {
+      "id": "entry-feature-learning-loop",
+      "title": "Symmetric, measured entry-learning loop: learn feature->outcome to RANK candidates, never to relax a gate",
+      "kind": "work-item",
+      "status": "active",
+      "decided": "2026-09-28",
+      "implemented": false,
+      "decision": "NOTHING shipped. This parks a DESIGN and the engineering that would build it. Today's only trade-history learning is compute_trade_history_penalty() in ai_evaluator.py: per-ticker memory that fires only when a candidate ticker has >=2 recent losing trades, is ASYMMETRIC (penalises losers, never rewards a winning pattern), and whose breakout failure_penalty ships inert (FAILURE_PENALTY_MAX_POINTS=0). The proposal is to replace that with a SYMMETRIC feature->outcome learner that generalises across names -- it up-weights entry features associated with winners and down-weights those associated with losers -- and that only ever RE-ORDERS already-eligible candidates. Every hard gate (market-direction, earnings blackout, cooling-off, pivot zone, MAX_POSITIONS, score floor) stays exactly as-is. The user's hard constraint: no guardrail is relaxed to make room for the AI.",
+      "rationale": "Two things make this premature to fit but worth plumbing now. (1) The data to learn winner-picking is not durably stored: the rich per-trigger feature vector (atr_pct, rs_percentile, rs_12w/excess_return, volume_surge, pivot_distance_pct, sentiment_score, ai_rating, technical/liquidity/quality scores, trigger_type, next_earnings_date, plus fundamentals) lives ONLY in daily_triggers, which is a rolling table wiped every scan; trigger_decisions (287 durable rows) keeps only the decision subset, and durable OUTCOMES exist only for TAKEN trades (trade_history 67, breakout_learnings 35), which is survivorship-biased. (2) Sample size and clustering: 67 closed trades / ~91 matured triggers against the 150-matured-trigger gate on entry-quality-right-tail, and matured rows cluster on ~4 scan dates so row count is not sample size. Building the durable feature+label snapshot NOW lets the history accrue so a fit is possible when n is sufficient; fitting before then would overfit.",
+      "design_sketch": [
+        "LABEL must be exit-INDEPENDENT. Use forward MFE / 'reached +5% before -stop within N days' from raw bars, NOT the bot's realised percent_return, which mixes entry quality with exit tuning. This decouples entry learning from the tight exit regime that is the current binding constraint.",
+        "Phase 0 (safe, no behaviour change): new durable table trigger_features snapshotting the FULL daily_triggers feature vector + fundamentals for EVERY trigger (taken or not), keyed (ticker, triggered_at); and an offline label materialiser (reuse research/ai_value_replay.py bar fetch) writing forward MFE/threshold outcomes as bars mature. This is the prerequisite and the only no-regret step to start immediately.",
+        "Phase 1 (shadow): fit a SMALL, shrinkage-regularised scorecard -- ridge/Bayesian logistic P(win|features) or per-bucket Beta posteriors shrunk to a prior. Few parameters on purpose (n is tiny; gradient boosting is explicitly rejected). Write learned_score in SHADOW next to adjusted_score (precedent: rs_percentile shadow, exit_shadow_log); the live buy loop ignores it. Extend ai_value_replay.py to fit on TRAIN, score a HELD-OUT split, A/B learned-ranking vs current adjusted_score with DATE-GROUPED CV and a permutation baseline.",
+        "Phase 2 (gated promotion): promote to live as a RANKING adjustment ONLY. Gate: beats current out-of-sample by a dollar margin spread over 3+ trades and 2+ distinct scan dates, not carried by one name.",
+        "Phase 3: online Bayesian update as trades close, re-checked by the monthly decision_review cron so it cannot silently rot."
+      ],
+      "honest_blockers": [
+        "Sample too small to fit (67 closed / ~91 matured vs 150 gate) -- build plumbing now, fit later.",
+        "Date clustering (~4 scan dates) -- MUST use date-grouped CV and report distinct-date counts, not row counts.",
+        "Exits are the binding constraint (64% of trades exit within +/-3% over 0-3 days) -- entry learning adds little until exits loosen; that is why the label is exit-independent and why ladder-width-runon may sequence first.",
+        "Survivorship -- fit on ALL triggers' forward outcomes, not just taken trades, or the model learns the buy gate not winner-picking.",
+        "Look-ahead -- every feature as-of entry; forward label uses only post-entry bars.",
+        "Reflexivity/overfit -- few parameters + shrinkage + out-of-sample gating; a big model on this sample is fatal."
+      ],
+      "adr": null,
+      "revisit": {
+        "min_matured_triggers": 150,
+        "not_before": "2026-11-01",
+        "why": "Gated to the same population as entry-quality-right-tail: this question is answered on the trigger population, which grows several times faster than the traded one, and 150 matured rows leaves a ~75-row held-out half -- thin but enough to tell a real AUC of 0.65 from noise. NOTE: Phase 0 plumbing (durable trigger_features snapshot + offline label) is a no-regret prerequisite that should be built BEFORE this gate so the feature+label history accrues; only the FIT (Phase 1+) waits on the count."
+      },
+      "preconditions": {
+        "_note": "Phase 0 plumbing has no portfolio-state precondition (schema-only + offline compute, no trading change). Phase 1+ fitting waits on the revisit gate above, not on book state."
+      },
+      "baseline_at_decision": {
+        "closed_trades": 67,
+        "matured_triggers": 91,
+        "current_learning": "compute_trade_history_penalty: per-ticker, asymmetric, cap 12 pts, needs >=2 recent same-ticker losers; breakout failure_penalty inert (FAILURE_PENALTY_MAX_POINTS=0)",
+        "feature_vector_durably_stored": false,
+        "exit_independent_label_stored": false,
+        "note": "Reasons to build plumbing, NOT a finding. No model fit yet."
+      },
+      "review_command": "python3 research/entry_quality_review.py --insecure   # shares the matured-trigger population; build Phase 0 plumbing first, then fit",
+      "review_questions": [
+        "Is the full per-trigger feature vector being durably snapshotted yet (Phase 0)? If not, that is the only next step -- everything downstream waits on data.",
+        "Are there >=150 matured triggers across >=20 distinct scan dates? Below that, do not fit.",
+        "Does an exit-INDEPENDENT label (MFE / reached +5% before -stop) separate winners on a HELD-OUT, date-grouped split, or only in-sample?",
+        "What AUC does the same search find on permuted labels? If the real best barely beats it, report 'no signal' and stop.",
+        "Does the learned ranking beat current adjusted_score out-of-sample by a dollar margin over 3+ trades and 2+ scan dates, not carried by one name?",
+        "Is entry ranking even the binding constraint yet, or does exit loosening (ladder-width-runon) have to come first?"
+      ],
+      "last_reviewed": null,
+      "history": []
     }
   ]
 }
