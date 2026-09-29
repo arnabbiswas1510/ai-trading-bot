@@ -176,13 +176,14 @@ The application uses a decoupled cloud screening and local execution environment
    * Weekend fundamental scans and daily technical breakout scans run on GitHub Actions.
    * Scans write results directly to a Supabase cloud database (`watchlist` and `daily_triggers` tables).
 2. **Local Self-Hosted Execution (DietPi Docker at `192.168.1.2`)**:
-   * **Host Server**: Production DietPi host at `192.168.1.2`. **SSH gotcha:**
-     the host's `sshd` listens on **port 22**; the router forwards *external*
-     port **2222 → internal 22**. GitHub Actions (`deploy_to_server.yml`, the
-     weekly backup) connect over the internet on **2222**, but **on the LAN you
-     connect on 22** (`ssh -p 22 … pom@192.168.1.2`). Connecting to
-     `192.168.1.2:2222` from inside the LAN is *refused* — that is expected, not
-     a fault.
+   * **Host Server**: Production DietPi host at `192.168.1.2`. **Connect on
+     port 22** (`ssh -p 22 … pom@192.168.1.2`) — the host's `sshd` listens on
+     22 and that is the port for all LAN/local access. The router additionally
+     forwards a separate *external* port to internal 22 so GitHub Actions
+     (`deploy_to_server.yml`, the weekly backup) can reach it over the internet;
+     that external port lives only in the CI secrets, never here. Do **not** use
+     it on the LAN — it is refused from inside the network, which is expected,
+     not a fault.
    * **`ib-gateway`**: Headless Interactive Brokers Gateway container (`ghcr.io/gnzsnz/ib-gateway`) managing the live brokerage connection (port 4000).
    * **`execution-agent`**: Python daemon (`execution_agent.py`) checking daily triggers, placing live orders at market open, and monitoring positions every 15 minutes.
    * **`trading-bot`**: FastAPI backend and React dashboard served at `http://localhost:8000` (or `http://192.168.1.2:8000`).
