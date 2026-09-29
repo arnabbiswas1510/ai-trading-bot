@@ -43,6 +43,7 @@ from fmp_client import FMPClient
 # positions byte-for-byte the way production does, instead of the retired 7%-trail +
 # EMA-21 rules it used to re-implement here.
 from daily_exit_sim import build_exit_config, new_position, resolve_position_day, DayBar
+from trade_costs import CostModel, build_cost_model
 
 # ── Constants matching execution_agent.py ─────────────────────────────────────
 # Mirrors config.MAX_POSITIONS. backend/ ships as its own image; the env var is
@@ -97,13 +98,29 @@ def _max_underwater_days(equity_series: pd.Series) -> int:
 # ── Main simulation ───────────────────────────────────────────────────────────
 
 def _make_trade(ticker: str, pos: dict, shares: int, sell_price: float,
-                sell_date: str, hold_days: int, exit_reason: str) -> dict:
+                sell_date: str, hold_days: int, exit_reason: str,
+                costs: CostModel | None = None, partial: bool = False) -> dict:
     """One closed (or partially closed) trade record, in the shape the API/UI
     and the summary metrics expect. ``shares`` is the quantity SOLD in this event
-    (the whole position on a full exit, the scaled fraction on a partial)."""
+    (the whole position on a full exit, the scaled fraction on a partial).
+
+    ``profit_loss`` stays GROSS (quote-to-quote) so it remains comparable with the
+    exit-review harness and the decisions/ thresholds, all of which are gross.
+    ``commission``/``slippage_cost``/``net_profit_loss`` expose the cost drag; the
+    equity curve is charged the same costs so final_equity/CAGR are NET."""
     buy_price = float(pos["buy_price"])
     pnl = (sell_price - buy_price) * shares
     pct = (sell_price / buy_price - 1.0) * 100.0
+    commission = 0.0
+    slippage_cost = 0.0
+    if costs is not None:
+        sell_fill = costs.sell_fill(sell_price)
+        commission = costs.commission(shares, sell_fill)
+        slippage_cost = (sell_price - sell_fill) * shares
+        if not partial:   # a full exit also carries the whole position's buy costs
+            commission += float(pos.get("buy_commission", 0.0))
+            slippage_cost += float(pos.get("buy_slippage", 0.0))
+    net = pnl - commission - slippage_cost
     return {
         "ticker":         ticker,
         "shares":         shares,
@@ -112,6 +129,9 @@ def _make_trade(ticker: str, pos: dict, shares: int, sell_price: float,
         "sell_price":     round(sell_price, 2),
         "sell_date":      sell_date,
         "profit_loss":    round(pnl, 2),
+        "commission":     round(commission, 2),
+        "slippage_cost":  round(slippage_cost, 2),
+        "net_profit_loss": round(net, 2),
         "percent_return": round(pct, 2),
         "hold_days":      hold_days,
         "exit_reason":    exit_reason,
@@ -131,6 +151,7 @@ def run_backtest(
     max_positions: int     = DEFAULT_MAX_POSITIONS,
     # kept for API backward-compat; ignored — live bot has no fixed profit target
     profit_target_pct: float = 25.0,
+    costs: CostModel | None = None,
 ) -> dict:
     """
     Historical simulation of the CAN SLIM breakout strategy.
@@ -202,6 +223,11 @@ def run_backtest(
 
     # The live exit thresholds, snapshot once for the shared exit engine.
     exit_cfg = build_exit_config()
+    # Commission + slippage model (roadmap item #3). Applied to CASH only, never to
+    # the per-trade GROSS P&L and never to the exit math — see trade_costs.py.
+    costs = costs if costs is not None else build_cost_model()
+    total_commission = 0.0   # $ paid in commissions across all fills
+    total_slippage   = 0.0   # $ lost to adverse slippage across all fills
 
     for i, current_date in enumerate(all_dates):
         date_str = current_date.strftime("%Y-%m-%d")
@@ -234,14 +260,22 @@ def run_backtest(
                         held_value += _p["shares"] * _p["buy_price"]
                 equity_now = cash + held_value
                 alloc = min(cash / remaining_slots, equity_now / max_positions)
-                shares = int(alloc // open_price)
+                # Costs charged to CASH only; the position's buy_price stays the
+                # unslipped OPEN quote so the exit math is identical with or without
+                # costs. Size on the slipped fill so a buy never overspends alloc.
+                buy_fill = costs.buy_fill(open_price)
+                shares = int(alloc // buy_fill)
                 if shares <= 0:
                     continue
-                cost = shares * open_price
-                cash -= cost
+                commission = costs.commission(shares, buy_fill)
+                cash -= shares * buy_fill + commission
+                total_commission += commission
+                total_slippage += (buy_fill - open_price) * shares
                 # Live-shaped position carrying every field the exit engine reads.
                 positions[ticker] = new_position(
                     ticker, shares, open_price, date_str, alloc, exit_cfg)
+                positions[ticker]["buy_commission"] = commission
+                positions[ticker]["buy_slippage"] = (buy_fill - open_price) * shares
         pending = still_pending   # keep any that couldn't fill
 
         # ── B. Resolve exits via the LIVE engine (shared daily_exit_sim) ──────
@@ -269,15 +303,24 @@ def run_backtest(
             if res.scale_shares and res.scale_price is not None:
                 trades.append(_make_trade(
                     ticker, pos, res.scale_shares, res.scale_price,
-                    date_str, calendar_days, "Partial scale-out (+trigger)"))
-                cash += res.scale_shares * res.scale_price
+                    date_str, calendar_days, "Partial scale-out (+trigger)",
+                    costs=costs, partial=True))
+                sell_fill = costs.sell_fill(res.scale_price)
+                commission = costs.commission(res.scale_shares, sell_fill)
+                cash += res.scale_shares * sell_fill - commission
+                total_commission += commission
+                total_slippage += (res.scale_price - sell_fill) * res.scale_shares
 
             # Full exit: close the remaining position.
             if res.exit_price is not None:
                 trades.append(_make_trade(
                     ticker, pos, pos["shares"], res.exit_price,
-                    date_str, calendar_days, res.exit_reason))
-                cash += pos["shares"] * res.exit_price
+                    date_str, calendar_days, res.exit_reason, costs=costs))
+                sell_fill = costs.sell_fill(res.exit_price)
+                commission = costs.commission(pos["shares"], sell_fill)
+                cash += pos["shares"] * sell_fill - commission
+                total_commission += commission
+                total_slippage += (res.exit_price - sell_fill) * pos["shares"]
                 tickers_to_close.append(ticker)
 
         for t in tickers_to_close:
@@ -428,6 +471,13 @@ def run_backtest(
             "final_equity":      round(final_equity, 2),
             "total_return_pct":  round(total_return_pct, 2),
             "cagr_pct":          round(cagr, 2),
+            # ── Trading costs (roadmap item #3) ──────────────────────────────
+            # P&L above/below is GROSS; final_equity/CAGR are NET (cash charged).
+            "total_commission":     round(total_commission, 2),
+            "total_slippage":       round(total_slippage, 2),
+            "total_trading_costs":  round(total_commission + total_slippage, 2),
+            "gross_pnl":            round(sum(t["profit_loss"] for t in trades), 2),
+            "net_pnl":              round(sum(t.get("net_profit_loss", t["profit_loss"]) for t in trades), 2),
             # ── Risk ─────────────────────────────────────────────────────────
             "max_drawdown":      round(max_dd_pct, 2),
             "underwater_days":   underwater_days,

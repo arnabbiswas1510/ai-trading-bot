@@ -727,6 +727,30 @@
       ],
       "last_reviewed": null,
       "history": []
+    },
+    {
+      "id": "backtest-cost-assumptions",
+      "title": "Backtest commission + slippage defaults are assumptions, not measured fill quality",
+      "kind": "parameter",
+      "status": "active",
+      "decided": "2026-09-29",
+      "implemented": true,
+      "decision": "The two strategy backtesters (research/strategy_backtest.py and backend/backtester.py) charge trading costs to backtest cash via trade_costs.py: $0.0035/share commission with a $0.35 per-order floor, and 5 bps of adverse slippage per fill. These are placeholder assumptions chosen to be conservative-ish for IBKR tiered US-equity pricing; the slippage figure in particular is a guess, not a measurement of the bot's real fills.",
+      "rationale": "Backtest-fidelity item #3 required SOME cost model over none, since the prior costless backtest was a strict upper bound against a thin (-0.16%/trade gross) edge. The commission rate is grounded in IBKR's published tiered schedule, but real slippage on a market-open breakout entry is unknown without live fill data, and the commission all-in could be as high as the ~0.65c/share the roadmap cites. Ship a defensible default now; correct it against measured fills later.",
+      "adr": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "revisit": {
+        "min_closed_trades": null,
+        "not_before": "2026-12-01"
+      },
+      "baseline": "At decision: BACKTEST_COMMISSION_PER_SHARE=0.0035, BACKTEST_COMMISSION_MIN=0.35, BACKTEST_SLIPPAGE_BPS=5.0. Over 2023-08->2024-08 on the full offline universe these total ~$1,669 of cost (commission + slippage combined). trade_history.buy_commission/sell_commission hold REAL per-leg IBKR commissions on live closed trades and are the ground-truth source for calibrating the commission rate; no comparable ground-truth for slippage exists yet.",
+      "review_command": "python3 - <<'EOF'\n# Compare modelled commission against REAL IBKR fills:\n#   SELECT ticker, shares, buy_commission, sell_commission FROM trade_history WHERE buy_commission IS NOT NULL;\n# Derive realised $/share and compare to BACKTEST_COMMISSION_PER_SHARE (0.0035).\n# For slippage, compare bot fill prices vs the quote at order time if captured.\nEOF",
+      "review_questions": [
+        "What is the REAL realised commission per share on live closed trades (trade_history.buy_commission/sell_commission / shares), and does 0.0035 under- or over-state it? If it is closer to 0.0065, raise the default.",
+        "Is there ANY ground-truth for slippage yet (bot fill price vs quote at submit)? If so, does 5 bps hold, or is the market-open breakout entry materially worse?",
+        "Does the cost total move any RELATIVE backtest conclusion (e.g. does a parameter that wins gross still win net), or only shift the absolute bottom line? Report n first."
+      ],
+      "last_reviewed": null,
+      "history": []
     }
   ]
 }

@@ -47,7 +47,7 @@ COPY backend/ ./backend/
 # test_web_image_completeness.py fails the moment backtester's import closure
 # grows a module not listed here. See
 # decisions/2026-09-29_backtester-option-a-live-exits.md.
-COPY config.py exit_rules.py exit_core.py daily_exit_sim.py ./backend/
+COPY config.py exit_rules.py exit_core.py daily_exit_sim.py trade_costs.py ./backend/
 
 # Copy compiled frontend assets from Stage 1
 COPY --from=frontend-builder /frontend/dist ./frontend/dist

@@ -15,8 +15,8 @@
     "semantic_hash": ""
   },
   "backend/backtester.py": {
-    "mtime": 1790712239.3613117,
-    "ast_hash": "683ae20f6a1bdd938d8587172c7ed4a6",
+    "mtime": 1790716750.215015,
+    "ast_hash": "6cfa03c30b1616ab370da5b6491b35ac",
     "semantic_hash": ""
   },
   "backend/database.py": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790650499.8944516,
-    "ast_hash": "638bbfb2d35637bec29c444805cffb66",
+    "mtime": 1790716912.5998056,
+    "ast_hash": "375e2669f673dff8db86152077e4baa9",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -950,8 +950,8 @@
     "semantic_hash": ""
   },
   "docs/backtesting.md": {
-    "mtime": 1790712649.895045,
-    "ast_hash": "4a6f6fd8cfd2cb2b03b621b0d7d2e4a0",
+    "mtime": 1790716870.9613461,
+    "ast_hash": "20fc9305338845331055262bf688bb65",
     "semantic_hash": ""
   },
   "tests/test_datasource_unavailable.py": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1790698617.7239044,
-    "ast_hash": "ca1662f8c0d368b13453b3ed2015159d",
+    "mtime": 1790716982.4206867,
+    "ast_hash": "024299968cd06e7104eaf5bc545b21ba",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1745,8 +1745,8 @@
     "semantic_hash": ""
   },
   "research/strategy_backtest.py": {
-    "mtime": 1790712100.1647222,
-    "ast_hash": "1f4a0f373df3950d2c5edfeee4598a04",
+    "mtime": 1790716667.2292697,
+    "ast_hash": "4d93450403a42cc30a90b8c0da2a8d9d",
     "semantic_hash": ""
   },
   "tests/test_strategy_backtest.py": {
@@ -1777,6 +1777,21 @@
   "decisions/2026-09-29_backtester-option-a-live-exits.md": {
     "mtime": 1790712580.4474063,
     "ast_hash": "c7ce5107bcc561c2d7b7faeb531eedcf",
+    "semantic_hash": ""
+  },
+  "tests/test_trade_costs.py": {
+    "mtime": 1790716799.372194,
+    "ast_hash": "6919506c3da5c1dbbce7f16dc7027845",
+    "semantic_hash": ""
+  },
+  "trade_costs.py": {
+    "mtime": 1790716503.2954788,
+    "ast_hash": "c4b993d5839e9a67fc49ad4e23e00784",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-29_backtest-costs-slippage.md": {
+    "mtime": 1790716949.851281,
+    "ast_hash": "b4239842bf919f2b5ea0703495b73216",
     "semantic_hash": ""
   }
 }

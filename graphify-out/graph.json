@@ -667,7 +667,7 @@
       "label": "_ema()",
       "file_type": "code",
       "source_file": "backend/backtester.py",
-      "source_location": "L62",
+      "source_location": "L63",
       "_origin": "ast",
       "id": "backend_backtester_ema",
       "community": 49,
@@ -689,7 +689,7 @@
       "label": "_cagr()",
       "file_type": "code",
       "source_file": "backend/backtester.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "_origin": "ast",
       "id": "backend_backtester_cagr",
       "community": 49,
@@ -700,7 +700,7 @@
       "label": "_max_consecutive_losses()",
       "file_type": "code",
       "source_file": "backend/backtester.py",
-      "source_location": "L73",
+      "source_location": "L74",
       "_origin": "ast",
       "id": "backend_backtester_max_consecutive_losses",
       "community": 49,
@@ -711,7 +711,7 @@
       "label": "_max_underwater_days()",
       "file_type": "code",
       "source_file": "backend/backtester.py",
-      "source_location": "L84",
+      "source_location": "L85",
       "_origin": "ast",
       "id": "backend_backtester_max_underwater_days",
       "community": 49,
@@ -722,7 +722,7 @@
       "label": "_make_trade()",
       "file_type": "code",
       "source_file": "backend/backtester.py",
-      "source_location": "L99",
+      "source_location": "L100",
       "_origin": "ast",
       "id": "backend_backtester_make_trade",
       "community": 49,
@@ -733,7 +733,7 @@
       "label": "run_backtest()",
       "file_type": "code",
       "source_file": "backend/backtester.py",
-      "source_location": "L122",
+      "source_location": "L142",
       "_origin": "ast",
       "id": "backend_backtester_run_backtest",
       "community": 49,
@@ -755,9 +755,9 @@
       "label": "Exponential moving average (matches pandas ewm default, adjust=False).",
       "file_type": "rationale",
       "source_file": "backend/backtester.py",
-      "source_location": "L63",
+      "source_location": "L64",
       "_origin": "ast",
-      "id": "backend_backtester_rationale_63",
+      "id": "backend_backtester_rationale_64",
       "community": 49,
       "community_name": "backtester.py",
       "norm_label": "exponential moving average (matches pandas ewm default, adjust=false)."
@@ -766,9 +766,9 @@
       "label": "One closed (or partially closed) trade record, in the shape the API/UI     and t",
       "file_type": "rationale",
       "source_file": "backend/backtester.py",
-      "source_location": "L101",
+      "source_location": "L103",
       "_origin": "ast",
-      "id": "backend_backtester_rationale_101",
+      "id": "backend_backtester_rationale_103",
       "community": 49,
       "community_name": "backtester.py",
       "norm_label": "one closed (or partially closed) trade record, in the shape the api/ui     and t"
@@ -777,9 +777,9 @@
       "label": "Historical simulation of the CAN SLIM breakout strategy.      Position sizing ma",
       "file_type": "rationale",
       "source_file": "backend/backtester.py",
-      "source_location": "L135",
+      "source_location": "L156",
       "_origin": "ast",
-      "id": "backend_backtester_rationale_135",
+      "id": "backend_backtester_rationale_156",
       "community": 49,
       "community_name": "backtester.py",
       "norm_label": "historical simulation of the can slim breakout strategy.      position sizing ma"
@@ -1198,8 +1198,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "backend_fmp_client",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "fmp_client.py"
     },
     {
@@ -1814,8 +1814,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "backend_screener",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "screener.py"
     },
     {
@@ -1825,8 +1825,8 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "backend_screener_get_market_direction",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "get_market_direction()"
     },
     {
@@ -1836,8 +1836,8 @@
       "source_location": "L164",
       "_origin": "ast",
       "id": "backend_screener_calculate_rs_scores",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "calculate_rs_scores()"
     },
     {
@@ -1847,8 +1847,8 @@
       "source_location": "L215",
       "_origin": "ast",
       "id": "backend_screener_scan_ticker",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "scan_ticker()"
     },
     {
@@ -1858,8 +1858,8 @@
       "source_location": "L504",
       "_origin": "ast",
       "id": "backend_screener_run_canslim_screener",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "run_canslim_screener()"
     },
     {
@@ -1869,8 +1869,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "backend_screener_rationale_26",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "analyzes ^gspc (s&p 500) and ^ixic (nasdaq composite) to determine general marke"
     },
     {
@@ -1880,8 +1880,8 @@
       "source_location": "L165",
       "_origin": "ast",
       "id": "backend_screener_rationale_165",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "calculates relative strength performance weighted:     40% recent q (last 3m), 2"
     },
     {
@@ -1891,8 +1891,8 @@
       "source_location": "L216",
       "_origin": "ast",
       "id": "backend_screener_rationale_216",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "evaluates a single ticker against c, a, n, s, l, i, m using fmp.     returns a d"
     },
     {
@@ -1902,8 +1902,8 @@
       "source_location": "L505",
       "_origin": "ast",
       "id": "backend_screener_rationale_505",
-      "community": 19,
-      "community_name": "FMPClient",
+      "community": 16,
+      "community_name": "database.py",
       "norm_label": "scans the entire watchlist, updates scores in the sqlite database, and returns r"
     },
     {
@@ -8832,7 +8832,7 @@
       "source_location": "L545",
       "_origin": "ast",
       "id": "exit_rules_compute_dynamic_trail_pct",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "_compute_dynamic_trail_pct()"
     },
@@ -8986,7 +8986,7 @@
       "source_location": "L551",
       "_origin": "ast",
       "id": "exit_rules_rationale_551",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "returns a tighter trailing stop % if the position has crossed a new tier,     ot"
     },
@@ -13838,7 +13838,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "backfill_rs_percentile.py"
     },
     {
@@ -13849,7 +13849,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile_env",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "_env()"
     },
     {
@@ -13860,7 +13860,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile_sb_headers",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "_sb_headers()"
     },
     {
@@ -13871,7 +13871,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile_fetch_rows",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "fetch_rows()"
     },
     {
@@ -13882,7 +13882,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile_history",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "history()"
     },
     {
@@ -13893,7 +13893,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile_return_12w",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "return_12w()"
     },
     {
@@ -13904,7 +13904,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile_main",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "main()"
     },
     {
@@ -13915,7 +13915,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile_rationale_91",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "daily closes ascending as (date, close). cached per symbol."
     },
     {
@@ -13926,7 +13926,7 @@
       "_origin": "ast",
       "id": "research_backfill_rs_percentile_rationale_124",
       "community": 413,
-      "community_name": "backfill_rs_percentile.py",
+      "community_name": "compute_rs_excess",
       "norm_label": "12-week return as it was knowable on `as_of`. none if unavailable.      uses the"
     },
     {
@@ -16551,7 +16551,7 @@
       "label": "Bar",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L137",
+      "source_location": "L138",
       "_origin": "ast",
       "id": "research_strategy_backtest_bar",
       "community": 412,
@@ -16562,7 +16562,7 @@
       "label": "_prepare()",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L152",
+      "source_location": "L153",
       "_origin": "ast",
       "id": "research_strategy_backtest_prepare",
       "community": 412,
@@ -16573,7 +16573,7 @@
       "label": "_universe()",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L178",
+      "source_location": "L179",
       "_origin": "ast",
       "id": "research_strategy_backtest_universe",
       "community": 412,
@@ -16584,7 +16584,7 @@
       "label": "simulate()",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L188",
+      "source_location": "L189",
       "_origin": "ast",
       "id": "research_strategy_backtest_simulate",
       "community": 412,
@@ -16595,7 +16595,7 @@
       "label": "_trade_record()",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L308",
+      "source_location": "L334",
       "_origin": "ast",
       "id": "research_strategy_backtest_trade_record",
       "community": 412,
@@ -16606,7 +16606,7 @@
       "label": "_summarize()",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L327",
+      "source_location": "L367",
       "_origin": "ast",
       "id": "research_strategy_backtest_summarize",
       "community": 412,
@@ -16617,7 +16617,7 @@
       "label": "_reason_bucket()",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L360",
+      "source_location": "L407",
       "_origin": "ast",
       "id": "research_strategy_backtest_reason_bucket",
       "community": 412,
@@ -16628,7 +16628,7 @@
       "label": "_print_report()",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L376",
+      "source_location": "L423",
       "_origin": "ast",
       "id": "research_strategy_backtest_print_report",
       "community": 412,
@@ -16639,7 +16639,7 @@
       "label": "main()",
       "file_type": "code",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L400",
+      "source_location": "L451",
       "_origin": "ast",
       "id": "research_strategy_backtest_main",
       "community": 412,
@@ -16661,9 +16661,9 @@
       "label": "Attach the indicators the entry scan needs. shift(1) on the 20d high so     toda",
       "file_type": "rationale",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L153",
+      "source_location": "L154",
       "_origin": "ast",
-      "id": "research_strategy_backtest_rationale_153",
+      "id": "research_strategy_backtest_rationale_154",
       "community": 412,
       "community_name": "strategy_backtest.py",
       "norm_label": "attach the indicators the entry scan needs. shift(1) on the 20d high so     toda"
@@ -16995,7 +16995,7 @@
       "_origin": "ast",
       "id": "retention_helper",
       "community": 199,
-      "community_name": "technical_screener.py",
+      "community_name": "increment_retention",
       "norm_label": "retention_helper.py"
     },
     {
@@ -17006,7 +17006,7 @@
       "_origin": "ast",
       "id": "retention_helper_increment_retention",
       "community": 199,
-      "community_name": "technical_screener.py",
+      "community_name": "increment_retention",
       "norm_label": "increment_retention()"
     },
     {
@@ -17247,8 +17247,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scoring",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 276,
+      "community_name": "compute_final_score",
       "norm_label": "scoring.py"
     },
     {
@@ -17270,7 +17270,7 @@
       "_origin": "ast",
       "id": "scoring_compute_rs_score",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "compute_rs_score()"
     },
     {
@@ -17280,8 +17280,8 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "scoring_compute_rs_excess",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 413,
+      "community_name": "compute_rs_excess",
       "norm_label": "compute_rs_excess()"
     },
     {
@@ -17302,8 +17302,8 @@
       "source_location": "L171",
       "_origin": "ast",
       "id": "scoring_assign_rs_percentiles",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": "assign_rs_percentiles()"
     },
     {
@@ -17346,8 +17346,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scoring_rationale_1",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 276,
+      "community_name": "compute_final_score",
       "norm_label": "scoring.py \u2014 pure scoring functions for the 5-component final_score system.  no"
     },
     {
@@ -17369,7 +17369,7 @@
       "_origin": "ast",
       "id": "scoring_rationale_57",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "relative strength score (0-100) vs s&p 500 over the last 12 weeks.      excess r"
     },
     {
@@ -17379,8 +17379,8 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "scoring_rationale_104",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 413,
+      "community_name": "compute_rs_excess",
       "norm_label": "raw 12-week excess return vs spy, in percent, unclipped.      this is the quanti"
     },
     {
@@ -17401,8 +17401,8 @@
       "source_location": "L172",
       "_origin": "ast",
       "id": "scoring_rationale_172",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": "annotate each trigger dict in-place with `rs_percentile`.      ranks on `rs_exce"
     },
     {
@@ -18041,7 +18041,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "technical_screener",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "technical_screener.py"
     },
@@ -18052,7 +18052,7 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "technical_screener_compute_quality_score",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "compute_quality_score()"
     },
@@ -18063,7 +18063,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "technical_screener_compute_pre_breakout_quality_score",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "compute_pre_breakout_quality_score()"
     },
@@ -18074,7 +18074,7 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "technical_screener_fetch_spy_return_12w",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "fetch_spy_return_12w()"
     },
@@ -18085,7 +18085,7 @@
       "source_location": "L179",
       "_origin": "ast",
       "id": "technical_screener_get_supabase_client",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "get_supabase_client()"
     },
@@ -18096,7 +18096,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "technical_screener_py_client",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "client"
     },
@@ -18107,7 +18107,7 @@
       "source_location": "L188",
       "_origin": "ast",
       "id": "technical_screener_get_watchlist_from_supabase",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "get_watchlist_from_supabase()"
     },
@@ -18118,7 +18118,7 @@
       "source_location": "L207",
       "_origin": "ast",
       "id": "technical_screener_fetch_with_retry_sync",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "fetch_with_retry_sync()"
     },
@@ -18129,7 +18129,7 @@
       "source_location": "L227",
       "_origin": "ast",
       "id": "technical_screener_check_technical_breakout",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "check_technical_breakout()"
     },
@@ -18140,7 +18140,7 @@
       "source_location": "L353",
       "_origin": "ast",
       "id": "technical_screener_check_pre_breakout_coil",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "check_pre_breakout_coil()"
     },
@@ -18151,7 +18151,7 @@
       "source_location": "L463",
       "_origin": "ast",
       "id": "technical_screener_write_triggers_to_supabase",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "write_triggers_to_supabase()"
     },
@@ -18162,7 +18162,7 @@
       "source_location": "L571",
       "_origin": "ast",
       "id": "technical_screener_compute_failure_penalty",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "_compute_failure_penalty()"
     },
@@ -18173,7 +18173,7 @@
       "source_location": "L80",
       "_origin": "ast",
       "id": "technical_screener_rationale_80",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "composite quality score 0-100 for a confirmed breakout trigger.      weights:"
     },
@@ -18184,7 +18184,7 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "technical_screener_rationale_104",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "quality score 0-100 for a pre-breakout (coiling) trigger.      weights:       pi"
     },
@@ -18195,7 +18195,7 @@
       "source_location": "L134",
       "_origin": "ast",
       "id": "technical_screener_rationale_134",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "fetch spy's 12-week (approx. 60 trading days) price return as a percentage."
     },
@@ -18206,7 +18206,7 @@
       "source_location": "L366",
       "_origin": "ast",
       "id": "technical_screener_rationale_366",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "detects stocks coiling toward an imminent breakout (vcp / handle setup).      al"
     },
@@ -18217,7 +18217,7 @@
       "source_location": "L572",
       "_origin": "ast",
       "id": "technical_screener_rationale_572",
-      "community": 199,
+      "community": 230,
       "community_name": "technical_screener.py",
       "norm_label": "compute a time-decayed failure penalty for a trigger based on historical learnin"
     },
@@ -19197,7 +19197,7 @@
       "_origin": "ast",
       "id": "tests_golden_log",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "golden_log.py"
     },
     {
@@ -19208,7 +19208,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_event",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "_event"
     },
     {
@@ -19219,7 +19219,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_event_init",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": ".__init__()"
     },
     {
@@ -19230,7 +19230,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_event_as_row",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": ".as_row()"
     },
     {
@@ -19241,7 +19241,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_reason_head",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "_reason_head()"
     },
     {
@@ -19252,7 +19252,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "monitorrecorder"
     },
     {
@@ -19263,7 +19263,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_init",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": ".__init__()"
     },
     {
@@ -19274,7 +19274,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_log",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "._log()"
     },
     {
@@ -19285,7 +19285,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_spy_execute_sell",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "._spy_execute_sell()"
     },
     {
@@ -19296,7 +19296,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_spy_execute_scale_out",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "._spy_execute_scale_out()"
     },
     {
@@ -19307,7 +19307,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_spy_arm_exit",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "._spy_arm_exit()"
     },
     {
@@ -19318,7 +19318,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_spy_place_protective_stops",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "._spy_place_protective_stops()"
     },
     {
@@ -19329,7 +19329,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_spy_cancel",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "._spy_cancel()"
     },
     {
@@ -19340,7 +19340,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_make_notifier",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "._make_notifier()"
     },
     {
@@ -19351,7 +19351,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_monitorrecorder_rows",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": ".rows()"
     },
     {
@@ -19362,7 +19362,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_record_monitor",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "record_monitor()"
     },
     {
@@ -19373,7 +19373,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_rationale_1",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "golden_log.py \u2014 characterization recorder for execution_agent orchestrators.  wh"
     },
     {
@@ -19384,7 +19384,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_rationale_57",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "one recorded money-path action, normalized to compare across runs."
     },
     {
@@ -19395,7 +19395,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_rationale_74",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "first clause of a sell/arm reason, before any per-run volatile detail     (price"
     },
     {
@@ -19406,7 +19406,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_rationale_85",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "installs recording spies over the money-path seams and collects a     normalized"
     },
     {
@@ -19417,7 +19417,7 @@
       "_origin": "ast",
       "id": "tests_golden_log_rationale_153",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "drive monitor_portfolio_intraday over a scripted book and yield a     monitorrec"
     },
     {
@@ -24025,7 +24025,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "test_dynamic_trail.py"
     },
@@ -24036,7 +24036,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testprofitlever",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "testprofitlever"
     },
@@ -24047,7 +24047,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testprofitlever_test_no_change_below_5pct_gain",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_no_change_below_5pct_gain()"
     },
@@ -24058,7 +24058,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testprofitlever_test_tightens_at_5pct_gain",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_tightens_at_5pct_gain()"
     },
@@ -24069,7 +24069,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testprofitlever_test_larger_winner_keeps_same_profit_lock",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_larger_winner_keeps_same_profit_lock()"
     },
@@ -24080,7 +24080,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testprofitlever_test_very_large_winner_still_uses_hwm_profit_lock",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_very_large_winner_still_uses_hwm_profit_lock()"
     },
@@ -24091,7 +24091,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testprofitlever_test_modest_gain_does_not_tighten_inside_base_stop",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_modest_gain_does_not_tighten_inside_base_stop()"
     },
@@ -24102,7 +24102,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testonewayonly",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "testonewayonly"
     },
@@ -24113,7 +24113,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testonewayonly_test_no_change_when_already_at_correct_tier",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_no_change_when_already_at_correct_tier()"
     },
@@ -24124,7 +24124,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testonewayonly_test_no_loosening_on_dip",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_no_loosening_on_dip()"
     },
@@ -24135,7 +24135,7 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testonewayonly_test_crossing_the_arm_threshold_tightens_from_base_stop",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_crossing_the_arm_threshold_tightens_from_base_stop()"
     },
@@ -24146,7 +24146,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testonewayonly_test_never_loosens_a_manually_tightened_stop",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_never_loosens_a_manually_tightened_stop()"
     },
@@ -24157,7 +24157,7 @@
       "source_location": "L77",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testnosubquantumchurn",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "testnosubquantumchurn"
     },
@@ -24168,7 +24168,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testnosubquantumchurn_test_sub_quantum_decrease_returns_none",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_sub_quantum_decrease_returns_none()"
     },
@@ -24179,7 +24179,7 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_testnosubquantumchurn_test_real_change_at_quantum_still_tightens",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": ".test_real_change_at_quantum_still_tightens()"
     },
@@ -24190,7 +24190,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_rationale_1",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "test_dynamic_trail.py - tests for _compute_dynamic_trail_pct() and the dynamic t"
     },
@@ -24201,7 +24201,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_rationale_49",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "the profit-lock must wait for the full +5% gain threshold. a merely green"
     },
@@ -24212,7 +24212,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_rationale_64",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "once locked to 1.5%, a dip in profit must not restore a wider trail."
     },
@@ -24223,7 +24223,7 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "tests_test_dynamic_trail_rationale_78",
-      "community": 266,
+      "community": 7,
       "community_name": "_compute_dynamic_trail_pct",
       "norm_label": "regression for the 2026-09-07 dht '4.9% \u2192 4.9%' notification spam.      the prov"
     },
@@ -24917,7 +24917,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "test_exit_path_golden.py"
     },
     {
@@ -24928,7 +24928,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_scripted_book",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "_scripted_book()"
     },
     {
@@ -24939,7 +24939,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_record_rows",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "_record_rows()"
     },
     {
@@ -24950,7 +24950,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_test_monitor_exit_path_matches_golden",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "test_monitor_exit_path_matches_golden()"
     },
     {
@@ -24961,7 +24961,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_test_golden_scenario_is_non_vacuous",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "test_golden_scenario_is_non_vacuous()"
     },
     {
@@ -24972,7 +24972,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_test_recorder_is_deterministic",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "test_recorder_is_deterministic()"
     },
     {
@@ -24983,7 +24983,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_rationale_1",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "test_exit_path_golden.py \u2014 locks the money-path call sequence of monitor_portfol"
     },
     {
@@ -24994,7 +24994,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_rationale_40",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "a fixed multi-regime book. prices are chosen relative to a $100 entry so     the"
     },
     {
@@ -25005,7 +25005,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_rationale_91",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "guard against a golden that locks an empty sequence \u2014 which would pass     forev"
     },
     {
@@ -25016,7 +25016,7 @@
       "_origin": "ast",
       "id": "tests_test_exit_path_golden_rationale_104",
       "community": 266,
-      "community_name": "_compute_dynamic_trail_pct",
+      "community_name": "MonitorRecorder",
       "norm_label": "two runs of the same scripted book must produce an identical sequence, or     th"
     },
     {
@@ -31450,8 +31450,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_pre_breakout",
-      "community": 276,
-      "community_name": "compute_final_score",
+      "community": 14,
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "test_pre_breakout.py"
     },
     {
@@ -31462,7 +31462,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_make_df",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "_make_df()"
     },
     {
@@ -31473,7 +31473,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_coil",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "_coil()"
     },
     {
@@ -31483,7 +31483,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "testprebreakoutqualityscore"
     },
@@ -31494,7 +31494,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_highest_score_tight_coil",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_highest_score_tight_coil()"
     },
@@ -31505,7 +31505,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_score_within_1pct",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_score_within_1pct()"
     },
@@ -31516,7 +31516,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_score_within_3pct",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_score_within_3pct()"
     },
@@ -31527,7 +31527,7 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_score_within_5pct",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_score_within_5pct()"
     },
@@ -31538,7 +31538,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_score_within_8pct",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_score_within_8pct()"
     },
@@ -31549,7 +31549,7 @@
       "source_location": "L75",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutqualityscore_test_zero_uptrend_component",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_zero_uptrend_component()"
     },
@@ -31561,7 +31561,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "testprebreakoutcoilpass"
     },
     {
@@ -31572,7 +31572,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass_test_all_gates_pass",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_all_gates_pass()"
     },
     {
@@ -31583,7 +31583,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass_test_2_of_3_closes_up_accepted",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_2_of_3_closes_up_accepted()"
     },
     {
@@ -31594,7 +31594,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilpass_test_very_tight_coil_within_1pct",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_very_tight_coil_within_1pct()"
     },
     {
@@ -31605,7 +31605,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "testprebreakoutcoilfail"
     },
     {
@@ -31616,7 +31616,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_a_too_far_from_high",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_gate_a_too_far_from_high()"
     },
     {
@@ -31627,7 +31627,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_a_at_or_above_high",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_gate_a_at_or_above_high()"
     },
     {
@@ -31638,7 +31638,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_b_below_sma",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_gate_b_below_sma()"
     },
     {
@@ -31649,7 +31649,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_c_low_rs",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_gate_c_low_rs()"
     },
     {
@@ -31660,7 +31660,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_d_volume_not_contracting",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_gate_d_volume_not_contracting()"
     },
     {
@@ -31671,7 +31671,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_testprebreakoutcoilfail_test_gate_e_only_1_close_up",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": ".test_gate_e_only_1_close_up()"
     },
     {
@@ -31725,7 +31725,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_54",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "within 1%, 0 vol ratio, 3/3 closes up -> score == 100."
     },
@@ -31736,7 +31736,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_58",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "within 1%, 0.5x vol, 3 closes up -> 40+20+20=80."
     },
@@ -31747,7 +31747,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_62",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "within 3%, 0.5x vol, 2 closes up -> 35+20+10=65."
     },
@@ -31758,7 +31758,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_66",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "within 5%, 0.8x vol, 2 closes up -> 28+int(0.2*40)+10=28+8+10=46 (rounding gives"
     },
@@ -31769,7 +31769,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_71",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "within 8%, 0.9x vol, 2 closes up -> 20+4+10=34 (rounding may give 33)."
     },
@@ -31780,7 +31780,7 @@
       "source_location": "L76",
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_76",
-      "community": 268,
+      "community": 14,
       "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "0 rising closes -> uptrend=0 -> 35+20+0=55."
     },
@@ -31792,7 +31792,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_83",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "5% below high, vol contracting, 3/3 closes up -> pre_breakout."
     },
     {
@@ -31803,7 +31803,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_91",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "2 of 3 closes rising meets pre_breakout_uptrend_min=2."
     },
     {
@@ -31814,7 +31814,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_96",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "within 1% of pivot -> quality_score >= 70 (vol 0.6x avg -> contraction pts ~16)."
     },
     {
@@ -31825,7 +31825,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_106",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "15% below 52w high -> beyond 8% proximity -> none."
     },
     {
@@ -31836,7 +31836,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_111",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "at or above 52w high -> confirmed breakout territory -> none."
     },
     {
@@ -31847,7 +31847,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_116",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "close (77) below sma-50 (~90) -> below trend -> none."
     },
     {
@@ -31858,7 +31858,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_121",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "stock -5% vs spy +15% -> low rs -> none."
     },
     {
@@ -31869,7 +31869,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_126",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "recent 3d avg vol 1.1x 50d avg -> sellers still active -> none."
     },
     {
@@ -31880,7 +31880,7 @@
       "_origin": "ast",
       "id": "tests_test_pre_breakout_rationale_131",
       "community": 14,
-      "community_name": "_coil",
+      "community_name": "compute_pre_breakout_quality_score",
       "norm_label": "strictly descending then tiny uptick: must compare vs prior row.         use all"
     },
     {
@@ -33430,8 +33430,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_rs_percentile",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": "test_rs_percentile.py"
     },
     {
@@ -33441,8 +33441,8 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testcomputersexcess",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 413,
+      "community_name": "compute_rs_excess",
       "norm_label": "testcomputersexcess"
     },
     {
@@ -33452,8 +33452,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testcomputersexcess_test_subtracts_benchmark",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 413,
+      "community_name": "compute_rs_excess",
       "norm_label": ".test_subtracts_benchmark()"
     },
     {
@@ -33463,8 +33463,8 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testcomputersexcess_test_is_not_clipped_unlike_rs_score",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 413,
+      "community_name": "compute_rs_excess",
       "norm_label": ".test_is_not_clipped_unlike_rs_score()"
     },
     {
@@ -33474,8 +33474,8 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testcomputersexcess_test_handles_garbage_without_raising",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 413,
+      "community_name": "compute_rs_excess",
       "norm_label": ".test_handles_garbage_without_raising()"
     },
     {
@@ -33617,8 +33617,8 @@
       "source_location": "L102",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testassignrspercentiles",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": "testassignrspercentiles"
     },
     {
@@ -33628,8 +33628,8 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testassignrspercentiles_test_annotates_each_trigger",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": ".test_annotates_each_trigger()"
     },
     {
@@ -33639,8 +33639,8 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testassignrspercentiles_test_discriminates_where_rs_score_cannot",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": ".test_discriminates_where_rs_score_cannot()"
     },
     {
@@ -33650,8 +33650,8 @@
       "source_location": "L131",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testassignrspercentiles_test_empty_list_is_safe",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": ".test_empty_list_is_safe()"
     },
     {
@@ -33661,8 +33661,8 @@
       "source_location": "L134",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testassignrspercentiles_test_missing_field_does_not_raise",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": ".test_missing_field_does_not_raise()"
     },
     {
@@ -33672,8 +33672,8 @@
       "source_location": "L139",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testassignrspercentiles_test_never_raises_on_malformed_input",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": ".test_never_raises_on_malformed_input()"
     },
     {
@@ -33738,8 +33738,8 @@
       "source_location": "L179",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testarchivecarriesshadowcolumns",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": "testarchivecarriesshadowcolumns"
     },
     {
@@ -33749,8 +33749,8 @@
       "source_location": "L180",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_testarchivecarriesshadowcolumns_test_history_columns_include_the_shadow_three",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": ".test_history_columns_include_the_shadow_three()"
     },
     {
@@ -33760,8 +33760,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_rs_percentile_rationale_1",
-      "community": 230,
-      "community_name": "compute_rs_score",
+      "community": 32,
+      "community_name": "rank_percentiles",
       "norm_label": "tests/test_rs_percentile.py  covers the shadow relative-strength ranking added 2"
     },
     {
@@ -34640,8 +34640,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_score_components",
-      "community": 0,
-      "community_name": "compute_liquidity_score",
+      "community": 276,
+      "community_name": "compute_final_score",
       "norm_label": "test_score_components.py"
     },
     {
@@ -34828,7 +34828,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "testrsscore"
     },
     {
@@ -34839,7 +34839,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore_test_strong_outperformer",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": ".test_strong_outperformer()"
     },
     {
@@ -34850,7 +34850,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore_test_excess_exactly_10",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": ".test_excess_exactly_10()"
     },
     {
@@ -34861,7 +34861,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore_test_excess_5_percent",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": ".test_excess_5_percent()"
     },
     {
@@ -34872,7 +34872,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore_test_excess_zero_neutral",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": ".test_excess_zero_neutral()"
     },
     {
@@ -34883,7 +34883,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore_test_lagging_5_percent",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": ".test_lagging_5_percent()"
     },
     {
@@ -34894,7 +34894,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore_test_lagging_10_percent",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": ".test_lagging_10_percent()"
     },
     {
@@ -34905,7 +34905,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore_test_severe_underperformer",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": ".test_severe_underperformer()"
     },
     {
@@ -34916,7 +34916,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_testrsscore_test_both_zero",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": ".test_both_zero()"
     },
     {
@@ -35025,8 +35025,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_1",
-      "community": 0,
-      "community_name": "compute_liquidity_score",
+      "community": 276,
+      "community_name": "compute_final_score",
       "norm_label": "tests/test_score_components.py  unit tests for the new 5-component scoring funct"
     },
     {
@@ -35114,7 +35114,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_114",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "stock +20%, spy +5% -> excess +15% -> 100"
     },
     {
@@ -35125,7 +35125,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_118",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "excess exactly 10% -> 100"
     },
     {
@@ -35136,7 +35136,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_122",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "excess 5% -> 50 + 5*5 = 75"
     },
     {
@@ -35147,7 +35147,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_126",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "same return as spy -> 50"
     },
     {
@@ -35158,7 +35158,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_130",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "excess -5% -> 50 + (-5)*5 = 25"
     },
     {
@@ -35169,7 +35169,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_134",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "excess exactly -10% -> max(0, 50-50) = 0"
     },
     {
@@ -35180,7 +35180,7 @@
       "_origin": "ast",
       "id": "tests_test_score_components_rationale_142",
       "community": 230,
-      "community_name": "compute_rs_score",
+      "community_name": "technical_screener.py",
       "norm_label": "both flat (e.g. on a holiday or data issue) -> neutral 50"
     },
     {
@@ -37415,6 +37415,116 @@
       "community": 59,
       "community_name": "Timezone Compliance Tests",
       "norm_label": "ensures that datetime.date.today() or date.today() is not used in the codebase,"
+    },
+    {
+      "label": "test_trade_costs.py",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_trade_costs.py"
+    },
+    {
+      "label": "test_commission_uses_per_share_when_above_min()",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_test_commission_uses_per_share_when_above_min",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_commission_uses_per_share_when_above_min()"
+    },
+    {
+      "label": "test_commission_hits_min_floor_on_small_orders()",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L34",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_test_commission_hits_min_floor_on_small_orders",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_commission_hits_min_floor_on_small_orders()"
+    },
+    {
+      "label": "test_commission_zero_shares_is_free()",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L40",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_test_commission_zero_shares_is_free",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_commission_zero_shares_is_free()"
+    },
+    {
+      "label": "test_slippage_is_adverse_on_both_sides()",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L45",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_test_slippage_is_adverse_on_both_sides",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_slippage_is_adverse_on_both_sides()"
+    },
+    {
+      "label": "test_zero_cost_model_is_a_noop()",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L52",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_test_zero_cost_model_is_a_noop",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_zero_cost_model_is_a_noop()"
+    },
+    {
+      "label": "test_env_overrides()",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L59",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_test_env_overrides",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_env_overrides()"
+    },
+    {
+      "label": "test_costs_reduce_net_but_not_exit_reasons()",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L77",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_test_costs_reduce_net_but_not_exit_reasons",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_costs_reduce_net_but_not_exit_reasons()"
+    },
+    {
+      "label": "test_per_trade_records_expose_cost_fields()",
+      "file_type": "code",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L96",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_test_per_trade_records_expose_cost_fields",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "test_per_trade_records_expose_cost_fields()"
+    },
+    {
+      "label": "Pins the commission + slippage model (trade_costs.py, backtest-fidelity item #3)",
+      "file_type": "rationale",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_test_trade_costs_rationale_1",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "pins the commission + slippage model (trade_costs.py, backtest-fidelity item #3)"
     },
     {
       "label": "test_trade_history_insert.py",
@@ -39777,8 +39887,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_make_supabase_mock",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "_make_supabase_mock()"
     },
     {
@@ -39854,8 +39964,8 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_testsavescreenerresults",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "testsavescreenerresults"
     },
     {
@@ -39865,8 +39975,8 @@
       "source_location": "L115",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_testsavescreenerresults_make_results",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "._make_results()"
     },
     {
@@ -39876,8 +39986,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_py_patch",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "patch"
     },
     {
@@ -39887,8 +39997,8 @@
       "source_location": "L132",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_testsavescreenerresults_test_deletes_current_week_before_insert",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": ".test_deletes_current_week_before_insert()"
     },
     {
@@ -39898,8 +40008,8 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_testsavescreenerresults_test_insert_called_after_delete",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": ".test_insert_called_after_delete()"
     },
     {
@@ -39909,8 +40019,8 @@
       "source_location": "L177",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_testsavescreenerresults_test_prunes_rows_older_than_56_days",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": ".test_prunes_rows_older_than_56_days()"
     },
     {
@@ -39920,8 +40030,8 @@
       "source_location": "L194",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_testsavescreenerresults_test_does_not_delete_previous_weeks_data",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": ".test_does_not_delete_previous_weeks_data()"
     },
     {
@@ -39931,8 +40041,8 @@
       "source_location": "L206",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_testsavescreenerresults_test_empty_results_skips_insert",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": ".test_empty_results_skips_insert()"
     },
     {
@@ -39986,8 +40096,8 @@
       "source_location": "L319",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_testgetscreenerresults_test_empty_current_week_returns_empty",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": ".test_empty_current_week_returns_empty()"
     },
     {
@@ -40052,8 +40162,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_rationale_58",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "return a mock supabase client whose .table() chains return magicmock."
     },
     {
@@ -40074,8 +40184,8 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_rationale_113",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "save_screener_results must replace only the current week's rows."
     },
     {
@@ -40085,8 +40195,8 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_rationale_133",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "the delete call must use gte(week_start) and lt(week_end)."
     },
     {
@@ -40096,8 +40206,8 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_rationale_160",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "insert() must be called after delete() \u2014 ordering matters."
     },
     {
@@ -40107,8 +40217,8 @@
       "source_location": "L178",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_rationale_178",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "after insert, rows older than 56 days must be pruned."
     },
     {
@@ -40118,8 +40228,8 @@
       "source_location": "L195",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_rationale_195",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "the current-week delete must not use neq() which would wipe all rows."
     },
     {
@@ -40129,8 +40239,8 @@
       "source_location": "L207",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_rationale_207",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "empty screener results must not insert or delete anything."
     },
     {
@@ -40173,8 +40283,8 @@
       "source_location": "L320",
       "_origin": "ast",
       "id": "tests_test_watchlist_weekly_snapshot_rationale_320",
-      "community": 7,
-      "community_name": "patch",
+      "community": 1,
+      "community_name": "datetime",
       "norm_label": "no current-week data \u2192 watchlist and removed are both empty."
     },
     {
@@ -40365,6 +40475,160 @@
       "norm_label": "guards the guard: if the walker returned nothing the assertion above         wou"
     },
     {
+      "label": "trade_costs.py",
+      "file_type": "code",
+      "source_file": "trade_costs.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "trade_costs",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "trade_costs.py"
+    },
+    {
+      "label": "_env_float()",
+      "file_type": "code",
+      "source_file": "trade_costs.py",
+      "source_location": "L42",
+      "_origin": "ast",
+      "id": "trade_costs_env_float",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "_env_float()"
+    },
+    {
+      "label": "CostModel",
+      "file_type": "code",
+      "source_file": "trade_costs.py",
+      "source_location": "L57",
+      "_origin": "ast",
+      "id": "trade_costs_costmodel",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "costmodel"
+    },
+    {
+      "label": ".slippage_frac()",
+      "file_type": "code",
+      "source_file": "trade_costs.py",
+      "source_location": "L65",
+      "_origin": "ast",
+      "id": "trade_costs_costmodel_slippage_frac",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": ".slippage_frac()"
+    },
+    {
+      "label": ".commission()",
+      "file_type": "code",
+      "source_file": "trade_costs.py",
+      "source_location": "L68",
+      "_origin": "ast",
+      "id": "trade_costs_costmodel_commission",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": ".commission()"
+    },
+    {
+      "label": ".buy_fill()",
+      "file_type": "code",
+      "source_file": "trade_costs.py",
+      "source_location": "L76",
+      "_origin": "ast",
+      "id": "trade_costs_costmodel_buy_fill",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": ".buy_fill()"
+    },
+    {
+      "label": ".sell_fill()",
+      "file_type": "code",
+      "source_file": "trade_costs.py",
+      "source_location": "L80",
+      "_origin": "ast",
+      "id": "trade_costs_costmodel_sell_fill",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": ".sell_fill()"
+    },
+    {
+      "label": "build_cost_model()",
+      "file_type": "code",
+      "source_file": "trade_costs.py",
+      "source_location": "L85",
+      "_origin": "ast",
+      "id": "trade_costs_build_cost_model",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "build_cost_model()"
+    },
+    {
+      "label": "trade_costs.py \u2014 the commission + slippage model the backtesters apply to fills.",
+      "file_type": "rationale",
+      "source_file": "trade_costs.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "trade_costs_rationale_1",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "trade_costs.py \u2014 the commission + slippage model the backtesters apply to fills."
+    },
+    {
+      "label": "A commission + slippage snapshot. Defaults come from the env at import;     buil",
+      "file_type": "rationale",
+      "source_file": "trade_costs.py",
+      "source_location": "L58",
+      "_origin": "ast",
+      "id": "trade_costs_rationale_58",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "a commission + slippage snapshot. defaults come from the env at import;     buil"
+    },
+    {
+      "label": "Per-execution commission: max(per-share \u00d7 shares, per-order minimum).         Ze",
+      "file_type": "rationale",
+      "source_file": "trade_costs.py",
+      "source_location": "L69",
+      "_origin": "ast",
+      "id": "trade_costs_rationale_69",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "per-execution commission: max(per-share \u00d7 shares, per-order minimum).         ze"
+    },
+    {
+      "label": "A BUY crosses the spread upward \u2014 you pay a little more than the quote.",
+      "file_type": "rationale",
+      "source_file": "trade_costs.py",
+      "source_location": "L77",
+      "_origin": "ast",
+      "id": "trade_costs_rationale_77",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "a buy crosses the spread upward \u2014 you pay a little more than the quote."
+    },
+    {
+      "label": "A SELL crosses the spread downward \u2014 you receive a little less.",
+      "file_type": "rationale",
+      "source_file": "trade_costs.py",
+      "source_location": "L81",
+      "_origin": "ast",
+      "id": "trade_costs_rationale_81",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "a sell crosses the spread downward \u2014 you receive a little less."
+    },
+    {
+      "label": "The cost model for a backtest run, from the env defaults above.",
+      "file_type": "rationale",
+      "source_file": "trade_costs.py",
+      "source_location": "L86",
+      "_origin": "ast",
+      "id": "trade_costs_rationale_86",
+      "community": 412,
+      "community_name": "strategy_backtest.py",
+      "norm_label": "the cost model for a backtest run, from the env defaults above."
+    },
+    {
       "label": "trade_history.py",
       "file_type": "code",
       "source_file": "trade_history.py",
@@ -40481,8 +40745,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "trigger_audit",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "trigger_audit.py"
     },
     {
@@ -40492,8 +40756,8 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "trigger_audit_today",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "_today()"
     },
     {
@@ -40503,8 +40767,8 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "trigger_audit_save_trigger_history",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "save_trigger_history()"
     },
     {
@@ -40514,8 +40778,8 @@
       "source_location": "L131",
       "_origin": "ast",
       "id": "trigger_audit_record_trigger_decision",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "record_trigger_decision()"
     },
     {
@@ -40525,8 +40789,8 @@
       "source_location": "L143",
       "_origin": "ast",
       "id": "trigger_audit_record_decisions_bulk",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "record_decisions_bulk()"
     },
     {
@@ -40536,8 +40800,8 @@
       "source_location": "L191",
       "_origin": "ast",
       "id": "trigger_audit_upsert",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "_upsert()"
     },
     {
@@ -40547,8 +40811,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "trigger_audit_rationale_1",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "trigger_audit.py  point-in-time archive of breakout triggers and the buy/skip de"
     },
     {
@@ -40558,8 +40822,8 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "trigger_audit_rationale_98",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "archive `daily_triggers` rows to the append-only `trigger_history`.      must be"
     },
     {
@@ -40569,8 +40833,8 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "trigger_audit_rationale_133",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "record one buy/skip verdict against one trigger.      `decision` is bought or sk"
     },
     {
@@ -40580,8 +40844,8 @@
       "source_location": "L145",
       "_origin": "ast",
       "id": "trigger_audit_rationale_145",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "record the same verdict against many triggers.      used when the portfolio is a"
     },
     {
@@ -40591,8 +40855,8 @@
       "source_location": "L192",
       "_origin": "ast",
       "id": "trigger_audit_rationale_192",
-      "community": 407,
-      "community_name": "trigger_audit.py",
+      "community": 333,
+      "community_name": "_trig",
       "norm_label": "chunked, idempotent, non-fatal upsert."
     },
     {
@@ -40603,7 +40867,7 @@
       "_origin": "ast",
       "id": "tv_api_screener",
       "community": 199,
-      "community_name": "technical_screener.py",
+      "community_name": "increment_retention",
       "norm_label": "tv_api_screener.py"
     },
     {
@@ -40614,7 +40878,7 @@
       "_origin": "ast",
       "id": "tv_api_screener_get_rating_text",
       "community": 199,
-      "community_name": "technical_screener.py",
+      "community_name": "increment_retention",
       "norm_label": "get_rating_text()"
     },
     {
@@ -40625,7 +40889,7 @@
       "_origin": "ast",
       "id": "tv_api_screener_save_watchlist_history",
       "community": 199,
-      "community_name": "technical_screener.py",
+      "community_name": "increment_retention",
       "norm_label": "save_watchlist_history()"
     },
     {
@@ -40636,7 +40900,7 @@
       "_origin": "ast",
       "id": "tv_api_screener_run_screener",
       "community": 199,
-      "community_name": "technical_screener.py",
+      "community_name": "increment_retention",
       "norm_label": "run_screener()"
     },
     {
@@ -40647,7 +40911,7 @@
       "_origin": "ast",
       "id": "tv_api_screener_rationale_63",
       "community": 199,
-      "community_name": "technical_screener.py",
+      "community_name": "increment_retention",
       "norm_label": "append this run's screener output to the append-only `watchlist_history`.      `"
     },
     {
@@ -50980,6 +51244,72 @@
       "norm_label": "consequences"
     },
     {
+      "label": "2026-09-29_backtest-costs-slippage.md",
+      "file_type": "document",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "decisions_2026_09_29_backtest_costs_slippage",
+      "community": 268,
+      "community_name": "Backtests model commission and slippage (fidelity item #3)",
+      "norm_label": "2026-09-29_backtest-costs-slippage.md"
+    },
+    {
+      "label": "Backtests model commission and slippage (fidelity item #3)",
+      "file_type": "document",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "decisions_2026_09_29_backtest_costs_slippage_backtests_model_commission_and_slippage_fidelity_item_3",
+      "community": 268,
+      "community_name": "Backtests model commission and slippage (fidelity item #3)",
+      "norm_label": "backtests model commission and slippage (fidelity item #3)"
+    },
+    {
+      "label": "Context",
+      "file_type": "document",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "decisions_2026_09_29_backtest_costs_slippage_context",
+      "community": 268,
+      "community_name": "Backtests model commission and slippage (fidelity item #3)",
+      "norm_label": "context"
+    },
+    {
+      "label": "Decision",
+      "file_type": "document",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "decisions_2026_09_29_backtest_costs_slippage_decision",
+      "community": 268,
+      "community_name": "Backtests model commission and slippage (fidelity item #3)",
+      "norm_label": "decision"
+    },
+    {
+      "label": "Consequences",
+      "file_type": "document",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L66",
+      "_origin": "ast",
+      "id": "decisions_2026_09_29_backtest_costs_slippage_consequences",
+      "community": 268,
+      "community_name": "Backtests model commission and slippage (fidelity item #3)",
+      "norm_label": "consequences"
+    },
+    {
+      "label": "Alternatives considered",
+      "file_type": "document",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L81",
+      "_origin": "ast",
+      "id": "decisions_2026_09_29_backtest_costs_slippage_alternatives_considered",
+      "community": 268,
+      "community_name": "Backtests model commission and slippage (fidelity item #3)",
+      "norm_label": "alternatives considered"
+    },
+    {
       "label": "2026-09-29_backtester-exit-core-adoption.md",
       "file_type": "document",
       "source_file": "decisions/2026-09-29_backtester-exit-core-adoption.md",
@@ -52080,10 +52410,21 @@
       "norm_label": "managed exit tool"
     },
     {
-      "label": "Infrastructure",
+      "label": "Backtest cost model",
       "file_type": "document",
       "source_file": "docs/configuration.md",
       "source_location": "L563",
+      "_origin": "ast",
+      "id": "docs_configuration_backtest_cost_model",
+      "community": 28,
+      "community_name": "Configuration Reference",
+      "norm_label": "backtest cost model"
+    },
+    {
+      "label": "Infrastructure",
+      "file_type": "document",
+      "source_file": "docs/configuration.md",
+      "source_location": "L589",
       "_origin": "ast",
       "id": "docs_configuration_infrastructure",
       "community": 28,
@@ -52094,7 +52435,7 @@
       "label": "Dependency manifests",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L574",
+      "source_location": "L600",
       "_origin": "ast",
       "id": "docs_configuration_dependency_manifests",
       "community": 28,
@@ -52105,7 +52446,7 @@
       "label": "Database schema",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L599",
+      "source_location": "L625",
       "_origin": "ast",
       "id": "docs_configuration_database_schema",
       "community": 28,
@@ -52116,7 +52457,7 @@
       "label": "Live state",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L601",
+      "source_location": "L627",
       "_origin": "ast",
       "id": "docs_configuration_live_state",
       "community": 28,
@@ -52127,7 +52468,7 @@
       "label": "Append-only research tables",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L611",
+      "source_location": "L637",
       "_origin": "ast",
       "id": "docs_configuration_append_only_research_tables",
       "community": 28,
@@ -52138,7 +52479,7 @@
       "label": "Migrations",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L628",
+      "source_location": "L654",
       "_origin": "ast",
       "id": "docs_configuration_migrations",
       "community": 28,
@@ -52149,7 +52490,7 @@
       "label": "Row Level Security: never enable without a policy",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L644",
+      "source_location": "L670",
       "_origin": "ast",
       "id": "docs_configuration_row_level_security_never_enable_without_a_policy",
       "community": 28,
@@ -52160,7 +52501,7 @@
       "label": "Commissions",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L660",
+      "source_location": "L686",
       "_origin": "ast",
       "id": "docs_configuration_commissions",
       "community": 28,
@@ -52171,7 +52512,7 @@
       "label": "Deploying the dashboard",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L675",
+      "source_location": "L701",
       "_origin": "ast",
       "id": "docs_configuration_deploying_the_dashboard",
       "community": 28,
@@ -52182,7 +52523,7 @@
       "label": "Changing parameters safely",
       "file_type": "document",
       "source_file": "docs/configuration.md",
-      "source_location": "L702",
+      "source_location": "L728",
       "_origin": "ast",
       "id": "docs_configuration_changing_parameters_safely",
       "community": 28,
@@ -55104,7 +55445,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester",
@@ -55115,7 +55456,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L62",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester",
@@ -55126,7 +55467,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L99",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester",
@@ -55137,7 +55478,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L73",
+      "source_location": "L74",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester",
@@ -55148,7 +55489,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L84",
+      "source_location": "L85",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester",
@@ -55159,7 +55500,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L122",
+      "source_location": "L142",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester",
@@ -55251,6 +55592,42 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "backend/backtester.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backend_backtester",
+      "target": "trade_costs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "backend/backtester.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backend_backtester",
+      "target": "trade_costs_build_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "backend/backtester.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backend_backtester",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
@@ -55290,7 +55667,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L62",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_ema",
@@ -55301,10 +55678,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L63",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "backend_backtester_rationale_63",
+      "source": "backend_backtester_rationale_64",
       "target": "backend_backtester_ema",
       "confidence_score": 1.0
     },
@@ -55313,7 +55690,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L173",
+      "source_location": "L194",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55325,7 +55702,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L84",
+      "source_location": "L85",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_max_underwater_days",
@@ -55337,7 +55714,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L359",
+      "source_location": "L402",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55349,7 +55726,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L356",
+      "source_location": "L399",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55361,7 +55738,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L409",
+      "source_location": "L452",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55373,7 +55750,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L381",
+      "source_location": "L424",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55381,13 +55758,25 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "backend/backtester.py",
+      "source_location": "L100",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backend_backtester_make_trade",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L101",
+      "source_location": "L103",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "backend_backtester_rationale_101",
+      "source": "backend_backtester_rationale_103",
       "target": "backend_backtester_make_trade",
       "confidence_score": 1.0
     },
@@ -55396,7 +55785,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L270",
+      "source_location": "L304",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55407,10 +55796,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L135",
+      "source_location": "L156",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "backend_backtester_rationale_135",
+      "source": "backend_backtester_rationale_156",
       "target": "backend_backtester_run_backtest",
       "confidence_score": 1.0
     },
@@ -55419,7 +55808,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L164",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55431,7 +55820,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L204",
+      "source_location": "L225",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55443,7 +55832,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L258",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55455,7 +55844,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L243",
+      "source_location": "L275",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
@@ -55467,11 +55856,35 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "backend/backtester.py",
-      "source_location": "L266",
+      "source_location": "L300",
       "weight": 1.0,
       "_origin": "ast",
       "source": "backend_backtester_run_backtest",
       "target": "daily_exit_sim_resolve_position_day",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "backend/backtester.py",
+      "source_location": "L228",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backend_backtester_run_backtest",
+      "target": "trade_costs_build_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "backend/backtester.py",
+      "source_location": "L142",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "backend_backtester_run_backtest",
+      "target": "trade_costs_costmodel",
       "confidence_score": 1.0
     },
     {
@@ -64982,7 +65395,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L191",
+      "source_location": "L193",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_simulate",
@@ -65076,7 +65489,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L244",
+      "source_location": "L258",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_simulate",
@@ -65252,7 +65665,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L256",
+      "source_location": "L272",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_simulate",
@@ -69459,6 +69872,18 @@
       "source": "fills_rationale_1",
       "target": "fills",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "indirect_call",
+      "context": "getattr",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "fills.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "fills_extract_fill_commission",
+      "target": "trade_costs_costmodel_commission"
     },
     {
       "relation": "calls",
@@ -85328,7 +85753,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L137",
+      "source_location": "L138",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
@@ -85339,7 +85764,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L400",
+      "source_location": "L451",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
@@ -85350,7 +85775,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L152",
+      "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
@@ -85361,7 +85786,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L376",
+      "source_location": "L423",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
@@ -85372,7 +85797,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L360",
+      "source_location": "L407",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
@@ -85383,7 +85808,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L188",
+      "source_location": "L189",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
@@ -85394,7 +85819,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L327",
+      "source_location": "L367",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
@@ -85405,7 +85830,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L308",
+      "source_location": "L334",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
@@ -85416,11 +85841,47 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L178",
+      "source_location": "L179",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest",
       "target": "research_strategy_backtest_universe",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L122",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "research_strategy_backtest",
+      "target": "trade_costs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L122",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "research_strategy_backtest",
+      "target": "trade_costs_build_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L122",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "research_strategy_backtest",
+      "target": "trade_costs_costmodel",
       "confidence_score": 1.0
     },
     {
@@ -85447,11 +85908,22 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L122",
+      "weight": 0.8,
+      "_origin": "ast",
+      "source": "research_strategy_backtest_bar",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 0.5
+    },
+    {
       "relation": "references",
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L152",
+      "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_prepare",
@@ -85474,10 +85946,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L153",
+      "source_location": "L154",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "research_strategy_backtest_rationale_153",
+      "source": "research_strategy_backtest_rationale_154",
       "target": "research_strategy_backtest_prepare",
       "confidence_score": 1.0
     },
@@ -85486,7 +85958,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L411",
+      "source_location": "L481",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_main",
@@ -85498,7 +85970,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L412",
+      "source_location": "L482",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_main",
@@ -85510,7 +85982,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L305",
+      "source_location": "L330",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_simulate",
@@ -85522,11 +85994,35 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L260",
+      "source_location": "L280",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_simulate",
       "target": "research_strategy_backtest_trade_record",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L194",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "research_strategy_backtest_simulate",
+      "target": "trade_costs_build_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L189",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "research_strategy_backtest_simulate",
+      "target": "trade_costs_costmodel",
       "confidence_score": 1.0
     },
     {
@@ -85542,11 +86038,23 @@
       "target": "research_strategy_backtest_simulate"
     },
     {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L334",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "research_strategy_backtest_trade_record",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L340",
+      "source_location": "L383",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_summarize",
@@ -85558,11 +86066,35 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "research/strategy_backtest.py",
-      "source_location": "L414",
+      "source_location": "L484",
       "weight": 1.0,
       "_origin": "ast",
       "source": "research_strategy_backtest_main",
       "target": "research_strategy_backtest_print_report",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L473",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "research_strategy_backtest_main",
+      "target": "trade_costs_build_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "research/strategy_backtest.py",
+      "source_location": "L471",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "research_strategy_backtest_main",
+      "target": "trade_costs_costmodel",
       "confidence_score": 1.0
     },
     {
@@ -123335,6 +123867,213 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "tests_test_trade_costs_test_commission_hits_min_floor_on_small_orders",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "tests_test_trade_costs_test_commission_uses_per_share_when_above_min",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "tests_test_trade_costs_test_commission_zero_shares_is_free",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "tests_test_trade_costs_test_costs_reduce_net_but_not_exit_reasons",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L59",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "tests_test_trade_costs_test_env_overrides",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L96",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "tests_test_trade_costs_test_per_trade_records_expose_cost_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "tests_test_trade_costs_test_slippage_is_adverse_on_both_sides",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L52",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "tests_test_trade_costs_test_zero_cost_model_is_a_noop",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "trade_costs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "trade_costs_build_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs_rationale_1",
+      "target": "tests_test_trade_costs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs_test_commission_uses_per_share_when_above_min",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L35",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs_test_commission_hits_min_floor_on_small_orders",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs_test_commission_zero_shares_is_free",
+      "target": "trade_costs_build_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs_test_slippage_is_adverse_on_both_sides",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L53",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs_test_zero_cost_model_is_a_noop",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_trade_costs.py",
+      "source_location": "L80",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tests_test_trade_costs_test_costs_reduce_net_but_not_exit_reasons",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "tests/test_trade_history_insert.py",
       "source_location": "L55",
       "weight": 1.0,
@@ -128761,6 +129500,161 @@
       "_origin": "ast",
       "source": "tests_test_web_image_completeness_rationale_104",
       "target": "tests_test_web_image_completeness_testwebimagecompleteness_test_closure_finds_the_live_exit_engine",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L85",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs",
+      "target": "trade_costs_build_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs",
+      "target": "trade_costs_env_float",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_rationale_1",
+      "target": "trade_costs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L85",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_build_cost_model",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L76",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_costmodel",
+      "target": "trade_costs_costmodel_buy_fill",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L68",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_costmodel",
+      "target": "trade_costs_costmodel_commission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L80",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_costmodel",
+      "target": "trade_costs_costmodel_sell_fill",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L65",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_costmodel",
+      "target": "trade_costs_costmodel_slippage_frac",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L58",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_rationale_58",
+      "target": "trade_costs_costmodel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L69",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_rationale_69",
+      "target": "trade_costs_costmodel_commission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_rationale_77",
+      "target": "trade_costs_costmodel_buy_fill",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_rationale_81",
+      "target": "trade_costs_costmodel_sell_fill",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "trade_costs.py",
+      "source_location": "L86",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "trade_costs_rationale_86",
+      "target": "trade_costs_build_cost_model",
       "confidence_score": 1.0
     },
     {
@@ -138553,6 +139447,61 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_09_29_backtest_costs_slippage",
+      "target": "decisions_2026_09_29_backtest_costs_slippage_backtests_model_commission_and_slippage_fidelity_item_3",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L81",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_09_29_backtest_costs_slippage_backtests_model_commission_and_slippage_fidelity_item_3",
+      "target": "decisions_2026_09_29_backtest_costs_slippage_alternatives_considered",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L66",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_09_29_backtest_costs_slippage_backtests_model_commission_and_slippage_fidelity_item_3",
+      "target": "decisions_2026_09_29_backtest_costs_slippage_consequences",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_09_29_backtest_costs_slippage_backtests_model_commission_and_slippage_fidelity_item_3",
+      "target": "decisions_2026_09_29_backtest_costs_slippage_context",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "decisions/2026-09-29_backtest-costs-slippage.md",
+      "source_location": "L28",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "decisions_2026_09_29_backtest_costs_slippage_backtests_model_commission_and_slippage_fidelity_item_3",
+      "target": "decisions_2026_09_29_backtest_costs_slippage_decision",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "decisions/2026-09-29_backtester-exit-core-adoption.md",
       "source_location": "L1",
       "weight": 1.0,
@@ -139412,6 +140361,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
+      "source_location": "L563",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "docs_configuration_configuration_reference",
+      "target": "docs_configuration_backtest_cost_model",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/configuration.md",
       "source_location": "L255",
       "weight": 1.0,
       "_origin": "ast",
@@ -139423,7 +140383,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L702",
+      "source_location": "L728",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_configuration_reference",
@@ -139445,7 +140405,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L599",
+      "source_location": "L625",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_configuration_reference",
@@ -139456,7 +140416,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L675",
+      "source_location": "L701",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_configuration_reference",
@@ -139489,7 +140449,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L563",
+      "source_location": "L589",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_configuration_reference",
@@ -139687,7 +140647,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L574",
+      "source_location": "L600",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_infrastructure",
@@ -139698,7 +140658,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L611",
+      "source_location": "L637",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_database_schema",
@@ -139709,7 +140669,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L660",
+      "source_location": "L686",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_database_schema",
@@ -139720,7 +140680,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L601",
+      "source_location": "L627",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_database_schema",
@@ -139731,7 +140691,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L628",
+      "source_location": "L654",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_database_schema",
@@ -139742,7 +140702,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/configuration.md",
-      "source_location": "L644",
+      "source_location": "L670",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_configuration_database_schema",
@@ -141234,5 +142194,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "1650455f0938d59586bdb48eabe7e68533ed384a"
+  "built_at_commit": "470b248955de8e426b3f08590cf73808ae56837f"
 }

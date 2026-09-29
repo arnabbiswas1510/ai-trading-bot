@@ -251,10 +251,25 @@ extending the window or universe.
 
 ## Caveats that apply to all of them
 
-- **Commissions and slippage are not modelled.** Live cost is ~0.65¢/share
-  (≈1.09 bps). Realised P&L in `trade_history` is stored **gross** for exactly
-  this reason — every threshold in `decisions/` was measured gross. See
-  `decisions/2026-09-06_commission-accounting.md`.
+- **Commissions and slippage.** The two strategy backtesters —
+  `research/strategy_backtest.py` and the dashboard's `backend/backtester.py` —
+  **now model both** (backtest-fidelity item #3, `trade_costs.py`). They charge an
+  IBKR-tiered commission (default $0.0035/share, $0.35 per-order floor) and an
+  adverse slippage assumption (default 5 bps per fill) to **cash only**, so the
+  equity curve, CAGR and final equity are **net**, while each trade's
+  `profit_loss` stays **gross** (quote-to-quote) and the exit RULES are
+  unaffected — costs never move a stop. Both tools now report `total_commission`,
+  `total_slippage`, `total_trading_costs` and `net_pnl` alongside the gross
+  figures. Defaults are **assumptions, not measurements** and are env-overridable
+  (`BACKTEST_COMMISSION_PER_SHARE`, `BACKTEST_COMMISSION_MIN`,
+  `BACKTEST_SLIPPAGE_BPS`); the research CLI also takes `--commission-per-share`,
+  `--commission-min`, `--slippage-bps` and `--no-costs`. The item #3 roadmap notes
+  ~0.65¢/share as a conservative all-in commission — set
+  `BACKTEST_COMMISSION_PER_SHARE=0.0065` to use it. See
+  `decisions/2026-09-29_backtest-costs-slippage.md`.
+  **`research/exit_rule_replay.py` remains gross by design** — every exit
+  threshold in `decisions/` was measured gross, and `trade_history.profit_loss` is
+  stored gross to stay comparable (`decisions/2026-09-06_commission-accounting.md`).
 - **Survivorship**: the watchlist and `benchmark_data` universe are built from
   today's tickers.
 - **A backtest cannot see execution pathologies.** It assumes one clean entry and

@@ -95,7 +95,7 @@ import json
 import os
 import statistics
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 # research/ (for bardata) and repo root (for exit_core/exit_rules/config).
@@ -119,6 +119,7 @@ from daily_exit_sim import (  # noqa: E402,F401
     _ladder_trail_pct,
     resolve_position_day,
 )
+from trade_costs import CostModel, build_cost_model  # noqa: E402
 
 # ── Entry-side constants — mirror backend/backtester.py so entries match ──────────
 MARKET_SYMBOL      = "SPY"    # dataset has SPY, not ^GSPC/QQQ; live gate is richer
@@ -187,8 +188,10 @@ def _universe(kind: str) -> list[str]:
 
 def simulate(tickers: list[str], start: str, end: str,
              initial_capital: float = INITIAL_CAPITAL,
-             max_positions: int = MAX_POSITIONS) -> dict:
+             max_positions: int = MAX_POSITIONS,
+             costs: CostModel | None = None) -> dict:
     cfg = build_exit_config()
+    costs = costs if costs is not None else build_cost_model()
 
     # Warm indicators with a year of lookback, then trim to the window.
     def _load(sym: str) -> list[Bar] | None:
@@ -217,6 +220,8 @@ def simulate(tickers: list[str], start: str, end: str,
     pending: list[str] = []
     trades: list[dict] = []
     equity_curve: list[dict] = []
+    total_commission = 0.0    # $ paid in commissions across all fills
+    total_slippage = 0.0      # $ lost to adverse slippage across all fills
 
     for i, date in enumerate(all_dates):
         # ── A. Fill pending buys at today's OPEN (queued EOD yesterday) ──────────
@@ -237,11 +242,22 @@ def simulate(tickers: list[str], start: str, end: str,
                 )
                 equity_now = cash + held_value
                 alloc = min(cash / remaining, equity_now / max_positions)
-                shares = int(alloc // bar.open)
+                # Costs do NOT change which name is bought or the exit math: the
+                # position's buy_price stays the unslipped OPEN quote (so exit
+                # levels are identical with or without costs). Slippage + commission
+                # are charged to CASH only. Size on the effective (slipped) fill so
+                # a buy never overspends the allocation.
+                buy_fill = costs.buy_fill(bar.open)
+                shares = int(alloc // buy_fill)
                 if shares <= 0:
                     continue
-                cash -= shares * bar.open
+                commission = costs.commission(shares, buy_fill)
+                cash -= shares * buy_fill + commission
+                total_commission += commission
+                total_slippage += (buy_fill - bar.open) * shares
                 positions[tk] = new_position(tk, shares, bar.open, date, alloc, cfg)
+                positions[tk]["buy_commission"] = commission
+                positions[tk]["buy_slippage"] = (buy_fill - bar.open) * shares
         pending = still_pending
 
         # ── B. Resolve exits for every open position on today's bar ──────────────
@@ -256,14 +272,23 @@ def simulate(tickers: list[str], start: str, end: str,
             res = resolve_position_day(pos, bar, calendar_days, cfg)
 
             if res.scale_shares:
-                cash += res.scale_shares * res.scale_price
+                sell_fill = costs.sell_fill(res.scale_price)
+                commission = costs.commission(res.scale_shares, sell_fill)
+                cash += res.scale_shares * sell_fill - commission
+                total_commission += commission
+                total_slippage += (res.scale_price - sell_fill) * res.scale_shares
                 trades.append(_trade_record(pos, res.scale_price, date, calendar_days,
                                              "Partial scale-out (+trigger)", res.scale_shares,
-                                             partial=True))
+                                             partial=True, costs=costs, cost_model_shares=res.scale_shares))
             if res.exit_price is not None:
-                cash += pos["shares"] * res.exit_price
+                sell_fill = costs.sell_fill(res.exit_price)
+                commission = costs.commission(pos["shares"], sell_fill)
+                cash += pos["shares"] * sell_fill - commission
+                total_commission += commission
+                total_slippage += (res.exit_price - sell_fill) * pos["shares"]
                 trades.append(_trade_record(pos, res.exit_price, date, calendar_days,
-                                             res.exit_reason, pos["shares"]))
+                                             res.exit_reason, pos["shares"],
+                                             costs=costs, cost_model_shares=pos["shares"]))
                 to_close.append(tk)
         for tk in to_close:
             positions.pop(tk)
@@ -302,13 +327,25 @@ def simulate(tickers: list[str], start: str, end: str,
         )
         equity_curve.append({"date": date, "equity": round(equity, 2)})
 
-    return _summarize(trades, equity_curve, initial_capital, all_dates, max_positions)
+    return _summarize(trades, equity_curve, initial_capital, all_dates, max_positions,
+                      total_commission, total_slippage)
 
 
 def _trade_record(pos: dict, sell_price: float, sell_date: str, hold_days: int,
-                  reason: str, shares: int, partial: bool = False) -> dict:
+                  reason: str, shares: int, partial: bool = False,
+                  costs: CostModel | None = None, cost_model_shares: int | None = None) -> dict:
     buy = float(pos["buy_price"])
-    pnl = (sell_price - buy) * shares
+    pnl = (sell_price - buy) * shares          # GROSS: quote-to-quote, cost-free
+    commission = 0.0
+    slippage_cost = 0.0
+    if costs is not None:
+        sell_fill = costs.sell_fill(sell_price)
+        commission = costs.commission(shares, sell_fill)
+        slippage_cost = (sell_price - sell_fill) * shares
+        if not partial:   # a full exit also carries the whole position's buy costs
+            commission += float(pos.get("buy_commission", 0.0))
+            slippage_cost += float(pos.get("buy_slippage", 0.0))
+    net = pnl - commission - slippage_cost
     return {
         "ticker": pos["ticker"],
         "shares": shares,
@@ -316,7 +353,10 @@ def _trade_record(pos: dict, sell_price: float, sell_date: str, hold_days: int,
         "buy_date": pos["buy_date"],
         "sell_price": round(sell_price, 4),
         "sell_date": sell_date,
-        "profit_loss": round(pnl, 2),
+        "profit_loss": round(pnl, 2),               # GROSS
+        "commission": round(commission, 2),
+        "slippage_cost": round(slippage_cost, 2),
+        "net_profit_loss": round(net, 2),
         "percent_return": round((sell_price / buy - 1.0) * 100.0, 2),
         "hold_days": hold_days,
         "exit_reason": reason,
@@ -325,11 +365,14 @@ def _trade_record(pos: dict, sell_price: float, sell_date: str, hold_days: int,
 
 
 def _summarize(trades: list[dict], equity_curve: list[dict],
-               initial_capital: float, all_dates: list[str], max_positions: int) -> dict:
+               initial_capital: float, all_dates: list[str], max_positions: int,
+               total_commission: float = 0.0, total_slippage: float = 0.0) -> dict:
     closed = [t for t in trades if not t["partial"]]
     n = len(closed)
     wins = [t for t in closed if t["profit_loss"] > 0]
-    total_pnl = round(sum(t["profit_loss"] for t in trades), 2)
+    total_pnl = round(sum(t["profit_loss"] for t in trades), 2)          # GROSS
+    net_pnl = round(sum(t.get("net_profit_loss", t["profit_loss"]) for t in trades), 2)
+    total_costs = round(total_commission + total_slippage, 2)
     final_equity = equity_curve[-1]["equity"] if equity_curve else initial_capital
     years = max(1e-9, (datetime.strptime(all_dates[-1], "%Y-%m-%d")
                        - datetime.strptime(all_dates[0], "%Y-%m-%d")).days / 365.25)
@@ -345,8 +388,12 @@ def _summarize(trades: list[dict], equity_curve: list[dict],
             "closed_trades": n,
             "win_rate": round(100.0 * len(wins) / n, 1) if n else 0.0,
             "avg_return_pct": round(statistics.fmean(t["percent_return"] for t in closed), 2) if n else 0.0,
-            "total_pnl": total_pnl,
-            "final_equity": round(final_equity, 2),
+            "total_pnl": total_pnl,                       # GROSS, quote-to-quote
+            "net_pnl": net_pnl,                           # NET of commission + slippage
+            "total_commission": round(total_commission, 2),
+            "total_slippage": round(total_slippage, 2),
+            "total_trading_costs": total_costs,
+            "final_equity": round(final_equity, 2),       # NET (cash reflects costs)
             "cagr_pct": round(cagr, 2),
             "max_positions": max_positions,
             "window": [all_dates[0], all_dates[-1]] if all_dates else [],
@@ -384,8 +431,12 @@ def _print_report(res: dict) -> None:
     print(f"  closed trades   {s['closed_trades']}")
     print(f"  win rate        {s['win_rate']}%")
     print(f"  avg return      {s['avg_return_pct']}%")
-    print(f"  total P&L       ${s['total_pnl']:,.2f}")
-    print(f"  final equity    ${s['final_equity']:,.2f}")
+    print(f"  gross P&L       ${s['total_pnl']:,.2f}  (quote-to-quote, cost-free)")
+    print(f"  commissions     -${s.get('total_commission', 0.0):,.2f}")
+    print(f"  slippage        -${s.get('total_slippage', 0.0):,.2f}")
+    print(f"  trading costs   -${s.get('total_trading_costs', 0.0):,.2f}")
+    print(f"  net P&L         ${s.get('net_pnl', s['total_pnl']):,.2f}  (after costs)")
+    print(f"  final equity    ${s['final_equity']:,.2f}  (NET — cash reflects costs)")
     print(f"  CAGR            {s['cagr_pct']}%")
     print("-" * 68)
     print("  exit-reason counts (proves the LIVE rules fired, not the retired ones):")
@@ -405,12 +456,31 @@ def main(argv: list[str] | None = None) -> int:
                     help="'all', or a name matching research/<name>_names.txt (e.g. 'pass')")
     ap.add_argument("--capital", type=float, default=INITIAL_CAPITAL)
     ap.add_argument("--slots", type=int, default=MAX_POSITIONS)
+    ap.add_argument("--commission-per-share", type=float, default=None,
+                    help="override commission per share (default from BACKTEST_COMMISSION_PER_SHARE / 0.0035)")
+    ap.add_argument("--commission-min", type=float, default=None,
+                    help="override per-order commission floor (default from BACKTEST_COMMISSION_MIN / 0.35)")
+    ap.add_argument("--slippage-bps", type=float, default=None,
+                    help="override slippage in basis points per fill (default from BACKTEST_SLIPPAGE_BPS / 5.0)")
+    ap.add_argument("--no-costs", action="store_true",
+                    help="disable commission + slippage (gross == net; for parity with pre-cost runs)")
     ap.add_argument("--json", default=None, help="write full result to this path")
     args = ap.parse_args(argv)
 
+    if args.no_costs:
+        costs = CostModel(commission_per_share=0.0, commission_min=0.0, slippage_bps=0.0)
+    else:
+        costs = build_cost_model()
+        if args.commission_per_share is not None:
+            costs = replace(costs, commission_per_share=args.commission_per_share)
+        if args.commission_min is not None:
+            costs = replace(costs, commission_min=args.commission_min)
+        if args.slippage_bps is not None:
+            costs = replace(costs, slippage_bps=args.slippage_bps)
+
     tickers = _universe(args.universe)
     res = simulate(tickers, args.start, args.end,
-                   initial_capital=args.capital, max_positions=args.slots)
+                   initial_capital=args.capital, max_positions=args.slots, costs=costs)
     _print_report(res)
     if args.json:
         with open(args.json, "w") as fh:

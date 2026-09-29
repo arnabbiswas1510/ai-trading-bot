@@ -560,6 +560,32 @@ Used by `managed_exit.py` for manual liquidation.
 
 ---
 
+## Backtest cost model
+
+Consumed by the two strategy backtesters — `research/strategy_backtest.py` and the
+dashboard's `backend/backtester.py` (via `trade_costs.py`, backtest-fidelity item
+#3). Commission and slippage are charged to the backtest **cash** balance only:
+the equity curve, CAGR, expectancy and final equity are therefore **net**, while
+each trade's `profit_loss` stays **gross** (quote-to-quote, comparable with the
+`decisions/` thresholds and `research/exit_rule_replay.py`) and the exit **rules
+are never perturbed** — a cost can never move a stop. Both tools additionally
+report `total_commission`, `total_slippage`, `total_trading_costs` and `net_pnl`.
+These values affect **backtests only**, never live trading, and the defaults are
+**assumptions, not measured fill quality**.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `BACKTEST_COMMISSION_PER_SHARE` | `0.0035` | Per-share commission (IBKR tiered US-equity). Set `0.0065` for the roadmap's conservative ~0.65¢/share all-in figure |
+| `BACKTEST_COMMISSION_MIN` | `0.35` | Per-order commission floor, `max(shares × per_share, min)` |
+| `BACKTEST_SLIPPAGE_BPS` | `5.0` | Adverse slippage per fill in basis points (buys fill higher, sells lower); placeholder, not measured |
+
+The `research/strategy_backtest.py` CLI also exposes `--commission-per-share`,
+`--commission-min`, `--slippage-bps` and `--no-costs` (gross == net, for parity
+with pre-cost runs). See `decisions/2026-09-29_backtest-costs-slippage.md` and
+`docs/backtesting.md`.
+
+---
+
 ## Infrastructure
 
 | Variable | Default | Effect |
