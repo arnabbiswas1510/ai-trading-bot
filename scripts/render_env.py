@@ -7,9 +7,10 @@ logic can be unit-tested without a live Bitwarden connection
 
 Contract
 --------
-* Input:  the secrets JSON (as produced by ``bws secret list -o json``) via the
-          ``BWS_SECRETS_JSON`` environment variable; the template path and the
-          sentinel string as argv[1] and argv[2].
+* Input:  the secrets JSON (as produced by ``bws secret list <PROJECT_ID> -o
+          json`` — the listing is scoped to a single Bitwarden project by
+          render_env.sh) via the ``BWS_SECRETS_JSON`` environment variable; the
+          template path and the sentinel string as argv[1] and argv[2].
 * Output: the fully-rendered .env written to stdout.
 * Every template line whose value is exactly the sentinel (default ``@bws``) is
   replaced with the matching secret's value, looked up by the env-var name.

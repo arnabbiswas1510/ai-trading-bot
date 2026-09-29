@@ -12,11 +12,18 @@
 #   config lines pass through verbatim.
 #
 # FAIL-CLOSED CONTRACT
-#   On ANY error — bws missing, token missing, Bitwarden unreachable, or a single
-#   @bws key not present in the vault — this script leaves the existing .env
-#   completely untouched and exits non-zero, so the caller (deploy / restart)
-#   aborts BEFORE starting containers. It never writes a partial .env and never
-#   falls back to stale values silently.
+#   On ANY error — bws missing, token missing, project id missing, Bitwarden
+#   unreachable, or a single @bws key not present in the vault — this script
+#   leaves the existing .env completely untouched and exits non-zero, so the
+#   caller (deploy / restart) aborts BEFORE starting containers. It never writes
+#   a partial .env and never falls back to stale values silently.
+#
+# PROJECT SCOPING
+#   The machine account may see more than one Bitwarden Secrets Manager project.
+#   Secrets are matched downstream by env-var NAME, so an unscoped listing could
+#   pull a same-named key from the wrong project. BWS_PROJECT_ID (from the
+#   bootstrap file or the environment) is therefore MANDATORY and passed to
+#   `bws secret list <PROJECT_ID>` so only this project's secrets are returned.
 #
 # See decisions/2026-09-27_bitwarden-secret-resolution.md.
 
@@ -42,15 +49,28 @@ fi
 [ -f "$TEMPLATE" ]  || fail "template not found: $TEMPLATE"
 [ -f "$BOOTSTRAP" ] || fail "bootstrap token file not found: $BOOTSTRAP"
 
-# ── Load the single bootstrap secret (BWS_ACCESS_TOKEN) ──────────────────────
+# An explicit BWS_PROJECT_ID in the environment takes precedence over the value
+# in the bootstrap file; capture it before sourcing so the source cannot clobber
+# a deliberate override.
+BWS_PROJECT_ID_OVERRIDE="${BWS_PROJECT_ID:-}"
+
+# ── Load the bootstrap secrets (BWS_ACCESS_TOKEN, BWS_PROJECT_ID) ─────────────
 set -a
 # shellcheck disable=SC1090
 . "$BOOTSTRAP"
 set +a
+[ -n "$BWS_PROJECT_ID_OVERRIDE" ] && BWS_PROJECT_ID="$BWS_PROJECT_ID_OVERRIDE"
 [ -n "${BWS_ACCESS_TOKEN:-}" ] || fail "BWS_ACCESS_TOKEN not set by $BOOTSTRAP"
+# Project scoping is MANDATORY and fail-closed: the machine account may have read
+# access to more than one Bitwarden Secrets Manager project, and secrets are
+# matched by env-var NAME downstream (render_env.py). An unscoped `secret list`
+# would merge every accessible project, so a same-named key in another project
+# could silently resolve the wrong value into .env. Requiring the project id
+# guarantees `secret list` returns ONLY this project's secrets.
+[ -n "${BWS_PROJECT_ID:-}" ] || fail "BWS_PROJECT_ID not set (add it to $BOOTSTRAP or export it) — required so 'bws secret list' is scoped to this project's secrets only"
 
-# ── Fetch every readable secret once, as JSON ────────────────────────────────
-SECRETS_JSON="$("$BWS_BIN" secret list -o json)" || fail "bws secret list failed (token/connectivity?)"
+# ── Fetch every readable secret in THIS PROJECT once, as JSON ─────────────────
+SECRETS_JSON="$("$BWS_BIN" secret list "$BWS_PROJECT_ID" -o json)" || fail "bws secret list failed (token/connectivity/project id?)"
 
 # ── Render into a temp file in the SAME directory (atomic mv) ─────────────────
 TMP="$(mktemp "${OUT}.XXXXXX")" || fail "mktemp failed next to $OUT"

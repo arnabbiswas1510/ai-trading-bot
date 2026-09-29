@@ -38,8 +38,15 @@ template.
 
 On the production host the real `.env` is produced by `scripts/render_env.sh`,
 which reads the machine-account token from `~/.config/ai-trading-bot/bws.env`
-(outside the repo, chmod 600), pulls the vault via `bws secret list -o json`, and
-substitutes each `@bws` line with its value. The resolver is **fail-closed**: if
+(outside the repo, chmod 600), pulls the vault via `bws secret list "$BWS_PROJECT_ID" -o json`,
+and substitutes each `@bws` line with its value. The listing is **scoped to a
+single Bitwarden project** by `BWS_PROJECT_ID`, which the same `bws.env` file
+supplies alongside `BWS_ACCESS_TOKEN` (or may be exported to override it). This
+scoping is **mandatory and fail-closed**: the machine account can have read
+access to more than one Secrets Manager project, and because secrets are matched
+by env-var name, an unscoped listing could resolve a same-named key from the
+wrong project into `.env`; if `BWS_PROJECT_ID` is unset the resolver writes
+nothing and exits non-zero. The resolver is likewise **fail-closed** on secrets: if
 any secret is missing or empty it writes nothing and exits non-zero, leaving the
 existing `.env` untouched. `OPENAI_API_KEY` is left blank in the template (it is
 optional and not stored in Bitwarden).

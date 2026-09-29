@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790627582.7245579,
-    "ast_hash": "8d8ad845c89a8a6da32d26670d9ebc24",
+    "mtime": 1790650499.8944516,
+    "ast_hash": "638bbfb2d35637bec29c444805cffb66",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -1585,13 +1585,13 @@
     "semantic_hash": ""
   },
   "scripts/render_env.py": {
-    "mtime": 1790561698.8116355,
-    "ast_hash": "b72ef5b5774a6e292287761bc9c959fb",
+    "mtime": 1790650485.5325694,
+    "ast_hash": "4a9d1967c29ed6629ee3de741e2aa4ee",
     "semantic_hash": ""
   },
   "scripts/render_env.sh": {
-    "mtime": 1790561680.03475,
-    "ast_hash": "16d66d6cd45960320b820b4d4e24a5f6",
+    "mtime": 1790650481.4485216,
+    "ast_hash": "0e6605f8afc5662490833d28a281c32b",
     "semantic_hash": ""
   },
   "tests/test_no_secrets_committed.py": {
@@ -1692,6 +1692,11 @@
   "decisions/2026-09-28_ai-value-replay-harness.md": {
     "mtime": 1790628843.1652396,
     "ast_hash": "a778b870c1fc492af384aab8cc7b0b15",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-28_bitwarden-project-scoped-secret-list.md": {
+    "mtime": 1790650527.7318993,
+    "ast_hash": "67eff6374d392555d01dbecfbfea15ba",
     "semantic_hash": ""
   }
 }
