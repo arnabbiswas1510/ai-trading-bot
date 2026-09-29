@@ -702,6 +702,31 @@
       ],
       "last_reviewed": null,
       "history": []
+    },
+    {
+      "id": "intraday-fmp-exit-fidelity",
+      "title": "Upgrade research/strategy_backtest.py from daily to 5-minute bars for exit-price fidelity",
+      "kind": "work-item",
+      "status": "active",
+      "decided": "2026-09-29",
+      "implemented": false,
+      "decision": "research/strategy_backtest.py runs the LIVE exit rules (exit_core/exit_rules) but on DAILY bars, so it has rule parity, not fill-price fidelity. The 5-minute-bar upgrade \u2014 which would let it model the 0.6% arm-trail bounce, the 15-minute poll and gap resolution the tight Prove-It exits depend on \u2014 is deliberately deferred until live usage shows exit-price precision is actually needed, and would require an FMP intraday subscription.",
+      "rationale": "Per the operator's explicit sequencing: daily-bar rule parity first (no new data, no FMP subscription), intraday fidelity only when the live book demonstrates the daily approximation is too coarse to answer a real question. Building 5-minute ingestion speculatively spends a subscription and engineering time on precision nobody has yet needed. The daily tool is trustworthy for RELATIVE questions today; this entry exists so the intraday upgrade is remembered and re-evaluated, not forgotten.",
+      "adr": "decisions/2026-09-29_backtester-exit-core-adoption.md",
+      "revisit": {
+        "min_closed_trades": null,
+        "not_before": "2026-12-01"
+      },
+      "baseline": "At deferral: strategy_backtest.py resolves exits once per DAILY bar (resting levels from live functions vs the low, high folded in after; arm modelled as sell-at-level). exit_rule_replay.py already uses 5-minute bars for the same mechanics on REAL trades, and is the interim source of intraday-accurate exit numbers. No FMP intraday subscription held.",
+      "review_command": "python3 research/strategy_backtest.py --start 2024-01-01 --end 2026-06-30   # inspect exit-reason mix; compare arm-heavy buckets against exit_rule_replay.py --insecure on real fills",
+      "review_questions": [
+        "Has a real decision actually been blocked by the daily-bar fill approximation, or is exit_rule_replay.py (5-min, real trades) still answering every intraday-precision question we have?",
+        "How large is the gap? Spot-check a sample of the daily tool's Prove-It arm exits against the same names on 5-minute bars \u2014 is the sell-at-level assumption materially off, or within slippage noise?",
+        "If the upgrade is warranted, is the seam clean? resolve_position_day is bar-granularity agnostic by design \u2014 confirm a 5-minute loop swaps in with NO change to the exit_core/exit_rules calls before committing to the data cost.",
+        "Does the FMP intraday subscription's cost/coverage (history depth, rate limits) actually support a multi-year backtest universe, or only a recent window?"
+      ],
+      "last_reviewed": null,
+      "history": []
     }
   ]
 }

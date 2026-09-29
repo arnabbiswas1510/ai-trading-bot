@@ -251,7 +251,7 @@
   "249": "The Prove-It Stop — one loss rule replaces five",
   "250": "test_oca_managed_exit.py",
   "251": "HWM profit-lock after the first leg",
-  "252": "main",
+  "252": "shipped_proveit",
   "253": "2026-09-26 — Phase 1 backstop-slack widening (behaviour retired, constant kept)",
   "254": "Early Dollar Stop becomes slot-derived, not a flat dollar amount",
   "255": "TestTheDetectorActuallyDetects",
@@ -282,7 +282,7 @@
   "280": "TeeLogger",
   "281": "exit_rules.py",
   "282": "2026-09-04_prove-it-stop.md",
-  "283": "1. Strategy backtester",
+  "283": "Backtesting",
   "284": "test_telegram_notifier.py",
   "285": "Commission accounting, and the RLS policy gap that hid it",
   "286": ".test_ibkr_stop_not_python_code_enforced",
@@ -411,10 +411,12 @@
   "409": "TestNextEarningsExtraction",
   "410": "telegram_notifier.py",
   "411": "Entry decisions extracted into a pure `decision_core` shared by live and backtest",
-  "412": "test_exit_path_golden.py",
+  "412": "strategy_backtest.py",
   "413": "backfill_rs_percentile.py",
   "414": "selling.py",
   "415": "Exit decisions extracted into a pure `exit_core` shared by live and backtest",
   "416": ".verify_delivery",
-  "417": "test_unconfigured_names_the_missing_variable"
+  "417": "test_unconfigured_names_the_missing_variable",
+  "418": "resolve_position_day",
+  "419": "Backtester exit parity: a research backtest that calls the live exit engine"
 }

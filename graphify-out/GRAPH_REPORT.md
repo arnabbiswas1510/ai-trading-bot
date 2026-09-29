@@ -1,16 +1,16 @@
 # Graph Report - ai-trading-bot  (2026-09-29)
 
 ## Corpus Check
-- 335 files · ~464,185 words
+- 338 files · ~469,927 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4801 nodes · 7516 edges · 418 communities (377 shown, 41 thin omitted)
+- 4849 nodes · 7614 edges · 420 communities (379 shown, 41 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 157 edges (avg confidence: 0.76)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `faa657dc`
+- Built from commit: `b44b87e2`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -263,7 +263,7 @@
 - The Prove-It Stop — one loss rule replaces five
 - test_oca_managed_exit.py
 - HWM profit-lock after the first leg
-- main
+- shipped_proveit
 - 2026-09-26 — Phase 1 backstop-slack widening (behaviour retired, constant kept)
 - Early Dollar Stop becomes slot-derived, not a flat dollar amount
 - TestTheDetectorActuallyDetects
@@ -293,7 +293,7 @@
 - _client
 - TeeLogger
 - exit_rules.py
-- 1. Strategy backtester
+- Backtesting
 - test_telegram_notifier.py
 - Commission accounting, and the RLS policy gap that hid it
 - .test_ibkr_stop_not_python_code_enforced
@@ -420,12 +420,14 @@
 - TestNextEarningsExtraction
 - telegram_notifier.py
 - Entry decisions extracted into a pure `decision_core` shared by live and backtest
-- test_exit_path_golden.py
+- strategy_backtest.py
 - backfill_rs_percentile.py
 - selling.py
 - Exit decisions extracted into a pure `exit_core` shared by live and backtest
 - .verify_delivery
 - test_unconfigured_names_the_missing_variable
+- resolve_position_day
+- Backtester exit parity: a research backtest that calls the live exit engine
 
 ## God Nodes (most connected - your core abstractions)
 1. `per_symbol` - 124 edges
@@ -435,7 +437,7 @@
 5. `_pos()` - 50 edges
 6. `make_trigger()` - 47 edges
 7. `TelegramNotifier` - 39 edges
-8. `evaluate_exit()` - 29 edges
+8. `evaluate_exit()` - 30 edges
 9. `ExitConfig` - 29 edges
 10. `FMPClient` - 27 edges
 
@@ -454,7 +456,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (418 total, 41 thin omitted)
+## Communities (420 total, 41 thin omitted)
 
 ### Community 0 - "compute_liquidity_score"
 Cohesion: 0.12
@@ -1400,9 +1402,9 @@ Nodes (8): tests/test_oca_managed_exit.py — Smart OCA Managed Exit.  The dange
 Cohesion: 0.33
 Nodes (5): Consequences, Context, Decision, Follow-up, HWM profit-lock after the first leg
 
-### Community 252 - "main"
-Cohesion: 0.09
-Nodes (35): basetrail_configs(), clean_configs(), cliff_configs(), day0_configs(), _env(), eod_configs(), headline_configs(), ladder_configs() (+27 more)
+### Community 252 - "shipped_proveit"
+Cohesion: 0.08
+Nodes (30): basetrail_configs(), clean_configs(), cliff_configs(), day0_configs(), eod_configs(), headline_configs(), ladder_configs(), live_baseline() (+22 more)
 
 ### Community 253 - "2026-09-26 — Phase 1 backstop-slack widening (behaviour retired, constant kept)"
 Cohesion: 0.12
@@ -1457,8 +1459,8 @@ Cohesion: 0.22
 Nodes (8): 1. The labels were partly invented, 2. Half the exits recorded no numbers at all, Consequences, Context, Decision, Exit detail panel, and the removal of fabricated exit reasons, Guards, Not done
 
 ### Community 266 - "MonitorRecorder"
-Cohesion: 0.15
-Nodes (9): _Event, MonitorRecorder, golden_log.py — characterization recorder for execution_agent orchestrators.  WH, Drive monitor_portfolio_intraday over a scripted book and yield a     MonitorRec, One recorded money-path action, normalized to compare across runs., First clause of a sell/arm reason, before any per-run volatile detail     (price, Installs recording spies over the money-path seams and collects a     normalized, _reason_head() (+1 more)
+Cohesion: 0.10
+Nodes (18): _Event, MonitorRecorder, golden_log.py — characterization recorder for execution_agent orchestrators.  WH, Drive monitor_portfolio_intraday over a scripted book and yield a     MonitorRec, One recorded money-path action, normalized to compare across runs., First clause of a sell/arm reason, before any per-run volatile detail     (price, Installs recording spies over the money-path seams and collects a     normalized, _reason_head() (+10 more)
 
 ### Community 267 - "Relative strength is measured but not ranked — shadow `rs_percentile` column"
 Cohesion: 0.20
@@ -1520,9 +1522,9 @@ Nodes (6): Delete execution_YYYY-MM-DD.log files older than KEEP_DAYS.          
 Cohesion: 0.10
 Nodes (22): hard_stop_price(), _infer_exit_type(), _position_atr_pct(), prove_it_p1_threshold_pct(), prove_it_stop_level(), prove_it_trail_pct(), Exit decision logic: WHERE a position should exit, and WHETHER it may.  Extracte, # NOTE: those figures were measured with the +20% trigger. The move to +10% wide (+14 more)
 
-### Community 283 - "1. Strategy backtester"
-Cohesion: 0.20
-Nodes (9): 1. Strategy backtester, 2. Exit replay — against your own real trades, 3. Research harnesses, Backtesting, Caveats that apply to all of them, From Python, From the API, From the dashboard (+1 more)
+### Community 283 - "Backtesting"
+Cohesion: 0.17
+Nodes (11): 0. Strategy backtest with the LIVE exit rules (exit-parity), 1. Web strategy backtester (dashboard — ⚠ retired exits), 2. Exit replay — against your own real trades, 3. Research harnesses, Backtesting, Caveats that apply to all of them, Fidelity — read before trusting a dollar figure, From Python (+3 more)
 
 ### Community 284 - "test_telegram_notifier.py"
 Cohesion: 0.08
@@ -1682,7 +1684,7 @@ Nodes (6): Consequences, Context, Decision, Sell reasons derive the stop anchor 
 
 ### Community 329 - "jackknife"
 Cohesion: 0.24
-Nodes (14): ExitConfig, jackknife(), Leave-one-out fragility test of every challenger against `baseline`.      The st, report_jackknife(), _cfg(), fixture, Arithmetic guards for the leave-one-out jackknife in exit_rule_replay.  The jack, Deterministic delta lookup keyed by (config label, trade ticker+hour). (+6 more)
+Nodes (14): jackknife(), Leave-one-out fragility test of every challenger against `baseline`.      The st, report_jackknife(), _cfg(), ExitConfig, fixture, Arithmetic guards for the leave-one-out jackknife in exit_rule_replay.  The jack, Deterministic delta lookup keyed by (config label, trade ticker+hour). (+6 more)
 
 ### Community 330 - "Phase 1 rests on a STATIC stop, not a ratcheting trailing order"
 Cohesion: 0.18
@@ -1745,8 +1747,8 @@ Cohesion: 0.29
 Nodes (6): Alternatives rejected, Consequences, Context, Decision, Follow-up, Ship noteworthy log lines to Supabase
 
 ### Community 346 - "exit_rule_replay.py"
-Cohesion: 0.12
-Nodes (25): _correct_split(), fetch_5min(), fetch_entry_atr_pct(), _fmp_get(), _fold_cluster(), hydrate(), merge_positions(), _parse_ts() (+17 more)
+Cohesion: 0.10
+Nodes (37): clean_qualifying_rate(), _correct_split(), _env(), fetch_5min(), fetch_entry_atr_pct(), _fmp_get(), _fold_cluster(), grid_configs() (+29 more)
 
 ### Community 347 - "market_regime.py"
 Cohesion: 0.32
@@ -1781,16 +1783,16 @@ Cohesion: 0.50
 Nodes (4): Evidence, Phase 1 and Phase 2 are complementary, not additive, Why Phase 1 WIDENS after day 0 rather than tightening, Why the Phase 2 floor sits 1% BELOW entry, not at it
 
 ### Community 356 - "_date"
-Cohesion: 0.19
-Nodes (18): check_preconditions(), closed_trade_count(), _env(), is_due(), load_registry(), main(), matured_trigger_count(), _notify_telegram() (+10 more)
+Cohesion: 0.22
+Nodes (16): check_preconditions(), closed_trade_count(), _env(), is_due(), load_registry(), main(), matured_trigger_count(), _notify_telegram() (+8 more)
 
 ### Community 357 - "EW"
 Cohesion: 0.50
 Nodes (4): end, rows, start, EW
 
 ### Community 358 - "ExitConfig"
-Cohesion: 0.14
-Nodes (22): Any, clean_qualifying_rate(), ExitConfig, grid_configs(), One candidate parameterisation of the early-exit rules., Full sweep. Use when a headline result looks unstable., How many trades would the `clean` condition actually fire on?      Without this, Counterfactual exit for one position under `cfg`: the fill price, the     timest (+14 more)
+Cohesion: 0.18
+Nodes (17): Any, ExitConfig, One candidate parameterisation of the early-exit rules., Counterfactual exit for one position under `cfg`: the fill price, the     timest, Score one configuration WITH the slot opportunity cost charged.      baseline, Replay one trade with a partial scale-out plus a rule-driven remainder.      Ret, Replay one trade. Returns the modelled exit, or None if nothing fired., Replay one trade under the two-phase Prove-It Stop.      The governing question (+9 more)
 
 ### Community 359 - "Price the lot from its own fills, and make cooling-off broker-aware"
 Cohesion: 0.25
@@ -1920,9 +1922,9 @@ Nodes (9): _build_failed_params_snapshot(), monitor_portfolio_intraday(), Client
 Cohesion: 0.33
 Nodes (5): Consequences, Context, Decision, Entry decisions extracted into a pure `decision_core` shared by live and backtest, Why this is safe to ship
 
-### Community 412 - "test_exit_path_golden.py"
-Cohesion: 0.29
-Nodes (9): test_exit_path_golden.py — locks the money-path call sequence of monitor_portfol, Two runs of the same scripted book must produce an identical sequence, or     th, A fixed multi-regime book. Prices are chosen relative to a $100 entry so     the, Guard against a golden that locks an EMPTY sequence — which would pass     forev, _record_rows(), _scripted_book(), test_golden_scenario_is_non_vacuous(), test_monitor_exit_path_matches_golden() (+1 more)
+### Community 412 - "strategy_backtest.py"
+Cohesion: 0.12
+Nodes (22): build_exit_config(), DayResult, _ladder_trail_pct(), main(), new_position(), _prepare(), _print_report(), ExitConfig (+14 more)
 
 ### Community 413 - "backfill_rs_percentile.py"
 Cohesion: 0.47
@@ -1936,8 +1938,16 @@ Nodes (7): execute_scale_out(), execute_sell(), Client, IB, Sell execution: full
 Cohesion: 0.29
 Nodes (6): Consequences, Context, Decision, Evidence (what replaces byte-identity), Exit decisions extracted into a pure `exit_core` shared by live and backtest, Why the live monitor is not rewired in this patch
 
+### Community 418 - "resolve_position_day"
+Cohesion: 0.33
+Nodes (14): Bar, Resolve one position against one DAILY bar using the live exit engine.      The, resolve_position_day(), _bar(), _pos(), Tests for research/strategy_backtest.py — the daily-bar strategy backtest whose, Teeth: widen the band to 20% and the day-0 exit must vanish., test_benign_up_day_holds_and_latches_proven() (+6 more)
+
+### Community 419 - "Backtester exit parity: a research backtest that calls the live exit engine"
+Cohesion: 0.25
+Nodes (7): Alternatives considered, Backtester exit parity: a research backtest that calls the live exit engine, Consequences, Context, Decision, Fidelity — what this is and is not, The container obstacle, and why this is a *research* tool
+
 ## Knowledge Gaps
-- **1229 isolated node(s):** `bar_interval`, `bytes`, `dataset`, `date_max`, `date_min` (+1224 more)
+- **1236 isolated node(s):** `bar_interval`, `bytes`, `dataset`, `date_max`, `date_min` (+1231 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **41 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -1945,13 +1955,13 @@ Nodes (6): Consequences, Context, Decision, Evidence (what replaces byte-identit
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `per_symbol` connect `per_symbol` to `BIRK`, `CMI`, `MANIFEST.json`, `AAPL`, `ABBV`, `ABNB`, `ABT`, `ACN`, `ADBE`, `ADI`, `ADP`, `ADSK`, `AEIS`, `AEP`, `AFL`, `AJG`, `ALAB`, `ALL`, `AMAT`, `AMD`, `AME`, `AMGN`, `AMKR`, `AMT`, `AON`, `APD`, `APH`, `APO`, `APP`, `ARM`, `ARW`, `AS`, `AVGO`, `AXP`, `BA`, `BABA`, `BAC`, `BAM`, `BDX`, `BE`, `BKNG`, `BKR`, `BMY`, `BN`, `BNY`, `AMZN`, `BX`, `CARR`, `CAT`, `CCEP`, `CDNA`, `CDNS`, `CEG`, `CELH`, `CF`, `CI`, `CIEN`, `CL`, `CMC`, `CMCL`, `CMCSA`, `CME`, `CMG`, `COCO`, `COF`, `BSX`, `CRH`, `CRWD`, `CSCO`, `CSX`, `CTAS`, `CTVA`, `CVNA`, `CVS`, `CVX`, `CXW`, `D`, `DAL`, `DASH`, `DDOG`, `DE`, `DELL`, `DHR`, `DIOD`, `DIS`, `DLR`, `DUK`, `DVN`, `DXCM`, `DY`, `EA`, `EBAY`, `ECL`, `ECO`, `EME`, `EMR`, `EOG`, `EPD`, `ETN`, `ETR`, `EXC`, `F`, `FANG`, `FAST`, `FCX`, `FERG`, `FITB`, `FLYW`, `COST`, `COP`, `ANET`, `COR`, `COHR`, `ELV`, `COHU`, `AMTM`, `CRM`, `CAH`, `CB`, `EW`, `ET`?**
-  _High betweenness centrality (0.134) - this node is a cross-community bridge._
+  _High betweenness centrality (0.138) - this node is a cross-community bridge._
 - **Why does `ET` connect `ET` to `flex_query_sync.py`, `per_symbol`?**
-  _High betweenness centrality (0.121) - this node is a cross-community bridge._
-- **Why does `_fetch_statement()` connect `flex_query_sync.py` to `RuntimeError`, `ET`?**
-  _High betweenness centrality (0.037) - this node is a cross-community bridge._
+  _High betweenness centrality (0.126) - this node is a cross-community bridge._
+- **Why does `_date()` connect `_date` to `ai_evaluator.py`, `ExitConfig`, `entry_quality_review.py`, `make_history`, `execution_agent.py`, `exit_rule_replay.py`, `backfill_rs_percentile.py`?**
+  _High betweenness centrality (0.041) - this node is a cross-community bridge._
 - **What connects `bar_interval`, `bytes`, `dataset` to the rest of the system?**
-  _1229 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _1236 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `compute_liquidity_score` be split into smaller, more focused modules?**
   _Cohesion score 0.1168091168091168 - nodes in this community are weakly interconnected._
 - **Should `datetime` be split into smaller, more focused modules?**

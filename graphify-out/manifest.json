@@ -320,8 +320,8 @@
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
-    "mtime": 1790695704.3985422,
-    "ast_hash": "11ca96d1d40bab103e190f28083575c0",
+    "mtime": 1790698476.8134665,
+    "ast_hash": "86ed98bba15a0fa0105c5f7eff7c1a51",
     "semantic_hash": ""
   },
   "docs/technical_triggers.md": {
@@ -950,8 +950,8 @@
     "semantic_hash": ""
   },
   "docs/backtesting.md": {
-    "mtime": 1790618690.494279,
-    "ast_hash": "3f257874e6f206da586cf44caa125add",
+    "mtime": 1790698470.7406342,
+    "ast_hash": "888dc8f84c771fefc671e52b3f92dc16",
     "semantic_hash": ""
   },
   "tests/test_datasource_unavailable.py": {
@@ -980,8 +980,8 @@
     "semantic_hash": ""
   },
   "decisions/provisional_decisions.json": {
-    "mtime": 1790655485.1481493,
-    "ast_hash": "75984bd849b390dd0e2b1c7c26d48e70",
+    "mtime": 1790698501.6055827,
+    "ast_hash": "ec2c55be205f784692e92ab6fbb2583a",
     "semantic_hash": ""
   },
   "research/decision_review.py": {
@@ -1742,6 +1742,21 @@
   "decisions/2026-09-29_exit-core-extraction.md": {
     "mtime": 1790695735.802015,
     "ast_hash": "cc3db50488722e47b9001f547521f2be",
+    "semantic_hash": ""
+  },
+  "research/strategy_backtest.py": {
+    "mtime": 1790698351.8403196,
+    "ast_hash": "a7fe66e22e04fa68d2bcde409d048aa6",
+    "semantic_hash": ""
+  },
+  "tests/test_strategy_backtest.py": {
+    "mtime": 1790698249.9168906,
+    "ast_hash": "d9f5d885a4ebc4c082f1f6074d5d85ca",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-29_backtester-exit-core-adoption.md": {
+    "mtime": 1790698446.0120459,
+    "ast_hash": "581a8797e7c369359daa931d1582df9e",
     "semantic_hash": ""
   }
 }

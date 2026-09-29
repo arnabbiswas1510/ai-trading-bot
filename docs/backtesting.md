@@ -5,13 +5,71 @@ different questions. Picking the wrong one wastes time.
 
 | You want to know | Use |
 |---|---|
-| "How would the strategy have performed on these tickers over this period?" | **Strategy backtester** (`backend/backtester.py`) |
+| "How would the strategy have performed, with the **live exit rules**, over a period?" | **Strategy backtest (exit-parity)** (`research/strategy_backtest.py`) |
+| "How does the **dashboard** backtester score these tickers?" (⚠ still retired exits) | **Web strategy backtester** (`backend/backtester.py`) |
 | "Would a different *exit rule* have made my **actual** trades better?" | **Exit replay** (`research/exit_rule_replay.py`) |
 | "Does an entry/ranking/exit idea hold up across a large universe?" | **Research harnesses** (`research/*_bt.py`) |
 
+> **Which strategy backtester?** `research/strategy_backtest.py` calls the **live**
+> `exit_core` / `exit_rules` code, so its exits are the Prove-It Stop, the dynamic
+> ladder, power-hold and scale-out — byte-for-byte what production runs.
+> `backend/backtester.py` (the dashboard button) still models the **retired**
+> 7%-trail + EMA-21 rules and is being kept only until it is repointed at the same
+> engine (Option A — see `decisions/2026-09-29_backtester-exit-core-adoption.md`).
+> Trust the research tool for any exit-behaviour question.
+
 ---
 
-## 1. Strategy backtester
+## 0. Strategy backtest with the LIVE exit rules (exit-parity)
+
+`research/strategy_backtest.py` is the backtest-fidelity Phase 2 deliverable: a
+full-portfolio daily-bar simulation whose **exits are the live code**. It imports
+`exit_core` and `exit_rules` and calls them, so the Prove-It Phase 1 band, the
+Phase 2 give-back floor, the trailing ladder (off the live `TRAIL_PROFIT_TIERS`),
+the power-hold widening and the partial scale-out are the live rules by
+construction — change a threshold in `exit_rules.py` and this backtest changes
+with it.
+
+```bash
+python3 research/strategy_backtest.py                     # headline + exit histogram
+python3 research/strategy_backtest.py --start 2024-01-01 --end 2026-06-30
+python3 research/strategy_backtest.py --universe pass      # research/pass_names.txt only
+python3 research/strategy_backtest.py --json out.json
+```
+
+No secrets required — it reads the committed `benchmark_data/` daily bars (313
+names, 2023-07 → 2026-08), so it runs offline, free and reproducible with **no
+FMP key at all**. Entries mirror `backend/backtester.py` (20-day-high breakout,
+above SMA50/200, ≥1.4× volume, SPY-above-EMA21 filter) so the two agree on
+entries; entry parity against `decision_core` is a separate follow-up.
+
+### Fidelity — read before trusting a dollar figure
+
+This achieves **rule parity** (which exit fires, and why) but **not exact
+fill-price fidelity**. Daily bars cannot see the live loss rules' 0.6% arm-trail
+bounce (they `arm_exit()` a tight IBKR trail that resolves *intraday*), the
+15-minute poll, or slippage. A Prove-It arm is therefore modelled as a sell at
+the level (or the open on a gap-through, pessimistically), and trail-tightening /
+scale-out resolve off the intraday high / at the close. To avoid look-ahead,
+resting levels for a day use the peak/HWM as of the previous close, and today's
+high is folded in only after the low is resolved.
+
+**Trust it for RELATIVE questions** — does a rule fire, how often, does a change
+help or hurt. **Do not** read its absolute P&L as a precise +EV/−EV verdict on
+the tight Prove-It exits; that needs 5-minute bars, which drop in with no logic
+change (see `resolve_position_day`). The register work-item
+`intraday-fmp-exit-fidelity` tracks that upgrade, gated on live usage. See
+`decisions/2026-09-29_backtester-exit-core-adoption.md`.
+
+---
+
+## 1. Web strategy backtester (dashboard — ⚠ retired exits)
+
+> **This still models the retired 7%-trail-from-peak + EMA-21×0.99 rules and does
+> NOT import `exit_rules`.** Its exits are not what production runs. Use it for the
+> dashboard/API convenience view only; for any exit-behaviour question use
+> `research/strategy_backtest.py` above. It will be repointed at the live
+> `exit_core` engine in a later change (Option A).
 
 Simulates the full CAN SLIM breakout strategy over historical FMP data.
 Entries are detected on day T's close and filled at day T+1's **open** (no
