@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1790627568.19478,
-    "ast_hash": "76b30001fc185ba9479409b2723d507c",
+    "mtime": 1790658022.0665417,
+    "ast_hash": "da1f53bcbf62fad0098d04ad78e408fb",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
@@ -1530,8 +1530,8 @@
     "semantic_hash": ""
   },
   "buying.py": {
-    "mtime": 1790656476.7875113,
-    "ast_hash": "8c767d72d88788a4e5986d8647ded8bc",
+    "mtime": 1790657836.9383938,
+    "ast_hash": "c9e771892cb82f3907cde62f55984fb6",
     "semantic_hash": ""
   },
   "fills.py": {
@@ -1712,6 +1712,21 @@
   "tests/test_buy_decision_golden.py": {
     "mtime": 1790656458.4851515,
     "ast_hash": "0a7a0d68df04851a2da0f93c190cd102",
+    "semantic_hash": ""
+  },
+  "decision_core.py": {
+    "mtime": 1790657970.0082152,
+    "ast_hash": "b08534fbd5c4e94592a69cf46c36a532",
+    "semantic_hash": ""
+  },
+  "tests/test_decision_core.py": {
+    "mtime": 1790657884.4573174,
+    "ast_hash": "c9639b09a93d493b241e2ca7461494ce",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-29_decision-core-extraction.md": {
+    "mtime": 1790658012.940524,
+    "ast_hash": "08f8f30ee2d5a0a8fdb890a7687c1575",
     "semantic_hash": ""
   }
 }

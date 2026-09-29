@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock, MarketOrder
 
 from execution_agent_ref import ea
+import decision_core as dc
 
 def assert_schema_ok(client) -> bool:
     """Verify risk-rule columns exist. Returns False when new buys must be blocked.
@@ -95,13 +96,21 @@ def equity_capped_position_size(available_cash: float, remaining_slots: int,
     Returns:
         The dollar allocation, guaranteed <= equity / max_positions whenever
         equity and max_positions are both positive.
+
+    Delegates to decision_core.equity_capped_position_size so the live path and
+    the backtester size positions with byte-identical logic (Phase 1 parity).
+    This wrapper is kept so existing imports of ``buying.equity_capped_position_size``
+    continue to resolve.
     """
-    remaining_slots = max(1, int(remaining_slots))
-    base = max(0.0, float(available_cash)) / remaining_slots
-    if equity and equity > 0 and max_positions and max_positions > 0:
-        equity_cap = float(equity) / int(max_positions)
-        return min(base, equity_cap)
-    return base
+    return dc.equity_capped_position_size(
+        available_cash, remaining_slots, equity, max_positions)
+
+
+def _print_skip(ticker: str, decision) -> None:
+    """Operator-facing one-liner for a skipped trigger. The authoritative record
+    is always the trigger_audit row written by the caller; this is console
+    visibility only, so its wording is not asserted by any test."""
+    print(f"   ⏭️  {ticker} skipped [{decision.reason_code}]: {decision.detail}")
 
 
 # ── Once-daily "why are slots empty?" operator summary ────────────────────────
@@ -332,12 +341,9 @@ def run_market_open_buys(ib: IB):
     try:
         triggers_res = client.table("daily_triggers").select("*").gte("triggered_at", recent_date).execute()
         triggers = triggers_res.data
-        # Sort by final_score (quality + AI bonus) descending.
-        # Falls back to quality_score, then ai_rating, then 0 if columns not yet populated.
-        triggers.sort(
-            key=lambda x: x.get("final_score") or x.get("quality_score") or x.get("ai_rating") or 0,
-            reverse=True
-        )
+        # Rank highest-conviction first (final_score, then quality_score, then
+        # ai_rating). Single source shared with the backtester (Phase 1 parity).
+        triggers = dc.rank_triggers(triggers)
     except Exception as e:
         ea.notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", e)
         print(f"❌ Failed to fetch daily triggers: {e}")
@@ -398,6 +404,9 @@ def run_market_open_buys(ib: IB):
         print(f"   ⚠️ Cooling-off map failed: {cool_err} — allowing all buys this cycle.")
         cooled_map = {}
 
+    # Snapshot the live thresholds once per cycle for the pure decision core.
+    cfg = dc.config_from_module(ea)
+
     for trigger in triggers:
         ticker = trigger["ticker"]
         
@@ -410,105 +419,40 @@ def run_market_open_buys(ib: IB):
             pass
 
         # Don't buy a stock we already hold
-        if ticker in active_tickers:
+        # ── Price-independent eligibility ladder (gates 1–6) ──────────────────
+        # already-held → cooling-off → AI D-grade veto → earnings blackout →
+        # no-AI-score (fail closed) → score floor. Single source shared with the
+        # backtester: decision_core.evaluate_eligibility.
+        #
+        # next_earnings_date → trading-days-to-earnings needs the NYSE calendar,
+        # so it is computed here (I/O-adjacent) and passed into the pure gate.
+        # See decisions/2026-09-26_reason-aware-cooling-off.md (cooling-off) and
+        # decisions/2026-09-28_earnings-blackout-and-news-veto.md (earnings).
+        days_to_earnings = _earnings_blackout_days_until(
+            trigger.get("next_earnings_date"), today_ny)
+        elig = dc.evaluate_eligibility(
+            trigger,
+            held_tickers=active_tickers,
+            cooled_map=cooled_map,
+            days_to_earnings=days_to_earnings,
+            cfg=cfg)
+        if elig.action != dc.PROCEED:
+            _print_skip(ticker, elig)
             ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.ALREADY_HELD,
-                detail="Already an open position")
+                client, trigger, "SKIPPED", elig.reason_code,
+                detail=elig.detail, **elig.audit)
             continue
 
-        # ── Cooling-off: REASON-AWARE re-entry block (single source) ──────────
-        # cooled_map is computed once per cycle in cooling_off.compute_cooled_map.
-        #  (A) same-session churn guard: any name sold TODAY (profit or loss),
-        #      protecting the IBKR averageCost basis (the NTRA 2026-08-31 churn).
-        #  (B) calendar block for LOSS exits only: re-buying a name sold because
-        #      it was falling catches a knife (-$1,750 / 30% win on 25 real
-        #      re-entries); a name sold at a PROFIT is a proven leader left for
-        #      the buy-quality gates to judge, not idled for days.
-        # See decisions/2026-09-26_reason-aware-cooling-off.md.
-        cool_reason = cooled_map.get(ticker)
-        if cool_reason:
-            print(f"   ⏳ {ticker} cooling-off: {cool_reason}. Skipping.")
-            ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.COOLING_OFF,
-                detail=f"Reason-aware cooling-off: {cool_reason}")
-            continue
-
-        # ── AI veto: skip D-grade tickers (low-conviction AI rating < 30) ────────
+        # Passed the eligibility ladder. Surface the AI grade for the operator and
+        # keep the two values the BOUGHT audit row records downstream.
         ai_grade = trigger.get("ai_grade")
-        if ai_grade == "D":
-            print(f"   🚫 {ticker} vetoed by AI evaluator (D-grade, conviction < 30). Skipping.")
-            ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.AI_VETO,
-                detail="D-grade, conviction < 30")
-            continue
         if ai_grade:
             print(f"   🟢 {ticker} AI grade: {ai_grade} | "
                   f"quality={trigger.get('quality_score', 'N/A')} | "
                   f"final={trigger.get('final_score', 'N/A')}")
-
-        # ── Earnings blackout: defer buys within N trading days of a report ──────
-        # A fresh position sits under the Prove-It stop's tight −1%/−3% floor, so
-        # an earnings gap is an almost-certain stop-out at a loss PLUS a cooling-off
-        # lockout — a compounding, avoidable cost. This is a DEFERRAL: the breakout
-        # re-triggers and can be bought once the report clears. next_earnings_date
-        # is populated by ai_evaluator.py from FMP; a missing/past date fails OPEN
-        # so a per-name data gap never blocks every buy. See
-        # decisions/2026-09-28_earnings-blackout-and-news-veto.md.
-        days_to_earnings = _earnings_blackout_days_until(
-            trigger.get("next_earnings_date"), today_ny)
-        if (days_to_earnings is not None
-                and days_to_earnings <= ea.EARNINGS_BLACKOUT_TRADING_DAYS):
-            print(f"   📅 {ticker} earnings in {days_to_earnings} trading day(s) "
-                  f"(≤ {ea.EARNINGS_BLACKOUT_TRADING_DAYS}-day blackout). Deferring buy.")
-            ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.EARNINGS_IMMINENT,
-                detail=f"earnings in {days_to_earnings} trading day(s) "
-                       f"(<= {ea.EARNINGS_BLACKOUT_TRADING_DAYS}-day blackout)")
-            continue
-
-        # 🛡️ Final score floor (quality guardrail) ──────────────────────────────
         trigger_type = str(trigger.get("trigger_type") or "BREAKOUT")
-
-        # FAIL CLOSED on un-vetted triggers.
-        # A trigger only carries a final_score once ai_evaluator.py has rated it.
-        # Previously this fell back to quality_score (a pure technical score),
-        # which silently let AI-skipped triggers through the gate while bypassing
-        # every AI guardrail (sub-$15 cap, low-volume/small-cap penalties, the
-        # slow-mover ATR cap, and sentiment/news screening). When the evaluator
-        # drops tickers, those buys must be skipped, not waved through.
-        candidate_score = (
-            trigger.get("adjusted_score")
-            if trigger.get("adjusted_score") is not None
-            else trigger.get("final_score")
-        )
-        if candidate_score is None:
-            print(
-                f"   🚫 {ticker} {trigger_type} has no AI-evaluated score "
-                f"(final_score is NULL — ai_evaluator.py did not rate it). "
-                f"Skipping: refusing to buy on technicals alone."
-            )
-            ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.NO_AI_SCORE,
-                detail="final_score NULL — not rated by ai_evaluator.py")
-            continue
-
-        if trigger_type == "PRE_BREAKOUT_RELAXED":
-            min_score = ea.MIN_RELAXED_TRIGGER_SCORE
-        elif trigger_type == "PRE_BREAKOUT":
-            min_score = max(ea.MIN_TRIGGER_SCORE, ea.MIN_PRE_BREAKOUT_SCORE)
-        else:
-            min_score = ea.MIN_TRIGGER_SCORE
-
-        if float(candidate_score) < float(min_score):
-            print(f"   🚫 {ticker} {trigger_type} score {candidate_score} < floor {min_score}. Skipping.")
-            # The single most valuable rejection to record: these are the
-            # near-miss candidates whose outcomes are needed to test whether the
-            # score floor is set anywhere near the right level.
-            ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.SCORE_FLOOR,
-                detail=f"score {candidate_score} < floor {min_score}",
-                candidate_score=float(candidate_score), min_score=float(min_score))
-            continue
+        candidate_score = dc.candidate_score_of(trigger)
+        min_score = dc.min_score_for(trigger_type, cfg)
 
         # Size the position as an equal share of remaining capital across unfilled slots.
         # Deduct cash spent on filled orders in the current cycle from initial_own_cash.
@@ -531,64 +475,37 @@ def run_market_open_buys(ib: IB):
         else:
             print(f"   Position sizing: ${available_cash:,.2f} / {remaining_slots} slot(s) = ${position_size:,.2f} per position (${ea.PRICE_SAFETY_RESERVE:,.0f} safety reserve applied at share count)")
 
-        # Double check active holdings size again
-        if stock_held_count >= ea.MAX_POSITIONS:
+        # Double check active holdings size again (gate 7: capacity)
+        cap = dc.evaluate_capacity(stock_held_count, cfg)
+        if cap.action == dc.HALT_CAPACITY:
             print(f"🚫 Portfolio capacity ({ea.MAX_POSITIONS} stocks) reached during loop. Skipping further buys.")
             ea.trigger_audit.record_decisions_bulk(
                 client, triggers[triggers.index(trigger):], "SKIPPED",
-                ea.trigger_audit.SLOTS_FULL,
-                detail=f"Capacity reached mid-cycle at {stock_held_count}/{ea.MAX_POSITIONS}",
-                slots_free=0)
+                cap.reason_code, detail=cap.detail, slots_free=0)
             break
 
-        if available_cash < ea.MIN_POSITION_SIZE:
+        # Gate 8: insufficient cash
+        cash_dec = dc.evaluate_cash(available_cash, remaining_slots, cfg)
+        if cash_dec.action != dc.PROCEED:
             print(f"🚫 Insufficient cash to buy {ticker} (floor: ${ea.MIN_POSITION_SIZE:,.0f}). Skipping.")
             ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.INSUFFICIENT_CASH,
-                detail=f"available ${available_cash:,.0f} < floor ${ea.MIN_POSITION_SIZE:,.0f}",
-                available_cash=available_cash, slots_free=remaining_slots)
+                client, trigger, "SKIPPED", cash_dec.reason_code,
+                detail=cash_dec.detail, **cash_dec.audit)
             continue
 
-        # ── Hard volume surge gate (AI-independent) ──────────────────────────────
-        # CAN SLIM requires above-average volume to confirm a breakout. Below
-        # MIN_VOL_SURGE_GATE× the 50-day avg, institutional money is not
-        # participating — do not buy regardless of AI score.
-        #
-        # CONFIRMED BREAKOUTS ONLY. The `volume_surge` column is overloaded: the
-        # screener stores today's volume / 50d avg for BREAKOUT rows (higher is
-        # better, gated at VOLUME_SURGE_MIN=1.50), but for PRE_BREAKOUT rows it
-        # stores the 3-day volume CONTRACTION ratio (technical_screener.py:417),
-        # where LOWER is better and the screener already requires < 1.00. A coil
-        # tightening on drying volume is the constructive setup CAN SLIM wants.
-        # Applying a minimum to that number inverts the selection: it rejects the
-        # tightest coils and admits the loosest. Do not gate pre-breakouts here.
-        trigger_vol_surge = float(trigger.get("volume_surge") or 0)
-        if trigger_type == "BREAKOUT" and trigger_vol_surge < ea.MIN_VOL_SURGE_GATE:
-            print(f"   🚫 {ticker} volume surge {trigger_vol_surge:.2f}x < gate {ea.MIN_VOL_SURGE_GATE:.2f}x "
-                  f"— institutional money not confirming. Skipping.")
+        # ── Market-confirmation gates (9 volume surge, 10 pre-breakout pivot
+        # distance). Single source: decision_core.evaluate_market_gates. The
+        # volume_surge column is overloaded (raw surge for BREAKOUT rows, a
+        # CONTRACTION ratio for PRE_BREAKOUT where lower is better), so the gate
+        # applies the minimum to confirmed BREAKOUT rows only — gating the
+        # contraction ratio would invert the selection. ──────────────────────────
+        market_dec = dc.evaluate_market_gates(trigger, cfg)
+        if market_dec.action != dc.PROCEED:
+            _print_skip(ticker, market_dec)
             ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.SCORE_FLOOR,
-                detail=f"vol_surge {trigger_vol_surge:.2f}x < MIN_VOL_SURGE_GATE {ea.MIN_VOL_SURGE_GATE:.2f}x")
+                client, trigger, "SKIPPED", market_dec.reason_code,
+                detail=market_dec.detail, **market_dec.audit)
             continue
-
-        # ── PRE_BREAKOUT 52W pivot distance gate ────────────────────────────────
-        # For PRE_BREAKOUT triggers the screener stores pivot_distance_pct as the
-        # distance from the 52-week high. If the stock is still more than
-        # MAX_PRE_BREAKOUT_PIVOT_DIST below that high it has not meaningfully
-        # set up — buying it is speculation, not a breakout trade.
-        if trigger_type in ("PRE_BREAKOUT", "PRE_BREAKOUT_RELAXED"):
-            stored_pivot_dist = trigger.get("pivot_distance_pct")
-            if stored_pivot_dist is not None:
-                pivot_dist = float(stored_pivot_dist)
-                if pivot_dist < -(ea.MAX_PRE_BREAKOUT_PIVOT_DIST * 100):
-                    print(f"   🚫 {ticker} PRE_BREAKOUT is {abs(pivot_dist):.1f}% below 52W pivot "
-                          f"(max {ea.MAX_PRE_BREAKOUT_PIVOT_DIST*100:.0f}%). Too far from breakout. Skipping.")
-                    ea.trigger_audit.record_trigger_decision(
-                        client, trigger, "SKIPPED", ea.trigger_audit.BELOW_PIVOT,
-                        detail=f"PRE_BREAKOUT {abs(pivot_dist):.1f}% below 52W pivot "
-                               f"(max {ea.MAX_PRE_BREAKOUT_PIVOT_DIST*100:.0f}%)")
-                    continue
-            
         # Buy reason tags the trigger source
         buy_reason = f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger['volume_surge']}x"
         buy_source = "daily_triggers"
@@ -635,44 +552,27 @@ def run_market_open_buys(ib: IB):
             continue
         print(f"   📡 {ticker} price: ${current_price:.2f} (source: {price_source})")
 
-        # ── CANSLIM pivot extension check ────────────────────────────────────
+        # ── Price-dependent gates (11 extension ceiling, 12 breakdown floor,
+        # 13 share count). Single source: decision_core.evaluate_price_gates.
+        # A BUY decision carries the share count; a SKIP carries its reason. ──────
         pivot_price = float(trigger["close_price"])
-        extension_pct = (current_price - pivot_price) / pivot_price if pivot_price > 0 else 0
-        if extension_pct > ea.MAX_PIVOT_EXTENSION:
-            print(f"   ⛔ {ticker} is {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
-                  f"— extended beyond {ea.MAX_PIVOT_EXTENSION*100:.0f}% buy zone. Skipping.")
+        price_dec = dc.evaluate_price_gates(
+            trigger, current_price, pivot_price, position_size, cfg)
+        if price_dec.action == dc.SKIP:
+            _print_skip(ticker, price_dec)
+            audit = dict(price_dec.audit)
+            # SHARES_ZERO historically also recorded available_cash; preserve it.
+            if price_dec.reason_code == ea.trigger_audit.SHARES_ZERO:
+                audit["available_cash"] = available_cash
             ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.EXTENDED_ABOVE_PIVOT,
-                detail=f"{extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
-                       f"(max {ea.MAX_PIVOT_EXTENSION*100:.0f}%)",
-                price=current_price, extension_pct=extension_pct)
+                client, trigger, "SKIPPED", price_dec.reason_code,
+                detail=price_dec.detail, **audit)
             continue
-        # Floor check. The gate above is a CEILING only, so a trigger that has
-        # since collapsed below its pivot still passed — with
-        # TRIGGER_LOOKBACK_DAYS=3 the bot could buy a 3-day-old breakout that had
-        # already failed. A breakout that gives back its pivot is a failed
-        # breakout, and buying it is buying a breakdown.
-        if extension_pct < -ea.MAX_PIVOT_BREAKDOWN:
-            print(f"   ⛔ {ticker} has fallen {abs(extension_pct)*100:.1f}% BELOW pivot "
-                  f"${pivot_price:.2f} — breakout failed, not a valid entry. Skipping.")
-            ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.BELOW_PIVOT,
-                detail=f"{abs(extension_pct)*100:.1f}% below pivot ${pivot_price:.2f}",
-                price=current_price, extension_pct=extension_pct)
-            continue
-        print(f"   ✅ {ticker} within buy zone: {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
-              f"(max {ea.MAX_PIVOT_EXTENSION*100:.0f}%)")
 
-        # Subtract the flat safety reserve before dividing to stay within available
-        # cash even if the 15-20 min delayed IBKR price lags the actual fill price.
-        shares = int((position_size - ea.PRICE_SAFETY_RESERVE) / current_price)
-        if shares <= 0:
-            print(f"⚠️ Price of {ticker} (${current_price:.2f}) is too high for the computed position size (${position_size:,.0f}). Skipping.")
-            ea.trigger_audit.record_trigger_decision(
-                client, trigger, "SKIPPED", ea.trigger_audit.SHARES_ZERO,
-                detail=f"price ${current_price:.2f} too high for position size ${position_size:,.0f}",
-                price=current_price, available_cash=available_cash, shares=0)
-            continue
+        shares = price_dec.shares
+        extension_pct = price_dec.audit.get("extension_pct", 0.0)
+        print(f"   ✅ {ticker} within buy zone: {extension_pct*100:.1f}% above pivot ${pivot_price:.2f} "
+              f"(max {ea.MAX_PIVOT_EXTENSION*100:.0f}%) → {shares} shares")
 
         # Place market buy order on IBKR
         try:

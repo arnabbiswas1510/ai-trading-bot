@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir \
 # Copy script files into the container (include trigger_audit for execution_agent import)
 COPY agent_entrypoint.py execution_agent.py execution_agent_ref.py exit_rules.py exit_shadow.py indicators.py market_calendar.py \
      market_regime.py sentiment.py ibkr_data.py orders.py \
-    trade_history.py fills.py reconciliation.py buying.py \
+    trade_history.py fills.py reconciliation.py buying.py decision_core.py \
     monitoring.py selling.py agent_logging.py \
      telegram_notifier.py force_buy.py scoring.py config.py \
      trigger_audit.py schema_guard.py flex_query_sync.py cooling_off.py ./

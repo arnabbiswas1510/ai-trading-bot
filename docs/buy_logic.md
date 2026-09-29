@@ -6,6 +6,14 @@ The complete gate stack a trigger must clear before an order reaches the market.
 (re-exported through `execution_agent`).
 Manual equivalent: `force_buy.py`.
 
+**Decision core:** the *decision* itself — ranking, the per-trigger gate ladder,
+and position sizing — lives in the pure, I/O-free module `decision_core.py`.
+`run_market_open_buys()` fetches the live inputs (cash, price, days-to-earnings)
+and performs the resulting order/DB/notify side effects, but every verdict below
+is computed by `decision_core`. This is the single source the research backtester
+also calls, so live and backtest entry selection are identical by construction.
+See `decisions/2026-09-29_decision-core-extraction.md` for why.
+
 ---
 
 ## Design principle: fail closed
