@@ -37,11 +37,19 @@ non-secret config (thresholds, `MAX_POSITIONS`, etc.) is a literal value in the
 template.
 
 On the production host the real `.env` is produced by `scripts/render_env.sh`,
-which reads the machine-account token from `~/.config/ai-trading-bot/bws.env`
-(outside the repo, chmod 600), pulls the vault via `bws secret list "$BWS_PROJECT_ID" -o json`,
-and substitutes each `@bws` line with its value. The listing is **scoped to a
-single Bitwarden project** by `BWS_PROJECT_ID`, which the same `bws.env` file
-supplies alongside `BWS_ACCESS_TOKEN` (or may be exported to override it). This
+which reads the machine-account token from `~/.config/bws/bws.env` (outside the
+repo, chmod 600), pulls the vault via `bws secret list "$BWS_PROJECT_ID" -o json`,
+and substitutes each `@bws` line with its value.
+
+That token file is **shared with the other applications on this host**, so it
+holds only `BWS_ACCESS_TOKEN`. An app-specific `~/.config/ai-trading-bot/bws.env`
+is still checked first if you need to give this app a different token.
+
+The listing is **scoped to a single Bitwarden project**, whose id is resolved
+from the project *name* (`BWS_PROJECT_NAME`, default `ai-trading-bot`) rather
+than read from the shared token file — a project id in a shared file would
+belong to whichever app wrote it, and honouring it would render that app's
+secrets into this `.env`. Export `BWS_PROJECT_ID` to override. This
 scoping is **mandatory and fail-closed**: the machine account can have read
 access to more than one Secrets Manager project, and because secrets are matched
 by env-var name, an unscoped listing could resolve a same-named key from the

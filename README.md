@@ -542,7 +542,7 @@ alongside `docker-compose.yml`. To generate the real `.env` on the host, run:
 
 ```bash
 cd /home/pom/docker/ai-trading-bot
-scripts/render_env.sh         # reads ~/.config/ai-trading-bot/bws.env, fills @bws lines
+scripts/render_env.sh         # reads the shared ~/.config/bws/bws.env, fills @bws lines
 ```
 
 `render_env.sh` is fail-closed and writes atomically, so a vault error leaves the
