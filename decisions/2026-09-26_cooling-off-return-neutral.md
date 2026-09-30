@@ -1,9 +1,17 @@
 # Cooling-off is return-neutral, not a profit rule — measured, kept at 3 days
 
 **Date:** 2026-09-26
-**Status:** Accepted — extends, does not supersede,
+**Status:** Accepted policy; backtest evidence withdrawn below — extends, does not supersede,
 [`2026-09-15_cooling-off-three-days.md`](2026-09-15_cooling-off-three-days.md)
 **Register:** `cooling-off-three-days` in `decisions/provisional_decisions.json`
+
+> **Erratum 2026-09-30 — DO NOT CITE the portfolio CAGR table as evidence:**
+> `port_sim` used later same-day exits to free slots for opening buys and used
+> different day counting from live. The 29.5%/27.3% comparison and -2.2pp
+> conclusion require rerunning; no corrected figures are asserted here. Older
+> exit rules also prevent treating even a corrected run as current execution.
+> The live policy and separately observed trade history remain unchanged.
+> See `2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 ## Context
 

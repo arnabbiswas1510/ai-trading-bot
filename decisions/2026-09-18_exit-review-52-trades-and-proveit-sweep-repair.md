@@ -1,10 +1,18 @@
 # Exit-parameter review on 52 closed trades: shipped stack holds, and the `--proveit` sweep is repaired
 
 - **Date:** 2026-09-18
-- **Status:** Accepted
+- **Status:** Historical review retained; live-parity and scale-out claims under erratum
 - **Supersedes in part:** `decisions/2026-09-17_exit-review-48-trades.md` (the
   48-trade numbers are not wrong, they are simply an earlier sample; the harness
   defect that ADR *identified* is now *fixed*)
+
+> **Erratum 2026-09-30:** DO NOT CITE +$10,762 as a validated live baseline:
+> partial-sale proceeds could be credited after a modelled full exit. Neither
+> that row nor the +$10,669 stop-only row represents today's static Phase 1
+> broker-stop execution. No corrected live-strategy delta has been measured;
+> the body remains the historical record. No live parameter changes follow
+> from this erratum. See
+> `2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 ## Context
 

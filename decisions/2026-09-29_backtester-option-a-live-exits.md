@@ -1,9 +1,16 @@
 # Option A: the dashboard backtester exits with the LIVE engine
 
 - **Date:** 2026-09-29
-- **Status:** Accepted
+- **Status:** Accepted with fidelity claims corrected below
 - **Supersedes in part:** `decisions/2026-09-29_backtester-exit-core-adoption.md`
   (which built the research backtester "Option B" and named this as the follow-up)
+
+> **Erratum 2026-09-30:** the shared daily engine is retained, but "byte-for-byte
+> production" and "remaining divergence ... entry" are not valid execution
+> claims. Daily ordering, broker trails and armed exits remain approximations.
+> Opening allocations used future closes until corrected; earlier profitability
+> outputs require rerunning and are not live-strategy estimates.
+> See `2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 ## Context
 

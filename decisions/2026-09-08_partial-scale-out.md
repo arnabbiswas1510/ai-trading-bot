@@ -1,8 +1,16 @@
 # Partial Scale-Out — book a third of a winner at +4%
 
 **Date:** 2026-09-08
-**Status:** Accepted — PROVISIONAL (tuned on 33 closed trades; tracked for
+**Status:** Accepted — PROVISIONAL; replay evidence under erratum (tuned on 33 closed trades; tracked for
 revisit in `decisions/provisional_decisions.json`, id `scaleout-4pct-33pct`)
+
+> **Erratum 2026-09-30 — DO NOT CITE the replay's scale-out deltas:** its target
+> search could credit a partial sale after the modelled full exit. The
+> chronology is corrected, but historical figures need rerunning; no corrected
+> numerical replacements are available here. The model also uses target-price
+> fills rather than live monitoring-time market sales. This does not change the
+> provisional live setting. See
+> `2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 ---
 

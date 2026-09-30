@@ -22,22 +22,25 @@ out a winner, or hold and re-resolve the trail/hard-stop) — is assembled by th
 pure, I/O-free module `exit_core.py`. It orchestrates the `exit_rules.py`
 primitives in `monitor_portfolio_intraday()`'s exact order and returns an
 `ExitDecision`; it never touches IBKR, Supabase, the clock, or the notifier.
-`monitoring.py` computes the live inputs (price, days held, hours armed) and
-performs the order/DB/notify side effects the verdict implies. This is the exit
-twin of `decision_core.py`: the single source BOTH backtesters call — the research
+`monitoring.py` still assembles live verdicts independently from the same
+primitives, computes live inputs (price, days held, hours armed), and performs
+the order/DB/notify side effects. Both daily backtesters call `exit_core` — the research
 tool (`research/strategy_backtest.py`) and the dashboard tool
 (`backend/backtester.py`) share one daily-bar exit engine, the root module
-`daily_exit_sim`, which drives `exit_core`/`exit_rules` — so live and backtest
-exits are identical by construction on the rules that fire (see
+`daily_exit_sim`, which drives `exit_core`/`exit_rules`. Shared primitives do not
+make daily sequencing or broker execution identical (see
 `decisions/2026-09-29_backtester-exit-core-adoption.md` for the research adoption
 and `decisions/2026-09-29_backtester-option-a-live-exits.md` for bringing it into
-the web image; daily-bar fill-price fidelity is a documented limitation there). A
-parity test (`tests/test_exit_core.py`) pins `exit_core`'s verdict to the live
-monitor's recorded money-path actions on the golden book, so the two cannot
-silently drift.
+the web image). The recorded-input `research/live_rule_replay.py` separates
+quotes, monitoring and EOD observations, with explicit sampled-fill assumptions
+and unsupported-path errors. See
+`decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`. A
+parity test (`tests/test_exit_core.py`) compares `exit_core`'s verdict with the
+live monitor's recorded money-path actions in covered cases; it does not certify
+all broker or persistence side effects.
 The live monitor's delegation to `exit_core` is staged behind the
-orchestrator-split safety window (a quiet book); until then `exit_core` is proven
-equal, not yet wired in. See `decisions/2026-09-29_exit-core-extraction.md` for why.
+orchestrator-split safety window (a quiet book); it is not yet wired into that
+live path. See `decisions/2026-09-29_exit-core-extraction.md` for why.
 
 ## Price source: IBKR first, FMP fallback
 

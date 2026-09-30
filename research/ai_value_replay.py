@@ -1,4 +1,10 @@
-"""ai_value_replay.py — settle "does the AI actually pick winners?" with an A/B replay.
+"""ai_value_replay.py — historical, simplified AI-selection experiment.
+
+NOT execution-equivalent: this retains an older exit model, adjusted-score
+ranking instead of live final-score ranking, and a reason-filtered candidate
+pool instead of re-evaluating all live gates. Its results are hypotheses, not
+the AI veto's realised opportunity cost. Use research/live_rule_replay.py with
+complete point-in-time inputs for a shared-rule, explicitly scoped comparison.
 
 This harness answers one question and only one: does the AI evaluator's score
 (its blended `adjusted_score`/`final_score`) and its grade-D VETO change the SET
@@ -7,16 +13,15 @@ worse, does it cut winners?
 
 It is deliberately different from `exit_rule_replay.py`. That harness takes the
 trades the bot ACTUALLY placed and asks whether a different EXIT would have done
-better. This one holds the exit fixed (the live Prove-It stop) and varies the
-ENTRY SELECTION, so the dollar difference between the two arms is attributable to
-the AI and nothing else.
+better. This one holds a historical exit model fixed and varies both ranking
+and the veto. It does not isolate the live AI veto or reproduce live selection.
 
     Arm A  "AI ON"   rank the day's candidates by adjusted_score (AI-blended) and
-                     DROP any ai_grade == "D" (the live veto). Fill free slots.
+                     DROP any ai_grade == "D". This ranking is NOT live ranking.
     Arm B  "AI OFF"  rank the same candidates by quality_score (the AI-INDEPENDENT
                      technical/quality score) and apply NO veto. Fill free slots.
 
-    AI contribution = P&L(Arm A) − P&L(Arm B).
+    Historical model difference = P&L(Arm A) - P&L(Arm B).
 
 DATA SOURCE
 -----------
@@ -48,7 +53,7 @@ in the printed caveats.
 FORWARD OUTCOME
 ---------------
 Every candidate — taken or not — is entered at the OPEN of its `decision_date`
-session and replayed forward on 5-minute bars under the live Prove-It stop
+session and replayed forward on 5-minute bars under the historical Prove-It model
 (`exit_rule_replay.shipped_proveit`), reusing that module's fetch and simulation
 so the exit mechanics are identical to the exit-review harness. A position that
 never triggers an exit inside the horizon is marked out at the last close. Both
@@ -66,7 +71,7 @@ that is near zero the AI contribution is ~$0 by construction, not by evidence.
 The highest-signal reading available now is the `--veto-audit`: the forward
 outcome of every AI_VETO'd name. It is a direct per-name counterfactual (did the
 veto remove a winner or dodge a loser?) and does not depend on slot contention, so
-it is trustworthy at a smaller sample than the full A/B. Start there.
+it is a descriptive pool experiment, not realised veto cost.
 
 USAGE
 -----
@@ -394,6 +399,7 @@ def report_veto_audit(audit: dict, notional: float) -> None:
     scored = audit["scored"]
     print("=" * 78)
     print("AI VETO AUDIT — forward Prove-It outcome of every grade-D vetoed candidate")
+    print("HISTORICAL SIMPLIFICATION — not current execution or realised veto cost")
     print("=" * 78)
     print(f"Sizing: {_fmt_usd(notional)} per name (identical, hypothetical)\n")
     if not scored:
@@ -416,18 +422,16 @@ def report_veto_audit(audit: dict, notional: float) -> None:
           f"(the veto REMOVED these)")
     print(f"  would have LOST/flat:    {audit['losers_avoided']}  "
           f"(the veto DODGED these)")
-    print(f"\nNet P&L the veto GAVE UP:   {_fmt_usd(audit['total'])} at "
+    print(f"\nHypothetical vetoed-pool P&L: {_fmt_usd(audit['total'])} at "
           f"{_fmt_usd(notional)}/name")
     if audit["total"] > 0:
-        print("  → Interpretation: the vetoed names were net PROFITABLE, so the "
-              "veto COST money\n    (it cut more winners than losers). This is the "
-              "'AI cuts winners' failure\n    the register warns about — watch it.")
+        print("  The simplified model scores the pool positively. Other gates and")
+        print("  portfolio constraints may prevent these buys; this is not veto cost.")
     elif audit["total"] < 0:
-        print("  → Interpretation: the vetoed names were net LOSERS, so the veto "
-              "SAVED money.\n    The AI's veto is doing its job on this sample.")
+        print("  The simplified model scores the pool negatively. This does not")
+        print("  establish how much the live veto saved.")
     else:
-        print("  → Interpretation: net zero — the veto neither helped nor hurt on "
-              "this sample.")
+        print("  The simplified model scores the pool at zero, not proven neutrality.")
 
 
 def report_ab(arm_a: dict, arm_b: dict, candidates: list[dict],
@@ -435,6 +439,7 @@ def report_ab(arm_a: dict, arm_b: dict, candidates: list[dict],
     dates = sorted({c["decision_date"] for c in candidates})
     print("=" * 78)
     print("A/B SELECTION REPLAY — AI ON (Arm A) vs AI OFF (Arm B), exit held fixed")
+    print("HISTORICAL SIMPLIFICATION — ranking and eligibility differ from live")
     print("=" * 78)
     print(f"Eligible candidates: {len(candidates)}   distinct dates: {len(dates)}   "
           f"span: {dates[0]} → {dates[-1]}")
@@ -491,8 +496,8 @@ def print_caveats(n_candidates: int) -> None:
         "  the headline A/B contribution understates AND obscures the AI's effect.\n"
         "  The --veto-audit is the more trustworthy current read.\n"
         "• Forward outcomes are simulated at a fixed notional per slot and enter at\n"
-        "  the session OPEN; real fills, sizing and commissions differ. These cancel\n"
-        "  in the A−B delta but not in the absolute totals.\n"
+        "  the session OPEN; real fills, sizing and commissions differ. These do NOT\n"
+        "  necessarily cancel in the A-B delta when the arms take different trades.\n"
         "• SCORE_FLOOR is applied as a shared gate (it reads the AI-blended score),\n"
         "  so Arm B is not given a separate quality-only floor. This is conservative\n"
         "  and slightly narrows Arm B's freedom.\n"

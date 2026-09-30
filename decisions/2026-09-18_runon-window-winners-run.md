@@ -1,10 +1,17 @@
 # The replay truncated at the real exit, so "hold longer" was unmeasurable; power hold is unreachable because the ladder sells first
 
 - **Date:** 2026-09-18
-- **Status:** Accepted — research tooling only. **No live parameter changed.**
+- **Status:** Accepted historical tooling; current-live comparisons under erratum. **No live parameter changed.**
 - **Corrects in part:** `decisions/2026-08-22_hwm-profit-lock-arm-5pct.md`,
   `decisions/2026-09-17_exit-review-48-trades.md` (loosening direction only)
 - **Follow-up:** `decisions/provisional_decisions.json` → `ladder-width-runon`
+
+> **Erratum 2026-09-30:** run-on configurations are stop-only historical
+> counterfactuals, omit partial scale-out, and do not reproduce current Phase 1
+> broker protection. Do not cite their "shipped" comparisons as full live-stack
+> profitability or proof that power hold is inert in current execution.
+> No corrected live comparison is available here. See
+> `2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 > **2026-09-22 — the "decisive term" this ADR left unmodelled is now modelled.**
 > This ADR refused to ship any ladder change because "slot opportunity cost is

@@ -314,7 +314,7 @@ def main() -> None:
     # ── D. SLOT COST ────────────────────────────────────────────────────────
     # Reconstruct how many positions were open on each trigger date from the
     # trade history, then value the triggers that fired while the book was full.
-    print("── D. SLOT COST: what did a full book cost? " + "─" * 34)
+    print("── D. FULL-BOOK ASSOCIATION (not realised slot cost) " + "─" * 24)
     try:
         from config import MAX_POSITIONS
     except Exception:
@@ -350,13 +350,13 @@ def main() -> None:
     if blocked:
         g = [float(r[OUTCOME]) for r, _ in blocked]
         print()
-        print(f"  {len([x for x in g if x >= TAIL_PCT])} trigger(s) reaching "
-              f"+{TAIL_PCT:.0f}% fired while the book was full and could not be")
-        print("  bought. THIS is the opportunity cost of holding winners longer,")
-        print("  and it is the blocking precondition on `ladder-width-runon`.")
-        print("  NOTE: this is an upper bound -- it assumes every blocked trigger")
-        print("  was otherwise buyable (passed the market gate, had cash, was not")
-        print("  in cooling-off). Treat it as a ceiling on the cost, not the cost.")
+        print(f"  {len([x for x in g if x >= TAIL_PCT])} trigger rows reached "
+              f"+{TAIL_PCT:.0f}% and coincided with a reconstructed full book.")
+        print("  This is NOT a count of missed trades or a realised-profit estimate.")
+        print("  Other buy gates, duplicate/already-held names, intraday slot changes")
+        print("  and live exits are not replayed. Closed-trade date spans also omit")
+        print("  currently open positions. Do not rank the position cap's cost from")
+        print("  this association; use a chronological portfolio replay.")
     print()
     print("=" * 78)
     print("Record the verdict in decisions/provisional_decisions.json under")

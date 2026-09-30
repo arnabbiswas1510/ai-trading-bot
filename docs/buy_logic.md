@@ -10,9 +10,14 @@ Manual equivalent: `force_buy.py`.
 and position sizing — lives in the pure, I/O-free module `decision_core.py`.
 `run_market_open_buys()` fetches the live inputs (cash, price, days-to-earnings)
 and performs the resulting order/DB/notify side effects, but every verdict below
-is computed by `decision_core`. This is the single source the research backtester
-also calls, so live and backtest entry selection are identical by construction.
+is computed by `decision_core`. The recorded-input replay
+(`research/live_rule_replay.py`) calls those same gates on supplied historical
+inputs. Daily strategy backtesters still use simplified scans and do not have
+equivalent entry selection. Missing point-in-time inputs cannot be reconstructed
+from a daily skip reason.
 See `decisions/2026-09-29_decision-core-extraction.md` for why.
+See `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md` for
+the replay's execution boundaries.
 
 ---
 
@@ -330,4 +335,3 @@ sent only after Telegram accepts the message, so a transient failure retries.
 
 The feature is always on and has no environment variable. See
 `decisions/2026-09-28_unfilled-slot-daily-alert.md` for why.
-

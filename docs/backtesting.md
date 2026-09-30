@@ -1,36 +1,124 @@
 # Backtesting
 
-There are **two different kinds of backtest** in this repo, and they answer
-different questions. Picking the wrong one wastes time.
+These tools answer different questions. Sharing rule functions does not make
+daily-bar simulations or older counterfactuals equivalent to live execution.
+See `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 | You want to know | Use |
 |---|---|
-| "How would the strategy have performed, with the **live exit rules**, over a period?" | **Strategy backtest (exit-parity)** (`research/strategy_backtest.py`) |
-| "How does the **dashboard** backtester score these tickers?" (live exits too, since Option A) | **Web strategy backtester** (`backend/backtester.py`) |
+| "How do the shared live decisions behave on complete recorded intraday inputs?" | **Recorded-input replay** (`research/live_rule_replay.py`); explicit scope and sampled-fill assumptions |
+| "How would a daily-bar approximation using current exit primitives perform?" | **Daily strategy backtest** (`research/strategy_backtest.py`) |
+| "How does the **dashboard** daily-bar approximation score these tickers?" | **Web strategy backtester** (`backend/backtester.py`) |
 | "Would a different *exit rule* have made my **actual** trades better?" | **Exit replay** (`research/exit_rule_replay.py`) |
 | "Does an entry/ranking/exit idea hold up across a large universe?" | **Research harnesses** (`research/*_bt.py`) |
 | "Is a strategy backtest result **real**, or a lucky window / one outlier?" | **Validation harness** (`research/strategy_validate.py`) |
 
-> **Which strategy backtester?** Both now exit with the **live** engine.
+> **Which strategy backtester?** Both use current exit-rule primitives.
 > `research/strategy_backtest.py` and `backend/backtester.py` (the dashboard
 > button) share one daily-bar exit engine — the root module `daily_exit_sim`,
 > which calls `exit_core` / `exit_rules` — so their exits are the Prove-It Stop,
-> the dynamic ladder, power-hold and scale-out, byte-for-byte what production
-> runs (Option A — see
+> the dynamic ladder, power-hold and scale-out, but daily sequencing and broker
+> order mechanics are approximations, not byte-for-byte production execution (see
 > `decisions/2026-09-29_backtester-option-a-live-exits.md`). They differ only in
 > DATA source (the research tool reads the committed offline dataset; the
 > dashboard reads FMP) and in the entry/market-filter, not exits.
 
 ---
 
-## 0. Strategy backtest with the LIVE exit rules (exit-parity)
+## Recorded-input replay: shared decisions, explicit execution assumptions
+
+`research/live_rule_replay.py` is an offline portfolio replay, not a connection
+to IBKR and not a replacement trading daemon. It calls the shared entry gates
+and ranking in `decision_core`, the exit decisions in `exit_core`, protective
+levels in `exit_rules`, and the shared cooling-off policy.
+
+The input must preserve what was observable at each event: trigger and earnings
+facts, gate outcomes, timestamps, quote observations, configuration and session
+dates. Broker-price samples, buy cycles, monitoring cycles and end-of-day
+observations are separate events. Cash and positions evolve from simulated
+fills, including partial sales; historical skip reasons do not force a
+counterfactual decision. A comparison disabling only the AI D-grade veto retains
+the other gates, ranking, sizing, costs and exit rules.
+
+**This does not recover missing history.** `trigger_decisions` upserts one row
+per ticker/type/date, not each intraday decision, and `trigger_history` lacks
+some required earnings/runtime facts. Those tables alone cannot populate a
+complete replay. Do not join in today's values, infer missing AI grades, or
+invent quote paths from daily highs/lows. Incomplete inputs fail rather than
+producing a success-shaped profit estimate.
+
+**The broker remains a model.** A sampled quote path cannot reconstruct every
+tick, order acknowledgement, queue position, partial fill or outage. All fills
+must carry explicit modelling assumptions. Profit comparisons include marked
+remaining positions and trading costs; a synthetic fixture is only an example,
+never a measurement of the bot's profitability.
+
+The live monitor still orchestrates `exit_rules` separately from `exit_core`;
+golden tests compare their decisions. Sharing these functions does not certify
+all production side effects. Unsupported manual/rotation paths must stop a
+replay instead of being silently omitted.
+
+### Running it and supplying inputs
+
+```bash
+# Offline interface example only: these symbols and prices are invented.
+python3 research/live_rule_replay.py \
+  tests/fixtures/live_rule_replay_example.json --compare-without-ai-veto
+
+# Run your own complete point-in-time capture.
+python3 research/live_rule_replay.py /path/to/capture.json
+python3 research/live_rule_replay.py /path/to/capture.json --compare-without-ai-veto
+```
+
+The comparison changes only the D-grade veto; it does not remove the AI score
+from ranking or bypass the score floor. `--disable-ai-veto` runs only that
+variant. Output is JSON with both ledgers, decisions, brackets, configuration,
+an input fingerprint and the difference in final account value **after costs,
+including unsold positions**. It is not a closed-trade profit comparison.
+
+`tests/fixtures/live_rule_replay_example.json` is the full schema-v1 example:
+
+| Input | Required content |
+|---|---|
+| Starting state | A positive `initial_cash`, empty `initial_positions`, and the exact `scope` declarations: initially flat with no recent sales, sampled full fills, no external activity/corporate actions, monitor prices equal broker observations |
+| Configuration | Every field of `decision_config`, `exit_config`, `replay_config` and `costs`; no omitted defaults. `shared_exit_rules` must match the imported code/environment snapshot. Input-supplied settings are not independently certified as the deployed configuration. |
+| Every event | Strictly increasing timezone-aware `timestamp`, its matching New York `session`, and `broker_quotes` with positive prices and observation timestamps equal to that event's timestamp |
+| `quote` | Broker observations only; these can trigger resting stops between bot monitor cycles |
+| `buy_cycle` | Complete candidate `triggers`, separate possibly delayed `entry_quotes`, and recorded `cycle_gates` (`schema_ok`, `margin_loan`, `market_allowed`, `observed_at`). All trigger fields in the fixture must exist; explicit `null` records an unknown nullable fact. |
+| `monitor` | Current marks for every simulated holding, including holdings that exist only when the veto is disabled |
+| `eod_latch` | Immediately follows an EOD-window monitor; requires `observed_at` and `fresh_trigger_tickers`. Despite that field's name, supply the complete available candidate ticker set: each variant subtracts its own holdings. |
+| `end_mark` | The final event, with marks for every remaining holding |
+
+The capture must contain **all relevant observations and decision cycles**, not
+just the dates/tickers the real bot bought. The format cannot detect an event
+that the producer never recorded. Both variants need quotes for every position
+they might hold; missing marks cause rejection. Overnight holdings require the
+preceding session's monitor/EOD latch, with no missing intervening sessions.
+
+Regular-session samples are supported, not extended-hours execution. Fills are
+immediate and complete at sampled prices with adverse slippage; there is no
+inferred five-minute high/low path. Position rule prices use the live cent-rounded
+entry basis while cash uses the model's full-precision execution price. Gate
+outcomes are held fixed across variants; fills and portfolio cash are recomputed.
+The re-entry restriction ledger follows live sale accounting: a partial sale
+bears its sell commission, and the final sale also bears the entire entry
+commission. Those attributed fees do not debit cash a second time.
+Potential EOD Rank & Replace, initial holdings, manual trades and other
+unsupported paths are rejected, not valued as if they never happened.
+
+See `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md` for
+the scope and the historical-result errata.
+
+---
+
+## 0. Daily strategy backtest using current exit-rule primitives
 
 `research/strategy_backtest.py` is the backtest-fidelity Phase 2 deliverable: a
-full-portfolio daily-bar simulation whose **exits are the live code**. It imports
+full-portfolio daily-bar simulation that **reuses live rule functions**. It imports
 `exit_core` and `exit_rules` and calls them, so the Prove-It Phase 1 band, the
 Phase 2 give-back floor, the trailing ladder (off the live `TRAIL_PROFIT_TIERS`),
-the power-hold widening and the partial scale-out are the live rules by
-construction — change a threshold in `exit_rules.py` and this backtest changes
+the power-hold widening and the partial scale-out read shared thresholds.
+Change a threshold in `exit_rules.py` and this backtest changes
 with it.
 
 ```bash
@@ -42,44 +130,48 @@ python3 research/strategy_backtest.py --json out.json
 
 No secrets required — it reads the committed `benchmark_data/` daily bars (313
 names, 2023-07 → 2026-08), so it runs offline, free and reproducible with **no
-FMP key at all**. Entries mirror `backend/backtester.py` (20-day-high breakout,
-above SMA50/200, ≥1.4× volume, SPY-above-EMA21 filter) so the two agree on
-entries; entry parity against `decision_core` is a separate follow-up. The exit
+FMP key at all**. Entries use simplified technical scans (20-day-high breakout,
+above SMA50/200, ≥1.4× volume), not the live AI/earnings/cooling-off gate ladder.
+The research market filter uses SPY above EMA-21; this is not the live regime
+gate. The exit
 engine is shared verbatim with the dashboard backtester (section 1) via the root
 module `daily_exit_sim`, so both cannot drift apart.
 
 ### Fidelity — read before trusting a dollar figure
 
-This achieves **rule parity** (which exit fires, and why) but **not exact
-fill-price fidelity**. Daily bars cannot see the live loss rules' 0.6% arm-trail
-bounce (they `arm_exit()` a tight IBKR trail that resolves *intraday*), the
-15-minute poll, or slippage. A Prove-It arm is therefore modelled as a sell at
+This is **not execution-equivalent**, even for relative comparisons. Daily bars
+cannot resolve the armed trail, the actual monitoring times, broker anchor
+resets or partial-sale ordering. The Phase 1 broker stop and the Phase 2
+bot/broker combination are reduced to daily downside levels. A Prove-It arm is modelled as a sell at
 the level (or the open on a gap-through, pessimistically), and trail-tightening /
 scale-out resolve off the intraday high / at the close. To avoid look-ahead,
 resting levels for a day use the peak/HWM as of the previous close, and today's
 high is folded in only after the low is resolved.
 
-**Trust it for RELATIVE questions** — does a rule fire, how often, does a change
-help or hurt. **Do not** read its absolute P&L as a precise +EV/−EV verdict on
-the tight Prove-It exits; that needs 5-minute bars, which drop in with no logic
-change (see `resolve_position_day`). The register work-item
-`intraday-fmp-exit-fidelity` tracks that upgrade, gated on live usage. See
+Commission and adverse slippage are modelled by `trade_costs`; that does not
+remove the timing assumptions. Relative rankings can also change with those
+assumptions. Opening allocations value held stocks at available opening marks,
+never at the same day's future close.
+
+Do **not** call `resolve_position_day` once per five-minute candle: it advances
+a trading-day counter and applies an end-of-day latch on every call. Intraday
+replay needs separate quote, monitoring and end-of-day events. See
 `decisions/2026-09-29_backtester-exit-core-adoption.md`.
 
 ---
 
-## 1. Web strategy backtester (dashboard — live exit parity)
+## 1. Web strategy backtester (dashboard — daily approximation)
 
-> **As of Option A (2026-09-29) this exits with the LIVE engine too.** It calls
+> **As of Option A (2026-09-29) this uses the shared daily exit adapter.** It calls
 > `daily_exit_sim.resolve_position_day` — the same shared code
 > `research/strategy_backtest.py` uses — so the Prove-It Stop, the dynamic trail
-> ladder, power-hold and scale-out are byte-for-byte production. The retired
+> ladder, power-hold and scale-out use shared primitives. The retired
 > 7%-trail-from-peak + EMA-21×0.99 exit was removed (see `docs/retired_code.md`).
-> Its remaining divergence from live is on the **entry/market-filter** side, not
-> exits — see "Known divergence" below. See
+> Both **entry/market filters and exit execution mechanics** still differ from
+> live; see "Known divergence" below. See
 > `decisions/2026-09-29_backtester-option-a-live-exits.md`.
 
-Simulates the full CAN SLIM breakout strategy over historical FMP data.
+Simulates a simplified technical-breakout strategy over historical FMP data.
 Entries are detected on day T's close and filled at day T+1's **open** (no
 look-ahead). Sizing is `min(available_cash / remaining_slots, equity / MAX_POSITIONS)`,
 matching the live bot — the second term caps each position at one equal-weight share of
@@ -148,11 +240,17 @@ silently simulate a different portfolio shape than production.
 
 ## 2. Exit replay — against your own real trades
 
-This is the highest-signal tool in the repo, because it uses **real fills, not
-simulated entries**. It replays the bot's own closed trades on 5-minute bars,
-reproducing live mechanics (15-minute checks, `arm_exit()` 0.6% trail, the 3.25h
-deadline) and reports every alternative as a dollar delta against the exit that
-actually happened.
+This is a **historical exit counterfactual**, not the current strategy replay.
+It fixes actual entries and replays independently implemented exit models on
+five-minute bars. Every dollar delta is against the exit that actually happened,
+not automatically against today's live strategy.
+
+The default command selects retired exit configurations. Even legacy rows named
+`SHIPPED` or `LIVE BASELINE` are not proof of current parity: their Phase 1
+mechanics differ from today's static broker stop, and run-on/slot-cost sweeps
+omit partial scale-out. The scale-out chronology and gap handling corrections
+of 2026-09-30 invalidate affected prior measurements; no corrected live-strategy
+profit ranking has yet been established.
 
 ```bash
 set -a && . ~/.config/ai-trading-bot/secrets.env && set +a
@@ -166,8 +264,9 @@ python3 research/exit_rule_replay.py --insecure --json out.json
 Drop `--insecure` if the local TLS trust store is working. Other flags:
 `--proveit`, `--day0`, `--top N` (default 25).
 
-`--proveit` sweeps the Prove-It parameters and, since the 2026-09-18 repair,
-contains the live configuration itself. Its grid is **38 rows**, so pass
+`--proveit` sweeps historical Prove-It parameters. The 2026-09-18 repair added
+then-intended baseline rows, but they are not current execution-equivalent.
+Its grid has **38 rows**, so pass
 `--top 80`; the three baseline rows (`LIVE BASELINE`, `ProveIt SHIPPED`,
 `RETIRED pre-ProveIt`) rank below the default cut and are otherwise invisible.
 Note that `RETIRED pre-ProveIt` was labelled `SHIPPED` until that date despite
@@ -284,6 +383,18 @@ python3 research/port_sim.py
 
 `research/fetch_daily.py` refreshes that dataset from FMP; it is only needed when
 extending the window or universe.
+
+`cooloff_bt.py` / `port_sim.py` retain older exits, proxy ranking and costless
+return compounding. Opening buys precede that day's exit processing, including
+entry-day risk. Reason-aware cooling uses the live inclusive calendar window;
+blanket experiments retain their historical session-count convention, so their
+comparison also changes the clock. Neither version is current-strategy parity.
+
+`entry_quality_review.py` reports full-book **associations**, not executable
+missed trades: it does not replay all gates or exits, and date-only closed-trade
+spans cannot recover intraday availability or currently open positions.
+`ai_value_replay.py` retains historical ranking, reason-filtered eligibility and
+exit mechanics; its hypothetical vetoed-pool returns are not realised veto cost.
 
 ---
 

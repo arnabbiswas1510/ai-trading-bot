@@ -1,11 +1,18 @@
 # Reason-aware cooling-off: loss exits block, profit exits don't
 
 **Date:** 2026-09-26
-**Status:** Accepted
+**Status:** Accepted policy; backtest evidence withdrawn below
 **Supersedes in part:** [`2026-09-15_cooling-off-three-days.md`](2026-09-15_cooling-off-three-days.md)
 (the 3-day length stands; the *blanket, reason-blind* application does not)
 **Builds on:** [`2026-09-10_lot-basis-and-broker-aware-cooling-off.md`](2026-09-10_lot-basis-and-broker-aware-cooling-off.md),
 [`2026-09-26_cooling-off-return-neutral.md`](2026-09-26_cooling-off-return-neutral.md)
+
+> **Erratum 2026-09-30 — DO NOT CITE the portfolio CAGR table:** the 29.5%,
+> 27.3% and 29.0% figures used defective entry/exit chronology and different
+> calendar semantics. Neither the +1.7pp improvement nor dominance is established
+> for current execution. No corrected numerical replacement has been measured.
+> The live rule and independently observed re-entry data are not changed here.
+> See `2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 ## Context
 

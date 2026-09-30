@@ -1,9 +1,26 @@
-"""Portfolio-level sim: 4 slots, chronological, capital velocity matters."""
+"""Historical, NON-EQUIVALENT portfolio experiment; not a live strategy replay.
+
+Uses retired exits, proxy ranking, costless returns and fixed-fraction compounding
+instead of a cash/share ledger. Daily high/low order and stop fills are approximate.
+Entries consume only slots free at the open; today's exits cannot fund that open.
+Old results must be rerun after chronology and reason-aware calendar corrections.
+"""
 import datetime, statistics, collections
 from breakout_bt import (daily, indicators, find_breakouts, dyn_trail, BASE_STOP,
                          PH_GAIN, PH_TRIG, PH_DUR, EMA_BUF, VOL_SURGE)
 
 MAX_POS = 4
+
+def _is_cooled(pct, sold_on, today, cool, reason_aware, sessions_since_sale):
+    """Reason-aware dates match the inclusive live ledger cutoff.
+
+    The historical blanket sweep deliberately retains trading-session counts;
+    blanket cool=0 disables its block rather than simulating the live churn guard.
+    """
+    if reason_aware:
+        age = (today - sold_on).days
+        return age == 0 or (pct <= 0 and 0 <= age <= cool)
+    return sessions_since_sale < cool
 
 def build(universe):
     """Collect all breakout signals and per-symbol bar data keyed by date."""
@@ -36,22 +53,32 @@ def build(universe):
 def simulate(cfg, sig, bars, emas, dix, alldates, track=False):
     open_pos, closed = [], []
     occ = []
-    blocked = {}          # sym -> index in alldates before which re-entry is blocked
+    blocked = {}          # sym -> (last exit return, session index, calendar date)
     slots = cfg.get("slots", MAX_POS)
-    # Reason-aware cooling-off: when True, a PROFIT exit blocks re-entry only for
-    # the same session (di+1), while a LOSS exit blocks for the full `cool`
-    # window. Mirrors the live cooling_off.compute_cooled_map split — a name sold
-    # at a profit is a proven leader left to the buy-quality gates, not idled.
-    # When False (default), every exit blocks for `cool` days regardless of P&L.
+    # Only the cooling-off calendar semantics match production, not this engine.
+    # Blanket mode keeps the historical experimental session-count convention.
     reason_aware = cfg.get("cool_reason_aware", False)
     cool = cfg.get("cool", 0)
 
-    def block_after(pct, di):
-        if reason_aware:
-            return di + (cool if pct <= 0 else 1)   # loss: full window; profit: same-session
-        return di + cool
-
     for di, day in enumerate(alldates):
+        today = datetime.date.fromisoformat(day)
+        # --- opening entries, BEFORE any part of today's management ---
+        lag = cfg.get("entry_lag", 0)
+        src = sig.get(alldates[di-lag], []) if lag and di-lag >= 0 else (sig.get(day, []) if not lag else [])
+        # Historical quality proxy, NOT production final_score.
+        for sym, e, _sc in sorted(src, key=lambda t: -t[2]):
+            if len(open_pos) >= slots: break
+            if any(p["sym"] == sym for p in open_pos): continue
+            if sym in blocked:
+                pct, sale_di, sold_on = blocked[sym]
+                if _is_cooled(pct, sold_on, today, cool, reason_aware, di - sale_di):
+                    continue
+            d = bars[sym]
+            e = dix[sym].get(day)
+            if e is None or e >= len(d) or not d[e]["open"]: continue
+            open_pos.append(dict(sym=sym, e=e, entry=d[e]["open"], peak=d[e]["open"],
+                                 last_peak=e, trail=cfg.get("base_stop",BASE_STOP),
+                                 pg=0.0, ph=False, rh=0.0, d0=today))
         # --- manage open positions ---
         still = []
         for p in open_pos:
@@ -71,7 +98,7 @@ def simulate(cfg, sig, bars, emas, dix, alldates, track=False):
             if bar["low"] <= lvl:
                 pct = (lvl/p["entry"]-1)*100
                 closed.append((pct, held, "trail", di))
-                blocked[p["sym"]] = block_after(pct, di); continue
+                blocked[p["sym"]] = (pct, di, today); continue
             c = bar["close"]
             nt = dyn_trail(cfg, (c/p["entry"]-1)*100, cal, p["trail"])
             if nt: p["trail"] = nt
@@ -84,34 +111,20 @@ def simulate(cfg, sig, bars, emas, dix, alldates, track=False):
                 if p["rh"] >= p["entry"]*0.995 and c <= p["rh"]*(1-cfg["minimiser"]):
                     pct = (c/p["entry"]-1)*100
                     closed.append((pct, held, "minimiser", di))
-                    blocked[p["sym"]] = block_after(pct, di); continue
+                    blocked[p["sym"]] = (pct, di, today); continue
             st = cfg.get("stale")
             if st and not p["ph"] and held >= 7 and (j - p["last_peak"]) >= st:
                 pct = (c/p["entry"]-1)*100
                 closed.append((pct, held, "stale", di))
-                blocked[p["sym"]] = block_after(pct, di); continue
+                blocked[p["sym"]] = (pct, di, today); continue
             if (cfg.get("ema",True) and held >= cfg.get("ema_day",7) and not p["ph"]
                     and ema[j] and c < ema[j]*(1-cfg.get("ema_buf",EMA_BUF))):
                 pct = (c/p["entry"]-1)*100
                 closed.append((pct, held, "ema", di))
-                blocked[p["sym"]] = block_after(pct, di); continue
+                blocked[p["sym"]] = (pct, di, today); continue
             still.append(p)
         open_pos = still
         occ.append(len(open_pos))
-        # --- new entries into free slots ---
-        lag = cfg.get("entry_lag", 0)
-        src = sig.get(alldates[di-lag], []) if lag and di-lag >= 0 else (sig.get(day, []) if not lag else [])
-        # Best-first, matching the live buy loop which sorts by final_score desc.
-        for sym, e, _sc in sorted(src, key=lambda t: -t[2]):
-            if len(open_pos) >= slots: break
-            if any(p["sym"]==sym for p in open_pos): continue
-            if blocked.get(sym, -1) > di: continue
-            d = bars[sym]; ix = dix[sym]
-            e = ix.get(day, e)
-            if e >= len(d) or not d[e]["open"]: continue
-            open_pos.append(dict(sym=sym, e=e, entry=d[e]["open"], peak=d[e]["open"],
-                                 last_peak=e, trail=cfg.get("base_stop",BASE_STOP),
-                                 pg=0.0, ph=False, rh=0.0, d0=datetime.date.fromisoformat(day)))
     if track:
         return closed, occ
     return closed
@@ -133,9 +146,10 @@ if __name__ == "__main__":
     alldates = sorted({dt for s in bars for dt in dix[s]})
     years = (datetime.date.fromisoformat(alldates[-1]) - datetime.date.fromisoformat(alldates[0])).days/365.25
     print(f"universe={len(bars)}  days={len(alldates)}  years={years:.2f}  slots={MAX_POS}\n")
+    print("HISTORICAL / NON-EQUIVALENT: retired exits, proxy ranking, costless return approximation.")
     BASE=dict(profit_tiers=[(50,0.050),(30,0.060),(20,0.065)],time_tiers=[],
               power_hold=True,minimiser=None,ema=True,base_stop=0.07)
     print(f"{'config':38}{'n':>6}{'exp%':>8}{'win':>7}{'payoff':>8}{'hold':>7}{'total':>11}{'CAGR':>8}")
-    report(simulate(BASE,sig,bars,emas,dix,alldates),"shipped: no stale exit",years)
+    report(simulate(BASE,sig,bars,emas,dix,alldates),"historical: no stale exit",years)
     for n in (5,8,10,15,20):
         report(simulate(dict(BASE,stale=n),sig,bars,emas,dix,alldates),f"stale: no new high {n}d",years)

@@ -3,7 +3,7 @@ backend/backtester.py
 
 Runs a historical simulation of the CAN SLIM breakout trading strategy.
 
-Key design decisions (matching live execution_agent.py behaviour):
+Daily simulation assumptions (NOT equivalent to live execution):
   - Entry:  Breakout detected on day T using EOD data; buy at day T+1 OPEN
             (no look-ahead bias — screener runs after close, bot buys next morning)
   - Exit:   The LIVE exit engine — Prove-It Stop (Phase 1 band / Phase 2 give-back
@@ -15,15 +15,14 @@ Key design decisions (matching live execution_agent.py behaviour):
             retired rules were removed in Option A (see docs/retired_code.md and
             decisions/2026-09-29_backtester-option-a-live-exits.md).
   - Size:   min(available_cash / remaining_slots, equity / MAX_POSITIONS)  (equal-weight cap — matches live bot)
-  - Market: Bullish when SPY close > SPY EMA-21 (a coarse ENTRY filter; the live
-            market gate is richer — SPY/QQQ slope. Exit-side only is at parity).
+  - Market: A coarse index EMA-21 entry filter, not the live SPY SMA-200 gate.
   - Slots:  MAX_POSITIONS concurrent positions, read from the same env var
             the live bot uses (default 5) so a backtest cannot silently
             simulate a different portfolio shape than production runs
 
-  FIDELITY: daily bars give exit-RULE parity, not exact fill-price fidelity (the
-  0.6% arm-trail bounce and 15-minute timing need intraday bars). Trust RELATIVE
-  comparisons; see the fidelity note in research/strategy_backtest.py.
+  FIDELITY: shared primitives do not establish execution parity. Daily ordering,
+  armed exits and broker trail anchors can change even relative profit rankings.
+  See docs/backtesting.md and research/live_rule_replay.py for recorded inputs.
 """
 from __future__ import annotations
 
@@ -39,9 +38,8 @@ from fmp_client import FMPClient
 # via the root module daily_exit_sim (which drives exit_core/exit_rules). Option A
 # (decisions/2026-09-29_backtester-option-a-live-exits.md) brought config.py,
 # exit_rules.py, exit_core.py and daily_exit_sim.py into THIS image (see the Dockerfile
-# COPY line + tests/test_web_image_completeness.py) so the dashboard backtester exits
-# positions byte-for-byte the way production does, instead of the retired 7%-trail +
-# EMA-21 rules it used to re-implement here.
+# COPY line + tests/test_web_image_completeness.py). Shared thresholds replace the
+# retired 7%-trail + EMA-21 rules; daily execution is still approximate.
 from daily_exit_sim import build_exit_config, new_position, resolve_position_day, DayBar
 from trade_costs import CostModel, build_cost_model
 
@@ -217,6 +215,7 @@ def run_backtest(
     # ── Portfolio state ───────────────────────────────────────────────────────
     cash: float = initial_capital
     positions: dict[str, dict] = {}   # ticker → position record
+    last_marks: dict[str, float] = {}
     pending:   list[str]       = []   # tickers to buy at tomorrow's open
     trades:    list[dict]      = []
     equity_history: list[dict] = []
@@ -243,8 +242,8 @@ def run_backtest(
                 if ticker not in data or current_date not in data[ticker].index:
                     continue
                 row        = data[ticker].loc[current_date]
-                open_price = float(row.get("Open", row["Close"]))
-                if open_price <= 0 or cash <= 0:
+                open_price = float(row.get("Open", float("nan")))
+                if not np.isfinite(open_price) or open_price <= 0 or cash <= 0:
                     still_pending.append(ticker)
                     continue
                 # Proportional: spread cash equally across unfilled slots, but
@@ -254,10 +253,12 @@ def run_backtest(
                 remaining_slots = max(1, max_positions - len(positions))
                 held_value = 0.0
                 for _t, _p in positions.items():
+                    mark = float("nan")
                     if _t in data and current_date in data[_t].index:
-                        held_value += _p["shares"] * float(data[_t].loc[current_date]["Close"])
-                    else:
-                        held_value += _p["shares"] * _p["buy_price"]
+                        mark = float(data[_t].loc[current_date].get("Open", float("nan")))
+                    if not np.isfinite(mark) or mark <= 0:
+                        mark = last_marks.get(_t, _p["buy_price"])
+                    held_value += _p["shares"] * mark
                 equity_now = cash + held_value
                 alloc = min(cash / remaining_slots, equity_now / max_positions)
                 # Costs charged to CASH only; the position's buy_price stays the
@@ -389,6 +390,11 @@ def run_backtest(
             "equity": round(current_equity, 2),
             "cash":   round(cash, 2),
         })
+        for ticker, frame in data.items():
+            if current_date in frame.index:
+                mark = float(frame.loc[current_date]["Close"])
+                if np.isfinite(mark) and mark > 0:
+                    last_marks[ticker] = mark
 
     # ── Compute summary metrics ───────────────────────────────────────────────
     final_equity     = equity_history[-1]["equity"] if equity_history else initial_capital

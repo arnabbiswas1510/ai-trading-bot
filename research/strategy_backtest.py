@@ -20,8 +20,9 @@ the exit side: the daily-bar exit engine lives ONCE in the root module
 ``daily_exit_sim`` (imported here and by ``backend/backtester.py``) and calls
 ``exit_core`` and ``exit_rules`` directly, so the Prove-It Stop (Phase 1 band,
 Phase 2 give-back floor), the dynamic trail ladder, the power-hold widening and
-the partial scale-out are byte-for-byte the live rules. Change a threshold in
-``exit_rules.py`` and every backtest changes with it.
+the partial scale-out use shared functions. Their daily sequencing still differs
+from live execution. Change a threshold in ``exit_rules.py`` and these two
+daily backtesters change with it; legacy independent harnesses do not.
 
 WHY IT LIVES IN research/ (the container split is now closed)
 ─────────────────────────────────────────────────────────────
@@ -44,40 +45,36 @@ no FMP key at all, let alone the intraday subscription.
 
 FIDELITY — READ THIS BEFORE TRUSTING A DOLLAR FIGURE
 ────────────────────────────────────────────────────
-This achieves RULE parity (which exit fires, and why) but NOT exact fill-price
-fidelity, because daily bars cannot resolve intraday mechanics:
+This reuses rule functions, NOT complete execution semantics. Daily bars cannot
+resolve intraday mechanics, which can change which exit fires and its profit:
 
-  • The live loss rules do not sell — they ``arm_exit()`` a tight 0.6% IBKR trail
-    with a 3.25h deadline that resolves INTRADAY. On daily bars that bounce is
-    invisible, so a Prove-It arm is modelled as a sell AT the level (or the open,
-    if the bar gapped through it). This is the same daily-bar limitation
-    documented in ``exit_rule_replay.py``; it is why that tool uses 5-minute bars.
+  • Live Phase 1 has a static broker stop. Bot-detected Prove-It breaches can
+    ``arm_exit()`` a tight 0.6% IBKR trail with a 3.25h deadline. Daily bars
+    collapse these paths into a sale at a downside level (or a gap-through open)
+    and cannot capture the armed bounce or broker order replacement semantics.
   • The 15-minute poll is collapsed to a once-a-day sequence: peak/HWM and arming
     see the day's HIGH, downside stops resolve against the day's LOW, and the
     trail-tightening / scale-out / hard-stop updates are applied at the CLOSE and
     take effect the NEXT day (a ~one-cycle lag versus the live intraday placement).
-  • Commission and slippage are NOT modelled (roadmap item #3). Gap-through fills
-    are modelled pessimistically (fill at the open when the bar opens through the
-    level) but partial-fill and queue effects are not.
+  • Commission and adverse slippage are modelled by ``trade_costs`` and charged
+    to cash; reported gross returns remain quote-to-quote. Gap-through fills use
+    the open when it is worse than the stop. Partial-fill and queue effects are
+    not modelled, and ``--no-costs`` deliberately disables trading costs.
 
-Therefore: TRUST this for RELATIVE questions — does a rule fire, how often, does
-a change help or hurt, do entries and exits behave like production. Do NOT read
-its absolute P&L as a precise +EV/−EV verdict on the tight Prove-It exits; that
-needs 5-minute bars, which drop in here with NO logic change (see
-``resolve_position_day`` — swap the once-a-day OHLC resolution for a per-5min-bar
-loop and the exit_core calls are identical). The register work-item
-``intraday-fmp-exit-fidelity`` tracks that upgrade, gated on live usage showing
-it is needed.
+Relative comparisons also depend on these assumptions; do not treat them as
+current-strategy profit rankings. ``resolve_position_day`` advances a daily
+clock and must NOT be called per five-minute candle. The separate
+``research/live_rule_replay.py`` consumes chronological recorded inputs with
+explicit sampled-fill assumptions and unsupported-path errors.
 
 ENTRY PARITY IS A SEPARATE STEP
 ───────────────────────────────
 The ENTRY scan below mirrors ``backend/backtester.py`` (20-day-high breakout,
-above SMA50/200, ≥1.4x volume, SPY-above-EMA21 market filter) so this tool and
-the web backtester choose the SAME entries. That mechanical scan is itself a
+above SMA50/200, ≥1.4x volume, an index-above-EMA21 filter). That mechanical scan is a
 simplification of the live screen (which leans on fundamentals + AI grading, and
 needs point-in-time data — roadmap item #4). Pointing entries at
-``decision_core`` is a complementary follow-up; this deliverable is scoped to
-EXIT parity.
+``decision_core`` requires point-in-time recorded inputs, supplied separately
+to ``research/live_rule_replay.py``.
 
 USAGE
 ─────
@@ -92,6 +89,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
 import statistics
@@ -219,6 +217,7 @@ def simulate(tickers: list[str], start: str, end: str,
 
     cash = float(initial_capital)
     positions: dict[str, dict] = {}
+    last_marks: dict[str, float] = {}
     pending: list[str] = []
     trades: list[dict] = []
     equity_curve: list[dict] = []
@@ -233,15 +232,18 @@ def simulate(tickers: list[str], start: str, end: str,
                 if tk in positions or len(positions) >= max_positions:
                     continue
                 bar = data.get(tk, {}).get(date)
-                if bar is None or bar.open <= 0 or cash <= 0:
+                if bar is None or not math.isfinite(bar.open) or bar.open <= 0 or cash <= 0:
                     if bar is not None:
                         still_pending.append(tk)
                     continue
                 remaining = max(1, max_positions - len(positions))
-                held_value = sum(
-                    p["shares"] * (data[t][date].close if (t in data and date in data[t]) else p["buy_price"])
-                    for t, p in positions.items()
-                )
+                held_value = 0.0
+                for t, p in positions.items():
+                    held_bar = data.get(t, {}).get(date)
+                    mark = held_bar.open if held_bar else float("nan")
+                    if not math.isfinite(mark) or mark <= 0:
+                        mark = last_marks.get(t, p["buy_price"])
+                    held_value += p["shares"] * mark
                 equity_now = cash + held_value
                 alloc = min(cash / remaining, equity_now / max_positions)
                 # Costs do NOT change which name is bought or the exit math: the
@@ -336,6 +338,10 @@ def simulate(tickers: list[str], start: str, end: str,
             for t, p in positions.items()
         )
         equity_curve.append({"date": date, "equity": round(equity, 2)})
+        for tk, by_date in data.items():
+            bar = by_date.get(date)
+            if bar and math.isfinite(bar.close) and bar.close > 0:
+                last_marks[tk] = bar.close
 
     return _summarize(trades, equity_curve, initial_capital, all_dates, max_positions,
                       total_commission, total_slippage)
@@ -434,7 +440,7 @@ def _print_report(res: dict) -> None:
     s = res["summary"]
     print("=" * 68)
     print("STRATEGY BACKTEST — exits driven by the LIVE exit_core / exit_rules")
-    print("Daily bars (offline benchmark_data). RULE parity, not fill-price fidelity.")
+    print("Daily approximation (offline benchmark_data), NOT execution-equivalent.")
     print("=" * 68)
     print(f"  window          {s['window'][0]} .. {s['window'][1]}" if s["window"] else "  (no data)")
     print(f"  slots           {s['max_positions']}")
@@ -454,8 +460,8 @@ def _print_report(res: dict) -> None:
         print(f"    {k:22s} {v}")
     print("=" * 68)
     print("  NOTE: absolute P&L is approximate — daily bars cannot model the 0.6%")
-    print("  arm-trail bounce or 15-minute timing. Trust RELATIVE comparisons; a")
-    print("  precise +EV verdict needs 5-minute bars (register: intraday-fmp-exit-fidelity).")
+    print("  arm-trail bounce or live monitoring timing. Relative rankings can")
+    print("  also change. Use recorded-input live_rule_replay for shared decisions.")
 
 
 def main(argv: list[str] | None = None) -> int:

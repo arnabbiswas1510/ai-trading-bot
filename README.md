@@ -13,6 +13,13 @@ from constant activity.
 > **This trades real money.** Every parameter below is live. Read the
 > [Risk Model](#risk-model) before deploying.
 
+**Backtest fidelity:** daily strategy tools reuse current exit helpers but are
+not execution-equivalent. `research/live_rule_replay.py` replays shared decisions
+on complete recorded intraday inputs, with explicit fill assumptions and errors
+for unsupported paths. Older exit/cooling-off studies are historical models,
+not a ranking of which live rule costs the most. See [Backtesting](docs/backtesting.md)
+and `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
+
 ---
 
 ## Table of Contents

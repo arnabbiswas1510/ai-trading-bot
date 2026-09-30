@@ -3,7 +3,7 @@ daily_exit_sim.py — the LIVE exit engine, resolved once per DAILY OHLC bar.
 
 WHY THIS MODULE EXISTS
 ----------------------
-Two backtesters must exit positions exactly the way the live bot does:
+Two backtesters share current exit-rule primitives:
 
   * ``research/strategy_backtest.py`` — the offline research backtester over the
     committed ``benchmark_data/`` dataset, and
@@ -23,12 +23,12 @@ live-trading code path — see ``decisions/2026-09-29_backtester-option-a-live-e
 
 FIDELITY
 --------
-Daily bars give RULE parity (which rule fires, how often, whether a change helps
-or hurts), NOT exact fill-price fidelity: the 0.6% arm-trail bounce, the 15-minute
-poll cadence and intraday gap resolution need intraday bars. ``resolve_position_day``
-is bar-granularity agnostic by design — a 5-minute loop drops in by calling the
-same functions per intraday bar with NO change to the decision code (tracked as
-register work-item ``intraday-fmp-exit-fidelity``).
+Sharing primitives is not full execution parity. Daily sequencing can change
+which rule fires and relative profitability, not just fill price. The armed
+trail/deadline, broker anchor resets, intraday observations and EOD latch are
+approximated here. Calling this function every five minutes would also advance
+its day counter and latch a "close" every five minutes; it is NOT an intraday
+adapter. Use research/live_rule_replay.py for chronological recorded-input replay.
 """
 from __future__ import annotations
 
@@ -165,9 +165,8 @@ def resolve_position_day(pos: dict, bar, calendar_days: int,
       C. The CLOSE runs ``exit_core.evaluate_exit`` to latch ``closed_above_entry``
          and take the partial scale-out — the live per-cycle verdict for survivors.
 
-    To lift this to 5-minute fidelity, replace A/B's once-a-day OHLC resolution
-    with a loop over intraday bars calling the same functions per bar — the
-    decision code does not change.
+    This function advances a daily clock. Do not call it once per intraday bar;
+    a chronological replay must separate broker quotes, bot cycles and EOD.
     """
     buy = float(pos["buy_price"])
     days_held = int(pos["days_held"])

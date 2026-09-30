@@ -1,5 +1,15 @@
 {
   "_README": "PROVISIONAL DECISION REGISTER \u2014 the single source of truth for decisions that were taken on a SMALL trade sample and must be revisited once more closed trades exist. This file is read by research/decision_review.py and the .github/workflows/decision_review.yml scheduled job, which opens a persistent GitHub issue (and pings Telegram) the moment a decision becomes due. Do NOT track schedules in prose anywhere else \u2014 add an entry here instead, so the human-read path and the automated path can never drift. See AGENTS.md > 'Provisional Decision Register' for the mandatory process. Entries are of two KINDS. A 'parameter' entry is a tuned number awaiting more evidence; a 'work-item' entry is a piece of engineering work deliberately deferred until the bot is in a safe state to absorb it. Both use `revisit` as the trigger (when to look), and may additionally declare `preconditions` (whether it is safe to act today) which are evaluated against LIVE portfolio state. A due-but-blocked entry is still reported -- never silently skipped.",
+  "_measurement_errata_2026_09_30": {
+    "adr": "decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md",
+    "warning": "Historical baselines below are retained as records, not current-execution evidence. Before parameter reviews, read this erratum and use a valid input/model comparison. No live settings or review dates are changed here.",
+    "scaleout-4pct-33pct": "Do not cite old scale-out deltas: the replay could credit a partial sale after the full exit. Corrected numerical results have not been measured.",
+    "cooling-off-three-days": "Do not cite 29.5/27.3/29.0 percent CAGR or -2.2/+1.7pp comparisons: legacy entry/exit chronology and calendar semantics differed. Corrected numbers require rerunning; old exit model remains non-equivalent.",
+    "exit-parameters-proveit": "SHIPPED and LIVE BASELINE labels in the historical replay do not establish current Phase 1 broker-stop parity. The scale-out baseline is additionally affected by the chronology defect.",
+    "ladder-width-runon": "Run-on and slot-cost models omit scale-out and use historical stop mechanics. Their differences are not full live-stack comparisons.",
+    "entry-quality-right-tail": "Full-book trigger counts and peak returns are associations, not missed executable trades or realised slot cost.",
+    "ai-value-ab-replay": "The old AI A/B harness differs in ranking, gate eligibility and exits. Pool outcomes are not a causal estimate of live veto cost."
+  },
   "_schema": {
     "id": "kebab-case unique key; also the GitHub-issue marker",
     "title": "one-line human label",

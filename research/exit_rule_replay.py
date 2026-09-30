@@ -1,4 +1,12 @@
-"""Replay the bot's OWN closed trades against alternative exit-rule parameters.
+"""HISTORICAL COUNTERFACTUAL: replay selected exit rules, not the current strategy.
+
+Every mode uses manually mirrored historical parameters, not the shared live
+decision engine. The default/headline and --grid compare retired early-exit
+rules. Names such as SHIPPED and LIVE BASELINE are historical experiment labels,
+not claims of current live parity. --runon, --slotcost and --jackknife are
+stop-only experiments: they omit scale-out. No mode reproduces the complete
+live rule ordering, all broker orders, EMA/rotation exits, entry selection,
+cash/equity sizing, commissions or slippage.
 
 This harness is different in kind from the others in `research/`. Those backtest
 the strategy over a synthetic universe of screener-generated entries. This one
@@ -36,7 +44,7 @@ and books exits better than were reachable. This is the same look-ahead bug
 documented in decisions/2026-08-17_armed-exit-backtest-lookahead.md; do not
 reintroduce it here. The trail is seeded with the trigger bar's close.
 
-Gap handling is deliberately pessimistic: if the first bar after arming OPENS
+Gap handling is deliberately pessimistic: if any bar after arming OPENS
 through the trail level, the fill is the open, not the level.
 
 LIMITATIONS
@@ -75,9 +83,7 @@ from typing import Any
 
 import requests
 
-# ── Live agent defaults these experiments are measured against ────────────────
-# Mirrors of execution_agent.py. If a default changes there, change it here and
-# say so, otherwise "current config" in the report is a lie.
+# Historical experiment constants; deliberately not a live configuration import.
 ARMED_EXIT_TRAIL_PCT = 0.006
 ARMED_EXIT_DEADLINE_HOURS = 3.25
 CHECK_MINUTES = (0, 15, 30, 45)
@@ -89,6 +95,17 @@ CHECK_MINUTES = (0, 15, 30, 45)
 MAX_POSITIONS = 5
 
 FMP_5MIN = "https://financialmodelingprep.com/stable/historical-chart/5min"
+
+REPLAY_SCOPE = (
+    "HISTORICAL COUNTERFACTUAL — every mode is a selected-rule experiment, "
+    "NOT the current strategy. Default/headline and --grid use retired rules. "
+    "Parameters are manually mirrored; SHIPPED and LIVE BASELINE are historical "
+    "labels, not live parity. --runon/--slotcost/--jackknife are stop-only "
+    "(no scale-out). Omits complete live rule ordering, broker-order lifecycle, "
+    "EMA/rotation exits, entry selection, cash/equity sizing, commissions and "
+    "slippage. Other modes truncate at the realised exit and cannot rank longer "
+    "holds. Historical results affected by chronology/gap fixes must be rerun."
+)
 
 
 def _env(name: str) -> str:
@@ -586,30 +603,26 @@ def simulate_scaleout(trade: Trade, cfg: ExitConfig) -> dict | None:
     Phase-2 floor is lifted to breakeven (p2_floor_pct = 0). Only 1-frac shares
     are then exposed to that tighter floor.
 
-    LIMITATION (must be read with any result): the bars only extend to the trade's
-    ACTUAL sell date. For positions the live rules cut early, the remainder cannot
-    "run" past that date, so this UNDERSTATES scale-out's upside on exactly the
-    trades where letting a runner run matters most. Treat the net as a floor on
-    the strategy's value, not an estimate of it. Fills are slippage-free, which
-    flatters the scale leg slightly in the other direction.
+    The scale is recorded inside the same chronological simulation as the stop.
+    Full-exit/arming decisions take precedence on an ambiguous five-minute bar:
+    OHLC cannot establish whether a target or a stop was reached first. A
+    breakeven remainder floor takes effect only on bars AFTER the scale fill.
+    This conservative convention is not a reconstruction of live order fills.
+
+    Without run-on bars, history ends on the actual sell DATE. A modelled exit
+    later that day retains its timestamp; if no rule fires, the fallback uses
+    the actual sell time and excludes any scale not known to precede it. A target
+    reached at the open has an exact fill time; a high-only touch has a latest
+    possible fill time five minutes after the bar timestamp. Both bounds are
+    returned as scale_ts / scale_latest_ts, and the latest must not exceed the
+    exit timestamp. That truncation and slippage-free fills make the result
+    unsuitable as either a current-strategy estimate or a guaranteed lower
+    bound on scale-out's value.
     """
     frac = cfg.scale_frac or 0.0
-    target = trade.buy_price * (1 + cfg.scale_trigger / 100.0)
-
-    scale_fill: float | None = None
-    for bar in trade.bars:
-        if bar["ts"] < trade.buy_ts:
-            continue
-        if bar["high"] >= target:
-            scale_fill = bar["open"] if bar["open"] > target else target
-            break
-
-    # Remainder rule. If the scale filled and we want a "free trade", lift the
-    # remainder floor to breakeven for the remainder simulation only.
-    rem_cfg = cfg
-    if scale_fill is not None and cfg.scale_be_remainder:
-        rem_cfg = replace(cfg, p2_floor_pct=0.0)
-    rem = simulate_proveit(trade, rem_cfg)
+    scale_event: dict = {}
+    rem = simulate_proveit(trade, cfg, scale_event=scale_event)
+    scale_fill = scale_event.get("price")
     # RUN-ON: `rem is None` means the remainder's rule never fired. Booking the
     # REAL sell price here reintroduces exactly the truncation bias the run-on
     # window exists to remove -- it hands the remainder the live exit for free,
@@ -617,8 +630,9 @@ def simulate_scaleout(trade: Trade, cfg: ExitConfig) -> dict | None:
     # at the last available close instead, the same way score() does for the
     # non-scale path.
     if rem is None and trade.runon_from and trade.runon_from < len(trade.bars):
+        # The close is known at bar end, not at its opening timestamp.
         rem = {"price": trade.bars[-1]["close"], "reason": "runon_open",
-               "ts": trade.bars[-1]["ts"]}
+               "ts": trade.bars[-1]["ts"] + dt.timedelta(minutes=5)}
     remainder_exit = rem["price"] if rem is not None else trade.sell_price
     reason = (rem["reason"] if rem is not None else "held")
     # The position is fully closed only when the REMAINDER leaves, so that is
@@ -627,13 +641,31 @@ def simulate_scaleout(trade: Trade, cfg: ExitConfig) -> dict | None:
     # fired (no run-on window).
     exit_ts = rem.get("ts") if rem is not None else trade.sell_ts
 
-    if scale_fill is None or frac <= 0.0:
+    # Hydration includes the entire sell date, even without run-on. Do not
+    # combine a later/uncertain intrabar scale with an earlier exit fallback.
+    if (scale_fill is None or frac <= 0.0
+            or scale_event["latest_ts"] > exit_ts):
         return {"price": remainder_exit, "reason": reason, "ts": exit_ts}
 
     blended = frac * scale_fill + (1 - frac) * remainder_exit
     return {"price": round(blended, 4),
             "reason": f"scale{int(frac*100)}@{cfg.scale_trigger:.0f}%+{reason}",
-            "ts": exit_ts}
+            "ts": exit_ts, "scale_ts": scale_event["ts"],
+            "scale_latest_ts": scale_event["latest_ts"]}
+
+
+def _record_scale_fill(trade: Trade, cfg: ExitConfig, bar: dict,
+                       scale_event: dict | None) -> None:
+    """Record a limit fill only after this bar survives the full-exit checks."""
+    if (scale_event is None or scale_event or not cfg.scale_frac
+            or cfg.scale_frac <= 0 or bar["ts"] < trade.buy_ts):
+        return
+    target = trade.buy_price * (1 + cfg.scale_trigger / 100.0)
+    if bar["high"] >= target:
+        latest_ts = (bar["ts"] if bar["open"] >= target
+                     else bar["ts"] + dt.timedelta(minutes=5))
+        scale_event.update(price=max(bar["open"], target), ts=bar["ts"],
+                           latest_ts=latest_ts)
 
 
 def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
@@ -649,7 +681,7 @@ def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
         # ── Resolve an armed exit before considering new triggers ────────────
         if armed:
             level = armed["peak"] * (1 - cfg.trail)
-            if armed["first"] and bar["open"] <= level:
+            if bar["open"] <= level:
                 return {"price": bar["open"], "reason": f"{armed['reason']}_gap", "ts": bar["ts"]}
             if bar["low"] <= level:
                 return {"price": level, "reason": f"{armed['reason']}_trail", "ts": bar["ts"]}
@@ -698,7 +730,8 @@ def simulate(trade: Trade, cfg: ExitConfig) -> dict | None:
     return None
 
 
-def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
+def simulate_proveit(trade: Trade, cfg: ExitConfig, *,
+                     scale_event: dict | None = None) -> dict | None:
     """Replay one trade under the two-phase Prove-It Stop.
 
     The governing question is asked once per bar: has this position ever CLOSED
@@ -745,7 +778,7 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
         # ── Resolve an armed Phase 1 exit before anything else ───────────────
         if armed:
             level = armed["peak"] * (1 - cfg.trail)
-            if armed["first"] and bar["open"] <= level:
+            if bar["open"] <= level:
                 return {"price": bar["open"], "reason": f"{armed['reason']}_gap", "ts": bar["ts"]}
             if bar["low"] <= level:
                 return {"price": level, "reason": f"{armed['reason']}_trail", "ts": bar["ts"]}
@@ -755,6 +788,7 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                 held_h = (bar["ts"] - armed["at"]).total_seconds() / 3600.0
                 if held_h >= cfg.deadline_h:
                     return {"price": bar["close"], "reason": f"{armed['reason']}_deadline", "ts": bar["ts"]}
+            _record_scale_fill(trade, cfg, bar, scale_event)
             continue
 
         # ── Daily rollover: a position becomes "proven" on a close above entry
@@ -782,7 +816,9 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
             # high and then filling on its low would be look-ahead.
             peak_gain = (peak / entry - 1) * 100.0
             candidate: float | None = None
-            floor_level = entry * (1 + cfg.p2_floor_pct / 100.0)
+            floor_pct = (0.0 if scale_event and cfg.scale_be_remainder
+                         else cfg.p2_floor_pct)
+            floor_level = entry * (1 + floor_pct / 100.0)
 
             # ── Power hold ───────────────────────────────────────────────────
             # Latch on the peak as it stood BEFORE this bar, same no-look-ahead
@@ -809,6 +845,7 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                     return {"price": stop_price, "reason": "power_hold_trail", "ts": bar["ts"]}
                 peak = max(peak, bar["high"])
                 peak_close = max(peak_close, bar["close"])
+                _record_scale_fill(trade, cfg, bar, scale_event)
                 continue
 
             if peak_gain >= cfg.p2_ladder_gain:
@@ -941,6 +978,7 @@ def simulate_proveit(trade: Trade, cfg: ExitConfig) -> dict | None:
                 if bar["low"] <= base_level:
                     return {"price": base_level, "reason": "base_trail", "ts": bar["ts"]}
 
+        _record_scale_fill(trade, cfg, bar, scale_event)
         peak = max(peak, bar["high"])
         # Fold this bar into the drawdown tracker LAST, so every decision above
         # was made on bars strictly before it. Only bars at/after entry count.
@@ -1060,9 +1098,8 @@ def retired_pre_proveit_config() -> ExitConfig:
     referenced below -- was DELETED the same day (docs/retired_code.md).
 
     It is kept only as the historical "what we replaced" reference point. The
-    baseline for anything that runs today is live_baseline(); for a stop-only
-    comparison with no scale-out it is shipped_proveit(). Using this row as the
-    baseline understates every current rule, because it is not a current rule.
+    historical scale-out comparison is live_baseline(); the historical stop-only
+    comparison is shipped_proveit(). Neither establishes current live parity.
 
     The retired dollar stop was not a flat amount: it resolved to
     (equity / EFFECTIVE_POSITION_SLOTS) x EARLY_DOLLAR_STOP_PCT, i.e.
@@ -1165,7 +1202,7 @@ def grid_configs() -> list[ExitConfig]:
 
 
 def shipped_proveit() -> ExitConfig:
-    """The Prove-It STOP as it runs live -- the stop ONLY, NOT the whole live bot.
+    """Historical manually mirrored Prove-It STOP, not the current live strategy.
 
     Mirrors the PROVE_IT_* constants in execution_agent.py: Phase 1 is 1.0% below
     entry on day 0 and 3.0% from day 1, enforced on the agent's 15-minute CLOSE
@@ -1191,8 +1228,9 @@ def shipped_proveit() -> ExitConfig:
     formally withdrawn. See decisions/2026-09-18_scaleout-runon-bias-and-
     concentration.md.
 
-    For a full-bot baseline use simulate_scaleout() with the shipped
-    SCALE_OUT_* values, or the `--runon` path which does this for you.
+    `live_baseline()` adds historical scale-out, but still is not a full-bot
+    replay. --runon, --slotcost and --jackknife use this STOP-ONLY configuration;
+    they do NOT include scale-out, despite the former claim in this docstring.
     """
     return ExitConfig(
         "ProveIt SHIPPED (P1 1.0%/d0 then 3.0%, close+arm; P2 arm2% floor-1%)",
@@ -1461,13 +1499,11 @@ def p1ratchet_configs() -> list[ExitConfig]:
 
 
 def live_baseline() -> ExitConfig:
-    """The FULL live bot: the Prove-It stop AND scale-out, which is on in prod.
+    """Historical Prove-It plus scale-out experiment; retained compatibility name.
 
-    This is the only correct baseline for any exit-LOOSENING experiment.
-    shipped_proveit() omits scale-out and therefore over-credits a wider trail
-    with upside the real bot already banks -- the error that produced the
-    withdrawn +$6,429 figure on 2026-09-18. Mirrors SCALE_OUT_* in
-    execution_agent.py (enabled, 33% at +4%).
+    Manually models 33% at +4%, not the shared live decision engine or its full
+    ordering and broker lifecycle. Older measurements of this configuration
+    require rerunning after the scale chronology and armed-gap fixes.
     """
     return replace(shipped_proveit(),
                    label="LIVE BASELINE (ProveIt + scale 33%@+4%)",
@@ -1735,11 +1771,9 @@ def scale_configs() -> list[ExitConfig]:
     ride the SAME Prove-It rule; the `+be` rows additionally lift the remainder's
     floor to breakeven once the scale has filled (a 'free trade' on the runner).
 
-    Read this against its own limitation (see simulate_scaleout): the remainder
-    cannot run past each trade's actual sell date, so the net UNDERSTATES the
-    runner's upside. If scale-out still holds net roughly level with SHIPPED here,
-    that is the floor of its value, and it is buying give-back protection on the
-    fraction for free. `harmed` and the per-trade deltas still decide it.
+    Without run-on bars the remainder cannot run past the actual sell date.
+    This truncation cannot establish the value of holding longer; the result is
+    not a guaranteed lower bound. See simulate_scaleout for fill assumptions.
     """
     out = [shipped_proveit()]
 
@@ -2039,6 +2073,7 @@ def report_slotcost(results: list[dict], positions: list[Position],
     baseline_total = results[0]["baseline_total"] if results else 0.0
     print()
     print("=" * 100)
+    print("HISTORICAL COUNTERFACTUAL — STOP-ONLY (no scale-out)")
     print("SLOT OPPORTUNITY COST — 'let winners run', with the blocked entries "
           "charged against it")
     print("=" * 100)
@@ -2109,6 +2144,7 @@ def report(results: list[dict], trades: list[Trade], top: int | None = None,
     total_loss = sum(t.profit_loss for t in losers)
     print()
     print("=" * 92)
+    print("HISTORICAL COUNTERFACTUAL — not the current strategy")
     print(f"Closed trades replayed : {len(trades)}  "
           f"({len(losers)} losers, {len(trades) - len(losers)} winners)")
     print(f"Total realised loss    : ${total_loss:,.2f}")
@@ -2276,6 +2312,7 @@ def report_jackknife(trades: list[Trade], configs: list[ExitConfig],
     losers = [t for t in trades if t.is_loser]
     print()
     print("=" * 92)
+    print("HISTORICAL COUNTERFACTUAL — STOP-ONLY CLI sweep (no scale-out)")
     print("JACKKNIFE (leave-one-out) — is any loosening edge carried by one trade?")
     print("=" * 92)
     print(f"Closed trades replayed : {len(trades)}  "
@@ -2368,7 +2405,8 @@ def report_jackknife(trades: list[Trade], configs: list[ExitConfig],
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0],
+                                     epilog=REPLAY_SCOPE)
     parser.add_argument("--detail", metavar="SUBSTRING", default=None,
                         help="show the per-trade breakdown for the configuration "
                              "whose label contains SUBSTRING, instead of the "
@@ -2408,13 +2446,13 @@ def main() -> None:
     parser.add_argument("--clean", action="store_true",
                         help="drawdown-conditional ladder rung: does splitting "
                              "the +5%% rung by prior drawdown beat one flat "
-                             "rung? Scored against the FULL live bot "
-                             "(Prove-It + scale-out). Use with --runon-days.")
+                             "rung? Historical Prove-It + scale-out only; "
+                             "not a full live-strategy replay.")
     parser.add_argument("--runon", action="store_true",
                         help="\"let winners run\": sweep the LOOSENING direction "
                              "(ladder width, power hold) with price history "
                              "extended past the real exit, so holding longer "
-                             "can actually be credited")
+                             "can actually be credited (stop-only; no scale-out)")
     parser.add_argument("--runon-days", type=int, default=30, metavar="N",
                         help="calendar days of price history to fetch past the "
                              "real exit (default 30; implied by --runon)")
@@ -2424,13 +2462,14 @@ def main() -> None:
                              "busy and blocks later real entries. Merges scale-out "
                              "partials into parent positions, validates concurrency "
                              "<= MAX_POSITIONS, then runs a 5-slot portfolio sim. "
-                             "Implies a run-on window.")
+                             "Implies a run-on window; stop-only, no scale-out.")
     parser.add_argument("--jackknife", action="store_true",
                         help="leave-one-out fragility test of the loosening sweep: "
                              "for every challenger, report its edge over SHIPPED "
                              "after dropping its single best (and best three) "
                              "trades. Answers the mandatory 'carried by one trade?' "
-                             "question arithmetically. Implies a run-on window.")
+                             "question arithmetically. Implies a run-on window; "
+                             "stop-only, no scale-out.")
     parser.add_argument("--top", type=int, default=25,
                         help="rows to print when using --grid (default 25)")
     parser.add_argument("--json", metavar="PATH",
@@ -2439,6 +2478,7 @@ def main() -> None:
                         help="skip TLS verification for Supabase (local trust-store issues)")
     args = parser.parse_args()
 
+    print(REPLAY_SCOPE, flush=True)
     api_key = _env("FMP_API_KEY")
 
     print("Loading closed trades from Supabase...", file=sys.stderr)
@@ -2466,6 +2506,7 @@ def main() -> None:
         if args.json:
             with open(args.json, "w") as fh:
                 json.dump({
+                    "research_scope": REPLAY_SCOPE,
                     "generated": dt.datetime.now(dt.timezone.utc).isoformat(),
                     "n_positions": len(positions),
                     "peak_concurrency": concurrency,
@@ -2485,6 +2526,7 @@ def main() -> None:
         if args.json:
             with open(args.json, "w") as fh:
                 json.dump({
+                    "research_scope": REPLAY_SCOPE,
                     "generated": dt.datetime.now(dt.timezone.utc).isoformat(),
                     "n_trades": len(trades),
                     "baseline": baseline.label,
@@ -2544,6 +2586,7 @@ def main() -> None:
     if args.json:
         with open(args.json, "w") as fh:
             json.dump({
+                "research_scope": REPLAY_SCOPE,
                 "generated": dt.datetime.now(dt.timezone.utc).isoformat(),
                 "n_trades": len(trades),
                 "results": results,

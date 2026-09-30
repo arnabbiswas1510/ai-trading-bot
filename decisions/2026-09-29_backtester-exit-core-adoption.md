@@ -1,9 +1,16 @@
 # Backtester exit parity: a research backtest that calls the live exit engine
 
 **Date:** 2026-09-29
-**Status:** Accepted — the "Option A" follow-up it names is now **done**, see
+**Status:** Accepted with fidelity claims corrected below — the "Option A" follow-up it names is now **done**, see
 `decisions/2026-09-29_backtester-option-a-live-exits.md`.
 **Scope:** backtest fidelity (roadmap item #1 — parity — for the EXIT side)
+
+> **Erratum 2026-09-30:** shared rule functions do not establish identical
+> execution or relative profitability. The daily adapter changes intraday
+> ordering, armed exits and broker trail anchoring; opening sizing also used
+> future closes until corrected. Do not cite earlier outputs as current-strategy
+> measurements. No corrected profitability figure is available here.
+> See `2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 > **Update 2026-09-29 (same day, later):** this ADR describes `backend/backtester.py`
 > as *still* modelling the retired 7%-trail + EMA-21 rules and names bringing the

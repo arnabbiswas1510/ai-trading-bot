@@ -1,7 +1,14 @@
 # Slot opportunity cost: pricing "let winners run" against the entries a longer hold blocks
 
 Date: 2026-09-22
-Status: Accepted
+Status: Accepted historical tooling; current-live comparisons under erratum
+
+> **Erratum 2026-09-30:** the capacity model fixes the historical entry stream
+> and its stop-only configurations omit partial scale-out and current Phase 1
+> broker protection. Do not cite its deltas as the cost of the live five-slot
+> cap or a complete live-stack comparison. The historical model remains useful
+> within those limits; no corrected live-strategy figures are asserted here.
+> See `2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 ## Context
 
