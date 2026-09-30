@@ -85,6 +85,7 @@ TABLES: dict[str, tuple[str, ...]] = {
     "exit_requests":       ("id",),
     "exit_shadow_log":     ("id",),
     "ibkr_fills":          ("exec_id",),
+    "intraday_replay_runs": ("id",),
     "portfolio_positions": ("ticker",),
     "trade_history":       ("id",),
     "trigger_decisions":   ("decision_date", "ticker"),
@@ -102,6 +103,18 @@ TABLES: dict[str, tuple[str, ...]] = {
 # contents are reproducible from something else, or if retaining it would
 # actively contradict a policy elsewhere in the system.
 NOT_BACKED_UP: dict[str, str] = {
+    "intraday_capture_events":
+        "Private high-volume research observations have a deliberate rolling "
+        "INTRADAY_RETENTION_DAYS horizon. Weekly full snapshots retained forever "
+        "would defeat that policy and multiply storage. Replay results are "
+        "archived separately; export a specific dataset before its horizon expires.",
+    "intraday_capture_symbols":
+        "Retained sampling membership follows the same rolling horizon as "
+        "intraday_capture_events, not a permanent weekly archive.",
+    "intraday_capture_health":
+        "Ephemeral collector health, recreated by heartbeats; not research evidence.",
+    "intraday_capture_sessions":
+        "Derived view of intraday_capture_events, not an independent source of data.",
     "agent_logs":
         "Diagnostic log lines with deliberate tiered retention "
         "(AGENT_LOG_INFO_RETENTION_DAYS / AGENT_LOG_RETENTION_DAYS / "
@@ -436,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
         tables = {t: TABLES[t] for t in requested}
 
     supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY")
+    supabase_key = os.getenv("INTRADAY_SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
     if not supabase_url or not supabase_key:
         print("❌ SUPABASE_URL and SUPABASE_KEY must be set.")
         return 2

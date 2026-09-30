@@ -79,6 +79,8 @@ except (PermissionError, OSError):
 # import-time atexit hook attempting a Supabase round trip would both stall
 # those callers and corrupt their output.
 def _flush_logs_on_shutdown(signum=None, frame=None):
+    import intraday_capture
+    intraday_capture.stop()
     try:
         flush_logs_quietly()
     except Exception:
@@ -573,6 +575,8 @@ from selling import (
 def main_loop():
     """Main daemon loop running inside the Docker container."""
     install_shutdown_log_flush()
+    import intraday_capture
+    intraday_capture.start(None, sys.modules[__name__])
     print("==================================================")
     print("       CANSLIM Local Trade Execution Agent        ")
     print("==================================================")
@@ -719,6 +723,7 @@ def main_loop():
             print(f"   Retrying in {delay}s... (attempt {_attempt})")
             time.sleep(delay)
 
+    intraday_capture.start(ib, sys.modules[__name__])
     while True:
         try:
             tz = ZoneInfo("America/New_York")
@@ -793,6 +798,7 @@ def main_loop():
             
         except KeyboardInterrupt:
             print("\nShutting down execution agent.")
+            intraday_capture.stop()
             flush_logs_quietly()    # last chance — the buffer dies with the process
             ib.disconnect()
             break

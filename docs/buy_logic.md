@@ -19,6 +19,12 @@ See `decisions/2026-09-29_decision-core-extraction.md` for why.
 See `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md` for
 the replay's execution boundaries.
 
+Passive intraday recording preserves decision-time buy inputs and candidates
+for the dashboard research interface; it does not alter gates or order
+priority. Research starts from recorded actual positions and previous sales,
+not an invented empty book. See [intraday research](intraday_research.md) and
+`decisions/2026-09-30_intraday-capture-and-approved-research.md`.
+
 ---
 
 ## Design principle: fail closed

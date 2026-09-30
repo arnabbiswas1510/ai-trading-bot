@@ -2,8 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=unknown
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    GIT_COMMIT=${GIT_COMMIT} \
+    BUILD_TIME=${BUILD_TIME}
 
 # Install python dependencies directly
 RUN pip install --no-cache-dir \
@@ -21,6 +25,7 @@ COPY agent_entrypoint.py execution_agent.py execution_agent_ref.py exit_rules.py
     monitoring.py selling.py agent_logging.py \
      telegram_notifier.py force_buy.py scoring.py config.py \
      trigger_audit.py schema_guard.py flex_query_sync.py cooling_off.py ./
+COPY intraday_capture.py exit_core.py trade_costs.py ./
 
 # Execute the agent via the fatal-safe wrapper: it ships any startup crash
 # (including import-time errors, before log shipping is up) to Supabase

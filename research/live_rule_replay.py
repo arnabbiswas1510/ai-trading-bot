@@ -52,6 +52,11 @@ SCOPE = {
     "corporate_actions": "none",
     "monitor_price": "same_as_broker_observation",
 }
+RECORDED_SCOPE = {
+    **SCOPE, "initial_state": "recorded_actual_portfolio",
+    "monitor_price": "source_labelled_sampled_observation",
+}
+QUOTE_MAX_AGE_SECONDS = 600
 RULE_NAMES = (
     "STOP_LOSS_PCT", "MAX_LOSS_PCT", "TRAIL_PROFIT_TIERS",
     "PROVE_IT_ENABLED", "PROVE_IT_P1_DAY0_PCT", "PROVE_IT_P1_LATER_PCT",
@@ -177,21 +182,93 @@ def _config(cls, value, path):
     return cls(**value)
 
 
+def _blocked_buy_reason(evidence, now):
+    _require(isinstance(evidence, list) and 1 <= len(evidence) <= 3,
+             "buy_blocked: recorded gate prefix required")
+    names = ("schema", "margin", "market")
+    for i, gate in enumerate(evidence):
+        _keys(gate, {"gate", "passed", "observed_at"} | ({"margin_loan"} if i == 1 else set()),
+              "buy_blocked.gate_evidence")
+        _require(gate["gate"] == names[i], "buy_blocked: gates must be an observed schema/margin/market prefix")
+        _boolean(gate["passed"], "buy_blocked.gate.passed")
+        _observed(gate["observed_at"], now, "buy_blocked.gate.observed_at")
+        _require(gate["passed"] is (i < len(evidence) - 1),
+                 "buy_blocked: only the final recorded gate may fail")
+        if i == 1:
+            loan = _number(gate["margin_loan"], "buy_blocked.margin_loan", minimum=0)
+            _require(gate["passed"] == (loan == 0), "buy_blocked: margin outcome contradicts recorded loan")
+    return ("SCHEMA_BLOCK", "MARGIN_BLOCK", "MARKET_BLOCK")[len(evidence) - 1]
+
+
+def _validate_recorded_cycles(events):
+    """Pair each scheduled monitor with its own preceding recorded buy attempt."""
+    seen, pending, last_end, session = set(), None, None, None
+    last_monitor_end, buy_seconds = None, 0
+    for event in events:
+        kind = event["type"]
+        if kind not in ("buy_cycle", "buy_blocked", "monitor"):
+            continue
+        context = event.get("cycle_context")
+        fields = {"cycle_id", "started_at", "completed_at"}
+        _keys(context, fields | ({"preceding_buy_cycle_id"} if kind == "monitor" else set()),
+              f"{kind}.cycle_context")
+        cycle_id = context["cycle_id"]
+        _require(isinstance(cycle_id, str) and cycle_id and cycle_id not in seen,
+                 f"{kind}: missing or reused cycle_id")
+        seen.add(cycle_id)
+        start = _timestamp(context["started_at"], "cycle.started_at")
+        end = _timestamp(context["completed_at"], "cycle.completed_at")
+        _require(start <= end == _timestamp(event["timestamp"], "cycle.timestamp"),
+                 f"{kind}: cycle timing does not match its recorded completion")
+        _require(start.astimezone(NY).date().isoformat() == event["session"],
+                 f"{kind}: cycle crosses a session boundary")
+        if event["session"] != session:
+            session, pending = event["session"], None
+            last_end = dt.datetime.combine(_date(session, "session"), dt.time(9, 30), NY)
+            last_monitor_end, buy_seconds = last_end, 0
+        _require(start >= last_end, f"{kind}: overlapping recorded cycles")
+        if kind == "monitor":
+            _require(pending is not None and context["preceding_buy_cycle_id"] == pending,
+                     "monitor: missing matching preceding buy cycle; load its recorded context, "
+                     "do not assume no entry opportunity")
+            _require((start - last_end).total_seconds() <= QUOTE_MAX_AGE_SECONDS,
+                     "monitor: preceding buy cycle is not adjacent to this monitor")
+            _require((start - last_monitor_end).total_seconds() - buy_seconds <= 1200,
+                     "missing monitor cycle: idle gap excluding recorded buy execution exceeds 20 minutes")
+            last_monitor_end, buy_seconds = end, 0
+            pending = None
+        else:
+            _require((start - last_end).total_seconds() <= 1200,
+                     "missing scheduled buy/monitor cycle: idle gap exceeds 20 minutes")
+            pending = cycle_id
+            buy_seconds += (end - start).total_seconds()
+        if kind == "buy_blocked":
+            previous_gate = start
+            for gate in event["gate_evidence"]:
+                observed = _timestamp(gate["observed_at"], "buy_blocked.gate.observed_at")
+                _require(previous_gate <= observed <= end,
+                         "buy_blocked: gate evidence must be observed within this recorded cycle, in order")
+                previous_gate = observed
+        last_end = end
+
+
 def _validate(data):
+    _require(isinstance(data, dict), "dataset: expected an object")
+    recorded = data.get("schema_version") == 2
     _keys(data, {
         "schema_version", "dataset_label", "initial_cash", "initial_positions",
         "scope", "decision_config", "exit_config", "replay_config", "costs",
         "shared_exit_rules", "events",
-    }, "dataset")
-    _require(type(data["schema_version"]) is int and data["schema_version"] == 1,
-             "schema_version: only version 1 is supported")
+    } | ({"initial_state", "capture_evidence"} if recorded else set()), "dataset")
+    _require(type(data["schema_version"]) is int and data["schema_version"] in (1, 2),
+             "schema_version: only versions 1 and 2 are supported")
     _require(isinstance(data["dataset_label"], str) and data["dataset_label"].strip(),
              "dataset_label: give the capture a descriptive name")
-    _number(data["initial_cash"], "initial_cash", positive=True)
-    _require(data["initial_positions"] == [],
+    _number(data["initial_cash"], "initial_cash", positive=not recorded, minimum=0)
+    _require(recorded or data["initial_positions"] == [],
              "initial_positions: must be []. Start flat; historical bracket anchors "
              "and unresolved initial holdings cannot be reconstructed.")
-    _require(data["scope"] == SCOPE,
+    _require(data["scope"] == (RECORDED_SCOPE if recorded else SCOPE),
              f"scope: unsupported conditions. Required scope: {SCOPE}. "
              "Manual/OCA exits, corporate actions, broker failures and prior cooldown "
              "state require a richer replay, not silently ignored inputs.")
@@ -219,8 +296,14 @@ def _validate(data):
                         ("prove_it_p2_floor_pct", "PROVE_IT_P2_FLOOR_PCT")):
         _require(getattr(exit_cfg, field) == expected[name],
                  f"exit_config.{field}: must match shared_exit_rules.{name}")
+    if recorded:
+        _validate_initial_state(data)
     events = data["events"]
     _require(isinstance(events, list) and events, "events: empty dataset; record a chronological stream")
+    if recorded:
+        _require(_timestamp(data["initial_state"]["timestamp"], "initial_state.timestamp") <=
+                 _timestamp(events[0].get("timestamp"), "events[0].timestamp"),
+                 "initial_state: snapshot is later than first event")
     previous = None
     for i, event in enumerate(events):
         path = f"events[{i}]"
@@ -231,11 +314,16 @@ def _validate(data):
             "buy_cycle": {"triggers", "entry_quotes", "cycle_gates"},
             "eod_latch": {"fresh_trigger_tickers", "observed_at"},
         }
+        if recorded:
+            extra["buy_blocked"] = {"block_reason", "gate_evidence"}
+            for cycle_kind in ("buy_cycle", "buy_blocked", "monitor"):
+                extra[cycle_kind] = extra[cycle_kind] | {"cycle_context"}
         _require(kind in extra, f"{path}: unsupported event {kind!r}; "
                  "manual requests, rotation and external fills are not supported")
-        _keys(event, {"type", "timestamp", "session", "broker_quotes"} | extra[kind], path)
+        quote_key = "market_observations" if recorded else "broker_quotes"
+        _keys(event, {"type", "timestamp", "session", quote_key} | extra[kind], path)
         now = _timestamp(event["timestamp"], f"{path}.timestamp")
-        _require(previous is None or now > previous,
+        _require(previous is None or (now >= previous if recorded else now > previous),
                  f"{path}.timestamp: events must be strictly increasing")
         previous = now
         today = _date(event["session"], f"{path}.session")
@@ -245,10 +333,13 @@ def _validate(data):
         clock = now.astimezone(NY).time()
         _require(dt.time(9, 30) <= clock <= dt.time(16),
                  f"{path}: only regular-session observations supported (09:30–16:00 New York)")
-        quotes = event["broker_quotes"]
+        quotes = event[quote_key]
         _require(isinstance(quotes, dict), f"{path}.broker_quotes: expected a ticker map")
         for ticker, quote in quotes.items():
             _ticker(ticker)
+            if recorded:
+                _validate_sample(quote, now, f"{path}.{quote_key}.{ticker}")
+                continue
             _keys(quote, {"price", "observed_at"}, f"{path}.broker_quotes.{ticker}")
             _number(quote["price"], f"{path}.broker_quotes.{ticker}.price", positive=True)
             _require(_observed(quote["observed_at"], now, path) == now,
@@ -256,6 +347,9 @@ def _validate(data):
                      "put delayed prices in entry_quotes")
         if kind == "quote":
             _require(bool(quotes), f"{path}: empty quote event")
+        if kind == "buy_blocked":
+            _require(event["block_reason"] == _blocked_buy_reason(event["gate_evidence"], now),
+                     f"{path}: block reason contradicts recorded gate outcome")
         if kind == "buy_cycle":
             gates = event["cycle_gates"]
             _keys(gates, {"observed_at", "schema_ok", "margin_loan", "market_allowed"},
@@ -292,6 +386,9 @@ def _validate(data):
                          f"{path}.{ticker}: record both entry_quotes and broker_quotes, "
                          "even for candidates the baseline skips")
                 entry = event["entry_quotes"][ticker]
+                if recorded:
+                    _validate_sample(entry, now, f"{path}.entry_quotes.{ticker}", entry=True)
+                    continue
                 _keys(entry, {"price", "observed_at"}, f"{path}.entry_quotes.{ticker}")
                 _number(entry["price"], f"{path}.entry_quotes.{ticker}.price", positive=True)
                 _observed(entry["observed_at"], now, f"{path}.entry_quotes.{ticker}.observed_at")
@@ -308,9 +405,161 @@ def _validate(data):
                  f"{path}: end_mark must be the final event")
     _require(events[-1]["type"] == "end_mark",
              "events: finish with end_mark carrying current marks for every held ticker")
-    _require(any(e["type"] == "buy_cycle" and e["triggers"] for e in events),
+    _require(recorded or any(e["type"] == "buy_cycle" and e["triggers"] for e in events),
              "events: no candidate dataset; at least one nonempty buy_cycle is required")
+    if recorded:
+        _validate_recorded_cycles(events)
     return cfg, exit_cfg, replay_cfg, costs
+
+
+def _validate_sample(quote, now, path, *, entry=False):
+    required = {"price", "observed_at", "source", "delayed"}
+    _keys(quote, required | ({"hypothetical_entry_pricing"} if entry else set()), path)
+    _number(quote["price"], f"{path}.price", positive=True)
+    _require(quote["price"] < 1e100, f"{path}.price: invalid broker sentinel")
+    observed = _observed(quote["observed_at"], now, path)
+    _require((now - observed).total_seconds() <= QUOTE_MAX_AGE_SECONDS,
+             f"{path}: stale observation exceeds {QUOTE_MAX_AGE_SECONDS}s; no forward-fill across outages")
+    _require(quote["source"] in ("IBKR", "FMP", "DELAYED"), f"{path}: unknown price source")
+    _boolean(quote["delayed"], f"{path}.delayed")
+    _require(quote["source"] != "DELAYED" or quote["delayed"],
+             f"{path}: DELAYED source must be labelled delayed")
+    if entry:
+        _boolean(quote["hypothetical_entry_pricing"], f"{path}.hypothetical_entry_pricing")
+
+
+def _validate_initial_state(data):
+    state = data["initial_state"]
+    _require(isinstance(state, dict) and state.get("complete") is True,
+             "initial_state: complete coherent recorded broker/DB snapshot required")
+    _require(state.get("stock_only") is True,
+             "initial_state: only stock-only USD accounts are supported")
+    _require(not state.get("manual_requests") and not state.get("rotation")
+             and not state.get("unsupported_orders"),
+             "initial_state: manual requests/rotation/unsupported orders block replay")
+    timestamp = _timestamp(state.get("timestamp"), "initial_state.timestamp")
+    account = state.get("account", {})
+    _require(account.get("account_id") and account.get("currency") == "USD",
+             "initial_state.account: explicit USD account identity required")
+    equity = _number(account.get("net_liquidation"), "initial_state.net_liquidation", positive=True)
+    for key in ("positions", "broker_positions", "orders", "prior_trade_history", "prior_fills"):
+        _require(isinstance(state.get(key), list), f"initial_state.{key}: explicit list required")
+    required = {
+        "ticker", "shares", "buy_price", "buy_date", "stop_loss_pct",
+        "highest_unrealized_pct", "hwm_price", "closed_above_entry", "scaled_out", "scaled_out_at",
+        "power_hold", "exit_armed", "exit_armed_at", "exit_armed_reason",
+        "entry_fee_remaining", "hard_stop_price",
+    }
+    positions = {}
+    for p in state["positions"]:
+        _require(required <= p.keys(), f"initial_state.position: missing fields {sorted(required - p.keys())}")
+        ticker = p["ticker"]
+        _ticker(ticker)
+        _require(ticker not in positions, f"initial_state: duplicate position {ticker}")
+        positions[ticker] = p
+        _integer(p["shares"], f"{ticker}.shares", 1)
+        for name in ("buy_price", "hwm_price"):
+            _number(p[name], f"{ticker}.{name}", positive=True)
+        for name in ("highest_unrealized_pct", "entry_fee_remaining", "hard_stop_price"):
+            _number(p[name], f"{ticker}.{name}", minimum=0)
+        _number(p["stop_loss_pct"], f"{ticker}.stop_loss_pct", positive=True)
+        _require(p["stop_loss_pct"] < 1, f"{ticker}: invalid stop_loss_pct")
+        bought = _date(p["buy_date"][:10], f"{ticker}.buy_date")
+        _require(bought <= timestamp.astimezone(NY).date(), f"{ticker}: future buy date")
+        for name in ("closed_above_entry", "scaled_out", "power_hold", "exit_armed"):
+            _boolean(p[name], f"{ticker}.{name}")
+        if p["exit_armed"]:
+            _observed(p["exit_armed_at"], timestamp, f"{ticker}.exit_armed_at")
+            _require(bool(p["exit_armed_reason"]), f"{ticker}: missing armed reason")
+        if p["scaled_out"]:
+            _observed(p["scaled_out_at"], timestamp, f"{ticker}.scaled_out_at")
+    brokers = {}
+    market_value = 0.0
+    for p in state["broker_positions"]:
+        ticker = p.get("ticker")
+        _require(ticker in positions and ticker not in brokers,
+                 f"initial_state: broker/DB quantity universe mismatch for {ticker}")
+        _require(p.get("account") == account["account_id"] and p.get("sec_type") == "STK"
+                 and p.get("currency") == "USD",
+                 f"{ticker}: mismatched account or unsupported asset")
+        _require(p.get("shares") == positions[ticker]["shares"], f"{ticker}: broker/DB quantity mismatch")
+        _number(p.get("market_price"), f"{ticker}.broker_market_price", positive=True)
+        _require(p["market_price"] < 1e100, f"{ticker}: invalid broker mark sentinel")
+        _observed(p.get("observed_at"), timestamp, f"{ticker}.broker_mark_time")
+        _require((timestamp - _timestamp(p["observed_at"], ticker)).total_seconds() <= QUOTE_MAX_AGE_SECONDS,
+                 f"{ticker}: stale initial broker mark")
+        brokers[ticker] = p
+        market_value += p["shares"] * p["market_price"]
+    _require(set(brokers) == set(positions), "initial_state: missing broker holdings")
+    _require(abs(data["initial_cash"] - (equity - market_value)) < 0.011,
+             "initial_cash: must equal recorded NetLiquidation minus recorded broker stock marks")
+    if "positions_value" in account:
+        _require(abs(account["positions_value"] - market_value) < 0.011,
+                 "initial_state: broker positions_value mismatch")
+    order_ids = set()
+    oca_owners = {}
+    grouped = {ticker: [] for ticker in positions}
+    for order in state["orders"]:
+        ticker = order.get("ticker")
+        _require(ticker in grouped, f"initial_state: unsupported extra order for {ticker}")
+        _require(order.get("order_id") not in order_ids and order.get("order_id") is not None,
+                 f"{ticker}: duplicate or missing protective order id")
+        order_ids.add(order["order_id"])
+        _require(order.get("account") == account["account_id"] and order.get("sec_type") == "STK"
+                 and order.get("action") == "SELL" and order.get("parent_id") == 0
+                 and order.get("status") in ("Submitted", "PreSubmitted")
+                 and order.get("shares") == positions[ticker]["shares"],
+                 f"{ticker}: unsupported initial order account, quantity, parent or status")
+        _require(order.get("order_type") in ("TRAIL", "STP"),
+                 f"{ticker}: unsupported initial order type")
+        _require(order.get("tif") == "GTC",
+                 f"{ticker}: unsupported initial order TIF; only recorded GTC protection is modeled")
+        oca = order.get("oca_group")
+        _require(type(order.get("oca_type")) is int and order["oca_type"] == (1 if oca else 0),
+                 f"{ticker}: unsupported initial OCA type; only CANCEL_WITH_BLOCK (1) "
+                 "or standalone non-OCA protection (0) is modeled")
+        if oca:
+            _require(oca_owners.get(oca, ticker) == ticker,
+                     f"{ticker}: cross-position OCA group is unsupported")
+            oca_owners[oca] = ticker
+        grouped[ticker].append(order)
+    seeded = []
+    for ticker, p in positions.items():
+        orders = grouped[ticker]
+        trails = [o for o in orders if o["order_type"] == "TRAIL"]
+        hard = [o for o in orders if o["order_type"] == "STP"]
+        _require(len(trails) == 1 and len(hard) == (0 if p["exit_armed"] else 1),
+                 f"{ticker}: missing/unsupported protective bracket; need known TRAIL and hard stop")
+        if hard:
+            _require(trails[0].get("oca_group") and trails[0]["oca_group"] == hard[0].get("oca_group"),
+                     f"{ticker}: protective orders must share a recorded OCA group")
+        trail = trails[0]
+        pct = _number(trail.get("trailing_percent"), f"{ticker}.trailing_percent", positive=True)
+        stop = _number(trail.get("trail_stop_price"), f"{ticker}.trail_stop_price", positive=True)
+        _require(pct < 100 and stop < 1e100,
+                 f"{ticker}: unknown/sentinel initial trailing anchor; cannot reconstruct")
+        hard_price = _number(hard[0].get("aux_price"), f"{ticker}.broker_hard_stop", positive=True) if hard else 0.0
+        _require(hard_price < 1e100, f"{ticker}: invalid hard stop sentinel")
+        seeded.append(dict(
+            p, buy_date=p["buy_date"][:10], broker_trail_pct=pct / 100,
+            broker_anchor=stop / (1 - pct / 100), broker_hard_stop_price=hard_price,
+            broker_seed_source="sampled_order_seed_assumption",
+            broker_seed_observed_at=state["timestamp"],
+        ))
+    _require(data["initial_positions"] == seeded,
+             "initial_positions: must exactly match recorded DB state and sampled protective-order seeds")
+    for key, stamp in (("prior_trade_history", "sell_date"), ("prior_fills", "fill_time")):
+        for row in state[key]:
+            _ticker(row.get("ticker"))
+            _observed(row.get(stamp), timestamp, f"initial_state.{key}.{stamp}")
+            if key == "prior_trade_history":
+                _require({"net_profit_loss", "profit_loss", "sell_reason"} <= row.keys(),
+                         "prior_trade_history: missing cooldown decision inputs")
+                for name in ("net_profit_loss", "profit_loss"):
+                    if row[name] is not None:
+                        _number(row[name], f"prior_trade_history.{name}")
+            else:
+                _require(row.get("side") in ("SLD", "BOT"), "prior_fills: unknown side")
 
 
 class _LedgerQuery:
@@ -353,12 +602,26 @@ class _Replay:
         self.data = data
         self.disable_ai_veto = disable_ai_veto
         self.cash = float(data["initial_cash"])
-        self.positions = {}
+        self.recorded = data["schema_version"] == 2
+        self.positions = {p["ticker"]: copy.deepcopy(p) for p in data["initial_positions"]}
         self.ledger = _Ledger()
+        if self.recorded:
+            self.ledger.sales = copy.deepcopy(data["initial_state"]["prior_trade_history"])
+            self.ledger.fills = copy.deepcopy(data["initial_state"]["prior_fills"])
+            for rows, key in ((self.ledger.sales, "sell_date"), (self.ledger.fills, "fill_time")):
+                for row in rows:
+                    row[key] = _timestamp(row[key], key).astimezone(NY).isoformat()
         self.fills = []
         self.decisions = []
         self.brackets = []
         self.commission = self.slippage = 0.0
+        self.closed_positions = 0
+        self.initial_equity = (data["initial_state"]["account"]["net_liquidation"]
+                               if self.recorded else data["initial_cash"])
+        self.equity_curve = []
+        if self.recorded:
+            self.equity_curve.append(dict(timestamp=data["initial_state"]["timestamp"],
+                                          equity=self.initial_equity, cash=self.cash))
 
     def _record(self, ticker, action, reason="", **values):
         self.decisions.append(dict(timestamp=self.now.isoformat(), ticker=ticker,
@@ -373,6 +636,9 @@ class _Replay:
         self.cash += (-price * shares if side == "BUY" else price * shares) - fee
         fill = dict(timestamp=self.now.isoformat(), ticker=ticker, side=side,
                     shares=shares, quote=quote, price=price, commission=fee, reason=reason)
+        if self.recorded:
+            fill["observation"] = copy.deepcopy(self.quotes[ticker])
+            fill["execution"] = "counterfactual_sampled_full_fill"
         self.fills.append(fill)
         return fill
 
@@ -398,6 +664,7 @@ class _Replay:
         self.ledger.fills.append(dict(ticker=ticker, fill_time=timestamp, side="SLD"))
         pos["shares"] -= shares
         if not pos["shares"]:
+            self.closed_positions += 1
             del self.positions[ticker]
 
     def _bracket(self, ticker, trail, hard, *, persist_hard):
@@ -428,7 +695,8 @@ class _Replay:
     def _marks(self):
         missing = self.positions.keys() - self.quotes.keys()
         _require(not missing, f"{self.now.isoformat()}: missing current held marks {sorted(missing)}; "
-                 "provide broker_quotes for ALL holdings, including variant-only positions")
+                 f"provide {'market_observations' if self.recorded else 'broker_quotes'} "
+                 "for ALL holdings, including variant-only positions")
         return self.cash + sum(p["shares"] * self.quotes[t]["price"]
                                for t, p in self.positions.items())
 
@@ -552,7 +820,7 @@ class _Replay:
         for event in self.data["events"]:
             self.now = _timestamp(event["timestamp"], "timestamp")
             self.today = dt.date.fromisoformat(event["session"])
-            self.quotes = event["broker_quotes"]
+            self.quotes = event["market_observations" if self.recorded else "broker_quotes"]
             kind = event["type"]
             _require(not pending_eod or kind == "eod_latch",
                      "EOD-window monitor must be followed immediately by eod_latch; "
@@ -562,9 +830,14 @@ class _Replay:
                          "Held overnight without prior eod_latch; capture the preceding EOD monitor/latch")
                 _require(trading_days_between(_date(previous["session"], "session"), self.today) == 1,
                          "Held book crosses missing NYSE sessions; capture their monitoring/EOD inputs")
+            if self.recorded:
+                self._marks()
             self._broker()
             if kind == "buy_cycle":
                 self._buy(event)
+            elif kind == "buy_blocked":
+                self._record(None, dc.SKIP, event["block_reason"], cycle_wide=True,
+                             gate_evidence=copy.deepcopy(event["gate_evidence"]))
             elif kind == "monitor":
                 self._monitor()
                 pending_eod = dt.time(15, 45) <= self.now.astimezone(NY).time() < dt.time(16)
@@ -586,18 +859,31 @@ class _Replay:
                 eod_session, pending_eod = event["session"], False
             elif kind == "end_mark":
                 self._marks()
+            if self.recorded:
+                self.equity_curve.append(dict(timestamp=self.now.isoformat(), equity=self._marks(),
+                                              cash=self.cash))
             previous = event
         equity = self._marks()
-        return {
+        result = {
             "variant": "without_ai_veto" if self.disable_ai_veto else "baseline",
             "initial_cash": self.data["initial_cash"], "cash": self.cash,
             "open_market_value": equity - self.cash, "final_equity_net": equity,
-            "net_profit": equity - self.data["initial_cash"],
+            "net_profit": equity - self.initial_equity,
             "commission": self.commission, "slippage_cost": self.slippage,
             "open_positions": list(self.positions.values()), "fills": self.fills,
             "cooldown_ledger": self.ledger.sales,
             "decisions": self.decisions, "brackets": self.brackets,
         }
+        if self.recorded:
+            peak, drawdown = self.initial_equity, 0.0
+            for mark in self.equity_curve:
+                peak = max(peak, mark["equity"])
+                drawdown = max(drawdown, (peak - mark["equity"]) / peak * 100)
+            result.update(initial_equity=self.initial_equity, equity_curve=self.equity_curve,
+                          max_drawdown_pct=drawdown, closed_position_count=self.closed_positions,
+                          sessions_count=len({e["session"] for e in self.data["events"]}),
+                          initial_positions=copy.deepcopy(self.data["initial_positions"]))
+        return result
 
 
 def replay(data: dict, *, compare_without_ai_veto=False, disable_ai_veto=False) -> dict:
@@ -621,6 +907,42 @@ def replay(data: dict, *, compare_without_ai_veto=False, disable_ai_veto=False) 
         variant = _Replay(data, True).run()
         result["variant"] = variant
         result["net_final_equity_difference"] = variant["final_equity_net"] - baseline["final_equity_net"]
+    if data["schema_version"] == 2:
+        initial = data["initial_state"]
+        result.update(
+            recommendation="research_only_manual_approval",
+            initial_state_mode="recorded_actual_portfolio",
+            effective_initial_account=copy.deepcopy(data["initial_state"]["account"]),
+            effective_initial_cash=data["initial_cash"],
+            initial_snapshot_at=data["initial_state"]["timestamp"],
+            initial_state_summary=(
+                f"Recorded {len(initial['positions'])} open positions and "
+                f"{len(initial['orders'])} protective orders. Cooldown history starts with "
+                f"{len(initial['prior_trade_history'])} recorded sales and "
+                f"{len(initial['prior_fills'])} recorded fills at {initial['timestamp']}. "
+                "Trailing anchors use explicitly labelled sampled-order seeds."
+                + (" Initial broker valuations are recorded cache marks; underlying tick freshness is unknown."
+                   if initial["account"].get("mark_source") == "recorded_IBKR_portfolio_cache" else "")
+            ),
+            evidence=copy.deepcopy(data["capture_evidence"]),
+            configuration_provenance="Recorded runtime configuration; shared-rule snapshot compatibility checked",
+        )
+        result["caveats"] = [c for c in CAVEATS if not c.startswith((
+            "Synthetic example", "Initial portfolio must", "Entry quotes can",
+            "Configuration is supplied"))] + [
+            "Both variants start from the same recorded actual portfolio, prior-sale ledger and protective orders.",
+            "Initial trailing anchors are sampled-order seeds inferred from recorded trailStopPrice/trailingPercent, "
+            "not independently verified IBKR high-water marks.",
+            "Source-labelled IBKR/FMP/delayed samples drive counterfactual fills; this is never exact IBKR execution.",
+            "Later actual bot fills are audit evidence only, not forced into either variant.",
+            "Recorded cost-model inputs are simulation assumptions, not measured future brokerage commissions or slippage.",
+            "Absent real entry prices may use an explicitly labelled hypothetical entry price from an earlier fresh sample.",
+            "Results are research only and require manual approval; no live parameter is changed.",
+        ]
+        if compare_without_ai_veto:
+            delta = result["net_final_equity_difference"]
+            result["comparison_sign"] = ("variant_higher" if delta > 0 else
+                                         "baseline_higher" if delta < 0 else "equal")
     return result
 
 

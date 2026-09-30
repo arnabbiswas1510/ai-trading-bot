@@ -17,6 +17,7 @@ from supabase import Client
 from ib_insync import IB, Stock, Order
 
 from execution_agent_ref import ea
+import intraday_capture as capture
 
 def TrailingStopOrder(action: str, totalQuantity: float,
                      trailingPercent: float = None,
@@ -60,6 +61,7 @@ def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> 
     stop.tif = 'GTC'
     stop.account = ea.get_ibkr_account(ib)
     trade = ib.placeOrder(contract, stop)
+    capture.record_order(trade, "trailing_stop_submitted")
 
     # Read back the confirmed trailingPercent from the echoed Trade order.
     # IBKR populates trade.order.trailingPercent synchronously after placeOrder.
@@ -103,6 +105,7 @@ def place_protective_stops(ib: IB, contract, shares: int, trail_pct: float,
     trail.ocaType  = 1
     trail.transmit = True
     trail_trade = ib.placeOrder(contract, trail)
+    capture.record_order(trail_trade, "protective_trail_submitted")
 
     hard = Order()
     hard.action        = 'SELL'
@@ -114,7 +117,8 @@ def place_protective_stops(ib: IB, contract, shares: int, trail_pct: float,
     hard.ocaGroup      = group
     hard.ocaType       = 1
     hard.transmit      = True
-    ib.placeOrder(contract, hard)
+    hard_trade = ib.placeOrder(contract, hard)
+    capture.record_order(hard_trade, "protective_hard_stop_submitted")
 
     try:
         confirmed_pct_raw = getattr(trail_trade.order, 'trailingPercent', None)

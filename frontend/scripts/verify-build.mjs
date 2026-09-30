@@ -82,12 +82,26 @@ const FEATURE_FINGERPRINTS = [
   { feature: "IBKR price provenance",     string: "FMP estimate — not broker" },
   { feature: "Cost-basis provenance",     string: "Cost basis — no quote" },
   { feature: "IBKR price as-of stamp",    string: "as of " },
+  { feature: "Recorded intraday research", string: "Recorded intraday research" },
+  { feature: "Intraday capture status", string: "/api/intraday/status" },
+  { feature: "Intraday replay request", string: "/api/intraday/replay" },
+  { feature: "Persisted intraday runs", string: "/api/intraday/runs/" },
+  { feature: "Research remains human-approved", string: "human approval is required before any live rule changes" },
+  { feature: "Intraday comparison direction", string: "Positive means removing the D-grade veto helped" },
+  { feature: "Actual portfolio replay starts", string: "Actual recorded starting portfolio" },
+  { feature: "No synthetic portfolio reset", string: "Cash and holdings are not reset" },
 ];
 
 // -- Source-level structural guards --------------------------------------------
 // Some regressions have no fingerprint string because the fix was structural.
 // These are checked against source, not the bundle.
 const SOURCE_GUARDS = [
+  {
+    feature: "Recorded intraday research cannot reset the actual starting account",
+    file: "../src/components/IntradayReplayView.jsx",
+    require: [/snapshotValidation/, /initial_snapshot/, /compare_without_ai_veto: true/],
+    forbid: /initial_cash|ir-capital|initially-flat|setCapital/,
+  },
   {
     feature: "Volatility fit is a band, not a speed ramp (ADR 2026-08-24)",
     file: "../src/lib/volatilityFit.js",

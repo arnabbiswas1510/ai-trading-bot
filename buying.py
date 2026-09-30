@@ -13,6 +13,7 @@ from ib_insync import IB, Stock, MarketOrder
 
 from execution_agent_ref import ea
 import decision_core as dc
+import intraday_capture as capture
 
 def assert_schema_ok(client) -> bool:
     """Verify risk-rule columns exist. Returns False when new buys must be blocked.
@@ -273,6 +274,7 @@ def _earnings_blackout_days_until(next_earnings_date, today) -> int | None:
     return ea.trading_days_between(today, edate)
 
 
+@capture.capture_phase("buy")
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
     print("⏳ Running Market Open Buy checks...")
@@ -287,6 +289,8 @@ def run_market_open_buys(ib: IB):
     # Re-checked every cycle (it is a handful of LIMIT 1 queries), so applying the
     # migration clears this automatically without restarting the container.
     if not assert_schema_ok(client):
+        capture.emit("buy_gate", gate="schema", passed=False,
+                     subsequent_inputs="not_evaluated", complete=False)
         maybe_report_unfilled_slots(
             client,
             standdown_reason=("Schema degraded — a column a live risk rule depends "
@@ -294,11 +298,14 @@ def run_market_open_buys(ib: IB):
                               "pending migration is applied in Supabase."))
         return
 
+    capture.emit("buy_gate", gate="schema", passed=True)
     # ── Margin-loan hard block ────────────────────────────────────────────────
     # Before evaluating any triggers, verify we are investing only our own money.
     # If TotalCashValue is negative, IBKR has lent us money and we must not buy
     # anything until the margin balance is restored to zero.
     margin_loan = ea.get_margin_loan(ib)
+    capture.emit("buy_gate", gate="margin", passed=margin_loan <= 0,
+                 margin_loan=margin_loan, subsequent_inputs="not_evaluated")
     if margin_loan > 0:
         msg = (
             f"🚨 *MARGIN LOAN ACTIVE — Buys Blocked*\n"
@@ -321,6 +328,8 @@ def run_market_open_buys(ib: IB):
 
     # ── Market direction hard gate (fail-closed on data errors) ─────────────────
     if ea.MARKET_DIRECTION_FILTER_ENABLED and not ea.is_market_bullish():
+        capture.emit("buy_gate", gate="market", passed=False,
+                     subsequent_inputs="not_evaluated", complete=False)
         print("📊 Market bearish (benchmark below SMA-200 buffer, falling SMA-200, "
               "or data unavailable). Standing down from new buys.")
         maybe_report_unfilled_slots(
@@ -331,6 +340,8 @@ def run_market_open_buys(ib: IB):
                               "new buys (CAN SLIM 'M' gate)."))
         return
 
+    capture.emit("buy_gate", gate="market", passed=True,
+                 enabled=ea.MARKET_DIRECTION_FILTER_ENABLED)
     
     # Fetch today's triggers (or triggers from the last 3 days to handle weekends/holidays)
     tz = ZoneInfo("America/New_York")
@@ -341,6 +352,8 @@ def run_market_open_buys(ib: IB):
     try:
         triggers_res = client.table("daily_triggers").select("*").gte("triggered_at", recent_date).execute()
         triggers = triggers_res.data
+        capture.emit("candidate_universe", phase="buy", triggers=triggers or [],
+                     complete=True, lookback_start=recent_date)
         # Rank highest-conviction first (final_score, then quality_score, then
         # ai_rating). Single source shared with the backtester (Phase 1 parity).
         triggers = dc.rank_triggers(triggers)
@@ -356,6 +369,9 @@ def run_market_open_buys(ib: IB):
     try:
         portfolio_res = client.table("portfolio_positions").select("*").execute()
         holdings = portfolio_res.data
+        capture.emit("source_snapshot", table="portfolio_positions", phase="buy",
+                     positions=holdings or [], received_at=capture.now())
+        capture.observe_portfolio(ib, holdings or [], "buy")
         active_tickers = [h["ticker"] for h in holdings]
     except Exception as e:
         ea.notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", e)
@@ -406,6 +422,8 @@ def run_market_open_buys(ib: IB):
 
     # Snapshot the live thresholds once per cycle for the pure decision core.
     cfg = dc.config_from_module(ea)
+    capture.emit("buy_context", cooled_map=cooled_map, initial_own_cash=initial_own_cash,
+                 initial_net_liq=initial_net_liq, held_tickers=active_tickers)
 
     for trigger in triggers:
         ticker = trigger["ticker"]
@@ -436,6 +454,10 @@ def run_market_open_buys(ib: IB):
             cooled_map=cooled_map,
             days_to_earnings=days_to_earnings,
             cfg=cfg)
+        capture.emit("eligibility", ticker=ticker, trigger=trigger,
+                     held_tickers=active_tickers, cooled_map=cooled_map,
+                     days_to_earnings=days_to_earnings, action=elig.action,
+                     reason_code=elig.reason_code)
         if elig.action != dc.PROCEED:
             _print_skip(ticker, elig)
             ea.trigger_audit.record_trigger_decision(
@@ -544,6 +566,10 @@ def run_market_open_buys(ib: IB):
             # open, causing the same 5-10% lag issue we're trying to avoid.
             current_price = float(trigger["close_price"])
             price_source  = "prev close (IBKR delayed unavailable)"
+        capture.emit("candidate_quote", ticker=ticker, price=current_price,
+                     source=price_source, received_at=capture.now(),
+                     available_cash=available_cash, position_size=position_size,
+                     equity=initial_net_liq, held_count=stock_held_count)
         if current_price <= 0:
             print(f"   ⚠️ No valid price for {ticker} — skipping.")
             ea.trigger_audit.record_trigger_decision(
@@ -584,6 +610,7 @@ def run_market_open_buys(ib: IB):
             
             print(f"   Submitting Market Order for {shares} shares of {ticker}...")
             trade = ib.placeOrder(contract, order)
+            capture.record_order(trade, "market_buy_submitted")
 
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
             for _ in range(60):

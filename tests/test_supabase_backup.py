@@ -83,7 +83,7 @@ def _tables_from_migrations() -> set[str]:
     found = set()
     for sql in (REPO_ROOT / "migrations").glob("*.sql"):
         for match in re.finditer(
-            r"create\s+table\s+(?:if\s+not\s+exists\s+)?([a-z_]+)",
+            r"create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-z_]+)",
             sql.read_text(), re.IGNORECASE,
         ):
             found.add(match.group(1).lower())

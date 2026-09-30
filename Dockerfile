@@ -48,6 +48,9 @@ COPY backend/ ./backend/
 # grows a module not listed here. See
 # decisions/2026-09-29_backtester-option-a-live-exits.md.
 COPY config.py exit_rules.py exit_core.py daily_exit_sim.py trade_costs.py ./backend/
+COPY decision_core.py cooling_off.py market_calendar.py intraday_replay.py ./backend/
+COPY trigger_audit.py intraday_capture.py ./backend/
+COPY research/live_rule_replay.py ./backend/research/live_rule_replay.py
 
 # Copy compiled frontend assets from Stage 1
 COPY --from=frontend-builder /frontend/dist ./frontend/dist

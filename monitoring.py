@@ -13,7 +13,9 @@ from supabase import Client
 from ib_insync import IB, Stock
 
 from execution_agent_ref import ea
+import intraday_capture as capture
 
+@capture.capture_phase("monitor")
 def monitor_portfolio_intraday(ib: IB):
     """Monitors open positions: updates hwm_date, self-heals trailing stops,
     applies the MA exit, and runs EOD plateau rotation."""
@@ -24,6 +26,9 @@ def monitor_portfolio_intraday(ib: IB):
     try:
         portfolio_res = client.table("portfolio_positions").select("*").execute()
         positions = portfolio_res.data or []
+        capture.emit("source_snapshot", table="portfolio_positions", phase="monitor",
+                     positions=positions, received_at=capture.now())
+        capture.observe_portfolio(ib, positions, "monitor")
     except Exception as e:
         ea.notifier.notify_exception("monitor_portfolio_intraday() — execution_agent.py", e)
         print(f"❌ Could not fetch portfolio positions: {e}")
@@ -41,6 +46,8 @@ def monitor_portfolio_intraday(ib: IB):
     # orders for the ticker — which would wipe out the OCA. Skip them entirely;
     # process_exit_requests() governs these positions.
     oca_managed = ea.get_oca_managed_tickers(client)
+    capture.emit("monitor_context", positions=positions, oca_managed=list(oca_managed),
+                 evaluated_at=now_ny.isoformat())
 
     # Single consistent IBKR price snapshot for this cycle. Every position is
     # priced from PortfolioItem.marketPrice (the broker's own mark we trade
@@ -69,6 +76,9 @@ def monitor_portfolio_intraday(ib: IB):
         # back to FMP only when IBKR has no usable mark for this ticker. The map
         # was built once above from the non-blocking ib.portfolio() cache.
         current_price, price_source = ea.get_position_price(ib, ticker, ib_price_map)
+        capture.emit("monitor_observation", ticker=ticker, position=pos,
+                     price=current_price, source=price_source, days_held=days_held,
+                     oca_managed=ticker in oca_managed, received_at=capture.now())
         if current_price <= 0:
             print(f"   ⚠️ Could not fetch price for {ticker} — skipping this cycle.")
             active_positions.append(pos)
@@ -462,6 +472,8 @@ def monitor_portfolio_intraday(ib: IB):
     is_eod_window = (now_eod.hour == 15 and now_eod.minute >= 45)
 
     if is_eod_window:
+        capture.emit("eod_latch", phase="eod", stage="start",
+                     complete=False, marker_only=True)
         today_eod = ea.datetime.datetime.now(tz).date()
 
         # Fetch today's triggers (or triggers from the last 3 days to handle weekends/holidays)
@@ -471,6 +483,8 @@ def monitor_portfolio_intraday(ib: IB):
                 .select("*") \
                 .gte("triggered_at", recent_date) \
                 .execute()
+            capture.emit("candidate_universe", phase="eod", triggers=triggers_res.data or [],
+                         complete=True, lookback_start=recent_date)
             held_tickers = {p["ticker"] for p in positions}
             fresh_triggers = [
                 t for t in (triggers_res.data or [])
@@ -485,6 +499,8 @@ def monitor_portfolio_intraday(ib: IB):
             best_trigger_score = (best_trigger.get("final_score") or 0) if best_trigger else 0
             best_ticker        = best_trigger["ticker"] if best_trigger else None
         except Exception:
+            capture.emit("candidate_universe", phase="eod", triggers=None,
+                         complete=False, reason="trigger_fetch_failed")
             fresh_triggers     = []
             fresh_tickers      = set()
             best_trigger_score = 0
@@ -522,6 +538,10 @@ def monitor_portfolio_intraday(ib: IB):
             mt_score, mt_debug = ea.compute_momentum_health_score(
                 pos, ohlcv, live_sentiment, days_held=days_held_m
             )
+            capture.emit("eod_observation", ticker=ticker_m, position=pos,
+                         days_held=days_held_m, ohlcv=ohlcv, live_rs=live_rs,
+                         live_sentiment=live_sentiment, momentum_health_score=mt_score,
+                         volume_distribution=vol_dist, received_at=capture.now())
 
             rsi_p    = mt_debug["rsi_penalty"]
             candle_p = mt_debug["candle_penalty"]
@@ -540,7 +560,10 @@ def monitor_portfolio_intraday(ib: IB):
             # PASS: close >= entry×1.01 AND Day 3 volume >= 75% of 20-day avg
             # FAIL: either condition not met → activates Intraday Loss Minimiser
             if days_held_m == 3 and pos.get("breakout_verdict") is None:
-                current_price_m, _ = ea.get_position_price(ib, ticker_m)
+                current_price_m, verdict_source = ea.get_position_price(ib, ticker_m)
+                capture.emit("eod_quote", ticker=ticker_m, price=current_price_m,
+                             source=verdict_source, purpose="breakout_verdict",
+                             received_at=capture.now())
                 buy_price_m     = float(pos["buy_price"])
                 price_pass      = current_price_m > buy_price_m * (1 + ea.BREAKOUT_VERDICT_MIN_GAIN)
 
@@ -592,7 +615,10 @@ def monitor_portfolio_intraday(ib: IB):
                 closed_above = bool(pos.get("closed_above_entry"))
                 if not closed_above:
                     try:
-                        eod_price, _ = ea.get_position_price(ib, ticker_m)
+                        eod_price, eod_source = ea.get_position_price(ib, ticker_m)
+                        capture.emit("eod_quote", ticker=ticker_m, price=eod_price,
+                                     source=eod_source, purpose="closed_above_entry",
+                                     received_at=capture.now())
                         if eod_price and eod_price > float(pos["buy_price"]):
                             closed_above = True
                             print(f"   ✅ {ticker_m}: closed above entry — thesis stop disarmed.")
@@ -633,6 +659,9 @@ def monitor_portfolio_intraday(ib: IB):
                 else:
                     print(f"   ⚠️ Could not update EOD plateau metrics for {ticker_m}: {_me}")
 
+        capture.emit("source_snapshot", table="portfolio_positions", phase="eod_metrics",
+                     positions=positions, received_at=capture.now(),
+                     source="live_in_memory_after_updates")
         # 2. Rank & Replace Swaps (Day 7+ only)
         # Uses live Mₜ (momentum_health_score) as the comparator.
         # Only runs for positions held >= 7 days that passed the Day 3 verdict.
@@ -733,6 +762,8 @@ def monitor_portfolio_intraday(ib: IB):
                         print("   Slot freed. Running buy loop to fill slot...")
                         ea.run_market_open_buys(ib)
                         break
+        capture.emit("eod_latch", phase="eod", stage="end",
+                     complete=True, marker_only=True)
 
 
 

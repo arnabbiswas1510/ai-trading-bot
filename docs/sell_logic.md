@@ -42,6 +42,13 @@ The live monitor's delegation to `exit_core` is staged behind the
 orchestrator-split safety window (a quiet book); it is not yet wired into that
 live path. See `decisions/2026-09-29_exit-core-extraction.md` for why.
 
+Passive intraday recording also captures monitoring, position/protection and
+sale evidence for research. The recorder has no authority to change stops or
+approve strategies; incomplete capture does not disable protective exits.
+Actual-account replay rejects unknown initial protection instead of estimating
+it from a position's peak. See [intraday research](intraday_research.md) and
+`decisions/2026-09-30_intraday-capture-and-approved-research.md`.
+
 ## Price source: IBKR first, FMP fallback
 
 Every exit rule below prices the position from IBKR's own mark — the same

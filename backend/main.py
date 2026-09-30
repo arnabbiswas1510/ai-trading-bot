@@ -14,6 +14,7 @@ import backtester
 from fmp_client import FMPClient
 from pricing import resolve_position_price
 from commissions import enrich_trades, summarize_realized
+import intraday_service
 
 app = FastAPI(title="CAN SLIM Trading Bot API")
 
@@ -97,6 +98,18 @@ async def periodic_watchlist_scheduler():
 async def startup_event():
     # Start the periodic weekly check loop in the background
     asyncio.create_task(periodic_watchlist_scheduler())
+    app.state.intraday_scheduler = asyncio.create_task(intraday_service.scheduler())
+
+
+@app.on_event("shutdown")
+async def shutdown_intraday_scheduler():
+    task = getattr(app.state, "intraday_scheduler", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 # -----------------
 # Routes
@@ -509,6 +522,64 @@ def run_backtest_simulation(req: BacktestRequest):
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class IntradayReplayRequest(BaseModel):
+    start_date: datetime.date
+    end_date: datetime.date
+    compare_without_ai_veto: bool = True
+
+    class Config:
+        extra = "forbid"
+
+
+@app.get("/api/intraday/status")
+def intraday_status():
+    try:
+        return intraday_service.status()
+    except intraday_service.ResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/intraday/replay", status_code=202)
+def run_intraday_replay(req: IntradayReplayRequest):
+    if not req.compare_without_ai_veto:
+        raise HTTPException(status_code=422, detail="This interface compares the D-grade veto only.")
+    try:
+        return intraday_service.submit(req.start_date, req.end_date)
+    except BlockingIOError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except intraday_service.ResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/intraday/runs/{run_id}")
+def intraday_run(run_id: str):
+    try:
+        return intraday_service.get_run(run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except intraday_service.ResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/intraday/export")
+def export_intraday(start_date: datetime.date, end_date: datetime.date):
+    from fastapi.responses import JSONResponse
+    try:
+        dataset = intraday_service.export_dataset(start_date, end_date)
+        return JSONResponse(dataset, headers={
+            "Content-Disposition": f'attachment; filename="intraday-{start_date}-{end_date}.json"',
+        })
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except intraday_service.ResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
 
 @app.get("/api/settings")
 def get_settings():

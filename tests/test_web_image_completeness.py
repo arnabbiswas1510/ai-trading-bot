@@ -85,6 +85,12 @@ def _copied_root_modules() -> set:
 
 class TestWebImageCompleteness:
 
+    def test_intraday_api_import_closure_is_copied(self):
+        roots, backends = _root_modules(), _backend_modules()
+        needed = _root_imports_of(BACKEND, "intraday_service", roots, backends)
+        assert not needed - _copied_root_modules(), (
+            f"Missing intraday research dependencies: {needed - _copied_root_modules()}")
+
     def test_every_root_module_backtester_imports_is_copied(self):
         roots, backends = _root_modules(), _backend_modules()
         needed = _root_imports_of(BACKEND, "backtester", roots, backends)

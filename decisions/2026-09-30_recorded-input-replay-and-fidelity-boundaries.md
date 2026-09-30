@@ -1,7 +1,13 @@
 # Recorded-input replay and explicit execution-fidelity boundaries
 
 Date: 2026-09-30
-Status: Accepted
+Status: Accepted — extended by [actual-account recording and dashboard research](2026-09-30_intraday-capture-and-approved-research.md)
+
+> **2026-09-30 extension:** the cash-only schema-1 interface and its limits
+> remain valid. A separate schema-2 actual-account mode, passive recorder and
+> dashboard now accompany it. The original statement below that this change
+> does not provide a production recorder describes patch 098, not the expanded
+> system. Sampled execution is still not exact IBKR replay.
 
 ## Context
 

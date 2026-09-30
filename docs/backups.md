@@ -11,18 +11,29 @@ way.
 
 ## What runs, and when
 
+Saved intraday comparison results (`intraday_replay_runs`) are included. Their
+private table requires a service-role key: configure the GitHub Actions secret
+`INTRADAY_SUPABASE_KEY`; the exporter prefers it over `SUPABASE_KEY`.
+
+Raw `intraday_capture_events` and their sampling membership are deliberately
+excluded from the indefinitely retained full snapshots. They follow
+`INTRADAY_RETENTION_DAYS` (365 by default); weekly copies of the entire raw
+history would multiply storage and defeat that retention. Health is ephemeral
+and session counts are a derived view. Export important replay datasets before
+expiry. See `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
+
 | | |
 |---|---|
 | Workflow | `.github/workflows/weekly_supabase_backup.yml` |
 | Schedule | Sundays, 14:00 UTC |
 | Script | `supabase_backup.py` |
 | Destination | `/home/pom/docker/ai-trading-bot/backups/` on the prod server |
-| Size | ~180KB per week (700 rows across 12 tables) |
+| Size | Depends on retained tables and saved replay outputs; measure each archive |
 
 The export runs in the GitHub Actions runner and is rsynced to the server, so
 the DietPi host needs no Python, no pyarrow and no Supabase credentials. It
 reuses the existing `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_KEY` secrets on
-port 2222 — no new secrets, and no new third-party action sees the production
+port 2222; no new third-party action sees the production
 key: the rsync is plain shell, accepting the host key on first connect
 (`StrictHostKeyChecking=accept-new`, the same trust-on-use model
 `deploy_to_server.yml` uses for this host), with the key deleted from the runner
@@ -62,8 +73,7 @@ backups/
 
 Each run writes a **complete snapshot** into a new dated partition. Nothing is
 ever overwritten, so every week is independently restorable and the archive
-grows incrementally. There is no row-level delta: the whole database is ~700
-rows, so a delta would save nothing, and `portfolio_positions` is mutated in
+grows incrementally. There is no row-level delta. `portfolio_positions` is mutated in
 place every 15 minutes, so an append-only delta would miss most of what changes.
 
 There is currently **no retention or pruning** — nothing is deleted.

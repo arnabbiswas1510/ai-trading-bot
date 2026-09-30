@@ -10,6 +10,7 @@ from supabase import Client
 from ib_insync import IB, Stock, MarketOrder
 
 from execution_agent_ref import ea
+import intraday_capture as capture
 
 def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: float,
                  buy_date, buy_reason: str, current_price: float, reason: str,
@@ -24,6 +25,9 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
     pos_row: the portfolio_positions dict for this ticker (used to write breakout_learnings).
     market_regime: 'uptrend' | 'correction' | 'neutral' at time of sell.
     """
+    capture.emit("sell_event", stage="requested", ticker=ticker, shares=shares,
+                 price=current_price, reason=reason, position=pos_row,
+                 origin="bot", rotation=reason.startswith("Rank & Replace"))
     try:
         # Cancel any open trailing stop SELL orders before placing
         # explicit sell (stale rotation) to avoid duplicate fills.
@@ -36,6 +40,7 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         order = MarketOrder('SELL', shares)
         order.account = ea.get_ibkr_account(ib)
         trade = ib.placeOrder(contract, order)
+        capture.record_order(trade, "market_sell_submitted")
         
         print(f"   Placing market sell order for {shares} shares of {ticker}...")
         
@@ -93,6 +98,10 @@ def execute_sell(ib: IB, client: Client, ticker: str, shares: int, buy_price: fl
         _th_resp = ea.insert_trade_history(client, trade_log)
         _th_id = ((_th_resp.data or [{}])[0] or {}).get("id")
         ea.record_trade_commissions(client, _th_id, buy_commission, sell_commission)
+        capture.emit("sell_event", stage="confirmed", ticker=ticker, shares=shares,
+                     price=fill_price, reason=reason, trade_history_id=_th_id,
+                     position=pos_row, origin="bot",
+                     rotation=reason.startswith("Rank & Replace"))
 
         # ── Write to breakout_learnings for future screener feedback ─────────────
         ea._write_breakout_learning_row(
@@ -193,6 +202,7 @@ def execute_scale_out(ib: IB, client: Client, pos: dict, ticker: str,
         order = MarketOrder('SELL', scale_shares)
         order.account = account
         trade = ib.placeOrder(contract, order)
+        capture.record_order(trade, "scale_out_submitted")
         print(f"   ✂️  Scale-out: selling {scale_shares}/{pre_qty} shares of {ticker} at market...")
 
         for _ in range(30):

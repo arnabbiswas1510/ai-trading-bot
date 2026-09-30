@@ -47,6 +47,7 @@ never be capable of interrupting live screening or live trading.
 from __future__ import annotations
 
 import datetime
+import intraday_capture as capture
 
 # ── Decision reason codes ─────────────────────────────────────────────────────
 # Stable identifiers so analysis can group without parsing prose. The
@@ -183,6 +184,8 @@ def record_decisions_bulk(client, triggers, decision, reason_code, detail=None,
             "shares":          context.get("shares"),
         })
 
+    for row in payload:
+        capture.emit("trigger_decision", **row)
     return _upsert(client, "trigger_decisions", payload,
                    "decision_date,ticker,trigger_type",
                    "migrations/20260809_add_trigger_history.sql")

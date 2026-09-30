@@ -20,6 +20,14 @@ for unsupported paths. Older exit/cooling-off studies are historical models,
 not a ranking of which live rule costs the most. See [Backtesting](docs/backtesting.md)
 and `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
+**Intraday research:** the Backtester page can compare the AI veto using
+recorded intraday inputs and the actual starting portfolio, prior sales and
+protective orders. Passive collection and weekly comparisons never change
+live strategy parameters. Deploy only after applying
+`migrations/20260930_add_intraday_research.sql` and provisioning the private
+`INTRADAY_SUPABASE_KEY`. See [setup, data limits and retention](docs/intraday_research.md)
+and `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
+
 ---
 
 ## Table of Contents

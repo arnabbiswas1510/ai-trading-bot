@@ -28,6 +28,33 @@ parameter requires a code change.**
 
 TradingView requires no credentials.
 
+## Intraday research recording
+
+These settings govern recording/research only, never live buy/sell thresholds.
+See [Recorded intraday research](intraday_research.md) and
+`decisions/2026-09-30_intraday-capture-and-approved-research.md`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `INTRADAY_CAPTURE_ENABLED` | `true` | Enable passive recording; failures do not disable risk monitoring |
+| `INTRADAY_SAMPLE_SECONDS` | `300` | Candidate price sampling interval, in seconds |
+| `INTRADAY_RETENTION_DAYS` | `365` | Rolling raw-event and candidate-membership horizon |
+| `INTRADAY_MAX_SYMBOLS` | `250` | Sampling budget; exceeding it is a visible coverage gap |
+| `INTRADAY_MAX_QUOTE_AGE_SECONDS` | `600` | Maximum age for an observation reused at a replay event |
+| `INTRADAY_CAPTURE_SPOOL` | `/app/logs/intraday_capture.sqlite3` | Durable upload spool in the existing logs volume |
+| `INTRADAY_AUTO_COMPARE` | `true` | Weekly recorded-data comparisons, never automatic live changes |
+| `INTRADAY_REPLAY_MAX_DAYS` | `93` | Maximum calendar days per dashboard comparison |
+| `INTRADAY_SUPABASE_KEY` | secret, `@bws` in template | Server-side service-role key for private snapshots/results; code can fall back to `SUPABASE_KEY` only if that key has sufficient privileges |
+
+Apply `migrations/20260930_add_intraday_research.sql` before deployment and add
+the new key to Bitwarden and the weekly backup's GitHub Actions secrets. Never
+put a real key in the template. An unavailable capture database is surfaced to
+the operator; it must not block protective trading actions.
+
+Integer research settings must be positive. Invalid values are logged and
+disable recording/automatic comparisons instead of crashing the trading
+configuration import; the dashboard exposes that configuration error.
+
 ### Where secrets come from — the `@bws` sentinel
 
 Real credential values are **not** stored in the repo. In `.env.template` every

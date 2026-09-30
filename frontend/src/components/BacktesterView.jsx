@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Play, TrendingUp, BarChart2, Calendar, ShieldAlert, Award, DollarSign } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import IntradayReplayView from './IntradayReplayView.jsx';
 
 export default function BacktesterView() {
   const [startDate, setStartDate] = useState(() => {
@@ -63,6 +64,7 @@ export default function BacktesterView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <IntradayReplayView />
 
       {/* Parameters Form Card */}
       <div className="card">
@@ -71,7 +73,7 @@ export default function BacktesterView() {
           Setup Backtest Parameters
         </h3>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-          Approximates the live bot: trailing stop from peak · cash/slots sizing · 5 positions · no profit target. Does not model the Prove-It Stop.
+          Daily-bar approximation using shared current exit primitives, including Prove-It · cash/slots sizing · 5 positions · no profit target. Daily bars are not execution-equivalent to the live intraday bot.
         </p>
         <form onSubmit={handleRunBacktest}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>

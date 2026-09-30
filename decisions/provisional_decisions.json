@@ -37,6 +37,39 @@
   },
   "decisions": [
     {
+      "id": "intraday-capture-readiness",
+      "title": "Review intraday capture coverage, storage and replay eligibility",
+      "kind": "investigation",
+      "status": "active",
+      "decided": "2026-09-30",
+      "implemented": false,
+      "decision": "Collect five-minute candidate samples and live cycle evidence for actual-account research with 365-day raw retention; comparisons require human approval before any live change. Deployment still requires the migration and private service-role secret.",
+      "rationale": "Recording capacity and usable replay coverage have not yet been measured. Calendar age and raw quote counts do not establish an independent profitability sample.",
+      "adr": "decisions/2026-09-30_intraday-capture-and-approved-research.md",
+      "revisit": {
+        "min_closed_trades": null,
+        "not_before": "2026-10-20"
+      },
+      "baseline": {
+        "captured_sessions_measured": null,
+        "usable_completed_positions_measured": null,
+        "sample_seconds": 300,
+        "retention_days": 365,
+        "max_symbols": 250,
+        "profitability_evidence": "Not measured; these are operational starting settings."
+      },
+      "review_command": "curl --fail http://localhost:8000/api/intraday/status",
+      "review_questions": [
+        "Is capture deployed with a recent heartbeat, no queue loss, and all candidate sources recorded without blocking risk monitoring?",
+        "Can actual starting positions, prior sales and broker protection be validated, or are comparisons rejected? Identify the missing inputs rather than loosening validation.",
+        "How much database and spool storage does a session consume, and does projected 365-day growth fit the provisioned budget?",
+        "How many distinct trading dates and completed positions support each comparison? Are partial sales being excluded from the independent position count?",
+        "Are results still exploratory, and has unused evaluation data been reserved before any proposed live change?"
+      ],
+      "last_reviewed": null,
+      "history": []
+    },
+    {
       "id": "scaleout-4pct-33pct",
       "title": "Partial scale-out: sell 33% at +4% peak gain",
       "status": "active",

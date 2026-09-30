@@ -27,6 +27,13 @@ See `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
 ## Recorded-input replay: shared decisions, explicit execution assumptions
 
+The dashboard also offers **Recorded intraday research** using newly captured
+actual-account starting snapshots. It does not require editing JSON or
+resetting the real portfolio. See [capture setup and operation](intraday_research.md).
+That initialized, source-labelled mode is distinct from the schema-v1
+cash-only offline example below. Missing initial protection or price history
+remains a rejection; the UI is not a mechanism for bypassing those safeguards.
+
 `research/live_rule_replay.py` is an offline portfolio replay, not a connection
 to IBKR and not a replacement trading daemon. It calls the shared entry gates
 and ranking in `decision_core`, the exit decisions in `exit_core`, protective

@@ -20,12 +20,41 @@ environment locally.
 
 NOTE ON CONTAINER LAYOUT
 ------------------------
-`backend/` is built into its own image (Dockerfile) that does NOT contain this
-file, so backend modules cannot import it. They read the same environment
-variable with the same default instead — the .env remains the single operational
-switch even though the import cannot be shared.
+`backend/` is built into its own image. Dockerfile explicitly copies this file
+and the shared replay dependencies into that image, so research configuration
+is shared with the execution image; both receive the same deployment environment.
 """
 import os
+import logging
+
+# Passive research recording never changes live order decisions.
+INTRADAY_CONFIG_ERRORS = []
+
+
+def _research_positive_integer(name, default):
+    try:
+        value = int(os.getenv(name, str(default)))
+        if value <= 0:
+            raise ValueError("must be positive")
+        return value
+    except ValueError:
+        message = f"{name} must be a positive integer; intraday research is disabled."
+        INTRADAY_CONFIG_ERRORS.append(message)
+        logging.getLogger(__name__).error(message)
+        return default
+
+
+INTRADAY_SAMPLE_SECONDS = _research_positive_integer("INTRADAY_SAMPLE_SECONDS", 300)
+INTRADAY_RETENTION_DAYS = _research_positive_integer("INTRADAY_RETENTION_DAYS", 365)
+INTRADAY_MAX_SYMBOLS = _research_positive_integer("INTRADAY_MAX_SYMBOLS", 250)
+INTRADAY_MAX_QUOTE_AGE_SECONDS = _research_positive_integer("INTRADAY_MAX_QUOTE_AGE_SECONDS", 600)
+INTRADAY_CAPTURE_SPOOL = os.getenv(
+    "INTRADAY_CAPTURE_SPOOL", "/app/logs/intraday_capture.sqlite3")
+INTRADAY_REPLAY_MAX_DAYS = _research_positive_integer("INTRADAY_REPLAY_MAX_DAYS", 93)
+INTRADAY_CAPTURE_ENABLED = (
+    not INTRADAY_CONFIG_ERRORS and os.getenv("INTRADAY_CAPTURE_ENABLED", "true").lower() == "true")
+INTRADAY_AUTO_COMPARE = (
+    not INTRADAY_CONFIG_ERRORS and os.getenv("INTRADAY_AUTO_COMPARE", "true").lower() == "true")
 
 # ── Portfolio capacity ───────────────────────────────────────────────────────
 # Concurrent stock positions. 5 per ADR 2026-08-04: the CAGR/drawdown gaps
