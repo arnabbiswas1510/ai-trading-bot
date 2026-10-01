@@ -363,10 +363,25 @@ The reason it reports is either:
 
 Once-per-day delivery is deduplicated in the `daily_notifications` table
 (`report_type='unfilled_slots'`, one row per ET date), so it survives container
-restarts rather than re-sending after every deploy. The dedup probe fails **safe**:
-if the table is missing the summary is suppressed, never spammed, until
-`migrations/20260928_add_daily_notifications.sql` is applied. The day is marked
-sent only after Telegram accepts the message, so a transient failure retries.
+restarts rather than re-sending after every deploy. A module-level in-process
+latch is a second line of defence: once a day's summary is delivered it is also
+latched in memory, so even if the persistent `daily_notifications` write is
+refused the agent still sends at most one summary per running process per ET day.
+The in-memory latch resets on container restart and on date rollover, which is
+exactly the "start of day" cadence intended.
+
+The persistent table has row-level security enabled and therefore needs a policy
+that covers the publishable key the agent authenticates with; without it the
+`UPSERT` that records the send is refused (Postgres `42501`) while the `SELECT`
+latch probe returns empty, so the DB latch never persists and — before the
+in-process backstop existed — the summary was re-sent every 15-minute cycle (the
+2026-10-01 spam). The policy is installed by
+`migrations/20261001_daily_notifications_rls.sql`. The read-side dedup probe also
+fails **safe**: if the table is missing entirely the summary is suppressed, never
+spammed, until `migrations/20260928_add_daily_notifications.sql` is applied. The
+day is marked sent only after Telegram accepts the message, so a transient
+failure retries.
 
 The feature is always on and has no environment variable. See
-`decisions/2026-09-28_unfilled-slot-daily-alert.md` for why.
+`decisions/2026-09-28_unfilled-slot-daily-alert.md` for why it exists and
+`decisions/2026-10-01_daily-notifications-rls-blocked-writes.md` for the RLS fix.

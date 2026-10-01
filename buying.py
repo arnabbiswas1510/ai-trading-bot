@@ -142,6 +142,21 @@ _SKIP_REASON_TEXT = {
 
 _SLOT_REPORT_TYPE = "unfilled_slots"
 
+# In-process backstop latch for the once-daily unfilled-slot summary.
+#
+# The persistent latch lives in Supabase (daily_notifications). If that write is
+# ever refused -- e.g. the RLS policy is missing, as it was on 2026-10-01 before
+# migrations/20261001_daily_notifications_rls.sql -- the DB latch never records
+# the send and the 15-minute buy loop re-sends the summary every cycle. This
+# module global stops that spam within a running process regardless of the DB:
+# once a day's summary is delivered it is latched here too, so the agent sends at
+# most one per process per ET day. It resets naturally on container restart and
+# on date rollover (a new ET date no longer matches), which is exactly the
+# "start of day" cadence the operator asked for. It is a backstop, not a
+# replacement: the DB latch is still what survives a mid-day restart once the
+# policy is in place.
+_slot_report_latched_date: str | None = None
+
 
 def _slot_report_already_sent(client, report_date: str) -> bool:
     """True when today's unfilled-slot summary has already gone out.
@@ -224,6 +239,12 @@ def maybe_report_unfilled_slots(client, standdown_reason: str | None = None) -> 
     tz = ZoneInfo("America/New_York")
     report_date = ea.datetime.datetime.now(tz).date().isoformat()
 
+    global _slot_report_latched_date
+    # In-process backstop first: cheap, and the one guard that still holds when
+    # the persistent DB latch cannot be written (RLS denied, table missing).
+    if _slot_report_latched_date == report_date:
+        return
+
     try:
         holdings = client.table("portfolio_positions").select("ticker").execute().data or []
     except Exception:
@@ -252,6 +273,9 @@ def maybe_report_unfilled_slots(client, standdown_reason: str | None = None) -> 
         delivered = False
 
     if delivered:
+        # Latch in-process unconditionally so a denied DB write cannot cause a
+        # re-send this cycle, then best-effort persist for cross-restart dedup.
+        _slot_report_latched_date = report_date
         _slot_report_mark_sent(client, report_date, body)
 
 

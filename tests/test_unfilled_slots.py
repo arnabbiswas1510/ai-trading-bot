@@ -102,3 +102,24 @@ class TestUnfilledSlotSummary:
         body = notifier.notify_unfilled_slots.call_args.args[3]
         assert "2 below the quality-score" in body
         assert "1 extended too far above the pivot" in body
+
+    def test_no_duplicate_within_process_when_db_latch_write_denied(self):
+        """RLS denies the latch UPSERT → the in-process latch still stops a resend.
+
+        Reproduces the 2026-10-01 spam: the daily_notifications SELECT returns
+        empty every cycle (RLS hides/denies the write), so the DB latch never
+        records the send. Two buy cycles in one process must still yield exactly
+        one summary — the second is suppressed by the in-memory backstop.
+        """
+        ib = make_ib_mock(symbols=["AAA"])
+        supa = make_supabase_mock(
+            daily_triggers=[], portfolio=_held(1),
+            slot_report_sent=False, slot_report_write_denied=True)
+
+        first = _run(ib, supa)
+        assert first.notify_unfilled_slots.call_count == 1
+
+        # Same process, same supabase mock (DB latch still empty): a second
+        # 15-minute cycle must not re-send.
+        second = _run(ib, supa)
+        second.notify_unfilled_slots.assert_not_called()

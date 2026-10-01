@@ -178,6 +178,21 @@ def _reset_ibkr_price_map_cache():
     execution_agent._IBKR_PRICE_MAP_CACHE.update({"ts": 0.0, "map": {}})
 
 
+@pytest.fixture(autouse=True)
+def _reset_unfilled_slot_latch():
+    """Clear buying's in-process unfilled-slot latch before every test.
+
+    maybe_report_unfilled_slots latches the ET date in a module global so a
+    denied DB write cannot cause a re-send within a running process. That global
+    is shared across tests, so without this reset one test's latched date leaks
+    into the next and suppresses a summary a later test expects to fire.
+    """
+    import buying
+    buying._slot_report_latched_date = None
+    yield
+    buying._slot_report_latched_date = None
+
+
 # ── Supabase position / trigger factories ─────────────────────────────────────
 
 def make_position(ticker: str,
@@ -360,6 +375,7 @@ def make_supabase_mock(
     ibkr_fills: list | None = None,
     trigger_decisions: list | None = None,
     slot_report_sent: bool = False,
+    slot_report_write_denied: bool = False,
 ) -> MagicMock:
     """
     Returns a MagicMock Supabase client where each table's queries return
@@ -474,7 +490,14 @@ def make_supabase_mock(
             _sent = [{"report_date": "x"}] if slot_report_sent else []
             (t.select.return_value.eq.return_value.eq.return_value
              .limit.return_value.execute.return_value.data) = _sent
-            t.upsert.return_value.execute.return_value = MagicMock()
+            if slot_report_write_denied:
+                # Reproduce the live RLS failure (42501): the SELECT latch probe
+                # returns empty, but the UPSERT that records the send is refused.
+                t.upsert.return_value.execute.side_effect = Exception(
+                    'new row violates row-level security policy for table '
+                    '"daily_notifications"')
+            else:
+                t.upsert.return_value.execute.return_value = MagicMock()
 
         _cache[name] = t
         return t

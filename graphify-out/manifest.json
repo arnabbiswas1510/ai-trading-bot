@@ -170,8 +170,8 @@
     "semantic_hash": ""
   },
   "tests/conftest.py": {
-    "mtime": 1790865927.940708,
-    "ast_hash": "c14ce68ec6aeb40fbc5226fb2de7452d",
+    "mtime": 1790867326.7396038,
+    "ast_hash": "460e381db90a68581a209a36a59bcdee",
     "semantic_hash": ""
   },
   "tests/test_breakout_verdict.py": {
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
-    "mtime": 1790866362.1879573,
-    "ast_hash": "cb85d401fa393426ac9af8099570f13e",
+    "mtime": 1790867364.4095247,
+    "ast_hash": "9d6e48630b6f6060d6f2b23417bf56fb",
     "semantic_hash": ""
   },
   "docs/configuration.md": {
@@ -1530,8 +1530,8 @@
     "semantic_hash": ""
   },
   "buying.py": {
-    "mtime": 1790865885.7800288,
-    "ast_hash": "54d2a869290e1e8db1bb3e997577eb70",
+    "mtime": 1790867301.0386515,
+    "ast_hash": "d208008a77d774e8f99b595809611540",
     "semantic_hash": ""
   },
   "fills.py": {
@@ -1640,8 +1640,8 @@
     "semantic_hash": ""
   },
   "tests/test_unfilled_slots.py": {
-    "mtime": 1790617914.411093,
-    "ast_hash": "381c438d88d2690a578623c61114c9c3",
+    "mtime": 1790867349.63417,
+    "ast_hash": "8325d566c5af71eed861999b030106d4",
     "semantic_hash": ""
   },
   "decisions/2026-09-28_unfilled-slot-daily-alert.md": {
@@ -2127,6 +2127,16 @@
   "docs/trading_control.md": {
     "mtime": 1790866362.1748922,
     "ast_hash": "15b0a63d74bceb401ded9093fbd2c3a3",
+    "semantic_hash": ""
+  },
+  "migrations/20261001_daily_notifications_rls.sql": {
+    "mtime": 1790867281.8163095,
+    "ast_hash": "49afb973172628887ab6d88201e351a7",
+    "semantic_hash": ""
+  },
+  "decisions/2026-10-01_daily-notifications-rls-blocked-writes.md": {
+    "mtime": 1790867388.5370085,
+    "ast_hash": "0bc3c0392651d2256a3d13b8071c4f61",
     "semantic_hash": ""
   }
 }
