@@ -46,16 +46,23 @@ These settings govern recording/research only, never live buy/sell thresholds.
 See [Recorded intraday research](intraday_research.md) and
 `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
 
-`TRADING_RUNTIME_MODE` is a **GitHub repository Actions variable**, not a secret
-or a value read from the host `.env`. It defaults to `observe`; only explicit
-`live` starts the trading agent. Observation deployments stop trading before
-image updates and start the observer, shadow worker and dashboard. The helper
-passes the validated mode into the dashboard so actual-account automatic
-comparisons are not attempted against observer-only data.
-The local helper accepts the same environment setting:
-`TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh`. A successful research report never
-changes this selection. See
-`decisions/2026-09-30_observer-and-calibration-harness.md`.
+`TRADING_RUNTIME_MODE` remains a validated **GitHub repository Actions variable**
+accepting `observe` (default) or `live`. Both start real protective execution,
+the observer, shadow worker and dashboard. Neither value enables new real buys.
+The local helper accepts the same compatibility setting:
+`TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh`.
+
+The dashboard instead owns persistent `live_entries_enabled`, initially false.
+It is not a strategy environment override or a calibration parameter.
+`TRADING_CONTROL_PATH` defaults to `/app/control/trading-control.sqlite3`;
+Compose pins the identical path in the web and execution containers on the
+dedicated `trading-control` volume. `TRADING_CONTROL_TOKEN` defaults blank,
+locking API writes until a private token of at least 32 characters is configured.
+Removing the token does not revoke an already saved permission. The UI polls
+every 10 seconds and treats agent reports older than 90 seconds as unconfirmed.
+OFF blocks new real buys and replacement rotations, not real protective exits.
+Research results never modify the switch. See [trading control](trading_control.md)
+and `decisions/2026-10-01_dashboard-live-entry-control.md`.
 
 The independent observer has CLI-only connection controls: `--client-id 71`,
 `--interval 300` seconds for broker snapshots, `--request-timeout 10`,
@@ -76,7 +83,7 @@ which controls the recorder embedded in the execution agent.
 | `INTRADAY_MAX_SYMBOLS` | `250` | Sampling budget; exceeding it is a visible coverage gap |
 | `INTRADAY_MAX_QUOTE_AGE_SECONDS` | `600` | Maximum age for an observation reused at a replay event |
 | `INTRADAY_CAPTURE_SPOOL` | `/app/logs/intraday_capture.sqlite3` | Durable upload spool in the existing logs volume |
-| `INTRADAY_AUTO_COMPARE` | `true` | Weekly actual-decision comparisons in explicit live runtime mode only; cloud shadow reports are separate |
+| `INTRADAY_AUTO_COMPARE` | `true` | Weekly actual-decision comparisons when recorded decision frames exist, independent of entry permission; cloud shadow reports are separate |
 | `INTRADAY_REPLAY_MAX_DAYS` | `93` | Maximum calendar days per dashboard comparison |
 | `INTRADAY_SUPABASE_KEY` | secret, `@bws` in template | Server-side service-role key for private snapshots/results; code can fall back to `SUPABASE_KEY` only if that key has sufficient privileges |
 

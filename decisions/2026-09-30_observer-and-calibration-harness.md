@@ -1,7 +1,14 @@
 # Independent observation and approval-only calibration
 
 Date: 2026-09-30
-Status: Accepted — extended by [decision-only simulation and supervised research](2026-09-30_shadow-decisions-and-supervised-research.md)
+Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md); research boundaries remain accepted.
+
+> **2026-10-01:** The stopped-trader observation deployment below no longer
+> describes current operation. The dashboard controls new real entries; the
+> execution agent stays running for real protection alongside the observer and
+> shadow worker. `TRADING_RUNTIME_MODE=live` no longer grants trading permission.
+> The independent observation, privacy and approval-only calibration decisions
+> still hold.
 
 > **2026-09-30:** A separate shadow worker now produces decision inputs while
 > trading is stopped, and validated labelled shadow exports can feed calibration.

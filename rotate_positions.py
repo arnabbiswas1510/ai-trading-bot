@@ -62,6 +62,7 @@ from supabase import create_client
 # ── Reuse sell/buy logic from the dedicated scripts ───────────────────────────
 from force_sell import _place_sell, _cancel_existing_sells, _notify
 from force_buy  import _place_buy
+import trading_control
 
 # ── Config ────────────────────────────────────────────────────────────────────
 IB_HOST      = os.getenv("IB_GATEWAY_HOST", "ib-gateway")
@@ -194,6 +195,9 @@ def _select_buy_triggers(client, n: int, exclude_tickers: set) -> list[dict]:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    if not trading_control.entries_allowed():
+        print("Rotation paused: new real entries are inactive; existing protection is unchanged.")
+        return
     # ── Parse CLI args ────────────────────────────────────────────────────────
     cli_sells = [a.upper() for a in sys.argv[1:] if not a.startswith("-")]
 
@@ -268,6 +272,8 @@ def main():
         sys.exit(0)
 
     # ── Connect to IBKR ───────────────────────────────────────────────────────
+    if not trading_control.entries_allowed():
+        return
     print(f"\nConnecting to IB Gateway at {IB_HOST}:{IB_PORT} (clientId={CLIENT_ID})...")
     ib = IB()
     try:
@@ -311,7 +317,17 @@ def main():
     sell_results  = []
 
     for pos in sell_positions:
-        result = _place_sell(ib, client, pos, acct)
+        if not trading_control.entries_allowed():
+            print("Rotation stopped: new real entries are inactive; remaining holdings are unchanged.")
+            ib.disconnect()
+            return
+        try:
+            with trading_control.rotation_submission(ib) as rotation_ib:
+                result = _place_sell(rotation_ib, client, pos, acct)
+        except trading_control.EntryDisabled as exc:
+            print(f"Rotation stopped before discretionary liquidation: {exc}")
+            ib.disconnect()
+            return
         if result is None:
             print(f"\n✗ SELL for {pos['ticker']} FAILED — aborting rotation to avoid unbalanced state.")
             print("  Remaining sells have NOT been executed.")

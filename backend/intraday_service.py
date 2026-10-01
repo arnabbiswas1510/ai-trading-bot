@@ -274,7 +274,7 @@ def export_dataset(start_date, end_date):
 
 def automatic_review():
     """Weekly expanding (up to 30-day) comparisons; rejection is a durable outcome."""
-    if not config.INTRADAY_AUTO_COMPARE or os.getenv("TRADING_RUNTIME_MODE", "observe") != "live":
+    if not config.INTRADAY_AUTO_COMPARE:
         return
     client = get_client()
     today = dt.datetime.now(NY).date()

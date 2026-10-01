@@ -2,23 +2,17 @@
 # Run from the directory containing docker-compose.yml and the operator's .env.
 set -eu
 
-if [ "$#" -ne 0 ]; then
-    echo "Usage: TRADING_RUNTIME_MODE=observe|live sh scripts/deploy_runtime.sh" >&2
+action=deploy
+if [ "$#" -eq 1 ] && [ "$1" = "--restart" ]; then
+    action=restart
+elif [ "$#" -ne 0 ]; then
+    echo "Usage: TRADING_RUNTIME_MODE=observe|live sh scripts/deploy_runtime.sh [--restart]" >&2
     exit 2
 fi
 
 mode=${TRADING_RUNTIME_MODE:-observe}
 case "$mode" in
-    observe)
-        selected=intraday-observer
-        inactive=execution-agent
-        inactive_profile=live
-        ;;
-    live)
-        selected=execution-agent
-        inactive=intraday-observer
-        inactive_profile=observe
-        ;;
+    observe|live) ;;
     *)
         echo "ERROR: TRADING_RUNTIME_MODE must be observe or live; no containers changed." >&2
         exit 2
@@ -26,30 +20,44 @@ case "$mode" in
 esac
 export TRADING_RUNTIME_MODE="$mode"
 
-# Stop first: a failed pull/start must never leave the opposite runtime active.
-# This does not cancel or replace any orders already held at the broker.
-echo "=== Runtime mode: $mode; stopping $inactive before deployment ==="
-if [ "$mode" = observe ]; then
-    docker compose --profile "$inactive_profile" stop "$inactive"
-    set -- intraday-observer shadow-worker trading-bot
-else
-    docker compose --profile "$inactive_profile" stop "$inactive" shadow-worker
-    set -- execution-agent trading-bot
+# Only the first transition from an ungated image needs stop-before-pull.
+# A failed pull must preserve an already gated agent's protective execution.
+# Listing first distinguishes a missing container from a Docker daemon failure.
+agent=$(docker container ls -a --filter 'name=^/execution-agent$' --format '{{.ID}}')
+if [ -n "$agent" ]; then
+    guarded=$(docker inspect execution-agent --format '{{index .Config.Labels "io.ai-trading-bot.live-entry-gate"}}')
+    if [ "$guarded" != "1" ]; then
+        echo "=== Stopping legacy ungated execution agent before transition ==="
+        docker compose stop execution-agent
+    fi
 fi
 
-echo "=== Pulling $selected and dashboard images ==="
-docker compose --profile "$mode" pull "$@"
+set -- execution-agent intraday-observer shadow-worker trading-bot
+echo "=== Compatibility runtime label: $mode; dashboard controls new live entries ==="
+if [ "$action" = deploy ]; then
+    docker compose pull "$@"
+fi
+
+# Refuse rollback to an image that predates the persistent entry-permission gate.
+# Restart uses installed images only; it cannot accidentally launch a legacy agent.
+agent_image=ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest
+guarded=$(docker image inspect "$agent_image" --format '{{index .Config.Labels "io.ai-trading-bot.live-entry-gate"}}')
+if [ "$guarded" != "1" ]; then
+    echo "ERROR: execution image lacks the live-entry gate; no services started." >&2
+    exit 1
+fi
 
 echo "=== Keeping the existing gateway (--no-recreate preserves its session) ==="
 docker compose up -d --no-deps --no-recreate ib-gateway
 
-# Never follow dependencies into a trading service, even if compose is changed.
-docker compose --profile "$mode" up -d --no-deps "$@"
-
-echo "=== Selected runtime status (inactive runtime remains stopped) ==="
-docker inspect "$selected" --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
-if [ "$mode" = observe ]; then
-    docker inspect shadow-worker --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
+if [ "$action" = restart ]; then
+    docker compose restart ib-gateway
+    docker compose up -d --no-deps --pull never --force-recreate "$@"
+else
+    docker compose up -d --no-deps --pull never "$@"
 fi
-docker inspect ib-gateway --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
-docker inspect can-slim-trading-bot --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
+
+echo "=== Protection, independent research, gateway and dashboard status ==="
+for container in execution-agent intraday-observer shadow-worker ib-gateway can-slim-trading-bot; do
+    docker inspect "$container" --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
+done

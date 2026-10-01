@@ -98,6 +98,19 @@ def test_example_compare_net_equity_open_marks_costs_and_input_immutable(data):
                    for d in variant["decisions"])
 
 
+def test_hypothetical_replay_never_reads_or_changes_live_entry_permission(data, monkeypatch):
+    import trading_control
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Hypothetical replay must not consult or acquire the real entry gate")
+
+    monkeypatch.setattr(trading_control, "entries_allowed", forbidden)
+    monkeypatch.setattr(trading_control, "entry_submission", forbidden)
+    result = replay.replay(data, compare_without_ai_veto=True)
+    assert any(fill["side"] == "BUY" for fill in result["baseline"]["fills"])
+    assert any(fill["side"] == "BUY" for fill in result["variant"]["fills"])
+
+
 def test_ranking_is_final_score_not_adjusted(data):
     data["decision_config"]["max_positions"] = 1
     first, second = data["events"][0]["triggers"]

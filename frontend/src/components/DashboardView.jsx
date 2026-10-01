@@ -1215,9 +1215,9 @@ export default function DashboardView({ data, marketData, trades }) {
                     color: marketData.execution_gate.bullish ? '#10b981' : '#f43f5e'
                   }}
                 >
-                  Buy Gate:{' '}
+                  Market Buy Gate:{' '}
                   <strong>
-                    {marketData.execution_gate.bullish ? 'OPEN — new buys allowed' : 'CLOSED — standing down'}
+                    {marketData.execution_gate.bullish ? 'OPEN — market filter passes; trading permission still required' : 'CLOSED — market filter blocks new buys'}
                   </strong>
                   <span style={{ color: 'var(--text-muted)' }}> · {marketData.execution_gate.reason}</span>
                 </div>

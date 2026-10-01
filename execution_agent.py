@@ -597,6 +597,8 @@ def main_loop():
     print(f"Connecting to IB Gateway at {IB_GATEWAY_HOST}:{IB_GATEWAY_PORT}...")
     
     ib = IB()
+    import trading_control
+    heartbeat_stop = trading_control.start_agent_heartbeat(ib)
     # Retry loop — keeps the container alive while IB Gateway is initialising or
     # re-authenticating after the daily reset.
     # Autoheal monitors the gateway health check and restarts the container automatically
@@ -611,6 +613,7 @@ def main_loop():
     while True:
         try:
             ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
+            heartbeat_stop.report(force=True)
             print("✅ Connected to IBKR Gateway successfully!")
 
             # ── Real-time fill persistence hook (Layer 1) ─────────────────
@@ -711,25 +714,26 @@ def main_loop():
                       f"autoheal watching, no alert for {AUTOHEAL_ALERT_AFTER - _connect_silent_attempts} more attempts.")
             print(f"❌ Cannot connect to IB Gateway: {e}")
             print(f"   Retrying in {delay}s... (attempt {_attempt})")
-            time.sleep(delay)
+            heartbeat_stop.sleep(delay, use_ib=False)
 
     intraday_capture.start(ib, sys.modules[__name__])
     while True:
         try:
+            heartbeat_stop.report()
             tz = ZoneInfo("America/New_York")
             now = datetime.datetime.now(tz)
             today_str = now.strftime("%Y-%m-%d")
 
             if now.weekday() < 5:
-                # SENTINEL: if /app/run_buys_now.txt exists, force-run buy logic immediately
+                # A manual buy request must not skip the scheduled protection pass.
+                forced_buys = False
                 if os.path.exists("/app/run_buys_now.txt"):
                     os.remove("/app/run_buys_now.txt")
                     print("🎯 Force buy sentinel detected — running run_market_open_buys NOW")
                     reconcile_with_ibkr(ib)
                     run_market_open_buys(ib)
                     flush_logs_quietly()
-                    ib.sleep(900)
-                    continue
+                    forced_buys = True
 
                 is_market_open = (
                     (now.hour == 9 and now.minute >= 30)
@@ -745,7 +749,8 @@ def main_loop():
                     reconcile_with_ibkr(ib)        # Sync IBKR → Supabase before checks
                     process_exit_requests(ib)       # Smart OCA managed exits (before monitor:
                                                     # it decides which tickers monitor must skip)
-                    run_market_open_buys(ib)        # No-op when portfolio is full
+                    if not forced_buys:
+                        run_market_open_buys(ib)    # No-op when full or inactive
                     monitor_portfolio_intraday(ib)  # Trailing stops, MA exits, plateau rotation
                     # Drain again: the Day 7+ rules above enqueue rather than
                     # market-sell, and a triggered exit must not idle as PENDING
@@ -784,11 +789,12 @@ def main_loop():
             # observed live.
             flush_logs_quietly()
 
-            time.sleep(sleep_secs)   # use time.sleep — ib.sleep() throws on a dead socket during long off-hours waits
+            heartbeat_stop.sleep(sleep_secs, use_ib=False)
             
         except KeyboardInterrupt:
             print("\nShutting down execution agent.")
             intraday_capture.stop()
+            heartbeat_stop.set()
             flush_logs_quietly()    # last chance — the buffer dies with the process
             ib.disconnect()
             break
@@ -801,12 +807,12 @@ def main_loop():
             else:
                 print(f"Error: IBKR connection/timeout in main loop: {loop_err} -- autoheal watching, no alert.")
             flush_logs_quietly()    # a disconnect loop is exactly what needs reading remotely
-            time.sleep(60)
+            heartbeat_stop.sleep(60, use_ib=False)
         except Exception as loop_err:
             print(f"❌ Error in main execution loop: {loop_err}")
             notifier.notify_exception("main_loop() — execution_agent.py", loop_err)
             flush_logs_quietly()    # ship the traceback before the retry sleep
-            time.sleep(60)   # use time.sleep — ib.sleep() throws on a dead socket
+            heartbeat_stop.sleep(60, use_ib=False)
             
         # Reconnection failsafe
         if not ib.isConnected():
@@ -815,6 +821,7 @@ def main_loop():
                 _down_since = time.time()   # mark the start of this outage
             try:
                 ib.connect(IB_GATEWAY_HOST, IB_GATEWAY_PORT, clientId=1)
+                heartbeat_stop.report(force=True)
                 ib.reqPositions()  # re-subscribe after reconnect
                 ib.sleep(3)
                 print("Reconnected to IBKR Gateway successfully!")
@@ -835,7 +842,7 @@ def main_loop():
                         error=e,
                     )
                     _connect_silent_attempts = 0   # reset so we dont spam after each threshold
-                time.sleep(60)
+                heartbeat_stop.sleep(60, use_ib=False)
 
 def main():
     parser = argparse.ArgumentParser(description="CANSLIM Local execution agent CLI.")

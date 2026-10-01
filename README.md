@@ -613,17 +613,28 @@ then:
 TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh
 ```
 
-Dashboard at `http://localhost:8000`. The deployment defaults to observation,
-not trading. The GitHub repository Actions variable `TRADING_RUNTIME_MODE`
-accepts `observe` (default) or the explicit opt-in `live`; it is not a secret or
-a strategy parameter in `.env`. Unknown values abort before Docker actions.
-Observation mode stops the trader first, starts the observer, shadow worker and
-dashboard, and does not recreate the gateway. Apply the shadow/reporting SQL
+Dashboard at `http://localhost:8000`. **Real trading control** switches new real
+buys ON/OFF without restarting containers and shows saved permission separately
+from the agent's fresh acknowledgment. Initial permission is OFF (protect-only):
+real stops and protective exits continue; discretionary replacement rotations do
+not. Already submitted broker orders are not cancelled. Configure the private
+`TRADING_CONTROL_TOKEN` to unlock the switch. See
+[trading control](docs/trading_control.md) and
+`decisions/2026-10-01_dashboard-live-entry-control.md`.
+
+Deployment starts the execution agent, independent observer, shadow worker and
+dashboard together, without recreating the gateway. The GitHub repository Actions
+variable `TRADING_RUNTIME_MODE` accepts `observe` (default) and `live` for
+compatibility; neither enables real buys. Unknown values abort before Docker
+actions. The morning restart preserves the same persistent dashboard permission.
+Hypothetical trades remain in private shadow tables and never enter real
+balances, trade history or performance. Apply the shadow/reporting SQL
 migrations and configure the cloud reporting secrets described in
 [intraday research](docs/intraday_research.md) before deployment.
-Bare `docker compose up -d` starts no trading/observation runtime because each
-has a profile. Inspect current positions and broker-held protection:
-the observer does not execute any bot-managed risk rules.
+Use the deployment helper rather than bare `docker compose up -d`: it rejects
+old execution images that lack the entry gate. Runtime services no longer have
+mutually exclusive Compose profiles. Inspect current positions and broker-held
+protection: an observer heartbeat alone does not confirm real risk management.
 
 Each open position expands into a **Position Journey** panel that states, without needing
 this document: which lifecycle phase the position is in (`Unproven` → `Proven` →

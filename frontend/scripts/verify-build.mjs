@@ -94,6 +94,9 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Shadow health", string: "/api/intraday/shadow/status" },
   { feature: "Labelled shadow export", string: "/api/intraday/shadow/export" },
   { feature: "Scheduled research reports", string: "Daily summaries and weekly research reports" },
+  { feature: "Real entry control endpoint", string: "/api/trading-control" },
+  { feature: "Protect-only permission", string: "INACTIVE: new real buys blocked (protect-only)" },
+  { feature: "Unconfirmed agent status", string: "Execution agent unconfirmed / stale" },
 ];
 
 // -- Source-level structural guards --------------------------------------------

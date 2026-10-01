@@ -531,12 +531,14 @@ def test_sigterm_requests_clean_stop_and_restores_handlers(monkeypatch):
     assert restored == [(observer.signal.SIGINT, "original"), (observer.signal.SIGTERM, "original")]
 
 
-def test_compose_observer_is_opt_in_without_dependencies():
+def test_compose_observer_runs_independently_alongside_protection():
     import yaml
     compose = yaml.safe_load(Path("docker-compose.yml").read_text())
     service = compose["services"]["intraday-observer"]
-    assert service["profiles"] == ["observe"]
-    assert compose["services"]["execution-agent"]["profiles"] == ["live"]
+    assert "profiles" not in service
+    assert "profiles" not in compose["services"]["execution-agent"]
     assert service["command"] == ["python", "intraday_observer.py"]
     assert "depends_on" not in service
     assert service["restart"] == "unless-stopped"
+    assert not any(value.startswith("INTRADAY_CAPTURE_ENABLED=") for value in service["environment"])
+    assert "trading-control:/app/control" not in service["volumes"]

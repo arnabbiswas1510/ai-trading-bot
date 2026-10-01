@@ -19,6 +19,7 @@ import SettingsView from './components/SettingsView';
 import TradesView from './components/TradesView';
 import BreakoutsView from './components/BreakoutsView';
 import ReturnsView from './components/ReturnsView';
+import TradingControl from './components/TradingControl';
 
 /**
  * Turn a failed API response into a message that says what is actually wrong.
@@ -340,7 +341,7 @@ export default function App() {
             {currentView}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-            {currentView === 'dashboard' && "Live portfolio monitoring — positions opened and closed automatically by the execution engine."}
+            {currentView === 'dashboard' && "Real portfolio monitoring. New entries follow the trading switch; existing positions retain protective management."}
             {currentView === 'screener' && "Live stock ranking, multi-factor scorecard checks, and technical details."}
             {currentView === 'breakouts' && "Technical breakout alerts and daily triggers monitored by the execution agent."}
             {currentView === 'backtester' && "Simulate technical breakout entries and automated exits on historical ranges."}
@@ -350,6 +351,7 @@ export default function App() {
           </p>
         </header>
 
+        <TradingControl />
         {renderView()}
       </main>
     </div>

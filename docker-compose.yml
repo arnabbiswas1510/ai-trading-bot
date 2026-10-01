@@ -38,7 +38,6 @@ services:
       - trading_bridge
 
   execution-agent:
-    profiles: ["live"]
     image: ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest
     container_name: execution-agent
     restart: unless-stopped
@@ -49,8 +48,10 @@ services:
     environment:
       - IB_GATEWAY_HOST=ib-gateway
       - IB_GATEWAY_PORT=4000
+      - TRADING_CONTROL_PATH=/app/control/trading-control.sqlite3
     volumes:
       - /home/pom/docker/ai-trading-bot/logs:/app/logs   # host path — survives container recreations
+      - trading-control:/app/control
     logging:
       driver: json-file
       options:
@@ -61,7 +62,6 @@ services:
       - trading_bridge
 
   intraday-observer:
-    profiles: ["observe"]
     image: ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest
     container_name: intraday-observer
     command: ["python", "intraday_observer.py"]
@@ -84,7 +84,6 @@ services:
       - trading_bridge
 
   shadow-worker:
-    profiles: ["observe"]
     image: ghcr.io/arnabbiswas1510/ai-trading-bot-shadow:latest
     container_name: shadow-worker
     restart: unless-stopped
@@ -109,6 +108,7 @@ services:
       - "8000:8000"
     volumes:
       - bot-data:/app/data
+      - trading-control:/app/control
       # NOTE: do NOT bind-mount frontend/dist here. The compiled UI ships inside
       # the image (Dockerfile stage 1 runs `npm run build`, gated by
       # scripts/verify-build.mjs). A host bind mount shadows that directory, and
@@ -120,6 +120,7 @@ services:
       - .env
     environment:
       - DB_PATH=/app/data/trading_bot.db
+      - TRADING_CONTROL_PATH=/app/control/trading-control.sqlite3
       - TRADING_RUNTIME_MODE=${TRADING_RUNTIME_MODE:-observe}
     dns: *external-dns
     networks:
@@ -136,6 +137,8 @@ networks:
       com.docker.network.driver.mtu: 1400
 
 volumes:
+  trading-control:
+    driver: local
   shadow-data:
     driver: local
   bot-data:

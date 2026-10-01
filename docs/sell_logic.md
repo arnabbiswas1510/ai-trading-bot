@@ -2,6 +2,16 @@
 
 Every exit rule in the live agent, in evaluation order.
 
+**Protect-only operation:** switching new real buys OFF in the dashboard leaves
+real position monitoring, stop management, protective exits and reconciliation
+running. Real protective sales remain real trades and stay in real trade history
+and performance. Discretionary replacement rotations are paused because their
+replacement entry is forbidden. Hypothetical exits remain exclusively in
+`intraday_shadow_*` research tables. The switch does not cancel broker-held
+orders or guarantee protection while the agent or gateway is unavailable.
+See [trading control](trading_control.md) and
+`decisions/2026-10-01_dashboard-live-entry-control.md`.
+
 The decision-only research worker uses the shared exit primitives without
 placing orders. Supporting ATR-stop, scale-out and armed-exit settings are
 declared in import-safe `research_configuration.py` and re-exported by

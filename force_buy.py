@@ -40,6 +40,7 @@ from execution_agent import (
 )
 from telegram_notifier import TelegramNotifier
 from broker_positions import BrokerPositionError, require_no_short_positions
+import trading_control
 
 # ── Load .env if present (for local runs) ─────────────────────────────────────
 if os.path.exists(".env"):
@@ -107,6 +108,8 @@ def _place_buy(
 
     Returns a result dict on success, None on skip/fail.
     """
+    if not trading_control.entries_allowed():
+        return None
     ticker     = trigger["ticker"]
     try:
         require_no_short_positions(ib, acct)
@@ -174,7 +177,12 @@ def _place_buy(
     except BrokerPositionError as exc:
         print(f"BUY SAFETY BLOCK: {exc}")
         return None
-    trade = ib.placeOrder(contract, order)
+    try:
+        with trading_control.entry_submission():
+            trade = ib.placeOrder(contract, order)
+    except trading_control.EntryDisabled as exc:
+        print(f"NEW real buy blocked for {ticker}: {exc}; protective exits continue.")
+        return None
     print(f"   ✅ BUY order placed: {shares} × {ticker} @ LIMIT ${limit_price:.2f}")
 
     # Wait for fill (up to 90s)
@@ -267,6 +275,8 @@ def _place_buy(
 
 
 def main():
+    if not trading_control.entries_allowed():
+        return
     print("=" * 55)
     print("   FORCE BUY — Manual buy trigger (no time gate)")
     print("=" * 55)

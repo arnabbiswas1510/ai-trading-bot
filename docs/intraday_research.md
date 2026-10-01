@@ -25,9 +25,12 @@ history from before recording began.
    job, which also archives private saved comparisons.
 4. Apply the delivered patch and deploy the web and execution images through
    the existing pipeline. Leave the GitHub repository Actions variable
-   `TRADING_RUNTIME_MODE` unset or set it to `observe`: deployment stops the
-   execution agent **before** pulling images, then starts the independent
-   observer, shadow worker and dashboard. The gateway is not recreated. Observer and execution
+   `TRADING_RUNTIME_MODE` unset or set it to `observe`: deployment starts real
+   protective execution alongside the independent observer, shadow worker and
+   dashboard. New real buys require the separate dashboard permission, initially
+   OFF; neither `observe` nor `live` grants it. The gateway is not recreated.
+   See [trading control](trading_control.md) and
+   `decisions/2026-10-01_dashboard-live-entry-control.md`. Observer and execution
    spools live at `/app/logs/intraday_observer.sqlite3` and
    `/app/logs/intraday_capture.sqlite3`, respectively, in the persistent logs
    mount. Never share a spool between running collectors.
@@ -36,10 +39,11 @@ history from before recording began.
    price coverage or starting protection is an error, not an empty account.
 
 The migration is **not applied automatically** by deploying the code.
-**Observation-only mode does not manage positions.** Existing broker-held
-orders are untouched and can fill, but the stopped trading agent does not run
-Prove-It monitoring, EOD exits, protective-order repair, new buys or ledger
-reconciliation. Check account state and broker protection before relying on it.
+**New real buys OFF means protect-only, not an idle execution agent.** Real
+Prove-It monitoring, protective exits, order repair and ledger reconciliation
+continue. The observer itself never manages positions. Existing broker-held
+orders remain live and can fill; the switch does not cancel them. Check the
+separate execution-agent status and broker protection before relying on it.
 
 ## Independent observer
 
@@ -79,8 +83,8 @@ exit means the diagnostic was not successful; retained local events do not
 prove cloud persistence. Normal continuous operation omits `--once`.
 
 The observer's health ID is `intraday-observer`; the embedded recorder retains
-`execution-agent`. The dashboard shows both instead of treating the stopped
-trader's old heartbeat as the active collector's status.
+`execution-agent`. The dashboard shows each collector separately; an observer
+heartbeat never stands in for the real execution agent's status.
 
 Observer records are labelled `capture_mode=observer`, `replay_ready=false`.
 They are useful for later execution audits and price-path research, but they
@@ -257,7 +261,8 @@ activity still rejects the comparison even if it occurred overnight.
 
 ## Automatic comparisons and data window
 
-In explicit live runtime mode with `INTRADAY_AUTO_COMPARE=true`, the web service checks hourly and saves at
+With `INTRADAY_AUTO_COMPARE=true`, the web service checks hourly for recorded
+decision frames, independently of real-entry permission, and saves at
 most one automatic attempt per week over up to 30 calendar days ending in the
 preceding week. Insufficient data produces a saved rejection, not a strategy
 recommendation. Manual requests support up to 93 calendar days by default, with
@@ -291,7 +296,7 @@ that must not have informed the parameter choice. Schema 2 records actual-accoun
 decisions; schema 3 identifies shadow inputs and their hypothetical checkpoint
 provenance. Raw observer bundles, synthetic cash-only examples, gaps and
 unsupported activity remain rejected. The decision-only worker supplies the
-missing inputs while real trading is stopped; observation without that worker
+missing inputs while new real buys are disabled; observation without that worker
 still cannot calibrate the strategy.
 
 Keep private inputs and output files outside the repository. A candidate file

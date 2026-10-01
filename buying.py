@@ -14,6 +14,7 @@ from ib_insync import IB, Stock, MarketOrder
 from execution_agent_ref import ea
 import decision_core as dc
 import intraday_capture as capture
+import trading_control
 
 def assert_schema_ok(client) -> bool:
     """Verify risk-rule columns exist. Returns False when new buys must be blocked.
@@ -277,6 +278,8 @@ def _earnings_blackout_days_until(next_earnings_date, today) -> int | None:
 @capture.capture_phase("buy")
 def run_market_open_buys(ib: IB):
     """Checks for daily breakout triggers and executes buy orders at market open."""
+    if not trading_control.entries_allowed():
+        return
     print("⏳ Running Market Open Buy checks...")
     client = ea.get_supabase_client()
 
@@ -627,7 +630,8 @@ def run_market_open_buys(ib: IB):
             order.account = ea.get_ibkr_account(ib)
             
             print(f"   Submitting Market Order for {shares} shares of {ticker}...")
-            trade = ib.placeOrder(contract, order)
+            with trading_control.entry_submission():
+                trade = ib.placeOrder(contract, order)
             capture.record_order(trade, "market_buy_submitted")
 
             print(f"   Waiting for fill on {shares} shares of {ticker}...")
@@ -798,6 +802,9 @@ def run_market_open_buys(ib: IB):
                 slot_used=slot_used, max_slots=ea.MAX_POSITIONS
             )
 
+        except trading_control.EntryDisabled as permission_err:
+            print(f"NEW real buy blocked for {ticker}: {permission_err}; protective exits continue.")
+            return
         except Exception as order_err:
             ea.notifier.notify_exception(f"run_market_open_buys() — execution_agent.py", order_err)
             print(f"❌ Failed to execute order for {ticker}: {order_err}")

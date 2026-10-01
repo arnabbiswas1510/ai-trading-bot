@@ -2,6 +2,16 @@
 
 The complete gate stack a trigger must clear before an order reaches the market.
 
+**Operator permission comes first.** The dashboard's **Real trading control**
+switch stores `live_entries_enabled`, initially false. OFF blocks automatic and
+manual new real buys and discretionary replacement rotations; it does not stop
+real protective exits. The permission is checked before evaluation and again
+under a shared storage lock at order submission. Missing, invalid or inaccessible
+control storage blocks new entries. ON only permits the normal gate stack below;
+it is not an instruction to buy immediately. Hypothetical entry decisions do not
+read this real-money permission. See [trading control](trading_control.md) and
+`decisions/2026-10-01_dashboard-live-entry-control.md`.
+
 The decision-only research worker reads the same entry/sizing settings from
 import-safe `research_configuration.py`; `execution_agent` re-exports those
 settings for live callers. Defaults are unchanged. The shared
@@ -12,7 +22,8 @@ closed rather than buying on unusable inputs. See
 
 **Source:** `buying.py` — `run_market_open_buys()`, executed once at 09:30 ET
 (re-exported through `execution_agent`).
-Manual equivalent: `force_buy.py`.
+Manual equivalent: `force_buy.py`. Manual replacements in `rotate_positions.py`
+also require live-entry permission before selling an existing holding.
 
 **Decision core:** the *decision* itself — ranking, the per-trigger gate ladder,
 and position sizing — lives in the pure, I/O-free module `decision_core.py`.

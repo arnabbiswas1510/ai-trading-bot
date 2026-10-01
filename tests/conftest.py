@@ -26,6 +26,20 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+@pytest.fixture(autouse=True)
+def isolated_entry_control(monkeypatch, tmp_path):
+    """Legacy strategy tests explicitly permit entries in an isolated local store.
+
+    No test may inherit operator permission or touch the deployment control file.
+    Permission-specific tests can switch this store off or remove it.
+    """
+    import trading_control
+    path = tmp_path / "trading-control.sqlite3"
+    monkeypatch.setenv("TRADING_CONTROL_PATH", str(path))
+    assert "error" not in trading_control.set_entries_enabled(True)
+    return path
+
+
 # ── Cross-module constant/function patching ───────────────────────────────────
 
 @contextlib.contextmanager

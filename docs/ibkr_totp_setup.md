@@ -77,8 +77,9 @@ Save and exit (Ctrl+X → Y → Enter)
 
 Apply the delivered patch and push from the operator's machine. Keep
 `TRADING_RUNTIME_MODE`, the GitHub repository Actions variable, unset or
-`observe`. The pipeline stops `execution-agent` and starts the independent
-observer, shadow worker and dashboard; it does not recreate an already-running
+`observe`. The pipeline starts `execution-agent` for real protection alongside the
+independent observer, shadow worker and dashboard. New real buys require the
+dashboard's persistent permission, initially OFF; it does not recreate an already-running
 gateway. Apply all three research migrations and configure the cloud watchdog
 as described in `docs/intraday_research.md`.
 Real secrets remain on the production host, never in the patch.
@@ -114,11 +115,12 @@ docker logs intraday-observer -f
 ```
 
 Check **Backtester -> Recorded intraday research** for the observer's recent
-heartbeat, snapshots and errors. Collection does not mean risk management is
-running: existing broker orders remain, but bot-enforced exits are stopped.
-Starting live trading requires separate operator approval and explicit
-`TRADING_RUNTIME_MODE=live`. See `docs/intraday_research.md` and
-`decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
+heartbeat, snapshots and errors. Check the separate **Real trading control**
+panel for the execution agent's recent acknowledgment and broker connectivity.
+The agent runs protective exits even with new buys OFF. Starting new real buys
+requires the authenticated dashboard switch, not `TRADING_RUNTIME_MODE=live`.
+See `docs/trading_control.md`, `docs/intraday_research.md` and
+`decisions/2026-10-01_dashboard-live-entry-control.md`.
 
 ---
 
@@ -136,8 +138,8 @@ If both show normal operation, the TOTP automation is working end-to-end.
 
 ## When the gateway does NOT recover — the loud disconnect alert
 
-This section describes **live mode only**. In observation-only mode the
-execution agent is stopped and cannot send these alerts. The observer reports
+This section applies with new real buys either ON or OFF: the execution agent
+stays running for real protection. The observer separately reports
 connection failures through its logs, persisted capture gaps and dashboard
 health; do not mistake an observer heartbeat for active risk management.
 

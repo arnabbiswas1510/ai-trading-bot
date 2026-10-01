@@ -28,13 +28,13 @@ jobs:
           # tooling and the scrubbed template, but DO NOT run the resolver here:
           # rendering .env is a manual, operator-validated step (see the SSH
           # script's closing note and decisions/2026-09-27_bitwarden-secret-resolution.md).
-          source: "docker-compose.yml,scripts/deploy_runtime.sh,scripts/render_env.sh,scripts/render_env.py,.env.template"
+          source: "docker-compose.yml,scripts/deploy_runtime.sh,scripts/restart_6am.sh,scripts/render_env.sh,scripts/render_env.py,.env.template"
           target: "/home/pom/docker/ai-trading-bot"
 
       - name: Deploy new images to server via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
-          # Only an explicit repository-variable opt-in may restart live trading.
+          # Compatibility label only; the dashboard's persisted control gates entries.
           TRADING_RUNTIME_MODE: ${{ vars.TRADING_RUNTIME_MODE || 'observe' }}
           EXPECTED: ${{ github.event.workflow_run.head_sha || github.sha }}
         with:
@@ -50,7 +50,7 @@ jobs:
             cd /home/pom/docker/ai-trading-bot
 
             echo "=== Ensuring secret-resolution tooling is executable ==="
-            chmod +x scripts/render_env.sh scripts/render_env.py 2>/dev/null || true
+            chmod +x scripts/deploy_runtime.sh scripts/restart_6am.sh scripts/render_env.sh scripts/render_env.py
             # NOTE: .env is NOT rendered automatically. render_env.sh regenerates
             # .env from Bitwarden + .env.template; running it unattended here would
             # overwrite any hand-tuned host .env before it can be diffed. The

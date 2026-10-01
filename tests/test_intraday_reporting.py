@@ -669,35 +669,55 @@ def test_actual_frozen_shadow_evaluation_can_be_archived_and_displayed(records):
     assert "same reproduced hypothetical portfolio" in result["body"]
 
 
-def test_live_mode_does_not_expect_stopped_collectors_or_falsely_claim_recovery(monkeypatch):
+@pytest.mark.parametrize("mode", ["observe", "live"])
+def test_compatibility_modes_supervise_workers_and_require_evidence_for_recovery(monkeypatch, mode):
     now = at("2026-09-30T10:00")
-    assert reporting.health_failures(now, None, None, None, None, runtime_mode="live") == {}
-    incident = {"id": "prior", "issue_key": "shadow-progress", "status": "open"}
+    assert "shadow-progress" in reporting.health_failures(now, None, None, None, None, runtime_mode=mode)
+    incident = {"id": "prior", "issue_key": "shadow-progress", "status": "open",
+                "body": "Prior shadow progress failure"}
     store = MemoryStore({
         reporting.STATE: {"scheduler": {"id": "scheduler", "started_on": "2026-09-30"}},
         reporting.INCIDENTS: {"prior": incident},
     })
     telegram, issues = FakeTelegram(), FakeIssues()
-    monkeypatch.setattr(reporting, "load_health", lambda _: pytest.fail("live mode does not expect collectors"))
-    result = reporting.run(store, telegram, issues, now, runtime_mode="live")
-    assert result["runtime_mode"] == "live"
-    assert result["collection_monitoring"] == "paused_intentionally"
-    assert not telegram.sent and not issues.rows
+    health = healthy(now)
+    health["shadow_output"] = None
+    monkeypatch.setattr(reporting, "load_health", lambda _: health)
+    with pytest.raises(reporting.CollectionAttention):
+        reporting.run(store, telegram, issues, now, runtime_mode=mode)
+    assert "shadow-progress" in issues.rows
     assert store.rows[reporting.INCIDENTS]["prior"]["status"] == "open"
+    health["shadow_output"] = healthy(now)["shadow_output"]
+    result = reporting.run(store, telegram, issues, now, runtime_mode=mode)
+    assert result["runtime_mode"] == mode
+    assert result["collection_monitoring"] == "expected"
+    assert store.rows[reporting.INCIDENTS]["prior"]["status"] == "resolved"
+    assert not issues.rows
 
 
-def test_live_mode_keeps_historical_reporting_but_labels_intentional_pause(monkeypatch):
+@pytest.mark.parametrize("mode", ["observe", "live"])
+def test_reports_expect_continuous_research_without_claiming_live_entry_permission(monkeypatch, mode):
     now = at("2026-09-30T17:00")
     store = MemoryStore({reporting.STATE: {"scheduler": {"id": "scheduler", "started_on": "2026-09-30"}}})
     telegram, issues = FakeTelegram(), FakeIssues()
-    monkeypatch.setattr(reporting, "load_health", lambda _: pytest.fail("must not supervise stopped workers"))
-    reporting.run(store, telegram, issues, now, runtime_mode="live")
+    monkeypatch.setattr(reporting, "load_health", lambda _: healthy(now))
+    reporting.run(store, telegram, issues, now, runtime_mode=mode)
     row = store.rows[reporting.REPORTS]["daily:2026-09-30"]
-    assert row["payload"]["runtime_mode"] == "live"
-    assert row["payload"]["expected_services"] == []
-    assert "observer/shadow intentionally stopped" in row["body"]
+    assert row["payload"]["runtime_mode"] == mode
+    assert row["payload"]["expected_services"] == ["intraday-observer", "shadow-worker"]
+    assert "observer + shadow always expected" in row["body"]
+    assert "Live entry permission is controlled separately in the dashboard" in row["body"]
+    assert "real trading disabled" not in row["body"]
     assert "No calibrated recommendation" in row["body"]
     assert not issues.rows
+
+
+@pytest.mark.parametrize("mode", ["observe", "live"])
+def test_rejected_reports_still_expect_both_research_workers(mode):
+    period = {"id": "daily:2026-09-30", "report_kind": "daily",
+              "period_start": "2026-09-30", "period_end": "2026-09-30"}
+    row = reporting.rejected_report(period, at("2026-09-30T17:00"), ValueError("bad evidence"), mode)
+    assert row["payload"]["expected_services"] == ["intraday-observer", "shadow-worker"]
 
 
 def test_unknown_runtime_mode_is_not_silently_treated_as_disabled():

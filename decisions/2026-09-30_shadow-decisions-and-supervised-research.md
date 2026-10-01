@@ -1,7 +1,12 @@
 # Decision-only portfolio simulation and supervised research
 
 Date: 2026-09-30
-Status: Accepted
+Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md); shadow accounting and supervision remain accepted.
+
+> **2026-10-01:** Only the mutually exclusive runtime selection below is replaced.
+> The real risk manager, observer and shadow worker now run together. Disabling
+> new real entries does not disable real protective exits or hypothetical
+> decisions. Research remains separate from real balances and trade history.
 
 ## Context
 

@@ -165,7 +165,7 @@ def health_failures(now, observer, shadow, snapshot, quotes, shadow_output=None,
     """Heartbeat alone cannot prove broker, quote or shadow output progress."""
     if runtime_mode not in ("observe", "live"):
         raise ReportingError("Unsupported TRADING_RUNTIME_MODE; expected observe or live")
-    if runtime_mode == "live" or not expected_market(now):
+    if not expected_market(now):
         return {}
     failures = {}
     if not observer or not fresh(observer.get("last_seen_at"), now):
@@ -431,10 +431,6 @@ def build_report(period, events, shadow_events, observer, now, calibration=None,
               "contribution_concentration": None,
               "performance_scope": "Unavailable until a complete validated shadow portfolio export exists."}
     warnings = []
-    if runtime_mode == "live":
-        warnings.append("Observer/shadow are intentionally stopped in the current LIVE mode. "
-                        "Missing observations do not by themselves imply a service outage; "
-                        "this mode label is not a historical mode audit.")
     if (coverage["sessions_without_quotes"] or coverage["gaps_over_10min"]
             or coverage["broker_gaps_over_10min"]):
         warnings.append("Collection is incomplete: missing sessions or quote/broker gaps over 10 minutes.")
@@ -475,8 +471,8 @@ def build_report(period, events, shadow_events, observer, now, calibration=None,
             }
     payload = {"schema": 1, "hypothetical": True, "period": period,
                "runtime_mode": runtime_mode,
-               "expected_services": ["intraday-observer", "shadow-worker"] if runtime_mode == "observe" else [],
-               "mode_scope": "Scheduler configuration at report generation; not a historical mode audit.",
+               "expected_services": ["intraday-observer", "shadow-worker"],
+               "mode_scope": "Compatibility label only; live entry permission is dashboard-controlled and not read by research.",
                "generated_at": now.isoformat(), "coverage": coverage, "shadow": shadow,
                "calibration": calibration_info, "evidence_warnings": warnings,
                "human_review_required": True,
@@ -491,10 +487,8 @@ def render_report(period, payload):
     def shown(value):
         return "unavailable" if value is None else str(value)
     lines = [LABEL, f"{period['report_kind'].upper()} {period['period_start']} — {period['period_end']}",
-             "Runtime at report generation: " + payload.get("runtime_mode", "observe").upper() +
-             ("; observer + shadow expected; real trading disabled."
-              if payload.get("runtime_mode", "observe") == "observe"
-              else "; observer/shadow intentionally stopped; their health checks are paused."),
+             "Compatibility runtime label: " + payload.get("runtime_mode", "observe").upper() +
+             "; observer + shadow always expected. Live entry permission is controlled separately in the dashboard.",
              f"Source sessions with quotes: {coverage['sessions_with_quotes']}/{coverage['sessions_expected']}; "
              f"complete quote frames {coverage['complete_quote_frames']}/{coverage['quote_frames']}; "
              f"broker snapshots {coverage['complete_broker_snapshots']}/{coverage['broker_snapshots']}.",
@@ -556,7 +550,7 @@ def rejected_report(period, now, error, runtime_mode="observe"):
                     "not zero. Human review is required; no live changes are authorized.",
             "payload": {"schema": 1, "hypothetical": True, "period": period,
                         "runtime_mode": runtime_mode,
-                        "expected_services": ["intraday-observer", "shadow-worker"] if runtime_mode == "observe" else [],
+                        "expected_services": ["intraday-observer", "shadow-worker"],
                         "generated_at": now.isoformat(), "coverage": None, "shadow": None,
                         "calibration": {"available": False, "recommendation_status": "none", "reason": reason},
                         "evidence_warnings": [reason], "human_review_required": True,
@@ -602,8 +596,6 @@ def _attempt_notification(errors, operation, *args, **kwargs):
 
 def monitor(store, telegram, issues, now, health, runtime_mode="observe"):
     failures = health_failures(now, **health, runtime_mode=runtime_mode)
-    if runtime_mode == "live":
-        return {}, []
     existing = {r["issue_key"]: r for r in store.select(
         INCIDENTS, {"select": "*", "status": "eq.open"})}
     errors = []
@@ -669,9 +661,7 @@ def run(store, telegram, issues, now, runtime_mode="observe"):
     if store.rpc("claim_intraday_reporting", worker) is not True:
         return {"leased_elsewhere": True, "runtime_mode": runtime_mode}
     try:
-        health = (load_health(store) if runtime_mode == "observe" else {
-            "observer": None, "shadow": None, "snapshot": None, "quotes": None,
-            "shadow_output": None, "shadow_decision": None})
+        health = load_health(store)
         failures, errors = monitor(store, telegram, issues, now, health, runtime_mode)
         state = _one(store, STATE, {"id": "eq.scheduler"})
         if not state:
@@ -737,7 +727,7 @@ def run(store, telegram, issues, now, runtime_mode="observe"):
                                       "incident alerts are persisted and delivered")
         return {"reports_delivered": completed, "remaining_reports": len(outstanding) - len(completed),
                 "runtime_mode": runtime_mode,
-                "collection_monitoring": "expected" if runtime_mode == "observe" else "paused_intentionally"}
+                "collection_monitoring": "expected"}
     finally:
         store.rpc("release_intraday_reporting", worker)
 
@@ -754,7 +744,7 @@ def main(env=None, http=requests, now=None):
         if not result.get("leased_elsewhere"):
             fallback_alert(issues, telegram, "watchdog",
                            LABEL + "\nRECOVERED: independent reporting sweep succeeded. "
-                           "Collection recovery is assessed only in OBSERVE mode during expected market hours.",
+                           "Collection recovery is assessed during expected market hours, independently of live entry permission.",
                            recovery=True)
         print(json.dumps(result))
         return 0

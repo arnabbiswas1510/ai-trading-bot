@@ -15,8 +15,10 @@ from fmp_client import FMPClient
 from pricing import resolve_position_price
 from commissions import enrich_trades, summarize_realized
 import intraday_service
+from trading_control_api import router as trading_control_router
 
 app = FastAPI(title="CAN SLIM Trading Bot API")
+app.include_router(trading_control_router)
 
 # Configure CORS
 app.add_middleware(

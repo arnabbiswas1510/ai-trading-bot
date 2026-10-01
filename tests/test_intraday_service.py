@@ -277,8 +277,12 @@ def test_export_never_accepts_initial_cash_override(monkeypatch):
     builder.assert_called_once_with([], "2026-09-29", "2026-09-29")
 
 
-def test_auto_reviews_only_closed_prior_week_and_deduplicates(client, monkeypatch):
-    monkeypatch.setenv("TRADING_RUNTIME_MODE", "live")
+@pytest.mark.parametrize("mode", [None, "observe", "live"])
+def test_auto_reviews_only_closed_prior_week_and_deduplicates(client, monkeypatch, mode):
+    if mode is None:
+        monkeypatch.delenv("TRADING_RUNTIME_MODE", raising=False)
+    else:
+        monkeypatch.setenv("TRADING_RUNTIME_MODE", mode)
     today = dt.datetime.now(service.NY).date()
     monday = today - dt.timedelta(days=today.weekday())
     prior = monday - dt.timedelta(days=3)
@@ -298,14 +302,9 @@ def test_auto_reviews_only_closed_prior_week_and_deduplicates(client, monkeypatc
     assert submit.call_count == 1
 
 
-@pytest.mark.parametrize("mode", [None, "observe"])
-def test_actual_account_auto_review_does_not_run_in_observation_mode(client, monkeypatch, mode):
-    if mode is None:
-        monkeypatch.delenv("TRADING_RUNTIME_MODE", raising=False)
-    else:
-        monkeypatch.setenv("TRADING_RUNTIME_MODE", mode)
-    monkeypatch.setattr(service.config, "INTRADAY_AUTO_COMPARE", True)
-    get_client = Mock(side_effect=AssertionError("Observer data must not launch an actual-account comparison"))
+def test_disabled_auto_review_does_not_query_research(client, monkeypatch):
+    monkeypatch.setattr(service.config, "INTRADAY_AUTO_COMPARE", False)
+    get_client = Mock(side_effect=AssertionError("Disabled automatic comparison must not query"))
     monkeypatch.setattr(service, "get_client", get_client)
     service.automatic_review()
     get_client.assert_not_called()

@@ -14,6 +14,7 @@ from ib_insync import IB, Stock
 
 from execution_agent_ref import ea
 import intraday_capture as capture
+import trading_control
 
 @capture.capture_phase("monitor")
 def monitor_portfolio_intraday(ib: IB):
@@ -665,7 +666,8 @@ def monitor_portfolio_intraday(ib: IB):
         # 2. Rank & Replace Swaps (Day 7+ only)
         # Uses live Mₜ (momentum_health_score) as the comparator.
         # Only runs for positions held >= 7 days that passed the Day 3 verdict.
-        if fresh_triggers and best_ticker and len(positions) >= ea.MAX_POSITIONS:
+        if (fresh_triggers and best_ticker and len(positions) >= ea.MAX_POSITIONS
+                and trading_control.entries_allowed()):
             for pos in positions:
                 ticker_m  = pos["ticker"]
                 days_held_rr = pos.get("days_held") or 0
@@ -755,9 +757,13 @@ def monitor_portfolio_intraday(ib: IB):
                     # the sell completes. A better exit price is not worth
                     # losing the entry it was taken for.
                     # See decisions/2026-08-19_smart-exit-for-discretionary-rules.md.
-                    sold = ea.execute_sell(ib, client, ticker_m, shares_rr, buy_price_rr,
-                                        buy_date_rr, buy_reason_rr, current_price_rr, reason,
-                                        pos_row=pos, market_regime=market_regime)
+                    if not trading_control.entries_allowed():
+                        break
+                    with trading_control.rotation_submission(ib) as rotation_ib:
+                        sold = ea.execute_sell(
+                            rotation_ib, client, ticker_m, shares_rr, buy_price_rr,
+                            buy_date_rr, buy_reason_rr, current_price_rr, reason,
+                            pos_row=pos, market_regime=market_regime)
                     if sold:
                         print("   Slot freed. Running buy loop to fill slot...")
                         ea.run_market_open_buys(ib)

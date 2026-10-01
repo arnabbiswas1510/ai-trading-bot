@@ -28,6 +28,38 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-10-01 - Replaced deployment-only trading permission
+
+**Replaced:** the mutually exclusive `TRADING_RUNTIME_MODE=observe|live`
+service-selection branches in `scripts/deploy_runtime.sh`, their expectations in
+`tests/test_deploy_runtime.py`, and the unconditional execution-agent startup path
+in `scripts/restart_6am.sh`. Reporting's live-mode research pause is replaced by
+continuous research supervision. The mutually exclusive Compose profiles and
+`backend/intraday_service.py:automatic_review()`'s live-label prerequisite belong
+to that replaced service-selection boundary. These were active paths: Supabase agent logs
+showed startup at 06:00 and real buy evaluation at 09:30 on October 1, despite
+the earlier observation-only deployment. The installed cron invocation itself
+could not be inspected because SSH was unavailable.
+
+The old observation deployment stopped real risk management, while an independent
+morning restart could restore buying. Permission now lives in persistent
+`trading_control.py` storage, separately from service startup. Both real protection
+and independent research remain running. The legacy mode name remains accepted
+for compatibility, not as permission to trade.
+
+The buy-now sentinel's skip-monitoring/sleep path in `execution_agent.py` is
+replaced by the normal protection cycle; requesting buys must not suppress real
+position management. Discretionary rotation is paused when new entries are
+disabled, rather than liquidating a real holding for a forbidden replacement.
+Protective exits are not retired or redirected into hypothetical accounting.
+`rotate_positions.py`'s manual liquidation path is likewise permission-gated;
+its actual protective sale primitives remain in their original modules.
+
+Restore the original paths with `git show b3b4746:<path>`. Reintroduction would
+require a demonstrated need for stopping all real protection plus a persistent
+entry-permission boundary covering every restart and order entry point.
+See `decisions/2026-10-01_dashboard-live-entry-control.md`.
+
 ## 2026-09-30 - Relocated strategy declarations and shared market-direction calculation
 
 **Relocated, not retired:** the active configuration declarations below moved
@@ -90,6 +122,12 @@ Recover it with `git show 4c6800e:.github/workflows/deploy_to_server.yml`.
 Do not restore unconditional startup. Explicit `TRADING_RUNTIME_MODE=live`
 provides the intentional live path after operator approval. See
 `decisions/2026-09-30_observer-and-calibration-harness.md`.
+
+> **2026-10-01 qualification:** The previous paragraph records the September 30
+> replacement, not current operating instructions. `TRADING_RUNTIME_MODE=live`
+> no longer authorizes entries. Persistent dashboard permission now controls
+> new real buys while protection and research run together; see the October 1
+> entry above and `decisions/2026-10-01_dashboard-live-entry-control.md`.
 
 ---
 

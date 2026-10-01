@@ -52,6 +52,7 @@ COPY config.py exit_rules.py exit_core.py daily_exit_sim.py trade_costs.py ./bac
 COPY decision_core.py cooling_off.py market_calendar.py intraday_replay.py ./backend/
 COPY trigger_audit.py intraday_capture.py ./backend/
 COPY shadow_engine.py ./backend/
+COPY trading_control.py ./backend/
 COPY shadow_inputs.py shadow_store.py research_configuration.py market_direction.py indicators.py ./backend/
 COPY research/live_rule_replay.py ./backend/research/live_rule_replay.py
 
