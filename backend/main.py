@@ -581,6 +581,20 @@ def export_intraday(start_date: datetime.date, end_date: datetime.date):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@app.get("/api/intraday/observations")
+def export_intraday_observations(start_date: datetime.date, end_date: datetime.date):
+    from fastapi.responses import JSONResponse
+    try:
+        bundle = intraday_service.export_observations(start_date, end_date)
+        return JSONResponse(bundle, headers={
+            "Content-Disposition": f'attachment; filename="intraday-observations-{start_date}-{end_date}.json"',
+        })
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except intraday_service.ResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/api/settings")
 def get_settings():
     try:

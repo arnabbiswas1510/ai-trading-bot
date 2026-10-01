@@ -38,6 +38,7 @@ services:
       - trading_bridge
 
   execution-agent:
+    profiles: ["live"]
     image: ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest
     container_name: execution-agent
     restart: unless-stopped
@@ -54,6 +55,29 @@ services:
       driver: json-file
       options:
         max-size: "10m"   # Docker json-file capped for live `docker logs` tailing
+        max-file: "3"
+    dns: *external-dns
+    networks:
+      - trading_bridge
+
+  intraday-observer:
+    profiles: ["observe"]
+    image: ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest
+    container_name: intraday-observer
+    command: ["python", "intraday_observer.py"]
+    restart: unless-stopped  # Resume after gateway downtime/reboot, unless explicitly stopped.
+    stop_grace_period: 90s
+    env_file:
+      - .env
+    environment:
+      - IB_GATEWAY_HOST=ib-gateway
+      - IB_GATEWAY_PORT=4000
+    volumes:
+      - /home/pom/docker/ai-trading-bot/logs:/app/logs
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
         max-file: "3"
     dns: *external-dns
     networks:
@@ -94,4 +118,3 @@ volumes:
     driver: local
   ib-gateway-settings:
     driver: local
-

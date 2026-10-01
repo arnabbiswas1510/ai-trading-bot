@@ -73,20 +73,21 @@ IBKR_TOTP_SECRET=JBSWY3DPEHPK3PXPJEZS4Y3PNVSSA5DP
 
 Save and exit (Ctrl+X → Y → Enter)
 
-### Step 8: Update docker-compose.yml (already coded — just needs to be pushed)
-Tell the agent: "I have the TOTP secret — add it to docker-compose and push"
+### Step 8: Deploy the configuration without resuming trading
 
-The agent will:
-1. Re-add `TWOFA_TOTP_SECRET=${IBKR_TOTP_SECRET}` to docker-compose.yml
-2. Commit and push
-3. The CD pipeline will deploy the updated config to your server
+Apply the delivered patch and push from the operator's machine. Keep
+`TRADING_RUNTIME_MODE`, the GitHub repository Actions variable, unset or
+`observe`. The pipeline stops `execution-agent` and starts the independent
+observer and dashboard; it does not recreate an already-running gateway.
+Real secrets remain on the production host, never in the patch.
 
 ### Step 9: Restart the gateway
 ```bash
-ssh root@192.168.1.2
-cd /home/pom/docker/trading
-git pull origin main
-docker compose stop ib-gateway execution-agent
+ssh -p 22 pom@192.168.1.2
+cd /home/pom/docker/ai-trading-bot
+docker compose --profile live stop execution-agent
+docker compose --profile observe stop intraday-observer
+docker compose stop ib-gateway
 docker compose up -d ib-gateway
 ```
 
@@ -104,17 +105,18 @@ IBC: TOTP code entered successfully
 IBC: Login completed
 ```
 
-### Step 10: Start execution agent
+### Step 10: Resume observation, not trading
 ```bash
-docker compose up -d execution-agent
-docker logs execution-agent -f
+TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh
+docker logs intraday-observer -f
 ```
 
-Expected first lines:
-```
-✅ Connected to IBKR Gateway successfully!
-💰 Cash balance synced from IBKR: $100,931.54
-```
+Check **Backtester -> Recorded intraday research** for the observer's recent
+heartbeat, snapshots and errors. Collection does not mean risk management is
+running: existing broker orders remain, but bot-enforced exits are stopped.
+Starting live trading requires separate operator approval and explicit
+`TRADING_RUNTIME_MODE=live`. See `docs/intraday_research.md` and
+`decisions/2026-09-30_observer-and-calibration-harness.md`.
 
 ---
 
@@ -124,13 +126,18 @@ Expected first lines:
 After the first weekend maintenance window (Fri ~11:45 PM ET), check Monday morning:
 ```bash
 docker logs ib-gateway --tail 30
-docker logs execution-agent --tail 20
+docker logs intraday-observer --tail 20
 ```
 If both show normal operation, the TOTP automation is working end-to-end.
 
 ---
 
 ## When the gateway does NOT recover — the loud disconnect alert
+
+This section describes **live mode only**. In observation-only mode the
+execution agent is stopped and cannot send these alerts. The observer reports
+connection failures through its logs, persisted capture gaps and dashboard
+health; do not mistake an observer heartbeat for active risk management.
 
 If IB Gateway gets stuck (e.g. a login/TOTP loop with `connection error No
 Internet connection`, or the API port accepting TCP but never completing the

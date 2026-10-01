@@ -22,15 +22,68 @@ history from before recording began.
 3. Configure the same name as a GitHub Actions secret for the weekly backup
    job, which also archives private saved comparisons.
 4. Apply the delivered patch and deploy the web and execution images through
-   the existing pipeline. The recorder spool lives at
-   `/app/logs/intraday_capture.sqlite3`, inside the execution agent's existing
-   persistent logs mount. Do not place it on an ephemeral container filesystem.
+   the existing pipeline. Leave the GitHub repository Actions variable
+   `TRADING_RUNTIME_MODE` unset or set it to `observe`: deployment stops the
+   execution agent **before** pulling images, then starts the independent
+   observer and dashboard. The gateway is not recreated. Observer and execution
+   spools live at `/app/logs/intraday_observer.sqlite3` and
+   `/app/logs/intraday_capture.sqlite3`, respectively, in the persistent logs
+   mount. Never share a spool between running collectors.
 5. Open **Backtester → Recorded intraday research**. Confirm a recent capture,
    recording health and recorded sessions. Missing migration, permissions,
    price coverage or starting protection is an error, not an empty account.
 
-The migration is **not applied automatically** by deploying the code. Existing
-open positions continue to be managed independently of research recording.
+The migration is **not applied automatically** by deploying the code.
+**Observation-only mode does not manage positions.** Existing broker-held
+orders are untouched and can fill, but the stopped trading agent does not run
+Prove-It monitoring, EOD exits, protective-order repair, new buys or ledger
+reconciliation. Check account state and broker protection before relying on it.
+
+## Independent observer
+
+The observer owns a separate IBKR connection (client ID `71` by default) and
+requests completed, account-scoped signed inventory, visible orders from all
+clients, account values and executions. Negative holdings are recorded as
+shorts, never filtered away. Fills retain execution IDs, observation times and
+commission availability; commission updates are separate observations, not
+additional executions to count twice.
+
+The connection uses `readonly=True`, but that SDK flag is **not** a broker
+permission boundary. A restricted broker interface also blocks SDK order
+submission, cancellation and binding. The observer imports no trading daemon
+and never writes portfolio positions, trade history or live settings.
+Dedicated read-only brokerage credentials remain stronger protection.
+
+On the production host, after applying the migration and provisioning secrets:
+
+```bash
+cd /home/pom/docker/ai-trading-bot
+TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh
+docker compose --profile observe logs -f intraday-observer
+```
+
+Docker's `unless-stopped` supervision resumes an enabled observer after reboot
+or failed reconnect attempts, while respecting an explicit stop. Each process
+allows three reconnect retries with a five-second delay; failures create gaps,
+not claims of continuous coverage. The gateway is never restarted by the
+observer. A disconnected gateway prevents broker observations; already accepted
+events remain in the disk spool and candidate recording has its own worker.
+
+For an isolated diagnostic, `python3 intraday_observer.py --once` requests one
+snapshot and waits up to 45 seconds for its cloud upload. Supply `--host`,
+`--port`, `--account` and `--spool` for that environment. Do not run it alongside
+another observer using the same client ID, spool or health identity. A nonzero
+exit means the diagnostic was not successful; retained local events do not
+prove cloud persistence. Normal continuous operation omits `--once`.
+
+The observer's health ID is `intraday-observer`; the embedded recorder retains
+`execution-agent`. The dashboard shows both instead of treating the stopped
+trader's old heartbeat as the active collector's status.
+
+Observer records are labelled `capture_mode=observer`, `replay_ready=false`.
+They are useful for later execution audits and price-path research, but they
+do not contain live buy/monitor decision inputs. The live-decision replay
+rejects them explicitly rather than inventing those inputs.
 
 ## Using the dashboard
 
@@ -50,8 +103,17 @@ Rejected runs retain their reason. Do not narrow or alter a dataset just to
 hide a recording gap or an unsupported trade. The JSON export preserves a
 replayable dataset only when the required inputs pass validation.
 
-The first interface tests one change, not every possible strategy. Neither
-manual nor automatic jobs can write live parameters or place orders.
+The dashboard comparison tests one change, not every possible strategy.
+Offline calibration is a separate workflow below. Neither manual nor automatic
+jobs can write live parameters or place orders.
+
+**Export raw observations** preserves evidence even when no replay is possible.
+It includes raw records, a SHA-256 content fingerprint, counts of dates/runs/
+quotes, known incomplete events, an estimated first retention expiry and the
+replay-input rejection reason. A raw bundle is not a validated strategy dataset.
+**Export recorded inputs** still requires the existing strict validation.
+Both exports contain private account information: store them securely and do
+not commit them or upload them to third-party systems.
 
 ## What is recorded
 
@@ -117,6 +179,91 @@ Keep evaluation data that was not used to select parameters. Examine losses
 and maximum account decline as well as profit, and whether one or two winners
 explain the difference. There is no automated “profitable enough” promotion.
 Every live change requires human approval.
+
+## Offline calibration: select first, evaluate later
+
+Use **Export recorded inputs** for two distinct full-session windows from the
+same account and recorded configuration. The earlier window is training data;
+the later *holdout* must not have informed the parameter choice. Inputs must be
+schema 2 actual-account datasets with continuous recorded decision coverage.
+Raw observer bundles, synthetic cash-only examples, gaps and unsupported
+activity are rejected. This workflow cannot yet calibrate the full strategy
+from observation-only periods that lack live decision inputs.
+
+Keep private inputs and output files outside the repository. A candidate file
+contains 1-32 explicitly named experiments; the recorded-configuration baseline
+is added automatically. For example, this is an **experiment definition**, not
+a recommendation to change live thresholds:
+
+```json
+{
+  "experiments": [
+    {"name": "without-veto", "disable_ai_veto": true},
+    {"name": "score70", "decision_config": {"min_trigger_score": 70}},
+    {"name": "no-scale-out", "exit_config": {"scale_out_enabled": false}}
+  ]
+}
+```
+
+Run from the repository using the Python environment that supports the replay:
+
+```bash
+python3 research/calibrate_intraday.py select \
+  /private/research/training.json /private/research/candidates.json \
+  --output /private/research/selection.json
+
+python3 research/calibrate_intraday.py evaluate \
+  /private/research/selection.json /private/research/holdout.json \
+  --output /private/research/evaluation.json
+```
+
+Replace `/private/research` with your secure local directory. No credentials or
+broker connection are needed. Output files are written atomically, and existing
+files are refused unless `--overwrite` is explicitly supplied.
+
+`select` ranks after-cost final account value against the simulated
+recorded-configuration baseline using **training data only**. Ties prefer no
+change. It freezes the winner, all tested candidates/rejections, configuration
+differences, source dataset fingerprint and replay-engine fingerprint.
+`evaluate` verifies that plan and runs only the recorded baseline and frozen
+winner on the holdout, never a new sweep. The holdout must be strictly later,
+including quote/snapshot observation timestamps; account, configuration, costs
+and engine must remain compatible. Do not relabel inputs to bypass a rejection.
+
+Supported experimental fields are deliberately limited to per-instance settings
+the replay actually uses:
+
+| Group | Fields | Accepted values |
+|---|---|---|
+| Top level | `disable_ai_veto` | Boolean; ranking and other gates remain intact |
+| `decision_config` | `min_trigger_score`, `min_pre_breakout_score`, `min_relaxed_trigger_score` | 0-100 |
+| `decision_config` | `min_vol_surge_gate` | 0-10 in the engine's ratio units |
+| `decision_config` | `max_pivot_extension`, `max_pivot_breakdown`, `max_pre_breakout_pivot_dist` | 0-0.2 as fractions |
+| `exit_config` | `scale_out_enabled` | Boolean |
+| `exit_config` | `scale_out_trigger_pct`, `scale_out_fraction` | 0.005-0.5 and 0.01-0.99, respectively |
+| `exit_config` | `armed_exit_deadline_hours` | 0.25-24 hours |
+
+These are research input bounds, not changed production defaults. Shared
+Prove-It bands, the profit-trail ladder, power-hold rules, slots/sizing, costs,
+cooling-off and rotation are not exposed as tunable fields. Unsupported
+overrides, duplicate names, non-finite numbers and unknown fields are errors.
+
+Reports show completed **positions**, not individual partial-sale rows; distinct
+sessions; after-cost account change including holdings; sampled peak-to-trough
+decline; realised losses; and contributions from individual tickers. Removing
+the top one/three ticker contributions is an attribution sensitivity check,
+not a new simulation with replacement trades. Window results cannot be summed
+into a continuous portfolio because each starts from its own recorded account.
+
+Fewer than 30 completed positions produces an exploratory-sample warning, not
+an automatic rejection or approval gate. More candidate trials increase the
+chance of finding a lucky winner. File fingerprints detect accidental changes,
+not prior human inspection of holdout data; reusing the holdout for new choices
+invalidates its independence. The tool never declares a strategy approved or
+profitable, writes settings, or switches deployment back to live mode.
+
+See `decisions/2026-09-30_observer-and-calibration-harness.md` for why these
+boundaries are required.
 
 ## Storage and credentials
 

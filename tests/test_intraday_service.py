@@ -185,6 +185,48 @@ def test_status_never_claims_missing_heartbeat_is_healthy(client):
     assert status["sessions"] == []
 
 
+def test_status_separates_active_observer_from_stopped_trader(client):
+    client.rows["intraday_capture_health"] = [
+        {"id": "execution-agent", "last_seen_at": "2026-01-01T00:00:00+00:00",
+         "last_error": "old error", "config": {}},
+        {"id": "intraday-observer", "last_seen_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+         "config": {"capture_mode": "observer", "enabled": True}},
+    ]
+    result = service.status()
+    assert result["collector_id"] == "intraday-observer"
+    assert result["capture_mode"] == "observer"
+    assert result["heartbeat_stale"] is False
+    assert result["collectors"][1]["heartbeat_stale"] is True
+    assert result["raw_export_available"] and result["export_available"]
+
+
+def test_raw_observer_export_preserves_unreplayable_evidence_and_rejection(client):
+    event = dict(id="observation", run_id="observer-run", sequence=1, session="2026-09-29",
+                 kind="broker_snapshot", occurred_at="2026-09-29T15:00:00+00:00",
+                 payload={"capture_mode": "observer", "complete": False,
+                          "position_quantities": [{"ticker": "SHIP", "position": -1004}]})
+    client.rows["intraday_capture_events"] = [event]
+    result = service.export_observations("2026-09-29", "2026-09-29")
+    assert result["records"] == [event]
+    assert result["format"] == "intraday-observation-bundle-v1"
+    assert len(result["records_sha256"]) == 64
+    assert result["coverage"]["incomplete_or_gap_event_ids"] == ["observation"]
+    assert result["replay_input_validation"]["status"] == "rejected"
+    assert "observer-only" in result["replay_input_validation"]["reason"]
+    assert all(c.operation == "select" for c in client.calls)
+
+
+def test_raw_export_route_returns_attachment_without_requiring_strategy_readiness(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    export = Mock(return_value={"format": "intraday-observation-bundle-v1", "records": []})
+    monkeypatch.setattr(service, "export_observations", export)
+    response = TestClient(app).get("/api/intraday/observations?start_date=2026-09-29&end_date=2026-09-29")
+    assert response.status_code == 200
+    assert "attachment" in response.headers["content-disposition"]
+    export.assert_called_once()
+
+
 def test_database_errors_do_not_echo_secret_urls():
     query = Mock()
     query.execute.side_effect = RuntimeError("https://example.invalid/?apikey=do-not-echo")

@@ -46,6 +46,25 @@ These settings govern recording/research only, never live buy/sell thresholds.
 See [Recorded intraday research](intraday_research.md) and
 `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
 
+`TRADING_RUNTIME_MODE` is a **GitHub repository Actions variable**, not a secret
+or a value read from the host `.env`. It defaults to `observe`; only explicit
+`live` starts the trading agent. Observation deployments stop trading before
+image updates. The local helper accepts the same environment setting:
+`TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh`. A successful research report never
+changes this selection. See
+`decisions/2026-09-30_observer-and-calibration-harness.md`.
+
+The independent observer has CLI-only connection controls: `--client-id 71`,
+`--interval 300` seconds for broker snapshots, `--request-timeout 10`,
+`--persist-timeout 45` for `--once`, `--max-reconnects 3` and
+`--reconnect-delay 5`. It reads `IB_GATEWAY_HOST`, `IB_GATEWAY_PORT` and
+`IBKR_ACCOUNT`; ambiguous accounts fail rather than being guessed.
+Its default `--spool /app/logs/intraday_observer.sqlite3` is separate from
+the execution recorder, and its health ID is `intraday-observer`.
+`INTRADAY_SAMPLE_SECONDS` still controls the shared worker's candidate quotes.
+The observer is explicitly launched independently of `INTRADAY_CAPTURE_ENABLED`,
+which controls the recorder embedded in the execution agent.
+
 | Variable | Default | Purpose |
 |---|---|---|
 | `INTRADAY_CAPTURE_ENABLED` | `true` | Enable passive recording; failures do not disable risk monitoring |

@@ -238,6 +238,17 @@ def effective_config(ea):
     })
 
 
+def collector_config():
+    """Observation settings only; no execution-agent import or live rule claims."""
+    return {
+        "sample_seconds": INTRADAY_SAMPLE_SECONDS,
+        "retention_days": INTRADAY_RETENTION_DAYS,
+        "max_symbols": INTRADAY_MAX_SYMBOLS,
+        "max_quote_age_seconds": INTRADAY_MAX_QUOTE_AGE_SECONDS,
+        "git_commit": os.getenv("GIT_COMMIT", "unknown"),
+    }
+
+
 def start(ib, ea):
     global _recorder, _startup_error
     if not INTRADAY_CAPTURE_ENABLED:
@@ -298,8 +309,12 @@ def stop():
 
 
 class Recorder:
-    def __init__(self, config, *, spool=None, queue_size=2048):
-        self.config = config
+    def __init__(self, config, *, spool=None, queue_size=2048,
+                 health_id="execution-agent", mode="execution"):
+        self.config = (config if mode == "execution" else
+                       {**config, "capture_mode": mode, "mode": mode, "replay_ready": False})
+        self.health_id = health_id
+        self.mode = mode
         self.run_id = str(uuid.uuid4())
         self.sequence = 0
         self.lock = threading.Lock()
@@ -326,6 +341,7 @@ class Recorder:
         self.next_error_log = 0
         self.stats_loaded = False
         self.snapshot_job_cursor = 0
+        self.last_uploaded_sequence = 0
 
     def error(self, message):
         """Producer-safe state only: never acquire a logging handler or do I/O."""
@@ -347,6 +363,9 @@ class Recorder:
 
     def _event(self, kind, payload, event_id=None):
         """Called under the short sequence lock, never during disk/network I/O."""
+        if self.mode != "execution":
+            payload = {**payload, "capture_mode": self.mode,
+                       "mode": self.mode, "replay_ready": False}
         self.sequence += 1
         occurred = now()
         return {"id": event_id or str(uuid.uuid4()), "run_id": self.run_id,
@@ -368,7 +387,7 @@ class Recorder:
         return event
 
     def start(self):
-        self.thread = threading.Thread(target=self.run, name="intraday-capture", daemon=True)
+        self.thread = threading.Thread(target=self.run, name=self.health_id, daemon=True)
         self.thread.start()
 
     def open_spool(self):
@@ -499,15 +518,20 @@ class Recorder:
             db.executemany("DELETE FROM pending WHERE id=?", [(r[0],) for r in rows])
             db.commit()
             self.last_persisted_at = now()
+            current = [json.loads(r[1]) for r in rows]
+            self.last_uploaded_sequence = max(
+                [self.last_uploaded_sequence] +
+                [e["sequence"] for e in current if e["run_id"] == self.run_id])
 
     def health(self, db, client):
         client.table("intraday_capture_health").upsert({
-            "id": "execution-agent", "last_seen_at": now(),
+            "id": self.health_id, "last_seen_at": now(),
             "last_persisted_at": self.last_persisted_at,
             "last_error": self.last_error, "error_at": self.error_at,
             "pending_events": (db.execute("SELECT count(*) FROM pending").fetchone()[0] if db else 0) + self.queue.qsize(),
             "dropped_events": self.dropped,
-            "config": {**self.config, "enabled": True, "sample_seconds": self.sample_seconds,
+            "config": {**self.config, "mode": self.mode,
+                       "enabled": True, "sample_seconds": self.sample_seconds,
                        "max_symbols": self.max_symbols, "retention_days": self.retention_days,
                        "max_quote_age_seconds": self.max_quote_age,
                        "max_spool_events": self.max_spool_events,

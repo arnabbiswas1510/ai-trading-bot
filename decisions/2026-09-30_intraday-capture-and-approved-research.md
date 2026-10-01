@@ -1,7 +1,13 @@
 # Record intraday evidence and compare strategies from the actual account
 
 Date: 2026-09-30
-Status: Accepted
+Status: Accepted - deployment and calibration scope extended by
+`2026-09-30_observer-and-calibration-harness.md`
+
+> **2026-09-30:** An independent observer can collect while trading is stopped;
+> it does not claim to capture live decisions. Offline frozen-selection and
+> holdout calibration extends the original single-variant interface. The
+> dashboard AI-veto comparison and human-approval boundary remain unchanged.
 
 ## Context
 

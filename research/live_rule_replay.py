@@ -616,6 +616,7 @@ class _Replay:
         self.brackets = []
         self.commission = self.slippage = 0.0
         self.closed_positions = 0
+        self.position_sales = []
         self.initial_equity = (data["initial_state"]["account"]["net_liquidation"]
                                if self.recorded else data["initial_cash"])
         self.equity_curve = []
@@ -654,6 +655,11 @@ class _Replay:
         # again. Decimal prevents a spurious negative/positive sign at exact zero.
         net = float(Decimal(str(gross)) - Decimal(str(entry_fee))
                     - Decimal(str(fill["commission"])))
+        self.position_sales.append(dict(
+            ticker=ticker, buy_date=pos.get("buy_date"),
+            sell_date=self.now.isoformat(), shares=shares,
+            partial=partial, net_profit_loss=net,
+        ))
         # NY timestamps preserve the shared cooldown helper's local-date boundary.
         timestamp = self.now.astimezone(NY).isoformat()
         self.ledger.sales.append(dict(
@@ -881,6 +887,7 @@ class _Replay:
                 drawdown = max(drawdown, (peak - mark["equity"]) / peak * 100)
             result.update(initial_equity=self.initial_equity, equity_curve=self.equity_curve,
                           max_drawdown_pct=drawdown, closed_position_count=self.closed_positions,
+                          position_sales=copy.deepcopy(self.position_sales),
                           sessions_count=len({e["session"] for e in self.data["events"]}),
                           initial_positions=copy.deepcopy(self.data["initial_positions"]))
         return result

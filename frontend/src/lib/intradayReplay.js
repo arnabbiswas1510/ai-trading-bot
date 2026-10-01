@@ -1,7 +1,8 @@
-export function recordedSessions(sessions) {
+export function recordedSessions(sessions, includeIncomplete = false) {
   if (!Array.isArray(sessions)) return [];
   return sessions.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row?.session)
-    && finiteNumber(row.frames) > 0).sort((a, b) => a.session.localeCompare(b.session));
+    && (finiteNumber(row.frames) > 0 || (includeIncomplete && Number.isFinite(Date.parse(row.first_at)))))
+    .sort((a, b) => a.session.localeCompare(b.session));
 }
 
 export function finiteNumber(value) {
@@ -12,8 +13,8 @@ export function maxReplayDays(value) {
   return Number.isInteger(value) && value > 0 ? value : 93;
 }
 
-export function replayValidation(sessions, start, end, maxDays) {
-  const dates = new Set(recordedSessions(sessions).map((row) => row.session));
+export function replayValidation(sessions, start, end, maxDays, raw = false) {
+  const dates = new Set(recordedSessions(sessions, raw).map((row) => row.session));
   if (!dates.size) return 'No recorded sessions yet. Capture must collect point-in-time inputs first.';
   if (!dates.has(start) || !dates.has(end)) return 'Select both dates from recorded sessions.';
   if (start > end) return 'End session must be on or after the start session.';
@@ -22,7 +23,7 @@ export function replayValidation(sessions, start, end, maxDays) {
     return `Each comparison is limited to ${limit} calendar days to bound worker memory. Evaluate the retained 12 months as multiple windows, each starting from its own actual recorded account snapshot.`;
   }
   const selected = sessions.find((row) => row.session === start);
-  if (selected?.initial_snapshot != null) return snapshotValidation(selected.initial_snapshot);
+  if (!raw && selected?.initial_snapshot != null) return snapshotValidation(selected.initial_snapshot);
   return null;
 }
 

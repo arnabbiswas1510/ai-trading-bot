@@ -1,11 +1,13 @@
 """Bounded, persisted research jobs. There is deliberately no live-setting writer."""
 import asyncio
 import datetime as dt
+import hashlib
 import json
 import logging
 import os
 import threading
 import uuid
+from collections import Counter
 from zoneinfo import ZoneInfo
 
 from supabase import create_client
@@ -102,23 +104,40 @@ def load_records(start_date, end_date):
     return records
 
 
+def _collector_health(row):
+    settings = row.get("config") or {}
+    last_seen = row.get("last_seen_at")
+    stale = (not last_seen or
+             (dt.datetime.now(dt.timezone.utc) -
+              dt.datetime.fromisoformat(last_seen.replace("Z", "+00:00"))).total_seconds()
+             > max(900, config.INTRADAY_SAMPLE_SECONDS * 3))
+    return {
+        "id": row["id"], "capture_mode": settings.get("capture_mode", "live"),
+        "last_seen_at": last_seen, "latest_capture_at": row.get("last_persisted_at"),
+        "heartbeat_stale": stale, "latest_error": row.get("last_error"),
+        "pending_events": row.get("pending_events", 0),
+        "dropped_events": row.get("dropped_events", 0),
+    }
+
+
 def status():
     _flush_terminal_updates()
     client = get_client()
     health = _query(client.table("intraday_capture_health").select("*")
-                    .eq("id", "execution-agent").limit(1))
+                    .order("last_seen_at", desc=True).limit(20))
     sessions = _query(client.table("intraday_capture_sessions").select("*")
                      .order("session", desc=True).limit(366))
     runs = _query(client.table("intraday_replay_runs").select(
         "id,created_at,status,start_date,end_date,summary,error,automatic")
                   .order("created_at", desc=True).limit(20))
+    health = [row for row in health if row["id"] in ("execution-agent", "intraday-observer")]
+    health.sort(key=lambda row: dt.datetime.fromisoformat(row["last_seen_at"].replace("Z", "+00:00"))
+                if row.get("last_seen_at") else dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+                reverse=True)
+    collectors = [_collector_health(row) for row in health]
     h = health[0] if health else {}
     settings = h.get("config") or {}
-    last_seen = h.get("last_seen_at")
-    stale = (not last_seen or
-             (dt.datetime.now(dt.timezone.utc) -
-              dt.datetime.fromisoformat(last_seen.replace("Z", "+00:00"))).total_seconds()
-             > max(900, config.INTRADAY_SAMPLE_SECONDS * 3))
+    stale = collectors[0]["heartbeat_stale"] if collectors else True
     return {
         "enabled": settings.get("enabled", config.INTRADAY_CAPTURE_ENABLED),
         "retention_days": settings.get("retention_days", config.INTRADAY_RETENTION_DAYS),
@@ -130,8 +149,52 @@ def status():
         "pending_events": h.get("pending_events", 0),
         "dropped_events": h.get("dropped_events", 0),
         "sessions": sessions, "runs": runs,
+        "collector_id": h.get("id"), "collectors": collectors,
+        "capture_mode": settings.get("capture_mode", "live") if health else "unknown",
+        "export_available": True, "raw_export_available": True,
         "max_replay_days": config.INTRADAY_REPLAY_MAX_DAYS,
         "approval_policy": "Research only. Human approval required for every live change.",
+    }
+
+
+def export_observations(start_date, end_date):
+    """Archive evidence even when it cannot support a strategy replay."""
+    records = load_records(start_date, end_date)
+    counts = Counter(row["kind"] for row in records)
+    quotes = [q for row in records if row["kind"] == "quote_sample"
+              for q in row["payload"].get("quotes", [])]
+    gaps = [row["id"] for row in records
+            if row["kind"] == "capture_gap" or row["payload"].get("complete") is False]
+    try:
+        build_dataset(records, start_date, end_date)
+        validation = {"status": "passed", "reason": "Inputs validated; a simulation may still reject unsupported activity."}
+    except ValueError as exc:
+        validation = {"status": "rejected", "reason": str(exc)}
+    canonical = json.dumps(records, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    oldest = min(dt.datetime.fromisoformat(row["occurred_at"].replace("Z", "+00:00")) for row in records)
+    return {
+        "format": "intraday-observation-bundle-v1",
+        "start_date": str(start_date), "end_date": str(end_date),
+        "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "records_sha256": hashlib.sha256(canonical).hexdigest(),
+        "records": records,
+        "coverage": {
+            "record_count": len(records), "event_kinds": dict(sorted(counts.items())),
+            "distinct_sessions": len({row["session"] for row in records}),
+            "distinct_runs": len({row["run_id"] for row in records}),
+            "quote_observations": len(quotes),
+            "quoted_symbols": sorted({q["ticker"] for q in quotes}),
+            "incomplete_or_gap_event_ids": gaps,
+        },
+        "replay_input_validation": validation,
+        "estimated_first_raw_expiry_at": (oldest + dt.timedelta(days=config.INTRADAY_RETENTION_DAYS)).isoformat(),
+        "limitations": [
+            "Raw observations are evidence, not a simulated strategy return or a guarantee of continuous coverage.",
+            "Observer-only captures lack live buy/monitor decision inputs; do not invent those inputs.",
+            "Export separately validated replay inputs for calibration; this raw bundle is not a schema-2 replay dataset.",
+            "Expiry is an estimate using this server's retention setting; preserve this private export securely.",
+            "No live changes are authorized by this report.",
+        ],
     }
 
 

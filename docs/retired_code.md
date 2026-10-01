@@ -30,6 +30,22 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-09-30 - Unconditional live-agent startup during deployment
+
+The deployment sequence in `.github/workflows/deploy_to_server.yml` no longer
+unconditionally removes and starts `execution-agent`. Runtime selection is
+relocated into `scripts/deploy_runtime.sh`: observation mode stops trading
+before image updates and selects only the read-only observer. The old path was
+active in production; installing an unrelated research update could therefore
+restart trading that the operator had deliberately stopped.
+
+Recover it with `git show 4c6800e:.github/workflows/deploy_to_server.yml`.
+Do not restore unconditional startup. Explicit `TRADING_RUNTIME_MODE=live`
+provides the intentional live path after operator approval. See
+`decisions/2026-09-30_observer-and-calibration-harness.md`.
+
+---
+
 ## 2026-09-30 - Share-only reconciliation and scale-out resizing after unexplained fills
 
 `reconcile_with_ibkr()` in `reconciliation.py` no longer overwrites the ledger's

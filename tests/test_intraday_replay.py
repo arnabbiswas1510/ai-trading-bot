@@ -79,6 +79,12 @@ def first(records, kind):
     return next(r for r in records if r["kind"] == kind)
 
 
+def test_observer_data_cannot_masquerade_as_live_decision_capture(records):
+    records[0]["payload"]["capture_mode"] = "observer"
+    with pytest.raises(CaptureError, match="observer-only data lacks live decision inputs"):
+        build_dataset(records, DAY, DAY)
+
+
 def test_identical_actual_start_book_cash_and_source_labelled_fills(records):
     original = copy.deepcopy(records)
     dataset = build_dataset(records, DAY, DAY)

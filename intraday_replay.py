@@ -548,6 +548,9 @@ def _build_dataset(records, start_date, end_date):
         _require(all(isinstance(r[key], str) and r[key] for key in ("id", "run_id", "kind")),
                  "capture id/run_id/kind must be nonempty strings")
         _require(isinstance(r["payload"], dict), "capture payload must be an object")
+        _require(r["payload"].get("capture_mode") != "observer",
+                 "observer-only data lacks live decision inputs; export raw observations "
+                 "for analysis, not a strategy replay")
     _require(len({r["run_id"] for r in selected}) == 1,
              "multiple recorder runs in selected window; split window at restart and take a fresh actual snapshot")
     selected.sort(key=lambda r: r["sequence"])

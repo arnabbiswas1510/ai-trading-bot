@@ -12,6 +12,8 @@ See `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 | "Would a different *exit rule* have made my **actual** trades better?" | **Exit replay** (`research/exit_rule_replay.py`) |
 | "Does an entry/ranking/exit idea hold up across a large universe?" | **Research harnesses** (`research/*_bt.py`) |
 | "Is a strategy backtest result **real**, or a lucky window / one outlier?" | **Validation harness** (`research/strategy_validate.py`) |
+| "Which explicit candidate wins on earlier recorded inputs, and how does that frozen choice do later?" | **Offline calibration** (`research/calibrate_intraday.py`), with separate validated actual-account datasets |
+| "What happened while the trading agent was stopped?" | **Independent observer** and dashboard raw-observation export; no invented live decisions or performance result |
 
 > **Which strategy backtester?** Both use current exit-rule primitives.
 > `research/strategy_backtest.py` and `backend/backtester.py` (the dashboard
@@ -33,6 +35,15 @@ resetting the real portfolio. See [capture setup and operation](intraday_researc
 That initialized, source-labelled mode is distinct from the schema-v1
 cash-only offline example below. Missing initial protection or price history
 remains a rejection; the UI is not a mechanism for bypassing those safeguards.
+
+Independent observation is operational evidence, not full decision replay.
+Use the raw-observation export to retain it even when it cannot be replayed.
+Use separately validated earlier and later recorded-input datasets for the
+offline calibration workflow. The selected candidate is frozen before later
+evaluation; the later dataset is a *holdout*, meaning it was not used to choose
+the candidate. Reports never apply settings and never authorize restarting
+trading. See [the workflow](intraday_research.md) and
+`decisions/2026-09-30_observer-and-calibration-harness.md`.
 
 `research/live_rule_replay.py` is an offline portfolio replay, not a connection
 to IBKR and not a replacement trading daemon. It calls the shared entry gates

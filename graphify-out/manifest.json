@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "backend/main.py": {
-    "mtime": 1790803573.7685504,
-    "ast_hash": "5dea0d1a30d895caa0a6d6369c040741",
+    "mtime": 1790824217.3259017,
+    "ast_hash": "27ae3154b25a128718125606401a789e",
     "semantic_hash": ""
   },
   "backend/screener.py": {
@@ -265,8 +265,8 @@
     "semantic_hash": ""
   },
   ".github/workflows/deploy_to_server.yml": {
-    "mtime": 1790562787.0478368,
-    "ast_hash": "7f35e3fb1c45feb46115941f96f9d528",
+    "mtime": 1790824204.161627,
+    "ast_hash": "31601a1255e04004c4b0695ed797e72f",
     "semantic_hash": ""
   },
   ".github/workflows/docker_build_push.yml": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790823026.972983,
-    "ast_hash": "80e3e8ffa1accb90da26ce1e6ca47974",
+    "mtime": 1790824370.1404636,
+    "ast_hash": "83318615d7c03a7a29fb294b4b680be5",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -295,8 +295,8 @@
     "semantic_hash": ""
   },
   "docker-compose.yml": {
-    "mtime": 1788722727.4270327,
-    "ast_hash": "7e300d520c68e80e53e9e24d037f6ae1",
+    "mtime": 1790824307.0831363,
+    "ast_hash": "3b3e123b94458b3b567fc80b321eb5a7",
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1790822370.6228716,
-    "ast_hash": "cfcf940e60041db9180fe1321abc3da2",
+    "mtime": 1790824370.1584988,
+    "ast_hash": "0b29877f91f5dc5f686a6d1d9dcba4e0",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -315,8 +315,8 @@
     "semantic_hash": ""
   },
   "docs/ibkr_totp_setup.md": {
-    "mtime": 1788835383.464721,
-    "ast_hash": "7ed329c0bc38437da5dd4f29e860b129",
+    "mtime": 1790824407.9702146,
+    "ast_hash": "ca481ba710353b484e79a1acc1eb9e76",
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
@@ -900,8 +900,8 @@
     "semantic_hash": ""
   },
   "docs/retired_code.md": {
-    "mtime": 1790822959.249336,
-    "ast_hash": "b884f0a2b405ca3813b089906d2e6e13",
+    "mtime": 1790824341.7303808,
+    "ast_hash": "8ead7aa3c8ee47e7da10be2ac89cf03f",
     "semantic_hash": ""
   },
   "tests/test_dashboard_pricing.py": {
@@ -950,8 +950,8 @@
     "semantic_hash": ""
   },
   "docs/backtesting.md": {
-    "mtime": 1790803988.4054308,
-    "ast_hash": "0ee4ade4235831fde0c995e85f7b1f8e",
+    "mtime": 1790824341.80629,
+    "ast_hash": "02cfb33ad575e8c0ccab3d5a29fff930",
     "semantic_hash": ""
   },
   "tests/test_datasource_unavailable.py": {
@@ -1810,8 +1810,8 @@
     "semantic_hash": ""
   },
   "research/live_rule_replay.py": {
-    "mtime": 1790806591.3960795,
-    "ast_hash": "b7c2d07e58c3e2364cb38c166667b0c5",
+    "mtime": 1790824233.3301632,
+    "ast_hash": "8309d800da94bdf86dd2c2079fccbb53",
     "semantic_hash": ""
   },
   "tests/fixtures/live_rule_replay_example.json": {
@@ -1850,33 +1850,33 @@
     "semantic_hash": ""
   },
   "backend/intraday_service.py": {
-    "mtime": 1790806321.1509984,
-    "ast_hash": "d5111fab581b41aa9dc9f6e03f2cf5f1",
+    "mtime": 1790824217.2981832,
+    "ast_hash": "dd73e7dfdb7c92a2b32307382bd27358",
     "semantic_hash": ""
   },
   "frontend/scripts/test-intraday-replay.mjs": {
-    "mtime": 1790804167.3204868,
-    "ast_hash": "e109f59218fb7ca1bdb4b4ebba0285f3",
+    "mtime": 1790824248.050745,
+    "ast_hash": "bc8649a48357f6e5d539b66bc4181ed6",
     "semantic_hash": ""
   },
   "frontend/src/components/IntradayReplayView.jsx": {
-    "mtime": 1790806028.2009692,
-    "ast_hash": "dac3cbf6210bd4c19daac5f8e1d4d090",
+    "mtime": 1790824248.0419207,
+    "ast_hash": "cd3e03943bbd127a48848ba38d7f4b55",
     "semantic_hash": ""
   },
   "frontend/src/lib/intradayReplay.js": {
-    "mtime": 1790803784.682343,
-    "ast_hash": "b73d1928e85e8f3ef237e98403960a4e",
+    "mtime": 1790824248.0300434,
+    "ast_hash": "55f112cf0348b96323aed7d87f42d24a",
     "semantic_hash": ""
   },
   "intraday_capture.py": {
-    "mtime": 1790806970.0918684,
-    "ast_hash": "1afd2ba4371d7275d3a43beabd672823",
+    "mtime": 1790824217.3818154,
+    "ast_hash": "3d84443442020b83bcbe950d34c42e77",
     "semantic_hash": ""
   },
   "intraday_replay.py": {
-    "mtime": 1790806931.3330233,
-    "ast_hash": "7803936298743c7f506dd0e8c10922e1",
+    "mtime": 1790824217.3133817,
+    "ast_hash": "0661fb56818b296959998bece8f4e9f1",
     "semantic_hash": ""
   },
   "migrations/20260930_add_intraday_research.sql": {
@@ -1895,23 +1895,23 @@
     "semantic_hash": ""
   },
   "tests/test_intraday_replay.py": {
-    "mtime": 1790806966.6814423,
-    "ast_hash": "73f6f59393f2c5ac23bbefa5ce85e480",
+    "mtime": 1790824248.0639033,
+    "ast_hash": "9bef1b0472643e70b59296ff0dc7738d",
     "semantic_hash": ""
   },
   "tests/test_intraday_service.py": {
-    "mtime": 1790806321.1668477,
-    "ast_hash": "3204ab27090b0f79f227388ecfe4e61b",
+    "mtime": 1790824248.0732322,
+    "ast_hash": "4054ab62a0aa8cd0f8e37d4b21b6d1b2",
     "semantic_hash": ""
   },
   "decisions/2026-09-30_intraday-capture-and-approved-research.md": {
-    "mtime": 1790803988.3606591,
-    "ast_hash": "3cb0b0fba0af23c0643df227ecee9aaa",
+    "mtime": 1790824341.743258,
+    "ast_hash": "06312904ddb2dbb51f0c5a27545b9a5e",
     "semantic_hash": ""
   },
   "docs/intraday_research.md": {
-    "mtime": 1790808070.0207453,
-    "ast_hash": "fe964ae1b3e2a956918a7c320c6eebcf",
+    "mtime": 1790824500.286722,
+    "ast_hash": "5e806ec281276ec215d0e32b20de35e4",
     "semantic_hash": ""
   },
   "broker_positions.py": {
@@ -1937,6 +1937,41 @@
   "decisions/2026-09-30_broker-confirmed-sell-safety.md": {
     "mtime": 1790823027.0013967,
     "ast_hash": "41050eecc63b223b77539ea22d73fe09",
+    "semantic_hash": ""
+  },
+  "intraday_observer.py": {
+    "mtime": 1790824666.8841596,
+    "ast_hash": "7f7819817d87562b5999a09e50b29781",
+    "semantic_hash": ""
+  },
+  "research/calibrate_intraday.py": {
+    "mtime": 1790824548.1435592,
+    "ast_hash": "9269ff6787bd1c6620e77bff20d9ae0d",
+    "semantic_hash": ""
+  },
+  "scripts/deploy_runtime.sh": {
+    "mtime": 1790824204.1709251,
+    "ast_hash": "40326fad0343ea1fa390a9bd3858c62c",
+    "semantic_hash": ""
+  },
+  "tests/test_deploy_runtime.py": {
+    "mtime": 1790824236.0834403,
+    "ast_hash": "10eade118b49246882daae09f1afb9cd",
+    "semantic_hash": ""
+  },
+  "tests/test_intraday_calibration.py": {
+    "mtime": 1790824532.0621777,
+    "ast_hash": "b2ce7ae61833b8726ed7bf2d494a439c",
+    "semantic_hash": ""
+  },
+  "tests/test_intraday_observer.py": {
+    "mtime": 1790824666.8968227,
+    "ast_hash": "1595830641c324f458d4519daacd00d3",
+    "semantic_hash": ""
+  },
+  "decisions/2026-09-30_observer-and-calibration-harness.md": {
+    "mtime": 1790824341.7087114,
+    "ast_hash": "e4d0f0f4a32bc43ba54f7255bdb0a60c",
     "semantic_hash": ""
   }
 }

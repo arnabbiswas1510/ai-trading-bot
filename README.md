@@ -28,6 +28,16 @@ live strategy parameters. Deploy only after applying
 `INTRADAY_SUPABASE_KEY`. See [setup, data limits and retention](docs/intraday_research.md)
 and `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
 
+**Observation-only deployment is the default.** The independent observer
+collects broker state, orders, fills and candidate prices while `execution-agent`
+stays stopped. It does not place/cancel orders, repair positions or run bot exits.
+The Backtester page shows separate collector health and exports raw observations.
+Offline `research/calibrate_intraday.py` freezes a candidate on earlier validated
+decision inputs and evaluates it on separate later data; it never changes live
+parameters. Observer-only records do not replace missing live decision inputs.
+See `docs/intraday_research.md` and
+`decisions/2026-09-30_observer-and-calibration-harness.md`.
+
 **Unexpected-short safety:** broker-confirmed signed inventory, scoped to the
 selected account, is checked independently of cached position marks. An
 unexpected short or unavailable inventory blocks new buys and quarantines
@@ -572,7 +582,7 @@ cp .env.template .env        # copies the config shape; secret lines read `@bws`
 Secret values are **not** in the repo. In `.env.template` every credential line
 is the sentinel `KEY=@bws`, resolved from the Bitwarden Secrets Manager project
 `ai-trading-bot` at deploy time. The production host has no git checkout — the
-deploy workflow SCPs `render_env.sh`, `render_env.py` and `.env.template` onto it
+deploy workflow SCPs `render_env.sh`, `render_env.py`, `deploy_runtime.sh` and `.env.template` onto it
 alongside `docker-compose.yml`. To generate the real `.env` on the host, run:
 
 ```bash
@@ -595,11 +605,17 @@ then:
 
 
 ```bash
-docker compose up -d
+TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh
 ```
 
-Dashboard at `http://localhost:8000`. Verify the gateway is connected and reporting the
-expected account before the next market open.
+Dashboard at `http://localhost:8000`. The deployment defaults to observation,
+not trading. The GitHub repository Actions variable `TRADING_RUNTIME_MODE`
+accepts `observe` (default) or the explicit opt-in `live`; it is not a secret or
+a strategy parameter in `.env`. Unknown values abort before Docker actions.
+Observation mode stops the trader first, starts the observer and dashboard, and
+does not recreate the gateway. Bare `docker compose up -d` starts neither runtime
+because both have profiles. Inspect current positions and broker-held protection:
+the observer does not execute any bot-managed risk rules.
 
 Each open position expands into a **Position Journey** panel that states, without needing
 this document: which lifecycle phase the position is in (`Unproven` → `Proven` →
@@ -629,12 +645,14 @@ See `docs/sell_logic.md`, `decisions/2026-08-23_exit-detail-panel.md`,
 `decisions/2026-09-18_sell-reason-fill-derived-anchor.md`.
 
 ```bash
-docker compose logs -f execution-agent
+docker compose --profile observe logs -f intraday-observer
 ```
 
 ### Operational notes
 
-- **`READ_ONLY_API=no`** must be set on the gateway or orders will be silently rejected.
+- Live trading needs brokerage write permission; the observer does not. Its SDK
+  `readonly=True` flag is supplemented by application write guards, not a claim
+  that the shared gateway itself has read-only permissions.
 - If more than one account is visible under the login (live `U…` + paper `DU…`,
   or two live accounts), set `IBKR_ACCOUNT` explicitly. The agent trades and
   prices that account only and ignores any other. A second linked account also

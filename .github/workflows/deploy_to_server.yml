@@ -28,18 +28,24 @@ jobs:
           # tooling and the scrubbed template, but DO NOT run the resolver here:
           # rendering .env is a manual, operator-validated step (see the SSH
           # script's closing note and decisions/2026-09-27_bitwarden-secret-resolution.md).
-          source: "docker-compose.yml,scripts/render_env.sh,scripts/render_env.py,.env.template"
+          source: "docker-compose.yml,scripts/deploy_runtime.sh,scripts/render_env.sh,scripts/render_env.py,.env.template"
           target: "/home/pom/docker/ai-trading-bot"
 
       - name: Deploy new images to server via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          # Only an explicit repository-variable opt-in may restart live trading.
+          TRADING_RUNTIME_MODE: ${{ vars.TRADING_RUNTIME_MODE || 'observe' }}
+          EXPECTED: ${{ github.event.workflow_run.head_sha || github.sha }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: pom
           key: ${{ secrets.DEPLOY_KEY }}
           port: 2222
           timeout: 120s
+          envs: TRADING_RUNTIME_MODE,EXPECTED
           script: |
+            set -eu
             mkdir -p /home/pom/docker/ai-trading-bot
             cd /home/pom/docker/ai-trading-bot
 
@@ -51,16 +57,7 @@ jobs:
             # operator runs `scripts/render_env.sh` by hand, diffs, then recreates.
             # See decisions/2026-09-27_bitwarden-secret-resolution.md.
 
-            echo "=== Pulling latest images from GHCR ==="
-            docker compose pull execution-agent trading-bot
-
-            echo "=== Removing old container instances to prevent name conflicts ==="
-            docker compose rm -fs execution-agent trading-bot
-
-            echo "=== Starting ib-gateway only if not already running (--no-recreate prevents 2FA disruption) ==="
-            docker compose up -d --no-recreate ib-gateway > /dev/null 2>&1
-            sleep 5
-            docker compose up -d execution-agent trading-bot > /dev/null 2>&1
+            sh scripts/deploy_runtime.sh
 
             echo "=== Pruning log files older than 7 days ==="
             find /home/pom/docker/ai-trading-bot/logs \
@@ -72,12 +69,8 @@ jobs:
               2>/dev/null || true
 
             echo "=== Deployment complete ==="
-            docker inspect ib-gateway       --format 'ib-gateway:       {{.State.Status}} (restarts: {{.RestartCount}})'
-            docker inspect execution-agent  --format 'execution-agent:  {{.State.Status}} (restarts: {{.RestartCount}})'
-            docker inspect can-slim-trading-bot --format 'can-slim-trading-bot: {{.State.Status}} (restarts: {{.RestartCount}})'
 
             echo "=== Verifying the dashboard actually serves the deployed commit ==="
-            EXPECTED="${{ github.event.workflow_run.head_sha || github.sha }}"
             SERVED=""
             for i in $(seq 1 12); do
               SERVED=$(curl -fsS -m 5 http://localhost:8000/api/version 2>/dev/null \
@@ -94,4 +87,3 @@ jobs:
             else
               echo "OK: dashboard is serving $SERVED"
             fi
-            exit 0

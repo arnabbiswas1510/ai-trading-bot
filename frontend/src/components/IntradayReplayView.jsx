@@ -225,7 +225,7 @@ export default function IntradayReplayView() {
       if (controller.signal.aborted) return;
       setStatus(data);
       setStatusError('');
-      const sessions = recordedSessions(data.sessions);
+      const sessions = recordedSessions(data.sessions, true);
       const valid = (value) => sessions.some((row) => row.session === value);
       setStartDate((value) => valid(value) ? value : sessions[0]?.session ?? '');
       setEndDate((value) => valid(value) ? value : sessions.at(-1)?.session ?? '');
@@ -246,10 +246,11 @@ export default function IntradayReplayView() {
     };
   }, []);
 
-  const sessions = recordedSessions(status?.sessions);
+  const sessions = recordedSessions(status?.sessions, true);
   const coverage = captureCoverage(status?.sessions);
   const maxDays = maxReplayDays(status?.max_replay_days);
   const validation = replayValidation(sessions, startDate, endDate, maxDays);
+  const rawValidation = replayValidation(sessions, startDate, endDate, maxDays, true);
   const result = comparisonResult(run);
   const snapshotIssue = result ? resultSnapshotIssue(result) : null;
   const selectedSnapshot = sessions.find((session) => session.session === startDate)?.initial_snapshot;
@@ -292,20 +293,20 @@ export default function IntradayReplayView() {
     }
   }
 
-  async function exportCapture() {
-    if (validation) return;
+  async function exportCapture(raw = false) {
+    if (raw ? rawValidation : validation) return;
     const controller = new AbortController();
     actionController.current = controller;
     setBusy(true);
     setError('');
     try {
       const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
-      const data = await request(`/api/intraday/export?${params}`, { signal: controller.signal });
+      const data = await request(`/api/intraday/${raw ? 'observations' : 'export'}?${params}`, { signal: controller.signal });
       if (controller.signal.aborted) return;
       const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = `intraday-capture-${startDate}-${endDate}.json`;
+      link.download = `intraday-${raw ? 'observations' : 'capture'}-${startDate}-${endDate}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
@@ -336,6 +337,17 @@ export default function IntradayReplayView() {
       {status && (
         <section aria-label="Capture health" style={{ margin: '1.25rem 0' }}>
           <h4 style={rowStyle}><Activity size={16} />Capture health</h4>
+          <p style={muted}>Latest reporting collector: <strong>{status.collector_id ?? 'Not recorded'}</strong>
+            {' · '}Mode: {status.capture_mode ?? 'Unknown'}. A reporting observer does not mean the trading agent is running.</p>
+          {status.capture_mode === 'observer' && <p role="status" style={muted}>
+            Read-only observation is collecting account state, orders, fills, candidates and prices.
+            It does not execute or manufacture buy/monitor decisions. Export raw observations to preserve this evidence;
+            strategy replay requires separately validated decision inputs.
+          </p>}
+          {Array.isArray(status.collectors) && status.collectors.length > 1 && <details>
+            <summary>All collectors and their health</summary>
+            <pre style={{ ...muted, whiteSpace: 'pre-wrap' }}>{JSON.stringify(status.collectors, null, 2)}</pre>
+          </details>}
           <p style={muted}>
             Collection: <strong>{status.enabled === true ? 'Enabled' : status.enabled === false ? 'Disabled' : 'Unknown'}</strong>
             {' · '}Sample interval: {count(status.sample_seconds)} seconds
@@ -410,9 +422,15 @@ export default function IntradayReplayView() {
             {busy ? <div className="spinner" /> : <Play size={15} />}
             {busy ? 'Loading recorded research…' : 'Compare with / without D-grade veto'}
           </button>
-          {status?.export_available === true && <button type="button" className="btn btn-secondary" onClick={exportCapture}
+          {status?.export_available === true && <button type="button" className="btn btn-secondary" onClick={() => exportCapture()}
             disabled={busy || Boolean(validation) || Boolean(statusError)}><Download size={15} />Export recorded inputs</button>}
+          {status?.raw_export_available === true && <button type="button" className="btn btn-secondary" onClick={() => exportCapture(true)}
+            disabled={busy || Boolean(rawValidation) || Boolean(statusError)}><Download size={15} />Export raw observations</button>}
         </div>
+        <p style={muted}>Offline calibration: use separate earlier training and later holdout input exports with
+          {' '}<code>research/calibrate_intraday.py</code>. The holdout is data not used to select parameters.
+          Selection is frozen before evaluation; reports never update live rules. Raw observation exports remain available
+          when decision inputs are missing, but cannot be passed off as validated replay datasets.</p>
       </form>
       {error && <p role="alert" style={{ ...rowStyle, color: 'var(--color-down)', marginTop: '1rem' }}><ShieldAlert size={17} />{error}</p>}
       {run?.id && <p style={{ ...muted, marginTop: '0.75rem' }}>Saved run: {String(run.id)} · {run.status ?? 'completed'}</p>}

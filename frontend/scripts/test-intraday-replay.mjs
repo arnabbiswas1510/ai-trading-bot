@@ -18,6 +18,16 @@ const sessions = [
 ];
 const result = { baseline: { final_equity_net: 101000 }, variant: { final_equity_net: 101250 } };
 
+check('raw evidence exports allow observed sessions without replayable quote frames', () => {
+  const rows = [{ session: '2026-09-29', frames: 0, first_at: '2026-09-29T20:00:00Z',
+    initial_snapshot: { complete: false } }];
+  assert.deepEqual(recordedSessions(rows), []);
+  assert.equal(recordedSessions(rows, true).length, 1);
+  assert.equal(replayValidation(rows, '2026-09-29', '2026-09-29', 93, true), null);
+  assert.match(replayValidation(rows, '2026-09-29', '2026-09-29'), /No recorded sessions/);
+  assert.match(replayValidation(rows, '2026-09-28', '2026-09-29', 93, true), /Select both dates/);
+});
+
 check('recorded dates require real frames and are sorted without mutating status', () => {
   assert.deepEqual(recordedSessions(sessions).map((row) => row.session), ['2026-09-28', '2026-09-30']);
   assert.equal(sessions[0].session, '2026-09-30');
