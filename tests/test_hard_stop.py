@@ -122,8 +122,18 @@ class TestHardStopPrice:
 
 
 class TestPlaceProtectiveStops:
-    def _mock_ib(self):
+    def _mock_ib(self, ticker="DHT", shares=100, account="U123"):
         ib = MagicMock()
+        ib.isConnected.return_value = True
+        ib.RequestTimeout = 0
+        ib.managedAccounts.return_value = [account]
+        ib.client.clientId = 1
+        ib.reqPositions.return_value = [
+            SimpleNamespace(account=account, position=shares,
+                            contract=SimpleNamespace(symbol=ticker, secType="STK", conId=1))
+        ]
+        ib.reqAllOpenOrders.return_value = []
+        ib.openTrades.return_value = []
         # placeOrder(contract, order) -> a Trade whose .order is the order passed,
         # so the function can read back trailingPercent from the trail leg.
         ib.placeOrder.side_effect = lambda contract, order: SimpleNamespace(order=order)
@@ -132,7 +142,7 @@ class TestPlaceProtectiveStops:
 
     def test_places_two_oca_legs(self):
         ib = self._mock_ib()
-        contract = SimpleNamespace(symbol="DHT")
+        contract = SimpleNamespace(symbol="DHT", secType="STK", conId=1)
         group, confirmed = ea.place_protective_stops(
             ib, contract, shares=100, trail_pct=0.0494,
             hard_price=98.01, account="U123")
@@ -147,6 +157,8 @@ class TestPlaceProtectiveStops:
         assert trail.ocaType == hard.ocaType == 1
         assert trail.action == hard.action == "SELL"
         assert trail.tif == hard.tif == "GTC"
+        assert [order.transmit for order in orders] == [False, True]
+        assert trail.account == hard.account == "U123"
 
         # Correct sizing / prices.
         assert hard.auxPrice == 98.01
@@ -155,8 +167,8 @@ class TestPlaceProtectiveStops:
         assert round(confirmed, 4) == 0.0494
 
     def test_hard_price_rounded_to_cents(self):
-        ib = self._mock_ib()
-        contract = SimpleNamespace(symbol="ABC")
+        ib = self._mock_ib(ticker="ABC", shares=10, account="U1")
+        contract = SimpleNamespace(symbol="ABC", secType="STK", conId=1)
         ea.place_protective_stops(ib, contract, shares=10, trail_pct=0.07,
                                   hard_price=12.345, account="U1")
         hard = next(c.args[1] for c in ib.placeOrder.call_args_list

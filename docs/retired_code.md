@@ -30,6 +30,108 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-09-30 - Share-only reconciliation and scale-out resizing after unexplained fills
+
+`reconcile_with_ibkr()` in `reconciliation.py` no longer overwrites the ledger's
+share count merely because broker quantity differs. `execute_scale_out()` in
+`selling.py` no longer silently recomputes its fraction from a smaller holding
+before submission. These active paths could erase an unbooked partial sale and
+permit another scale-out: an offline case sold 9 of 30, then protection sold 5,
+then reconciliation reset the ledger to 16 without recording either execution.
+Whether this sequence occurred live is unknown.
+
+The mismatch now preserves the recorded lot and requires accounting review;
+scale-outs require exact quantity agreement before and after cancellation.
+Recover the old paths with `git show a608dd9:reconciliation.py` and
+`git show a608dd9:selling.py`. Restore automatic quantity correction only when
+validated executions or corporate-action evidence explain the adjustment and
+the accounting is recorded without allowing a repeated partial sale.
+See `decisions/2026-09-30_broker-confirmed-sell-safety.md` and
+`tests/test_sell_safety.py`.
+
+---
+
+## 2026-09-30 - Unscoped Flex aggregate as automatic closing authority
+
+`reconcile_with_ibkr()` in `reconciliation.py` no longer automatically archives
+a long using the aggregate returned by `fetch_trade_confirms_for_ticker()`.
+That report path combines symbol-matching sales without selected-account or
+current-lot time boundaries; its timezone-less timestamps cannot establish an
+exact entry/scale-out cutoff. Even a matching total quantity is insufficient
+evidence of the right round trip.
+
+The Flex fetch/parser in `flex_query_sync.py` is retained for diagnosis, not
+deleted. A nonempty unscoped result now leaves the ledger intact with an
+explicit manual-review alert instead of substituting a guessed quote.
+The fallback was active; whether it handled SHIP is unproven. The duplicate-sale
+regression shows that a 2,008-share aggregate cannot price a 1,004-share close.
+Recover the old assignment from `git show a608dd9:reconciliation.py`.
+Restore automatic use only after the report supplies validated account,
+contract, execution identities and timezone-aware current-lot boundaries.
+See `decisions/2026-09-30_broker-confirmed-sell-safety.md` and
+`tests/test_sell_safety.py`.
+
+---
+
+## 2026-09-30 - Unconfirmed sell replacement and independently transmitted exit legs
+
+The implementations of `cancel_ticker_sell_orders()` (`orders.py`) and
+`_cancel_existing_sells()` (`force_sell.py`) no longer treat a cancellation
+request as a confirmed cancellation or swallow cancellation failures.
+Manual managed exits inherit the same account-scoped protection. The behavior
+is relocated to `broker_positions.cancel_confirmed_sells()`, which blocks
+replacement on timeout, unknown state, or an order owned by another client.
+
+`place_protective_stops()` and `place_oca_exit()` no longer transmit the first
+leg independently or reuse timestamp-only group identifiers. Both legs are
+staged in a unique OCA group before transmission. All sell submission paths
+require fresh positive broker inventory, not only Supabase's recorded shares.
+`execute_sell()` no longer treats absence from a positive-only holdings map
+as sufficient proof of its own successful fill.
+
+These paths were active. The SHIP fill ledger proves two full disposals of one
+long, but the exact submission path and whether the cancellation/transmission
+races fired in that incident are unknown. The changes remove independently
+reproducible ways to create or conceal a short; they do not claim a recovered
+historical stack trace.
+
+Recover the original implementations with `git show a608dd9:orders.py`,
+`git show a608dd9:selling.py`, `git show a608dd9:force_sell.py`, and
+`git show a608dd9:managed_exit.py`. Related tests live in
+`tests/test_oca_helpers.py`, `tests/test_scale_out.py`,
+`tests/test_oca_managed_exit.py`, and `tests/test_hard_stop.py`.
+`managed_exit.archive()` no longer prices a close from the last symbol-matching
+fill or a quote, nor treats a negative holding as successfully flat. Its
+accounting is relocated to the own-execution validator in `force_sell.py`;
+`tests/test_manual_sell_safety.py` covers these manual paths.
+Restore the old behavior only if the broker provides an independently proven
+reduce-only guarantee and atomic replacement; ordinary stock SELL orders do
+not provide that guarantee.
+See `decisions/2026-09-30_broker-confirmed-sell-safety.md`.
+
+---
+
+## 2026-09-30 - Portfolio-only short detection (relocated)
+
+The `reconcile_with_ibkr()` short-alert branch that ran only when
+`ib.portfolio()` was populated is replaced by an account-scoped completed
+`reqPositions()` inventory check in `broker_positions.py`. The old fallback
+filtered `position > 0` before inspecting negatives, hiding shorts on
+multi-account logins. It was active; whether that alert ever fired is unknown.
+On September 30 the broker confirmed SHIP -1,004 while the database had no
+holdings. The fill ledger contains two 1,004-share sales against one purchase;
+the exact source of the second order remains unconfirmed.
+
+The alert is **relocated and strengthened**, not removed: unexpected shorts
+block new buys and quarantine reconciliation without closing positions or
+rewriting their accounting. Recover the old branch from
+`git show a608dd9:reconciliation.py` and its prior assumptions from
+`git show a608dd9:tests/test_reconcile.py`. Restore it only if every supported
+broker feed reliably exposes signed holdings and the fallback blind spot has
+been eliminated. See `decisions/2026-09-30_broker-confirmed-sell-safety.md`.
+
+---
+
 ## 2026-09-26 — Phase 1 backstop-slack widening (behaviour retired, constant kept)
 
 | | |

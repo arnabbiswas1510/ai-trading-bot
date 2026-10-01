@@ -85,8 +85,10 @@ def make_portfolio_item(symbol: str, position: int = 100,
     the IBKR valuation sync appear to work while asserting nothing meaningful.
     """
     item = MagicMock()
+    item.account = "U12941651"
     item.contract.symbol = symbol
     item.contract.secType = sec_type
+    item.contract.conId = int.from_bytes(symbol.encode(), "big")
     item.position = position
     item.averageCost = avg_cost
     item.marketPrice = avg_cost if market_price is None else market_price
@@ -117,7 +119,9 @@ def make_ib_mock(symbols: list | None = None, avg_cost: float = 100.0) -> MagicM
     ]
     ib.portfolio.return_value = items
     ib.positions.return_value = items          # ibkr_target_positions() reads this
-    ib.reqPositions.return_value = None
+    ib.reqPositions.side_effect = lambda: ib.positions()
+    ib.isConnected.return_value = True
+    ib.RequestTimeout = 0
     ib.managedAccounts.return_value = ["U12941651"]
     # reqPnLSingle default models "no live mark" (NaN), so items with
     # market_price=0.0 fall through build_ibkr_price_map() to the FMP fallback
@@ -129,10 +133,19 @@ def make_ib_mock(symbols: list | None = None, avg_cost: float = 100.0) -> MagicM
     ib.cancelPnLSingle.return_value = None
     ib.accountValues.return_value = []
     ib.sleep.return_value = None
-    ib.qualifyContracts.return_value = None
+    def qualify(*contracts):
+        for contract in contracts:
+            contract.conId = int.from_bytes(contract.symbol.encode(), "big")
+        return list(contracts)
+    ib.qualifyContracts.side_effect = qualify
     ib.placeOrder.return_value = MagicMock()
     ib.reqExecutions.return_value = []
     ib.openTrades.return_value = []   # No open SELL orders by default
+    ib.reqAllOpenOrders.side_effect = lambda: [
+        t for t in ib.openTrades()
+        if t.orderStatus.status not in ("Filled", "Cancelled", "ApiCancelled")
+    ]
+    ib.client.clientId = 1
     ib.cancelOrder.return_value = None
     return ib
 

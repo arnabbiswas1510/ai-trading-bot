@@ -28,6 +28,18 @@ parameter requires a code change.**
 
 TradingView requires no credentials.
 
+**Broker inventory safety is not optional.** Order safeguards and reconciliation
+request completed positions for the selected `IBKR_ACCOUNT`, with a fixed
+10-second request timeout (the connection's previous timeout is restored
+afterward). No environment variable disables the signed-inventory check.
+Open-order requests and cancellation acknowledgements also use fixed 10-second
+bounds. These are execution-safety deadlines, not trading thresholds or
+environment-overridable options. Unknown inventory or an unexpected short blocks
+new orders; reconciliation stops further balance/ledger writes rather than
+hiding the discrepancy. See
+`decisions/2026-09-30_broker-confirmed-sell-safety.md` and
+[sell logic](sell_logic.md).
+
 ## Intraday research recording
 
 These settings govern recording/research only, never live buy/sell thresholds.

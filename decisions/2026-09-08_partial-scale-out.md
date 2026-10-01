@@ -1,8 +1,20 @@
 # Partial Scale-Out — book a third of a winner at +4%
 
 **Date:** 2026-09-08
-**Status:** Accepted — PROVISIONAL; replay evidence under erratum (tuned on 33 closed trades; tracked for
+**Status:** Accepted — PROVISIONAL; execution safety superseded in part by
+`2026-09-30_broker-confirmed-sell-safety.md`; replay evidence under erratum (tuned on 33 closed trades; tracked for
 revisit in `decisions/provisional_decisions.json`, id `scaleout-4pct-33pct`)
+
+> **2026-09-30 — execution safety superseded in part by
+> `2026-09-30_broker-confirmed-sell-safety.md`:** cancel-first alone was not a
+> guarantee against overselling. Cancellation acknowledgement and a fresh
+> inventory check are now mandatory; protection restoration is blocked when
+> broker state is unknown or inconsistent. The fraction and gain trigger below
+> are unchanged.
+> The previously documented Tier-3 Flex fallback no longer automatically archives
+> a lot: its unscoped aggregate requires manual review. Scale-out timestamps now
+> come from actual executions, with an additional inventory check after
+> replacement protection settles.
 
 > **Erratum 2026-09-30 — DO NOT CITE the replay's scale-out deltas:** its target
 > search could credit a partial sale after the modelled full exit. The

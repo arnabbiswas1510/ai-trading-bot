@@ -7,6 +7,7 @@ position is left with no stop at all. Most of these tests exist to pin that
 down.
 """
 import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,37 @@ from conftest import patch_everywhere
 
 
 NY = ZoneInfo("America/New_York")
+
+
+def _broker(positions, account="U1"):
+    ib = MagicMock()
+    ib.isConnected.return_value = True
+    ib.RequestTimeout = 0
+    ib.client.clientId = 1
+    ib.managedAccounts.return_value = [account]
+    items = [
+        SimpleNamespace(
+            account=account, position=pos["shares"],
+            averageCost=pos["buy_price"], marketPrice=0.0,
+            contract=SimpleNamespace(symbol=pos["ticker"], secType="STK",
+                                     conId=int.from_bytes(pos["ticker"].encode(), "big")))
+        for pos in positions
+    ]
+    ib.positions.return_value = items
+    ib.portfolio.return_value = items
+    ib.reqPositions.side_effect = lambda: ib.positions()
+    ib.openTrades.return_value = []
+    ib.reqAllOpenOrders.side_effect = lambda: [
+        trade for trade in ib.openTrades()
+        if trade.orderStatus.status not in ("Filled", "Cancelled", "ApiCancelled")
+    ]
+    def qualify(*contracts):
+        for contract in contracts:
+            contract.conId = int.from_bytes(contract.symbol.encode(), "big")
+        return list(contracts)
+    ib.qualifyContracts.side_effect = qualify
+    ib.reqPnLSingle.return_value = SimpleNamespace(value=float("nan"), unrealizedPnL=float("nan"))
+    return ib
 
 
 def _trading_days_ago(n: int) -> str:
@@ -154,9 +186,11 @@ class TestLimitCap:
 
 class TestPlaceOca:
     def _place(self, limit=489.89, trail=0.025):
-        ib = MagicMock()
+        ib = _broker([_pos()], account="U123")
         contract = MagicMock()
         contract.symbol = "DELL"
+        contract.secType = "STK"
+        contract.conId = ib.positions()[0].contract.conId
         group, trades = execution_agent.place_oca_exit(ib, contract, 46, limit, trail, "U123")
         orders = [c.args[1] for c in ib.placeOrder.call_args_list]
         return group, orders
@@ -165,6 +199,8 @@ class TestPlaceOca:
         group, orders = self._place()
         assert len(orders) == 2
         assert {o.ocaGroup for o in orders} == {group}
+        assert [o.transmit for o in orders] == [False, True]
+        assert all(o.account == "U123" for o in orders)
 
     def test_both_legs_use_ocatype_1_cancel_with_block(self):
         # A cash account rejects two unblocked SELLs for the same shares, and a
@@ -191,6 +227,7 @@ class TestPlaceOca:
         _, orders = self._place(limit=None)
         assert len(orders) == 1
         assert orders[0].orderType == "TRAIL"
+        assert orders[0].transmit is True
 
 
 # ── get_oca_managed_tickers — the suspension guard ───────────────────────────
@@ -252,7 +289,7 @@ class TestLadderSuspension:
         pos = _pos()
         sb = MagicMock()
         sb.table.return_value.select.return_value.execute.return_value.data = [pos]
-        ib = _with_equity(MagicMock())
+        ib = _with_equity(_broker([pos], account="DU1234567"))
         ib.openTrades.return_value = []
 
         with patch("execution_agent.supabase", sb), \
@@ -274,7 +311,7 @@ class TestLadderSuspension:
         pos = _pos()
         sb = MagicMock()
         sb.table.return_value.select.return_value.execute.return_value.data = [pos]
-        ib = _with_equity(MagicMock())
+        ib = _with_equity(_broker([pos], account="DU1234567"))
         ib.openTrades.return_value = []
 
         with patch("execution_agent.supabase", sb), \
@@ -324,7 +361,7 @@ def _queue_sb(requests, positions):
 
 def _run_queue(requests, positions, price, hour=11, minute=30):
     sb = _queue_sb(requests, positions)
-    ib = MagicMock()
+    ib = _broker(positions)
     now = datetime.datetime(2026, 8, 18, hour, minute, tzinfo=NY)
     with patch("execution_agent.get_supabase_client", return_value=sb), \
          patch("execution_agent.get_live_price", return_value=price), \
@@ -471,7 +508,7 @@ class TestQueueBackstops:
             mdt.datetime.now.side_effect = lambda *a, **kw: now
             mdt.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
             mdt.timedelta, mdt.timezone = datetime.timedelta, datetime.timezone
-            execution_agent.process_exit_requests(MagicMock())
+            execution_agent.process_exit_requests(_broker([_pos()]))
         # Never mark FILLED on an unconfirmed sell — that would orphan the position.
         upd = sb._tables["exit_requests"].update
         assert not any(c.args[0].get("status") == "FILLED" for c in upd.call_args_list)
@@ -522,7 +559,7 @@ class TestQueueMarketMode:
             mdt.datetime.now.side_effect = lambda *a, **kw: now
             mdt.datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
             mdt.timedelta, mdt.timezone = datetime.timedelta, datetime.timezone
-            execution_agent.process_exit_requests(MagicMock())
+            execution_agent.process_exit_requests(_broker([_pos()]))
         upd = sb._tables["exit_requests"].update
         assert not any(c.args[0].get("status") == "FILLED" for c in upd.call_args_list)
 

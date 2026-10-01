@@ -2,7 +2,7 @@
 test_reconcile.py — Tests for reconcile_with_ibkr() four reconcile cases.
 
 Critical invariants:
-  - Uses ib.portfolio() NOT ib.positions() everywhere (Bug #5)
+  - Holdings use a completed account-scoped position request; portfolio supplies marks.
   - Case 2 sets high_water_mark = avg_cost on manual IBKR buy (Bug #4)
   - Uses averageCost attribute (PortfolioItem), NOT avgCost (Position)
   - Case 4 cash sync skips write when balance change < $1
@@ -161,10 +161,10 @@ class TestReconcileCase2:
 
 
 class TestReconcileCase3:
-    """Case 3: In both, share count differs → update Supabase."""
+    """Case 3: Unexplained quantity changes must preserve the recorded lot."""
 
-    def test_case3_updates_share_count_on_mismatch(self):
-        """IBKR has 150 shares, Supabase says 100 → update Supabase to 150."""
+    def test_case3_preserves_ledger_on_unexplained_mismatch(self):
+        """IBKR has 150 shares, Supabase says 100: do not invent lot accounting."""
         pos = make_position("AAPL", shares=100, buy_price=100.0)
         supabase = make_supabase_mock(portfolio=[pos])
 
@@ -174,15 +174,8 @@ class TestReconcileCase3:
 
         _reconcile(ib, supabase)
 
-        # Reconciliation now issues two distinct writes per position — the share
-        # correction and the IBKR valuation sync — so assert on the share payload
-        # specifically rather than on whichever call happened to be last.
-        share_writes = [
-            c[0][0] for c in supabase.table("portfolio_positions").update.call_args_list
-            if "shares" in c[0][0]
-        ]
-        assert share_writes, "Expected a share-count correction write"
-        assert share_writes[0]["shares"] == 150
+        supabase.table("portfolio_positions").update.assert_not_called()
+        assert pos["shares"] == 100
 
     def test_case3_no_update_when_shares_match(self):
         """Case 3: IBKR and Supabase both have 100 shares → no share-count write."""
@@ -448,21 +441,13 @@ class TestReconcileCase4:
 
 class TestReconcileUsesPortfolioNotPositions:
     """
-    Critical: when ib.portfolio() carries live marks (the single-account case),
-    reconcile_with_ibkr() must derive holdings from it and never fall back to
-    ib.positions() — a subscription call that can return empty and cause a false
-    "in sync". (Bug #5)
-
-    The one sanctioned exception is a MULTI-account login, where IBKR does not
-    serve portfolio() at all: build_ibkr_price_map() then reads ib.positions()
-    plus reqPnLSingle for marks. That path is covered separately; here we assert
-    the normal single-account case leaves positions() untouched.
+    Live portfolio marks remain available, but quantity comes from a completed
+    reqPositions request rather than the potentially stale portfolio cache.
     """
 
     def test_reconcile_calls_ib_portfolio_not_ib_positions(self):
         """
-        With a populated portfolio() (live marks), reconcile must ONLY call
-        ib.portfolio(), never ib.positions().
+        Request fresh inventory even when portfolio() already carries live marks.
         """
         supabase = make_supabase_mock(portfolio=[])
         ib = make_ib_mock(symbols=["AAPL"], avg_cost=100.0)
@@ -471,7 +456,7 @@ class TestReconcileUsesPortfolioNotPositions:
         _reconcile(ib, supabase)
 
         ib.portfolio.assert_called()
-        ib.positions.assert_not_called()
+        assert ib.reqPositions.call_count >= 2  # Initial inventory and pre-write revalidation.
 
 
 class TestReconcileBuyPriceDriftGuard:

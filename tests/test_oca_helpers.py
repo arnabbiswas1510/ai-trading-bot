@@ -39,57 +39,71 @@ class TestPlaceTrailingStop:
     """
 
     def test_places_exactly_one_trail_order(self):
-        ib = make_ib_mock()
+        ib = make_ib_mock(symbols=["NVDA"])
         contract = MagicMock()
         contract.symbol = "NVDA"
+        contract.secType = "STK"
+        contract.conId = ib.positions()[0].contract.conId
         execution_agent.place_trailing_stop(ib, contract, shares=100, stop_loss_pct=0.07)
         assert ib.placeOrder.call_count == 1
 
     def test_order_is_trail_type(self):
-        ib = make_ib_mock()
+        ib = make_ib_mock(symbols=["AAPL"])
         contract = MagicMock()
         contract.symbol = "AAPL"
+        contract.secType = "STK"
+        contract.conId = ib.positions()[0].contract.conId
         execution_agent.place_trailing_stop(ib, contract, shares=50, stop_loss_pct=0.07)
         placed_order = ib.placeOrder.call_args.args[1]
         assert getattr(placed_order, 'orderType', '') == 'TRAIL'
 
     def test_trailing_percent_correct(self):
-        ib = make_ib_mock()
+        ib = make_ib_mock(symbols=["MSFT"])
         contract = MagicMock()
         contract.symbol = "MSFT"
+        contract.secType = "STK"
+        contract.conId = ib.positions()[0].contract.conId
         execution_agent.place_trailing_stop(ib, contract, shares=80, stop_loss_pct=0.07)
         placed_order = ib.placeOrder.call_args.args[1]
         assert abs(placed_order.trailingPercent - 7.0) < 0.01
 
     def test_order_is_gtc(self):
-        ib = make_ib_mock()
+        ib = make_ib_mock(symbols=["TSLA"])
         contract = MagicMock()
         contract.symbol = "TSLA"
+        contract.secType = "STK"
+        contract.conId = ib.positions()[0].contract.conId
         execution_agent.place_trailing_stop(ib, contract, shares=30, stop_loss_pct=0.07)
         placed_order = ib.placeOrder.call_args.args[1]
         assert placed_order.tif == 'GTC'
 
     def test_order_is_sell(self):
-        ib = make_ib_mock()
+        ib = make_ib_mock(symbols=["CRWD"])
         contract = MagicMock()
         contract.symbol = "CRWD"
+        contract.secType = "STK"
+        contract.conId = ib.positions()[0].contract.conId
         execution_agent.place_trailing_stop(ib, contract, shares=20, stop_loss_pct=0.07)
         placed_order = ib.placeOrder.call_args.args[1]
         assert placed_order.action == 'SELL'
 
     def test_no_limit_order_placed(self):
-        ib = make_ib_mock()
+        ib = make_ib_mock(symbols=["META"])
         contract = MagicMock()
         contract.symbol = "META"
+        contract.secType = "STK"
+        contract.conId = ib.positions()[0].contract.conId
         execution_agent.place_trailing_stop(ib, contract, shares=40, stop_loss_pct=0.07)
         orders = [c.args[1] for c in ib.placeOrder.call_args_list]
         limit_placed = any(getattr(o, 'orderType', '') == 'LMT' for o in orders)
         assert not limit_placed, "No LimitOrder should ever be placed"
 
     def test_returns_group_string(self):
-        ib = make_ib_mock()
+        ib = make_ib_mock(symbols=["AMZN"])
         contract = MagicMock()
         contract.symbol = "AMZN"
+        contract.secType = "STK"
+        contract.conId = ib.positions()[0].contract.conId
         result = execution_agent.place_trailing_stop(ib, contract, shares=10, stop_loss_pct=0.07)
         # place_trailing_stop now returns (group_label, confirmed_trail_pct)
         assert isinstance(result, tuple) and len(result) == 2
@@ -105,7 +119,11 @@ class TestCancelTickerSellOrders:
     def _make_trade(self, symbol, action, status='Submitted'):
         t = MagicMock()
         t.contract.symbol = symbol
+        t.contract.secType = "STK"
+        t.contract.conId = int.from_bytes(symbol.encode(), "big")
         t.order.action = action
+        t.order.account = "U12941651"
+        t.order.clientId = 1
         t.orderStatus.status = status
         return t
 
@@ -113,9 +131,11 @@ class TestCancelTickerSellOrders:
         ib = make_ib_mock()
         trade = self._make_trade("AAPL", "SELL", "Submitted")
         ib.openTrades.return_value = [trade]
+        ib.cancelOrder.side_effect = lambda order: setattr(trade.orderStatus, "status", "Cancelled")
         cancelled = execution_agent.cancel_ticker_sell_orders(ib, "AAPL")
         ib.cancelOrder.assert_called_once_with(trade.order)
         assert cancelled == 1
+        assert trade.orderStatus.status == "Cancelled"
 
     def test_does_not_cancel_buy_orders(self):
         ib = make_ib_mock()
@@ -157,7 +177,6 @@ class TestExecuteSellCancelsTrailingStopFirst:
         pos = make_position("CRWD", buy_price=200.0)
         supabase = make_supabase_mock(portfolio=[pos])
         ib = make_ib_mock(symbols=["CRWD"])
-        ib.portfolio.return_value = []
         call_order = []
 
         def _track_cancel(ib_, ticker_):
@@ -169,13 +188,17 @@ class TestExecuteSellCancelsTrailingStopFirst:
             trade_mock = MagicMock()
             trade_mock.orderStatus.status = "Filled"
             trade_mock.orderStatus.avgFillPrice = 200.0
+            trade_mock.orderStatus.filled = order.totalQuantity
+            trade_mock.orderStatus.remaining = 0
+            ib.positions.return_value = []
+            ib.portfolio.return_value = []
             return trade_mock
 
         ib.placeOrder.side_effect = _track_place
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.cancel_ticker_sell_orders", side_effect=_track_cancel):
-            execution_agent.execute_sell(
+            ok = execution_agent.execute_sell(
                 ib, supabase, "CRWD",
                 shares=100, buy_price=200.0,
                 buy_date=datetime.datetime.now(datetime.timezone.utc),
@@ -188,6 +211,8 @@ class TestExecuteSellCancelsTrailingStopFirst:
         assert cancel_idx >= 0
         assert sell_idx >= 0
         assert cancel_idx < sell_idx
+        assert ok is True
+        supabase.table("portfolio_positions").delete.assert_called_once()
 
     def test_supabase_not_updated_if_sell_not_confirmed(self):
         pos = make_position("CRWD", buy_price=200.0)
@@ -196,13 +221,21 @@ class TestExecuteSellCancelsTrailingStopFirst:
         ib.portfolio.return_value = [
             make_portfolio_item("CRWD", position=100, avg_cost=200.0)
         ]
+        trade = ib.placeOrder.return_value
+        trade.orderStatus.status = "Cancelled"
+        trade.orderStatus.filled = 0
+        trade.orderStatus.remaining = 100
+        trade.orderStatus.avgFillPrice = 0.0
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.cancel_ticker_sell_orders", return_value=0):
-            execution_agent.execute_sell(
+            ok = execution_agent.execute_sell(
                 ib, supabase, "CRWD",
                 shares=100, buy_price=200.0,
                 buy_date=datetime.datetime.now(datetime.timezone.utc),
                 buy_reason="daily_triggers", current_price=210.0,
                 reason="Plateau Rotation"
             )
+        assert ok is False
+        ib.placeOrder.assert_called_once()
         supabase.table("portfolio_positions").delete.assert_not_called()
+        supabase.table("trade_history").insert.assert_not_called()

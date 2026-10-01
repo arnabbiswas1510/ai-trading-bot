@@ -25,6 +25,7 @@ import datetime
 import sys
 import os
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, call
 from zoneinfo import ZoneInfo
 
@@ -310,19 +311,42 @@ class TestBuyBracketNoLimitAtBuyTime:
                 getattr(order, "orderType", "?"),
             ))
             trade_mock = MagicMock()
-            trade_mock.orderStatus.status = "Filled"
-            trade_mock.orderStatus.filled = 99
-            trade_mock.orderStatus.avgFillPrice = 101.0
+            trade_mock.contract = contract
+            trade_mock.order = order
+            trade_mock.fills = []
+            order.clientId = ib.client.clientId
+            if order.action == "BUY":
+                trade_mock.orderStatus.status = "Filled"
+                trade_mock.orderStatus.filled = order.totalQuantity
+                trade_mock.orderStatus.remaining = 0
+                trade_mock.orderStatus.avgFillPrice = 101.0
+                trade_mock.fills = [
+                    SimpleNamespace(
+                        execution=SimpleNamespace(
+                            shares=order.totalQuantity, price=101.0, acctNumber="DU12345"),
+                        commissionReport=SimpleNamespace(commission=1.0))
+                ]
+                item = make_portfolio_item(
+                    "NVDA", position=order.totalQuantity, avg_cost=101.0)
+                item.account = "DU12345"
+                assert item.contract.conId == contract.conId
+                ib.positions.return_value = [item]
+                ib.portfolio.return_value = [item]
+            else:
+                trade_mock.orderStatus.status = "Submitted"
+                trade_mock.orderStatus.filled = 0
+                trade_mock.orderStatus.remaining = order.totalQuantity
+                trade_mock.orderStatus.avgFillPrice = 0.0
+                ib.openTrades.return_value.append(trade_mock)
             trade_mock.log = []
             return trade_mock
 
         ib.placeOrder.side_effect = _track_place
-        ib.portfolio.return_value = [
-            make_portfolio_item("NVDA", position=99, avg_cost=101.0)
-        ]
 
         with patch("execution_agent.supabase", supabase), \
              patch("execution_agent.get_live_price", return_value=100.0), \
+             patch("execution_agent.fetch_ibkr_delayed_price", return_value=(100.0, "delayed")), \
+             patch("execution_agent._get_entry_rs", return_value=None), \
              patch("execution_agent.get_own_cash", return_value=10000.0), \
              patch("execution_agent.get_margin_loan", return_value=0.0), \
              patch("execution_agent.is_market_bullish", return_value=True), \
@@ -339,3 +363,9 @@ class TestBuyBracketNoLimitAtBuyTime:
         assert len(trail_sells) == 1, (
             f"Exactly one TRAIL stop should be placed. Found: {trail_sells}"
         )
+        expected_shares = int((10000.0 - execution_agent.PRICE_SAFETY_RESERVE) / 100.0)
+        assert ib.positions()[0].position == expected_shares
+        sell_orders = [c.args[1] for c in ib.placeOrder.call_args_list
+                       if c.args[1].action == "SELL"]
+        assert all(order.totalQuantity == expected_shares for order in sell_orders)
+        assert [order.transmit for order in sell_orders] == [False, True]

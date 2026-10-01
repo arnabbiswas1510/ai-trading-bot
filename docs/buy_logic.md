@@ -44,6 +44,16 @@ orders in that state risks compounding the fault.
 
 Checked once, before any candidate is considered.
 
+**Broker inventory safety:** the selected account must have a completed broker
+position snapshot and no negative stock quantities. Disconnection, timeout,
+malformed inventory or an unexpected short blocks new buys with an explicit
+alert. This check also runs immediately before each BUY submission, including
+`force_buy.py`; a manual override does not authorize covering an accidental
+short. Holdings in other accounts do not participate in this gate.
+This is an execution-safety interlock, not an observe-only switch or a change
+to entry thresholds. See
+`decisions/2026-09-30_broker-confirmed-sell-safety.md` for why.
+
 | # | Block | Condition | Behaviour |
 |---|---|---|---|
 | 0a | Schema integrity | A column a live risk rule depends on is missing | **Zero buys.** Monitoring and exits continue normally |

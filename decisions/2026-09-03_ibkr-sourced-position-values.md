@@ -3,7 +3,12 @@
 - **Date:** 2026-09-03
 - **Status:** Accepted — fallback superseded by
   `decisions/2026-09-04_labelled-fmp-dashboard-fallback.md`; one implementation
-  defect since corrected (see the erratum below)
+  defect since corrected (see the erratum below); share-count correction
+  superseded by `decisions/2026-09-30_broker-confirmed-sell-safety.md`
+
+> **2026-09-30:** Case 3 no longer silently corrects differing share counts.
+> Unexplained quantity differences preserve the ledger and require accounting
+> review before position-value synchronization. IBKR-first pricing remains.
 
 > **Superseded in part, 2026-09-04.** The core decision — value positions from
 > IBKR rather than FMP — stands and is unchanged. Two subsidiary points below no

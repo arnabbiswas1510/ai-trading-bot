@@ -69,6 +69,14 @@ if os.path.exists(".env"):
 
 from ib_insync import IB, Stock, Order, MarketOrder
 from supabase import create_client
+from ibkr_data import get_ibkr_account
+from broker_positions import (
+    BrokerPositionError, cancel_confirmed_sells,
+    submit_sell_orders,
+)
+from force_sell import (
+    _confirmed_exit_fill, _require_agreed_quantity, _confirmed_remaining,
+)
 
 NY = ZoneInfo("America/New_York")
 
@@ -159,20 +167,8 @@ def current_price(ib: IB, contract, fallback: float) -> tuple[float, str]:
     return fallback, "stale fallback"
 
 
-def cancel_sells(ib: IB, ticker: str) -> int:
-    cancelled = 0
-    for trade in ib.openTrades():
-        if (trade.contract.symbol == ticker
-                and trade.order.action == "SELL"
-                and trade.orderStatus.status not in ("Filled", "Cancelled", "Inactive")):
-            try:
-                ib.cancelOrder(trade.order)
-                cancelled += 1
-            except Exception:
-                pass
-    if cancelled:
-        ib.sleep(1)
-    return cancelled
+def cancel_sells(ib: IB, ticker: str, account: str | None = None) -> int:
+    return cancel_confirmed_sells(ib, account or get_ibkr_account(ib), ticker)
 
 
 def place_trail(ib: IB, contract, shares: int, trail_pct: float, account: str):
@@ -185,25 +181,34 @@ def place_trail(ib: IB, contract, shares: int, trail_pct: float, account: str):
     order.tif           = "DAY"
     order.account       = account
     order.transmit      = True
-    return ib.placeOrder(contract, order)
+    return submit_sell_orders(ib, contract, [order], account)[0]
 
 
-def market_exit(ib: IB, contract, shares: int, account: str):
-    cancel_sells(ib, contract.symbol)
-    ib.sleep(1)
-    order = MarketOrder("SELL", shares)
+def market_exit(ib: IB, contract, shares: int, account: str, *, trades=()):
+    _confirmed_remaining(ib, contract, trades, account, shares)
+    cancel_sells(ib, contract.symbol, account)
+    remaining = _confirmed_remaining(ib, contract, trades, account, shares)
+    if remaining == 0:
+        return None  # The tracked trail may have filled during cancellation.
+    order = MarketOrder("SELL", remaining)
     order.account = account
-    trade = ib.placeOrder(contract, order)
+    trade = submit_sell_orders(ib, contract, [order], account)[0]
     for _ in range(30):
         ib.sleep(2)
         if trade.orderStatus.status == "Filled":
-            return trade
+            break
         if trade.orderStatus.status in ("Cancelled", "Inactive"):
-            return trade
+            break
+    cancel_sells(ib, contract.symbol, account)
     return trade
 
 
-def archive(supabase, position: dict, shares: int, fill_price: float, reason: str):
+def archive(supabase, position: dict, shares: int, fill_price: float, reason: str,
+            *, ib, contract, trades, account):
+    confirmed = _confirmed_exit_fill(ib, contract, trades, account, shares)
+    if confirmed is None:
+        raise BrokerPositionError(f"{contract.symbol}: shares remain; ledger unchanged.")
+    shares, fill_price = confirmed
     ticker    = position["ticker"]
     buy_price = float(position.get("buy_price", 0))
     pnl = round((fill_price - buy_price) * shares, 2)
@@ -300,26 +305,19 @@ def main():
         sys.exit(1)
 
     try:
-        account = os.getenv("IBKR_ACCOUNT") or next(
-            (a for a in ib.managedAccounts() if not a.startswith("DU")),
-            (ib.managedAccounts() or [""])[0])
-        ib.reqPositions(); ib.sleep(3)
-        ibkr_pos = {p.contract.symbol: int(p.position) for p in ib.positions()}
+        account = get_ibkr_account(ib)
 
         live = []
         for pos, trail in plan:
             t = pos["ticker"].upper()
-            if t not in ibkr_pos or ibkr_pos[t] <= 0:
-                print(f"  ✗ {t} not held at IBKR (found {list(ibkr_pos)}) — skipping.")
-                continue
-            shares = ibkr_pos[t]
-            if shares != int(pos.get("shares", 0)):
-                print(f"  ⚠ {t}: Supabase says {pos.get('shares')}, IBKR says {shares}. Using IBKR.")
+            shares = _require_agreed_quantity(ib, account, t, pos.get("shares"))
             contract = Stock(t, "SMART", "USD")
             ib.qualifyContracts(contract)
             px, method = current_price(ib, contract, float(pos["buy_price"]))
-            cancel_sells(ib, t)
-            place_trail(ib, contract, shares, trail, account)
+            _require_agreed_quantity(ib, account, t, shares)
+            cancel_sells(ib, t, account)
+            _require_agreed_quantity(ib, account, t, shares)
+            trade = place_trail(ib, contract, shares, trail, account)
             floor = None if args.no_floor else px * (1 - args.floor_pct / 100.0)
             print(f"  ✓ {t}: armed {trail*100:.2f}% trail at ${px:.2f} ({method})"
                   + (f", floor ${floor:.2f}" if floor else ""))
@@ -333,7 +331,7 @@ def main():
             except Exception as e:
                 print(f"    ⚠ could not record exit_armed for {t}: {e}")
             live.append({"pos": pos, "contract": contract, "shares": shares,
-                         "floor": floor, "trail": trail})
+                         "floor": floor, "trail": trail, "trades": [trade]})
 
         if not live:
             print("\n  Nothing armed."); return
@@ -348,35 +346,39 @@ def main():
             still = []
             for item in live:
                 t = item["pos"]["ticker"].upper()
-                ib.reqPositions(); ib.sleep(1)
-                held = {p.contract.symbol: int(p.position) for p in ib.positions()}
-                if held.get(t, 0) <= 0:
-                    fills = [f for f in ib.fills() if f.contract.symbol == t]
-                    fp = float(fills[-1].execution.price) if fills else 0.0
-                    if fp <= 0:
-                        fp, _ = current_price(ib, item["contract"], float(item["pos"]["buy_price"]))
-                    archive(supabase, item["pos"], item["shares"], fp, "managed_exit: trailing stop")
+                if _confirmed_remaining(
+                        ib, item["contract"], item["trades"], account, item["shares"]) == 0:
+                    archive(supabase, item["pos"], item["shares"], 0,
+                            "managed_exit: trailing stop", ib=ib,
+                            contract=item["contract"], trades=item["trades"], account=account)
                     continue
 
                 px, _ = current_price(ib, item["contract"], float(item["pos"]["buy_price"]))
+                reason = None
                 if item["floor"] and px <= item["floor"]:
                     print(f"  ⚠ {t}: ${px:.2f} broke floor ${item['floor']:.2f} — exiting now.")
-                    tr = market_exit(ib, item["contract"], item["shares"], account)
-                    if tr.orderStatus.status == "Filled":
-                        archive(supabase, item["pos"], int(tr.orderStatus.filled),
-                                round(tr.orderStatus.avgFillPrice, 2),
-                                "managed_exit: hard floor breached")
-                        continue
-                    print(f"  ✗ {t}: floor exit did not fill ({tr.orderStatus.status})")
+                    reason = "managed_exit: hard floor breached"
                 elif now >= deadline:
                     print(f"  ⏰ {t}: deadline reached — exiting at market.")
-                    tr = market_exit(ib, item["contract"], item["shares"], account)
-                    if tr.orderStatus.status == "Filled":
-                        archive(supabase, item["pos"], int(tr.orderStatus.filled),
-                                round(tr.orderStatus.avgFillPrice, 2),
-                                "managed_exit: deadline")
+                    reason = "managed_exit: deadline"
+                if reason:
+                    tr = market_exit(ib, item["contract"], item["shares"], account,
+                                     trades=item["trades"])
+                    if tr is not None:
+                        item["trades"].append(tr)
+                    remaining = _confirmed_remaining(
+                        ib, item["contract"], item["trades"], account, item["shares"])
+                    if remaining == 0:
+                        archive(supabase, item["pos"], item["shares"], 0, reason,
+                                ib=ib, contract=item["contract"],
+                                trades=item["trades"], account=account)
                         continue
-                    print(f"  ✗ {t}: deadline exit did not fill ({tr.orderStatus.status})")
+                    print(f"  ✗ {t}: {remaining} shares remain; restoring trail, ledger unchanged.")
+                    cancel_sells(ib, t, account)
+                    remaining = _confirmed_remaining(
+                        ib, item["contract"], item["trades"], account, item["shares"])
+                    item["trades"].append(
+                        place_trail(ib, item["contract"], remaining, item["trail"], account))
                 else:
                     print(f"    {t}: ${px:.2f}  (trail {item['trail']*100:.2f}% active"
                           + (f", floor ${item['floor']:.2f}" if item["floor"] else "") + ")")

@@ -280,6 +280,16 @@ def run_market_open_buys(ib: IB):
     print("⏳ Running Market Open Buy checks...")
     client = ea.get_supabase_client()
 
+    from broker_positions import BrokerPositionError, require_no_short_positions
+    try:
+        require_no_short_positions(ib, ea.get_ibkr_account(ib))
+    except BrokerPositionError as exc:
+        message = f"BUY SAFETY BLOCK: {exc}"
+        print(f"🚨 {message}")
+        capture.emit("capture_gap", area="broker_positions", reason=str(exc), complete=False)
+        ea.notifier.notify_error(message)
+        return
+
     # ── Schema degradation hard block ─────────────────────────────────────────
     # If a column a live risk rule depends on is missing, that rule is silently
     # inert (see schema_guard). Opening NEW positions while the controls meant to
@@ -601,6 +611,14 @@ def run_market_open_buys(ib: IB):
               f"(max {ea.MAX_PIVOT_EXTENSION*100:.0f}%) → {shares} shares")
 
         # Place market buy order on IBKR
+        try:
+            require_no_short_positions(ib, ea.get_ibkr_account(ib))
+        except BrokerPositionError as exc:
+            message = f"BUY SAFETY BLOCK before {ticker} submission: {exc}"
+            print(f"🚨 {message}")
+            capture.emit("capture_gap", area="broker_positions", reason=str(exc), complete=False)
+            ea.notifier.notify_error(message)
+            return
         try:
             # Note: contract already qualified above
             # 1. Market Order Entry

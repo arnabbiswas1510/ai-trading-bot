@@ -12,6 +12,7 @@ from supabase import Client
 from ib_insync import IB
 
 from execution_agent_ref import ea
+from broker_positions import BrokerPositionError, require_no_short_positions
 
 def _sync_ibkr_position_values(client: Client, ib_map: dict, tickers) -> int:
     """
@@ -99,6 +100,33 @@ def reconcile_with_ibkr(ib: IB):
     print("🔄 Running IBKR ↔ Supabase reconciliation...")
     client = ea.get_supabase_client()
 
+    # Inspect the completed positions feed even when portfolio() is empty.
+    # An unexpected short must not be hidden or archived as a normal long exit.
+    try:
+        target_account = ea.get_ibkr_account(ib)
+        confirmed_positions = require_no_short_positions(ib, target_account)
+    except BrokerPositionError as exc:
+        message = f"RECONCILIATION BLOCKED: {exc} Ledger and balances left unchanged."
+        print(f"🚨 {message}")
+        ea.notifier.notify_error(message)
+        return
+
+    expected_inventory = {p.contract.conId: p.position for p in confirmed_positions}
+
+    def inventory_unchanged():
+        try:
+            current = require_no_short_positions(ib, target_account)
+            if {p.contract.conId: p.position for p in current if p.position != 0} != {
+                key: qty for key, qty in expected_inventory.items() if qty != 0
+            }:
+                raise BrokerPositionError("Broker inventory changed during reconciliation; retry next cycle.")
+        except BrokerPositionError as exc:
+            message = f"RECONCILIATION BLOCKED: {exc} Further ledger writes stopped."
+            print(f"🚨 {message}")
+            ea.notifier.notify_error(message)
+            return False
+        return True
+
     # ── Sync live balance to Supabase (Do this FIRST) ──────────────────────
     try:
         tz = ZoneInfo("America/New_York")
@@ -181,6 +209,8 @@ def reconcile_with_ibkr(ib: IB):
                 "ibkr_own_cash":        round(own_cash, 2),
                 "ibkr_margin_loan":     round(margin_loan, 2),
             }
+            if not inventory_unchanged():
+                return
             client.table("account_balances").upsert(upsert_payload).execute()
             # Alert-channel health is written as a SEPARATE best-effort update,
             # never as part of the upsert above -- same reasoning as
@@ -212,50 +242,24 @@ def reconcile_with_ibkr(ib: IB):
 
 
 
-    # ── Fetch IBKR positions via portfolio() with positions() fallback ───────
-    # portfolio() reads from the in-memory account cache which may be empty
-    # after a reconnect. We call reqPositions() first (unconditional TWS push)
-    # to populate ib.positions(), then prefer portfolio() for richer data but
-    # fall back to positions() if portfolio() is still empty.
+    # Broker-confirmed inventory sets quantities; portfolio() only supplies marks.
     try:
-        try:
-            ib.reqPositions()
-            ib.sleep(2)   # let event loop populate ib.positions()
-        except Exception as _rp_err:
-            print(f"   ⚠️  reqPositions() failed (non-fatal): {_rp_err}")
-
         target_account = ea.get_ibkr_account(ib)
         ib_raw = [
             p for p in ib.portfolio()
             if ea._matches_account(p, target_account)
         ]
 
-        if not ib_raw:
-            _pos_fallback = [
-                p for p in ib.positions()
-                if p.contract.secType == "STK" and p.position > 0 and ea._matches_account(p, target_account)
-            ]
-            if _pos_fallback:
-                print(f"   ⚠️  portfolio() empty — using positions() fallback "
-                      f"({len(_pos_fallback)} position(s)).")
-                ib_map = {p.contract.symbol: p for p in _pos_fallback}
-            else:
-                ib_map = {}   # genuinely empty — guard below will handle
-        else:
-            for p in ib_raw:
-                if p.contract.secType == "STK" and int(p.position) < 0:
-                    msg = (f"🚨 SHORT POSITION DETECTED: {p.contract.symbol} "
-                           f"has {int(p.position)} shares. Close this immediately in TWS!")
-                    print(msg)
-                    try:
-                        ea.notifier.notify_error(msg)
-                    except Exception:
-                        pass
-            ib_map = {
-                p.contract.symbol: p
-                for p in ib_raw
-                if p.contract.secType == "STK" and int(p.position) > 0
-            }
+        marks = {p.contract.symbol: p for p in ib_raw if p.contract.secType == "STK"}
+        ib_map = {}
+        for position in confirmed_positions:
+            if position.position <= 0:
+                continue
+            ticker = position.contract.symbol
+            mark = marks.get(ticker)
+            # Cached marks may lag a fill; they must never override fresh quantity.
+            ib_map[ticker] = (mark if mark is not None and mark.position == position.position
+                              else position)
     except Exception as e:
         ea.notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
         print(f"❌ Could not fetch IBKR positions during reconciliation: {e}")
@@ -300,6 +304,7 @@ def reconcile_with_ibkr(ib: IB):
         for fill in all_fills:
             if (fill.contract.secType == "STK"
                     and fill.execution.side == "SLD"
+                    and fill.execution.acctNumber == target_account
                     and fill.contract.symbol in supabase_tickers):
                 confirmed_sold.add(fill.contract.symbol)
 
@@ -334,8 +339,8 @@ def reconcile_with_ibkr(ib: IB):
         #         the instant they happen — durable across restarts)
         # Tier 2: reqExecutions() TWS session cache (fast path for fills that
         #         arrived in the current session, < few minutes old)
-        # Tier 3: Flex Query TradeConfirm (IBKR Transaction History API,
-        #         on-demand, 5-10 min lag — requires IBKR_FLEX_EXEC_QUERY_ID)
+        # Tier 3: Flex diagnostics only; unscoped aggregates require manual
+        #         review (on-demand, requires IBKR_FLEX_EXEC_QUERY_ID).
         # Fallback: PRICE_UNCERTAIN alert — Telegram + flagged sell_reason
         #
         # This architecture was introduced 2026-07-21 after the RSI incident
@@ -357,7 +362,7 @@ def reconcile_with_ibkr(ib: IB):
         try:
             _t1_query = client.table("ibkr_fills") \
                 .select("exec_id,shares,price,fill_time") \
-                .eq("ticker", ticker).eq("side", "SLD")
+                .eq("ticker", ticker).eq("side", "SLD").eq("account_id", target_account)
             # Floor the fill window at the CURRENT position's entry (or the
             # scale-out instant if the runner was already trimmed). Without this,
             # a ticker that was round-tripped earlier — bought, sold, then bought
@@ -374,6 +379,11 @@ def reconcile_with_ibkr(ib: IB):
             sb_fills = sb_fills_res.data or []
             if sb_fills:
                 total_qty  = sum(float(f["shares"]) for f in sb_fills)
+                if total_qty != int(pos["shares"]):
+                    raise BrokerPositionError(
+                        f"{ticker}: {total_qty:g} sold shares do not match the "
+                        f"{pos['shares']} shares being closed; refusing blended accounting."
+                    )
                 sell_price = (
                     sum(float(f["shares"]) * float(f["price"]) for f in sb_fills)
                     / total_qty
@@ -398,6 +408,10 @@ def reconcile_with_ibkr(ib: IB):
                 has_sld_fill = True
                 print(f"        💾 Tier 1 — ibkr_fills: {len(sb_fills)} fill(s) → "
                       f"weighted avg ${sell_price:.4f} on {sell_date_fill}")
+        except BrokerPositionError as ex:
+            ea.notifier.notify_error(f"RECONCILIATION BLOCKED: {ex}")
+            print(f"🚨 RECONCILIATION BLOCKED: {ex}")
+            return
         except Exception as ex:
             print(f"        ⚠️  ibkr_fills lookup failed (non-fatal): {ex}")
 
@@ -422,10 +436,15 @@ def reconcile_with_ibkr(ib: IB):
                 sell_fills = [
                     f for f in session_fills
                     if f.contract.symbol == ticker and f.execution.side == "SLD"
+                    and f.execution.acctNumber == target_account
                     and (_scaled_at is None or f.execution.time > _scaled_at)
                 ]
                 if sell_fills:
                     total_qty  = sum(f.execution.shares for f in sell_fills)
+                    if total_qty != int(pos["shares"]):
+                        raise BrokerPositionError(
+                            f"{ticker}: broker sell fills exceed or underfill the recorded long."
+                        )
                     sell_price = (
                         sum(f.execution.shares * f.execution.price for f in sell_fills)
                         / total_qty
@@ -443,6 +462,10 @@ def reconcile_with_ibkr(ib: IB):
                     has_sld_fill = True
                     print(f"        📡 Tier 2 — reqExecutions: {len(sell_fills)} fill(s) → "
                           f"weighted avg ${sell_price:.4f} on {sell_date_fill}")
+            except BrokerPositionError as ex:
+                ea.notifier.notify_error(f"RECONCILIATION BLOCKED: {ex}")
+                print(f"🚨 RECONCILIATION BLOCKED: {ex}")
+                return
             except Exception as ex:
                 ea.notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", ex)
                 print(f"        ⚠️  reqExecutions() failed for {ticker}: {ex}")
@@ -452,12 +475,15 @@ def reconcile_with_ibkr(ib: IB):
             print(f"        🔍 Tier 3 — trying Flex TradeConfirm for {ticker}...")
             flex_data = ea.fetch_trade_confirms_for_ticker(ticker)
             if flex_data:
-                sell_price        = flex_data["sell_price"]
-                sell_date_fill    = flex_data["sell_date"]
-                sell_price_source = flex_data["source"]
-                has_sld_fill      = True
-                print(f"        📋 Tier 3 — Flex TradeConfirm: "
-                      f"weighted avg ${sell_price:.4f} on {sell_date_fill}")
+                message = (
+                    f"RECONCILIATION BLOCKED for {ticker}: Flex reports "
+                    f"{flex_data.get('total_shares', 'unknown')} sold shares, "
+                    "but its aggregate does not prove the selected account and "
+                    "current lot's execution window. Ledger preserved for manual review."
+                )
+                ea.notifier.notify_error(message)
+                print(f"🚨 {message}")
+                return
 
         # If no SLD fill (e.g. manual TWS close or stale session), do a single
         # double-check to rule out a transient partial portfolio read.
@@ -475,7 +501,12 @@ def reconcile_with_ibkr(ib: IB):
                   f"fills from prior sessions are NOT in cache.")
 
         # Cancel any remaining SELL orders for this ticker (cleanup)
-        ea.cancel_ticker_sell_orders(ib, ticker)
+        try:
+            ea.cancel_ticker_sell_orders(ib, ticker)
+        except BrokerPositionError as exc:
+            ea.notifier.notify_error(f"RECONCILIATION BLOCKED: {exc}")
+            print(f"🚨 RECONCILIATION BLOCKED: {exc}")
+            return
 
         # ── FIX (Bug 2 & 4): FMP fallback — flag as PRICE_UNCERTAIN ─────────
         # When fills are not in the current session (e.g. trailing stop fired
@@ -547,6 +578,8 @@ def reconcile_with_ibkr(ib: IB):
             "percent_return": percent_return,
         }
         trade_log.update(ea.entry_provenance(pos))
+        if not inventory_unchanged():
+            return
         try:
             # Delete from portfolio FIRST, independently of trade history
             client.table("portfolio_positions").delete().eq("ticker", ticker).execute()
@@ -617,6 +650,8 @@ def reconcile_with_ibkr(ib: IB):
             "hwm_price": avg_cost,   # initialised to buy price; ratchets up in monitor loop
             "entry_rs_score": ea._get_entry_rs(ticker, None),   # live-fetched so Rule 1 has a baseline
         }
+        if not inventory_unchanged():
+            return
         try:
             client.table("portfolio_positions").insert(position_data).execute()
             print(f"        ✅ Added to Supabase: {shares} shares @ ${avg_cost} "
@@ -626,19 +661,19 @@ def reconcile_with_ibkr(ib: IB):
             ea.notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
             print(f"        ❌ DB error adding {ticker} to Supabase: {e}")
 
-    # ── Case 3: In both, but share count mismatch (partial fill / adjustment)
+    # ── Case 3: A quantity mismatch must not erase unbooked executions ──────
     for ticker in ib_tickers & supabase_tickers:
         ib_shares = int(ib_map[ticker].position)
         db_shares = int(supabase_map[ticker]["shares"])
         if ib_shares != db_shares:
-            print(f"   ⚠️  {ticker}: share count mismatch — IBKR: {ib_shares}, Supabase: {db_shares}. Correcting.")
-            try:
-                client.table("portfolio_positions").update({"shares": ib_shares}).eq("ticker", ticker).execute()
-                print(f"        ✅ Updated to {ib_shares} shares.")
-                changes += 1
-            except Exception as e:
-                ea.notifier.notify_exception(f"reconcile_with_ibkr() — execution_agent.py", e)
-                print(f"        ❌ DB error updating shares for {ticker}: {e}")
+            message = (
+                f"RECONCILIATION BLOCKED for {ticker}: broker has {ib_shares} shares, "
+                f"ledger records {db_shares}. Ledger preserved; account for partial "
+                "fills or adjustments before resuming."
+            )
+            print(f"🚨 {message}")
+            ea.notifier.notify_error(message)
+            return
 
         # ── buy_price drift guard ────────────────────────────────────────────
         # A wrong buy_price silently corrupts BOTH the dashboard P&L and every
@@ -685,6 +720,8 @@ def reconcile_with_ibkr(ib: IB):
             drift_pct = (db_buy - true_basis) / true_basis * 100.0
             print(f"   ⚠️  {ticker}: buy_price drift — stored ${db_buy:.2f} vs "
                   f"${true_basis:.2f} ({drift_pct:+.2f}%). Source: {basis_source}.")
+            if not inventory_unchanged():
+                return
             try:
                 client.table("portfolio_positions").update({
                     "buy_price":              corrected,
@@ -706,6 +743,8 @@ def reconcile_with_ibkr(ib: IB):
                 # Migration lag on the derived columns must not block the core
                 # buy_price correction — retry with buy_price alone.
                 if "PGRST204" in str(e) or "highest_unrealized_pct" in str(e) or "closed_above_entry" in str(e):
+                    if not inventory_unchanged():
+                        return
                     try:
                         client.table("portfolio_positions").update({"buy_price": corrected}) \
                             .eq("ticker", ticker).execute()
@@ -721,13 +760,15 @@ def reconcile_with_ibkr(ib: IB):
                     print(f"        ❌ DB error correcting buy_price for {ticker}: {e}")
 
     # ── Persist IBKR's own valuation for every position we agree exists ──────
-    # Written after the share-count correction above so market_value is stored
+    # Written after the share-count agreement check so market_value is stored
     # alongside a share count IBKR has already confirmed. Marks come from
     # build_ibkr_price_map (portfolio() or reqPnLSingle) so the valuation is
     # populated even on multi-account logins where the inline ib_map above was
     # built from bare positions() objects that carry no marketPrice.
-    _sync_ibkr_position_values(client, ea.build_ibkr_price_map(ib),
-                               ib_tickers & supabase_tickers)
+    final_marks = ea.build_ibkr_price_map(ib)
+    if not inventory_unchanged():
+        return
+    _sync_ibkr_position_values(client, final_marks, ib_tickers & supabase_tickers)
 
     if changes == 0:
         print("   ✅ Supabase and IBKR are in sync. No changes needed.")

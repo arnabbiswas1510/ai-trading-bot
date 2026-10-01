@@ -1,7 +1,12 @@
 # Smart OCA Managed Exit — a queue-driven exit the agent places itself
 
 Date: 2026-08-18
-Status: Accepted
+Status: Accepted; execution safety superseded in part by
+`2026-09-30_broker-confirmed-sell-safety.md`.
+
+> **2026-09-30:** queued and manual exit paths now require fresh account-scoped
+> inventory and acknowledged cancellation. OCA siblings are staged before
+> transmission. The queue's pricing and timing policy below is unchanged.
 
 ## Context
 

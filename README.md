@@ -28,6 +28,26 @@ live strategy parameters. Deploy only after applying
 `INTRADAY_SUPABASE_KEY`. See [setup, data limits and retention](docs/intraday_research.md)
 and `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
 
+**Unexpected-short safety:** broker-confirmed signed inventory, scoped to the
+selected account, is checked independently of cached position marks. An
+unexpected short or unavailable inventory blocks new buys and quarantines
+reconciliation without placing a buy-to-cover. Every sell requires fresh long
+inventory in the exact qualified contract and no competing sell; replacements
+wait for confirmed cancellation. A fresh broker response listing an order
+outweighs a locally synthesized "Cancelled" status.
+Paired exits are staged before transmission. Reconciliation stops further
+writes if inventory changes during the pass, and never blends excess sell
+quantities into one ordinary close. Unscoped Flex historical aggregates require
+manual review rather than automatic ledger closure.
+Unexplained quantity mismatches preserve the recorded lot instead of silently
+changing its share count; scale-outs cannot retry against that smaller holding.
+The execution image includes `force_sell.py` and `managed_exit.py` with their
+shared safety dependencies; invoke manual trading tools only with the agent
+stopped and coordinated access to the account.
+See [sell safety](docs/sell_logic.md#broker-inventory-and-unexpected-shorts),
+[entry safeguards](docs/buy_logic.md#pre-flight-portfolio-level-blocks), and
+`decisions/2026-09-30_broker-confirmed-sell-safety.md`.
+
 ---
 
 ## Table of Contents

@@ -32,6 +32,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import trigger_audit
+from tests.conftest import make_ib_mock
 
 
 def _trigger(ticker="NUE", trigger_type="PRE_BREAKOUT", final_score=71,
@@ -326,7 +327,10 @@ class TestDecisionsWiredIntoBuyLoop:
         # in tests/test_market_direction.py.
         monkeypatch.setattr(execution_agent, "is_market_bullish", lambda: True)
 
-        execution_agent.run_market_open_buys(MagicMock())
+        ib = make_ib_mock(symbols=[holding["ticker"] for holding in holdings])
+        execution_agent.run_market_open_buys(ib)
+        ib.reqPositions.assert_called()
+        ib.placeOrder.assert_not_called()
         return calls
 
     def test_full_portfolio_logs_every_foregone_trigger(self, monkeypatch):

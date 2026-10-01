@@ -36,6 +36,7 @@ import os
 import sys
 import re
 import datetime
+import math
 from zoneinfo import ZoneInfo
 
 # ── Load .env if running outside Docker ──────────────────────────────────────
@@ -49,6 +50,11 @@ if os.path.exists(".env"):
 
 from ib_insync import IB, Stock, Order
 from supabase import create_client
+from ibkr_data import get_ibkr_account
+from broker_positions import (
+    BrokerPositionError, require_no_short_positions, confirmed_long_quantity,
+    cancel_confirmed_sells, submit_sell_orders,
+)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 IB_HOST      = os.getenv("IB_GATEWAY_HOST", "ib-gateway")
@@ -127,21 +133,83 @@ def _pick_from_menu(holdings: list) -> str:
         print(f"  Invalid — enter a number between 1 and {len(holdings)}.")
 
 
-def _cancel_existing_sells(ib: IB, ticker: str):
+def _cancel_existing_sells(ib: IB, ticker: str, account: str | None = None):
     """Cancel any open GTC trailing stop or sell orders for this ticker."""
-    cancelled = 0
-    for trade in ib.openTrades():
-        if (trade.contract.symbol == ticker
-                and trade.order.action == "SELL"
-                and trade.orderStatus.status not in ("Filled", "Cancelled", "Inactive")):
-            try:
-                ib.cancelOrder(trade.order)
-                cancelled += 1
-            except Exception:
-                pass
+    cancelled = cancel_confirmed_sells(ib, account or get_ibkr_account(ib), ticker)
     if cancelled:
         print(f"  ✓ Cancelled {cancelled} existing SELL/stop order(s) for {ticker}")
     return cancelled
+
+
+def _held_quantity(ib, account, ticker):
+    rows = [p for p in require_no_short_positions(ib, account)
+            if p.contract.symbol == ticker]
+    if len(rows) > 1:
+        raise BrokerPositionError(f"{ticker}: ambiguous broker contracts.")
+    quantity = rows[0].position if rows else 0
+    if not float(quantity).is_integer():
+        raise BrokerPositionError(f"{ticker}: fractional holding requires manual review.")
+    return int(quantity)
+
+
+def _require_agreed_quantity(ib, account, ticker, expected_shares):
+    quantity = confirmed_long_quantity(ib, account, ticker)
+    if (isinstance(expected_shares, bool)
+            or not isinstance(expected_shares, (int, float))
+            or quantity != expected_shares):
+        raise BrokerPositionError(
+            f"{ticker}: broker holds {quantity}, but the agreed ledger quantity is "
+            f"{expected_shares}; no sell submitted, ledger unchanged."
+        )
+    return quantity
+
+
+def _own_sell_executions(contract, trades, account):
+    """Validate and deduplicate executions belonging to this manual operation."""
+    executions = {}
+    for trade in trades:
+        if trade.order.action != "SELL" or trade.order.account != account:
+            raise BrokerPositionError(f"{contract.symbol}: unrelated sell order.")
+        for fill in trade.fills:
+            execution = fill.execution
+            if (fill.contract.conId != contract.conId
+                    or execution.acctNumber != account
+                    or execution.side != "SLD"
+                    or execution.orderId != trade.order.orderId
+                    or execution.clientId != trade.order.clientId):
+                raise BrokerPositionError(f"{contract.symbol}: unrelated execution.")
+            quantity, price = float(execution.shares), float(execution.price)
+            if (not execution.execId or not math.isfinite(quantity) or quantity <= 0
+                    or not math.isfinite(price) or price <= 0):
+                raise BrokerPositionError(f"{contract.symbol}: invalid execution.")
+            executions[execution.execId] = (quantity, price)
+    return executions
+
+
+def _confirmed_remaining(ib, contract, trades, account, initial_shares):
+    remaining = _held_quantity(ib, account, contract.symbol)
+    sold = sum(q for q, _ in _own_sell_executions(contract, trades, account).values())
+    if sold + remaining != initial_shares:
+        raise BrokerPositionError(
+            f"{contract.symbol}: own fills ({sold:g}) plus broker holdings ({remaining}) "
+            f"do not explain initial {initial_shares} shares; ledger unchanged."
+        )
+    return remaining
+
+
+def _confirmed_exit_fill(ib, contract, trades, account, expected_shares):
+    """Price only this operation's executions, after cancelling and proving flat."""
+    cancel_confirmed_sells(ib, account, contract.symbol)
+    if _held_quantity(ib, account, contract.symbol) > 0:
+        return None
+    executions = _own_sell_executions(contract, trades, account)
+    quantity = sum(q for q, _ in executions.values())
+    if quantity != expected_shares or quantity <= 0:
+        raise BrokerPositionError(
+            f"{contract.symbol}: flat but own fills cover {quantity:g}/{expected_shares} "
+            "shares; ledger unchanged for manual reconciliation."
+        )
+    return int(quantity), sum(q * p for q, p in executions.values()) / quantity
 
 
 def _place_sell(ib: IB, supabase, position: dict, account: str) -> dict | None:
@@ -155,21 +223,14 @@ def _place_sell(ib: IB, supabase, position: dict, account: str) -> dict | None:
     Returns a result dict on success, None on failure.
     """
     ticker    = position["ticker"]
-    shares    = int(position.get("shares", 0))
+    shares    = _require_agreed_quantity(ib, account, ticker, position.get("shares"))
     buy_price = float(position.get("buy_price", 0))
     buy_date_raw = position.get("buy_date", "")
     buy_reason   = position.get("buy_reason", "manual")
 
-    if shares <= 0:
-        print(f"  ✗ Position for {ticker} shows 0 shares — nothing to sell.")
-        return None
-
     print(f"\n  → Qualifying contract for {ticker}...")
     contract = Stock(ticker, "SMART", "USD")
     ib.qualifyContracts(contract)
-
-    # Cancel any GTC trailing stop first (avoids IBKR OCA conflict)
-    _cancel_existing_sells(ib, ticker)
 
     # Get IBKR delayed price for limit floor
     from execution_agent import fetch_ibkr_delayed_price
@@ -184,6 +245,9 @@ def _place_sell(ib: IB, supabase, position: dict, account: str) -> dict | None:
         limit_price = round(buy_price * 0.995, 2)
         print(f"  ⚠️ No IBKR price for {ticker} — using cost-based limit: ${limit_price:.2f}")
 
+    _require_agreed_quantity(ib, account, ticker, shares)
+    _cancel_existing_sells(ib, ticker, account)
+    _require_agreed_quantity(ib, account, ticker, shares)
     print(f"  → Placing MARKETABLE LIMIT SELL: {shares} × {ticker} @ ${limit_price:.2f}...")
 
     order = Order()
@@ -195,7 +259,7 @@ def _place_sell(ib: IB, supabase, position: dict, account: str) -> dict | None:
     order.account       = account
     order.transmit      = True
 
-    trade = ib.placeOrder(contract, order)
+    trade = submit_sell_orders(ib, contract, [order], account)[0]
 
     # Wait up to 60s for fill
     for i in range(60):
@@ -209,11 +273,13 @@ def _place_sell(ib: IB, supabase, position: dict, account: str) -> dict | None:
         if i > 0 and i % 15 == 0:
             print(f"    … {i}s: filled={trade.orderStatus.filled}, remaining={trade.orderStatus.remaining}")
 
-    if trade.orderStatus.status != "Filled":
+    confirmed = _confirmed_exit_fill(ib, contract, [trade], account, shares)
+    if confirmed is None:
+        print(f"  ✗ {ticker} still has broker-held shares; ledger left unchanged.")
         return None
 
-    actual_shares = int(trade.orderStatus.filled)
-    fill_price    = round(trade.orderStatus.avgFillPrice, 2)
+    actual_shares, fill_price = confirmed
+    fill_price = round(fill_price, 2)
     proceeds      = round(fill_price * actual_shares, 2)
     profit_loss   = round((fill_price - buy_price) * actual_shares, 2)
     pct_return    = round(((fill_price / buy_price) - 1.0) * 100.0, 2) if buy_price > 0 else 0.0
@@ -310,28 +376,9 @@ def main():
         print("  Hint: stop the execution-agent first (docker compose stop execution-agent)")
         sys.exit(1)
 
-    # Subscribe to account + verify positions
-    acct = os.getenv("IBKR_ACCOUNT") or ("U12941651" if "U12941651" in ib.managedAccounts() else next((a for a in ib.managedAccounts() if not a.startswith("DU")), ib.managedAccounts()[0] if ib.managedAccounts() else ""))
-    ib.reqAccountSummary()
-    ib.reqPositions()
-    ib.sleep(3)
-
-    ibkr_positions = {p.contract.symbol: int(p.position) for p in ib.positions() if not hasattr(p, 'account') or not p.account or p.account == acct}
-    if ticker not in ibkr_positions:
-        print(f"\n  ✗ {ticker} not found in IBKR positions (found: {list(ibkr_positions.keys())})")
-        print("  IBKR and Supabase may be out of sync. Check IBKR TWS manually.")
-        ib.disconnect()
-        sys.exit(1)
-
-    # Use IBKR share count as source of truth
-    actual_ibkr_shares = ibkr_positions[ticker]
-    if actual_ibkr_shares != shares:
-        print(f"  ⚠️  Share count mismatch: Supabase={shares}, IBKR={actual_ibkr_shares}. Using IBKR count.")
-        position = dict(position)
-        position["shares"] = actual_ibkr_shares
-
     # Execute
     try:
+        acct = get_ibkr_account(ib)
         result = _place_sell(ib, supabase, position, acct)
     finally:
         ib.disconnect()

@@ -49,6 +49,57 @@ Actual-account replay rejects unknown initial protection instead of estimating
 it from a position's peak. See [intraday research](intraday_research.md) and
 `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
 
+## Broker inventory and unexpected shorts
+
+Stock quantities used for safety decisions come from a completed, selected-account
+`reqPositions()` response, not the dashboard ledger or the cached `portfolio()`
+mark feed. Zero and negative quantities are retained until explicitly checked.
+The request has a 10-second timeout; unavailable inventory never means an empty
+account or permission to sell.
+
+Repeated position callbacks are reduced to the latest quantity per broker
+contract, including zero. Every sell submission checks this inventory, including
+protective-stop repair, armed/queued exits, scale-outs and manual scripts.
+A stale request for more shares than the broker holds is blocked with an error.
+The account and qualified contract ID must match; sharing a ticker is insufficient.
+An existing sell order also blocks a competing submission.
+
+Replacement requires confirmed cancellation, not a one-second sleep:
+all clients' orders are inspected, only the selected account is affected,
+and orders owned by another client block replacement. Cancellation has a
+10-second acknowledgement deadline. A fill during cancellation is reflected
+in the fresh inventory check before any new sale. A fresh broker response listing
+an order overrides any locally synthesized "Cancelled" status. Old foreign-client
+cache entries absent from that response do not block forever. Manual exits reject
+unexplained broker/ledger quantity differences before changing protection.
+
+Paired OCA exits (one order cancels its sibling) are staged under a unique group:
+the first leg has `transmit=False`, and the last transmits the entire group.
+This prevents the first leg executing before the second exists.
+
+Reconciliation inspects this feed before writing balances or changing the
+ledger. Any unexpected short quarantines the entire reconciliation pass and
+raises an operator alert, even when `portfolio()` is empty. Inventory is rechecked
+before mutations after pricing/fill retrieval; a change stops further writes.
+It does not archive
+the short as a normal closed long, silently publish a flat book, or place an
+automatic BUY to cover it. New entries are blocked until signed inventory is
+available and no short remains. Existing long-position monitoring is separate;
+the operator still needs to investigate outstanding orders and reconcile
+incident accounting. This guard does not reconstruct the SHIP incident's
+historical trades automatically.
+
+Full-sale confirmation requires the submitted order to be fully filled at a
+valid execution price and the broker position to be flat. Reconciliation refuses
+to blend sell fills whose total quantity differs from the recorded long.
+The Flex history aggregate is diagnostic only: it cannot prove the selected
+account and current lot's execution window. If it is the only returned fill
+evidence, reconciliation alerts and preserves the ledger for manual review.
+No safeguard makes an ordinary stock SELL broker-enforced reduce-only:
+independent manual/client activity must still be coordinated with the bot.
+
+See `decisions/2026-09-30_broker-confirmed-sell-safety.md` for why.
+
 ## Price source: IBKR first, FMP fallback
 
 Every exit rule below prices the position from IBKR's own mark — the same
@@ -310,8 +361,10 @@ cycle.
 
 A second protective leg placed alongside the trailing stop, in the **same OCA group**
 (`ocaType=1`, cancel-with-block): a native GTC `STP` order at a **fixed price**. A fill on
-either leg cancels the other, so the same shares are never sold twice. Both are GTC, so both
-survive a gateway restart.
+either leg cancels the remaining sibling, with blocking protection against
+overfill within that group. It does not protect against separate replacement
+orders; those use the inventory and cancellation checks above. Both are GTC
+and survive a gateway restart.
 
 Where the trailing stop can only express "a percentage below the running peak", this leg
 expresses "never below *this exact price*" — which is what makes it disconnect-proof. If the
@@ -407,17 +460,23 @@ the fat winners the book depends on, whereas trimming *quantity* is asymmetric.
   `continue` earlier in the loop. Scale-out is evaluated *after* the Prove-It
   firing check, so a winner that has already given back to its floor exits in
   full rather than being trimmed and left for another cycle.
-- **Cancel-first ordering.** The full-size bracket is cancelled *before* the
-  market sell, so the resting trailing/hard legs can never fire alongside the
-  scale order and oversell into a short. The only exposure is a few seconds of an
-  unprotected long during the fill — a far more benign failure mode than an
-  accidental short, reachable only by an implausible instant move (the bracket
-  sat ~7% away). Protection is **always** restored: a right-sized bracket on
-  success, the original full-size bracket on any abort. Sold quantity and price
-  come from the order's own `trade.fills` (never a portfolio delta), so a
-  concurrent fill can never be mis-booked as part of the scale-out, and the
-  remainder's bracket is placed *before* any Supabase write so a DB failure
-  cannot leave a reduced, unprotected position.
+- **Cancel-first ordering.** The full-size bracket's cancellation must be
+  acknowledged before the market sell. Inventory is then reread in case a stop
+  filled during cancellation. The position is temporarily unprotected during
+  replacement; this is not a guarantee against external trading or price gaps.
+  Sold quantity and price come from the order's own fills, and the remainder
+  must agree with fresh broker inventory before protection or accounting is
+  updated. Protection is restored only when inventory and cancellation state
+  safely permit it; otherwise the bot reports an explicit safety failure.
+  Inventory is checked again after replacement protection settles. If that stop
+  has filled the remainder, the original lot is preserved for fill-based
+  reconciliation rather than writing stale remaining shares. The scale-out cutoff
+  uses the partial order's actual final execution timestamp, not the later
+  time when protection/accounting finishes.
+  If protection only partially fills, reconciliation does not silently reduce
+  the ledger quantity. The mismatch blocks another scale-out before protection
+  is cancelled and requires accounting review. This also applies to unexplained
+  manual partial sales or position adjustments.
 
 **Freed capital stays as reserve** until a full slot opens, then redeploys via the
 normal `min(available_cash / remaining_slots, NetLiquidation / MAX_POSITIONS)`

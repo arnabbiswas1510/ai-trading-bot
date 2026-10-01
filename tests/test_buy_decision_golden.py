@@ -101,21 +101,61 @@ class _StatefulDB:
 
 
 # ── Filling IB fake ───────────────────────────────────────────────────────────
+def _broker_position(ticker, shares, price):
+    return SimpleNamespace(
+        account="DU123", position=shares, averageCost=price,
+        marketPrice=price, marketValue=shares * price, unrealizedPNL=0.0,
+        contract=SimpleNamespace(symbol=ticker, secType="STK",
+                                 conId=int.from_bytes(ticker.encode(), "big")),
+    )
+
+
 def _make_filling_ib(fill_price: float = 100.0):
     """An IB whose placeOrder returns a fully-Filled trade for the order's whole
     quantity at ``fill_price``. This is what lets a buy actually 'happen' so the
     position is inserted and the next slot is consumed."""
     ib = MagicMock()
+    ib.isConnected.return_value = True
+    ib.RequestTimeout = 0
+    ib.managedAccounts.return_value = ["DU123"]
+    ib.client.clientId = 1
+    ib.positions.return_value = []
+    ib.reqPositions.side_effect = lambda: list(ib.positions())
+    ib.portfolio.side_effect = lambda: list(ib.positions())
+    ib.openTrades.return_value = []
+    ib.reqAllOpenOrders.side_effect = lambda: [
+        trade for trade in ib.openTrades()
+        if trade.orderStatus.status not in ("Filled", "Cancelled", "ApiCancelled")
+    ]
     ib.sleep.return_value = None
-    ib.qualifyContracts.return_value = None
+    def qualify(*contracts):
+        for contract in contracts:
+            contract.conId = int.from_bytes(contract.symbol.encode(), "big")
+        return list(contracts)
+    ib.qualifyContracts.side_effect = qualify
     ib.cancelOrder.return_value = None
 
     def _place(contract, order):
+        assert order.action == "BUY"
         trade = MagicMock()
+        trade.contract = contract
+        trade.order = order
+        order.clientId = ib.client.clientId
         trade.orderStatus.status = "Filled"
         trade.orderStatus.filled = order.totalQuantity
+        trade.orderStatus.remaining = 0
         trade.orderStatus.avgFillPrice = fill_price
         trade.log = []
+        positions = ib.positions.return_value
+        held = next((row for row in positions
+                     if row.account == order.account
+                     and row.contract.conId == contract.conId), None)
+        if held is None:
+            held = _broker_position(contract.symbol, 0, fill_price)
+            assert held.contract.conId == contract.conId
+            positions.append(held)
+        held.position += order.totalQuantity
+        held.marketValue = held.position * fill_price
         return trade
 
     ib.placeOrder.side_effect = _place
@@ -169,11 +209,16 @@ def _trigger(ticker, final_score, ai_grade="A", volume_surge=2.0,
 
 
 def _held(ticker):
-    return {"ticker": ticker, "market_value": 20_000.0}
+    return {"ticker": ticker, "market_value": 20_000.0,
+            "shares": 200, "buy_price": 100.0}
 
 
 def _run(db, ib, recorder, own_cash=100_000.0, net_liq=100_000.0):
     """Drive run_market_open_buys with every non-target dependency neutralised."""
+    ib.positions.return_value = [
+        _broker_position(pos["ticker"], pos["shares"], pos["buy_price"])
+        for pos in db.tables.get("portfolio_positions", [])
+    ]
     non_degraded = SimpleNamespace(degraded=False, missing_advisory=[],
                                    missing_critical=[])
     with patch("execution_agent.supabase", db), \

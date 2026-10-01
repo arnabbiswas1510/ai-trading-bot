@@ -129,6 +129,11 @@ def recorded_day(monkeypatch, request):
     ib = MagicMock()
     ib.portfolio.return_value = [held]
     ib.positions.return_value = [held]
+    ib.reqPositions.return_value = [held]
+    ib.RequestTimeout = 0
+    ib.managedAccounts.return_value = [ACCOUNT]
+    ib.client.clientId = 1
+    ib.reqAllOpenOrders.side_effect = lambda: ib.openTrades()
     ib.openTrades.return_value = orders
     ib.isConnected.return_value = True
     ib.accountValues.return_value = [NS(account=ACCOUNT, tag="NetLiquidation",

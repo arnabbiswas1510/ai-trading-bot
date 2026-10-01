@@ -36,8 +36,10 @@ from execution_agent import (
     cancel_ticker_sell_orders,
     get_own_cash,
     get_margin_loan,
+    get_ibkr_account,
 )
 from telegram_notifier import TelegramNotifier
+from broker_positions import BrokerPositionError, require_no_short_positions
 
 # ── Load .env if present (for local runs) ─────────────────────────────────────
 if os.path.exists(".env"):
@@ -106,6 +108,11 @@ def _place_buy(
     Returns a result dict on success, None on skip/fail.
     """
     ticker     = trigger["ticker"]
+    try:
+        require_no_short_positions(ib, acct)
+    except BrokerPositionError as exc:
+        print(f"BUY SAFETY BLOCK: {exc}")
+        return None
     pivot      = float(trigger.get("close_price", 0))
     buy_reason = f"CANSLIM Breakout [daily_triggers]: Vol Surge {trigger.get('volume_surge', 'N/A')}x"
 
@@ -162,6 +169,11 @@ def _place_buy(
     order.account       = acct
     order.transmit      = True
 
+    try:
+        require_no_short_positions(ib, acct)
+    except BrokerPositionError as exc:
+        print(f"BUY SAFETY BLOCK: {exc}")
+        return None
     trade = ib.placeOrder(contract, order)
     print(f"   ✅ BUY order placed: {shares} × {ticker} @ LIMIT ${limit_price:.2f}")
 
@@ -307,18 +319,18 @@ def main():
         print(f"❌ Failed to connect: {e}")
         sys.exit(1)
 
-    acct = os.getenv("IBKR_ACCOUNT") or ("U12941651" if "U12941651" in ib.managedAccounts() else next((a for a in ib.managedAccounts() if not a.startswith("DU")), ib.managedAccounts()[0] if ib.managedAccounts() else ""))
+    acct = get_ibkr_account(ib)
 
     # ── Margin-loan hard block ────────────────────────────────────────────────
     # Only invest own deposited money — never margin / borrowed cash.
-    margin_loan = get_margin_loan(ib)
+    margin_loan = get_margin_loan(ib, acct)
     if margin_loan > 0:
         print(f"\n🚨 MARGIN LOAN ACTIVE (${margin_loan:,.2f} borrowed). "
               f"Buys blocked — cannot invest borrowed money.")
         ib.disconnect()
         sys.exit(1)
 
-    available_cash = get_own_cash(ib)   # own deposited cash only — never margin
+    available_cash = get_own_cash(ib, acct)   # own deposited cash only — never margin
     print(f"Available own cash (margin-free): ${available_cash:,.2f}")
     position_size = available_cash / free_slots if free_slots > 0 else 0
 

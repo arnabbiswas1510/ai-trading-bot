@@ -2,6 +2,13 @@
 
 **Date:** 2026-09-07
 **Status:** Superseded in part by `decisions/2026-09-18_phase1-static-backstop.md`
+and `decisions/2026-09-30_broker-confirmed-sell-safety.md`.
+
+> **2026-09-30 safety qualification:** one OCA group's protection does not
+> prevent a later replacement from selling a position already closed.
+> Replacement now requires confirmed cancellation and fresh positive inventory;
+> both OCA legs are staged before transmission. Price-rule history below is
+> unchanged. See the September 30 safety ADR.
 
 > **2026-09-18 — what is no longer true.** The "Pre-proof / unarmed" row below
 > describes the static leg as a flat disaster floor at `entry × (1 − MAX_LOSS_PCT)`

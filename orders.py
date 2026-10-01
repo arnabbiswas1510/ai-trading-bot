@@ -18,6 +18,11 @@ from ib_insync import IB, Stock, Order
 
 from execution_agent_ref import ea
 import intraday_capture as capture
+from broker_positions import (
+    BrokerPositionError, cancel_confirmed_sells, require_no_short_positions,
+    submit_sell_orders,
+)
+from uuid import uuid4
 
 def TrailingStopOrder(action: str, totalQuantity: float,
                      trailingPercent: float = None,
@@ -60,7 +65,7 @@ def place_trailing_stop(ib: IB, contract, shares: int, stop_loss_pct: float) -> 
                              trailingPercent=round(stop_loss_pct * 100, 2))
     stop.tif = 'GTC'
     stop.account = ea.get_ibkr_account(ib)
-    trade = ib.placeOrder(contract, stop)
+    trade = submit_sell_orders(ib, contract, [stop], stop.account)[0]
     capture.record_order(trade, "trailing_stop_submitted")
 
     # Read back the confirmed trailingPercent from the echoed Trade order.
@@ -89,13 +94,13 @@ def place_protective_stops(ib: IB, contract, shares: int, trail_pct: float,
         leg 2  STP   SELL hard_price  -- static disconnect-proof max-loss floor
 
     ocaType=1 (CANCEL_WITH_BLOCK) makes them one-cancels-the-other: a fill on
-    either leg cancels the sibling, so the same shares are never sold twice and
-    a partial fill reduces both legs. Both are GTC and survive a gateway restart.
+    either leg cancels the remaining sibling with group-level overfill protection.
+    Fresh inventory and staged transmission guard replacement. Both are GTC.
 
     Returns (oca_group, confirmed_trail_pct) mirroring place_trailing_stop, so
     callers can persist the trailing percent IBKR echoed back.
     """
-    group = f"PROT_{contract.symbol}_{int(time.time())}"
+    group = f"PROT_{contract.symbol}_{uuid4().hex}"
 
     trail = TrailingStopOrder('SELL', shares,
                               trailingPercent=round(trail_pct * 100, 2))
@@ -103,9 +108,6 @@ def place_protective_stops(ib: IB, contract, shares: int, trail_pct: float,
     trail.account  = account
     trail.ocaGroup = group
     trail.ocaType  = 1
-    trail.transmit = True
-    trail_trade = ib.placeOrder(contract, trail)
-    capture.record_order(trail_trade, "protective_trail_submitted")
 
     hard = Order()
     hard.action        = 'SELL'
@@ -116,8 +118,8 @@ def place_protective_stops(ib: IB, contract, shares: int, trail_pct: float,
     hard.account       = account
     hard.ocaGroup      = group
     hard.ocaType       = 1
-    hard.transmit      = True
-    hard_trade = ib.placeOrder(contract, hard)
+    trail_trade, hard_trade = submit_sell_orders(ib, contract, [trail, hard], account)
+    capture.record_order(trail_trade, "protective_trail_submitted")
     capture.record_order(hard_trade, "protective_hard_stop_submitted")
 
     try:
@@ -208,13 +210,13 @@ def place_oca_exit(ib: IB, contract, shares: int, limit_price: float | None,
 
     ocaType=1 (CANCEL_WITH_BLOCK) is required, not cosmetic: in a cash account
     two SELL orders for the same shares are otherwise liable to be rejected as
-    exceeding the position, and a partial fill on one leg must reduce the other
-    rather than leave a naked short.
+    exceeding the position. Blocking prevents simultaneous routing within the
+    group; cancellation and fresh-inventory checks protect its replacement.
 
     Returns (oca_group, [trades]).
     """
-    group = f"OCA_{contract.symbol}_{int(time.time())}"
-    trades = []
+    group = f"OCA_{contract.symbol}_{uuid4().hex}"
+    orders = []
 
     if limit_price and limit_price > 0:
         lmt = Order()
@@ -226,8 +228,7 @@ def place_oca_exit(ib: IB, contract, shares: int, limit_price: float | None,
         lmt.account       = account
         lmt.ocaGroup      = group
         lmt.ocaType       = 1
-        lmt.transmit      = True
-        trades.append(ib.placeOrder(contract, lmt))
+        orders.append(lmt)
 
     trail = TrailingStopOrder('SELL', shares,
                               trailingPercent=round(trail_pct * 100, 2))
@@ -235,8 +236,8 @@ def place_oca_exit(ib: IB, contract, shares: int, limit_price: float | None,
     trail.account  = account
     trail.ocaGroup = group
     trail.ocaType  = 1
-    trail.transmit = True
-    trades.append(ib.placeOrder(contract, trail))
+    orders.append(trail)
+    trades = submit_sell_orders(ib, contract, orders, account)
 
     ib.sleep(1)
     return group, trades
@@ -342,8 +343,20 @@ def process_exit_requests(ib: IB) -> None:
         ticker = (req.get("ticker") or "").upper()
         rid    = req.get("id")
         try:
+            broker_positions = require_no_short_positions(ib, account)
+            broker_quantity = sum(p.position for p in broker_positions
+                                  if p.contract.symbol == ticker)
             pos = holdings.get(ticker)
             if not pos:
+                if broker_quantity != 0:
+                    raise BrokerPositionError(
+                        f"{ticker}: broker still holds {broker_quantity:g} shares; "
+                        "missing ledger row is not a completed exit."
+                    )
+                ea.cancel_ticker_sell_orders(ib, ticker)
+                if any(p.contract.symbol == ticker and p.position != 0
+                       for p in require_no_short_positions(ib, account)):
+                    raise BrokerPositionError(f"{ticker}: inventory changed during exit cleanup.")
                 # Already gone — either a leg filled and reconcile_with_ibkr()
                 # archived it, or it was sold by another path.
                 _close_exit_request(client, rid, "FILLED" if req["status"] == "PLACED" else "CANCELLED",
@@ -682,17 +695,8 @@ def maybe_notify_sell_state(client: Client, pos: dict, ticker: str,
 
 
 def cancel_ticker_sell_orders(ib: IB, ticker: str) -> int:
-    """Cancels all active GTC SELL orders for *ticker* (OCA cleanup before explicit sells)."""
-    cancelled = 0
-    for trade in ib.openTrades():
-        if (trade.contract.symbol == ticker
-                and trade.order.action == 'SELL'
-                and trade.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')):
-            try:
-                ib.cancelOrder(trade.order)
-                cancelled += 1
-            except Exception:
-                pass
+    """Require confirmed cancellation of the selected account's SELL orders."""
+    cancelled = cancel_confirmed_sells(ib, ea.get_ibkr_account(ib), ticker)
     if cancelled:
         print(f"   🗑️  Cancelled {cancelled} open SELL order(s) for {ticker}")
     return cancelled
