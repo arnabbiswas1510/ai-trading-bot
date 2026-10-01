@@ -34,9 +34,14 @@ stays stopped. It does not place/cancel orders, repair positions or run bot exit
 The Backtester page shows separate collector health and exports raw observations.
 Offline `research/calibrate_intraday.py` freezes a candidate on earlier validated
 decision inputs and evaluates it on separate later data; it never changes live
-parameters. Observer-only records do not replace missing live decision inputs.
+parameters. A separate broker-free shadow worker supplies point-in-time decisions
+and maintains a durable hypothetical portfolio. Its labelled exports feed the
+same selection/holdout process; raw observer records alone remain insufficient.
+An independent cloud watchdog sends daily health summaries and weekly research
+reports, with persistent GitHub incidents for failures. These are automated
+notifications, not an assistant continuously monitoring or messaging interactively.
 See `docs/intraday_research.md` and
-`decisions/2026-09-30_observer-and-calibration-harness.md`.
+`decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
 
 **Unexpected-short safety:** broker-confirmed signed inventory, scoped to the
 selected account, is checked independently of cached position marks. An
@@ -612,9 +617,12 @@ Dashboard at `http://localhost:8000`. The deployment defaults to observation,
 not trading. The GitHub repository Actions variable `TRADING_RUNTIME_MODE`
 accepts `observe` (default) or the explicit opt-in `live`; it is not a secret or
 a strategy parameter in `.env`. Unknown values abort before Docker actions.
-Observation mode stops the trader first, starts the observer and dashboard, and
-does not recreate the gateway. Bare `docker compose up -d` starts neither runtime
-because both have profiles. Inspect current positions and broker-held protection:
+Observation mode stops the trader first, starts the observer, shadow worker and
+dashboard, and does not recreate the gateway. Apply the shadow/reporting SQL
+migrations and configure the cloud reporting secrets described in
+[intraday research](docs/intraday_research.md) before deployment.
+Bare `docker compose up -d` starts no trading/observation runtime because each
+has a profile. Inspect current positions and broker-held protection:
 the observer does not execute any bot-managed risk rules.
 
 Each open position expands into a **Position Journey** panel that states, without needing

@@ -64,10 +64,11 @@ def test_observe_is_default_and_never_starts_execution_agent(deployment, mode):
     assert result.returncode == 0, result.stderr
     assert calls == [
         ["compose", "--profile", "live", "stop", "execution-agent"],
-        ["compose", "--profile", "observe", "pull", "intraday-observer", "trading-bot"],
+        ["compose", "--profile", "observe", "pull", "intraday-observer", "shadow-worker", "trading-bot"],
         ["compose", "up", "-d", "--no-deps", "--no-recreate", "ib-gateway"],
-        ["compose", "--profile", "observe", "up", "-d", "--no-deps", "intraday-observer", "trading-bot"],
+        ["compose", "--profile", "observe", "up", "-d", "--no-deps", "intraday-observer", "shadow-worker", "trading-bot"],
         ["inspect", "intraday-observer", "--format", "{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})"],
+        ["inspect", "shadow-worker", "--format", "{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})"],
         ["inspect", "ib-gateway", "--format", "{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})"],
         ["inspect", "can-slim-trading-bot", "--format", "{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})"],
     ]
@@ -92,7 +93,7 @@ def test_failed_image_pull_leaves_execution_agent_stopped(deployment):
     assert result.returncode == 42
     assert calls == [
         ["compose", "--profile", "live", "stop", "execution-agent"],
-        ["compose", "--profile", "observe", "pull", "intraday-observer", "trading-bot"],
+        ["compose", "--profile", "observe", "pull", "intraday-observer", "shadow-worker", "trading-bot"],
     ]
 
 
@@ -112,7 +113,7 @@ def test_gateway_failure_does_not_start_execution_agent(deployment):
 def test_live_requires_explicit_opt_in_and_stops_observer_first(deployment):
     result, calls = deployment("live")
     assert result.returncode == 0, result.stderr
-    assert calls[0] == ["compose", "--profile", "observe", "stop", "intraday-observer"]
+    assert calls[0] == ["compose", "--profile", "observe", "stop", "intraday-observer", "shadow-worker"]
     assert calls[1] == ["compose", "--profile", "live", "pull", "execution-agent", "trading-bot"]
     assert calls[3] == ["compose", "--profile", "live", "up", "-d", "--no-deps", "execution-agent", "trading-bot"]
     assert calls[4][0:2] == ["inspect", "execution-agent"]
@@ -157,10 +158,21 @@ def test_workflow_ships_helper_and_passes_operator_mode_as_environment():
 
 def test_compose_profiles_prevent_implicit_live_start():
     text = (ROOT / "docker-compose.yml").read_text()
-    for name, profile in (("execution-agent", "live"), ("intraday-observer", "observe")):
+    for name, profile in (("execution-agent", "live"), ("intraday-observer", "observe"),
+                          ("shadow-worker", "observe")):
         block = re.search(
             rf"^  {name}:\n(.*?)(?=^  [a-z][\w-]*:|\Z)", text, re.MULTILINE | re.DOTALL,
         ).group(1)
         assert re.search(rf'^\s+profiles: \["{profile}"\]', block, re.MULTILINE)
     dashboard = text.split("  trading-bot:", 1)[1].split("\nnetworks:", 1)[0]
     assert "depends_on:" not in dashboard
+
+
+def test_shadow_worker_has_no_gateway_network_or_dependency():
+    text = (ROOT / "docker-compose.yml").read_text()
+    block = text.split("  shadow-worker:", 1)[1].split("  trading-bot:", 1)[0]
+    assert "research_bridge" in block
+    assert "trading_bridge" not in block
+    assert "depends_on:" not in block
+    assert "IB_GATEWAY" not in block
+    assert "shadow-data:/app/shadow" in block

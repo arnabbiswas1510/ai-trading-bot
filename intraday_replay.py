@@ -51,10 +51,11 @@ def _initial_positions(state):
     return result
 
 
-def _sessions(start, end):
+def _sessions(start, end, *, exchange_sessions=False):
     day, result = start, []
     while day <= end:
-        if core.trading_days_between(day, day + dt.timedelta(days=1)):
+        if (core.session_bounds(day) if exchange_sessions else
+                core.trading_days_between(day, day + dt.timedelta(days=1))):
             result.append(day.isoformat())
         day += dt.timedelta(days=1)
     return result
@@ -79,13 +80,17 @@ def _off_hours_technical_warning(record, now):
     )
 
 
-def _coverage(events, sessions):
+def _coverage(events, sessions, *, exchange_sessions=False):
     for session in sessions:
         day = [e for e in events if e["session"] == session]
         _require(day, f"{session}: missing NYSE session observations")
         observed = [core._timestamp(e["timestamp"], "timestamp") for e in day]
         opening = dt.datetime.combine(dt.date.fromisoformat(session), dt.time(9, 30), core.NY)
         closing = opening.replace(hour=16, minute=0)
+        if exchange_sessions:
+            bounds = core.session_bounds(session)
+            _require(bounds is not None, f"{session}: not an exchange session")
+            opening, closing = bounds
         _require((observed[0] - opening).total_seconds() <= 60,
                  f"{session}: recording starts after session open; no reconstructed starting book")
         _require((closing - observed[-1]).total_seconds() <= core.QUOTE_MAX_AGE_SECONDS,
@@ -102,6 +107,12 @@ def _coverage(events, sessions):
         _require(sum(e["type"] == "eod_latch" for e in day) == 1,
                  f"{session}: missing or duplicate EOD latch/fresh-candidate snapshot")
     core._validate_recorded_cycles(events)
+
+
+def export_shadow_dataset(seed, records, start_date, end_date):
+    """Explicit shadow export; ordinary observer samples never enter schema2."""
+    from shadow_engine import export_shadow_dataset as export
+    return export(seed, records, start_date, end_date)
 
 
 def _whole_shares(value, path):

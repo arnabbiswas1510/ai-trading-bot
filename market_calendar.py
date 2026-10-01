@@ -10,6 +10,27 @@ See decisions/2026-09-18_execution-agent-split.md.
 
 import datetime
 from zoneinfo import ZoneInfo
+from functools import lru_cache
+
+
+@lru_cache(maxsize=512)
+def session_bounds(day):
+    """Return NYSE open/close in New York time, or None on a non-session.
+
+    The installed exchange calendar supplies holidays, DST and early closes;
+    an unavailable/out-of-range calendar raises rather than inventing hours.
+    """
+    import exchange_calendars
+    import pandas as pd
+
+    day = datetime.date.fromisoformat(day) if isinstance(day, str) else day
+    calendar = exchange_calendars.get_calendar("XNYS")
+    stamp = pd.Timestamp(day)
+    if not calendar.is_session(stamp):
+        return None
+    zone = ZoneInfo("America/New_York")
+    return (calendar.session_open(stamp).to_pydatetime().astimezone(zone),
+            calendar.session_close(stamp).to_pydatetime().astimezone(zone))
 
 def _is_rth_now() -> bool:
     """True if US regular trading hours (Mon–Fri, 09:30–16:00 ET) right now.

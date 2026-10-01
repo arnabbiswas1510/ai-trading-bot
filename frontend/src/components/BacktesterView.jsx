@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Play, TrendingUp, BarChart2, Calendar, ShieldAlert, Award, DollarSign } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import IntradayReplayView from './IntradayReplayView.jsx';
+import ShadowResearchView from './ShadowResearchView.jsx';
 
 export default function BacktesterView() {
   const [startDate, setStartDate] = useState(() => {
@@ -65,6 +66,7 @@ export default function BacktesterView() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <IntradayReplayView />
+      <ShadowResearchView />
 
       {/* Parameters Form Card */}
       <div className="card">

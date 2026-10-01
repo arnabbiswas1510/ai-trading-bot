@@ -2,6 +2,13 @@
 
 Every exit rule in the live agent, in evaluation order.
 
+The decision-only research worker uses the shared exit primitives without
+placing orders. Supporting ATR-stop, scale-out and armed-exit settings are
+declared in import-safe `research_configuration.py` and re-exported by
+`execution_agent`; their defaults are unchanged. Hypothetical sells and
+protective orders never modify the real account. See
+`decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
+
 **Source:** the decision logic — where a stop sits and whether a rule may fire — lives
 in `exit_rules.py` (Prove-It Stop, power hold, trail ladder, OCA sizing, hard stop,
 sell-state codes) together with the tunable constants behind it. Acting on those

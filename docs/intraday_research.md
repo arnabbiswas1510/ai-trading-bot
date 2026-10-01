@@ -12,8 +12,10 @@ history from before recording began.
 
 ## Deploying
 
-1. Apply `migrations/20260930_add_intraday_research.sql` in the Supabase SQL
-   Editor. It is safe to re-run; its final query reports each object.
+1. Apply `migrations/20260930_add_intraday_research.sql`,
+   `migrations/20260930_add_intraday_shadow.sql`, and
+   `migrations/20260930_add_intraday_reporting.sql` in the Supabase SQL Editor.
+   They are safe to re-run; their final queries report the required objects.
 2. Add `INTRADAY_SUPABASE_KEY` to this application's Bitwarden project with a
    server-side Supabase service-role key. The new tables deliberately refuse
    anonymous/publishable-key access. Do not put the value in source, a patch or
@@ -25,7 +27,7 @@ history from before recording began.
    the existing pipeline. Leave the GitHub repository Actions variable
    `TRADING_RUNTIME_MODE` unset or set it to `observe`: deployment stops the
    execution agent **before** pulling images, then starts the independent
-   observer and dashboard. The gateway is not recreated. Observer and execution
+   observer, shadow worker and dashboard. The gateway is not recreated. Observer and execution
    spools live at `/app/logs/intraday_observer.sqlite3` and
    `/app/logs/intraday_capture.sqlite3`, respectively, in the persistent logs
    mount. Never share a spool between running collectors.
@@ -85,7 +87,103 @@ They are useful for later execution audits and price-path research, but they
 do not contain live buy/monitor decision inputs. The live-decision replay
 rejects them explicitly rather than inventing those inputs.
 
+## Decision-only worker
+
+`shadow-worker` runs in the `observe` profile using `Dockerfile.shadow`. It has
+no IBKR SDK, order-management modules or gateway connection. Its separate
+`research_bridge` network is not the gateway's Docker network. This is an
+application/deployment boundary, not a claim that service-role database
+credentials are themselves read-only.
+
+The worker reads completed observer snapshots, source trading tables and FMP.
+Date-only screener trigger labels remain dates; their availability is established
+by the separate acquisition timestamp, not an invented intraday trigger time.
+Missing screener ATR (average true range, a measure of daily price movement)
+keeps the live static-stop fallback. Independently derived ATR is diagnostic
+evidence, expressed in percentage points rather than silently substituting a
+different stop-sizing input.
+An explicit `IBKR_ACCOUNT` or `--account` selects the seed account. Unsupported
+shorts, incomplete protection, conflicting quantities, partial initial orders,
+manual requests or missing history prevent initialization. The worker never
+silently assumes an empty portfolio or resets cash. Subsequent actual account
+activity does not replace the hypothetical portfolio.
+
+Its dedicated `shadow-data` volume holds `/app/shadow/shadow.sqlite3`.
+Inputs are staged before simulation, and portfolio changes, decisions and upload
+outbox entries are committed transactionally. Re-uploading an acknowledged cycle
+does not create another trade. Do not remove this volume to "fix" a worker.
+The local spool is bounded to 1 GiB and each staged frame to 16 MiB; reaching a
+limit blocks visibly rather than dropping predecessor evidence.
+The cloud's private shadow run/event/checkpoint/health tables hold replicated
+research evidence, not live `portfolio_positions` or `trade_history` changes.
+
+The schedule follows actual NYSE sessions, including holidays, daylight-saving
+changes and early closes. Missing intervals cannot be backfilled with today's
+quotes. A blocked run retains its state and reason; a deliberate new run uses
+fresh actual-account evidence instead of pretending the missing path is known.
+Normal restarts do not request a new run.
+
+For an operator-approved fresh start after investigating a blocked run, stop the
+existing worker first so there is only one writer to its SQLite store:
+
+```bash
+docker compose --profile observe stop shadow-worker
+docker compose --profile observe run --rm --no-deps shadow-worker \
+  python shadow_worker.py --once --new-run
+docker compose --profile observe up -d --no-deps shadow-worker
+```
+
+Run the diagnostic during a regular exchange session. Inspect its exit/result
+and the recorded health before treating the new run as usable. This starts
+another **hypothetical** portfolio; it neither repairs nor trades the real
+account. Connection failures, acquisition limits and unsupported strategy paths
+remain reasons to investigate, not permission to loosen validation.
+
+## Independent daily/weekly supervision
+
+Enable `.github/workflows/intraday_research_review.yml` on the repository's
+default branch. Configure GitHub Actions secrets `SUPABASE_URL`,
+`INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`, using the
+already approved recipients. The workflow's built-in `GITHUB_TOKEN` needs
+`issues: write`; no broker credentials are needed. Bitwarden/host environment
+provisioning does not automatically create these Actions secrets.
+
+The cloud workflow runs every 15 minutes independently of the production host.
+It checks actual broker/quote/decision progress as well as heartbeat age, sends
+failure/recovery notifications, and maintains persistent GitHub incidents.
+Daily summaries become due 30 minutes after the exchange closes. Weekly reports
+cover the preceding completed week and become due Monday morning New York time.
+The weekly due time is 08:00 New York time.
+GitHub cron is best effort, not an exact-minute alarm.
+
+Reports, period identities and per-recipient delivery receipts are persistent.
+Delayed executions catch up due reports; successful recipients are not normally
+notified again just because another recipient failed. A crash after sending but
+before saving the receipt can still duplicate a Telegram message. Database
+outages use GitHub incidents rather than requiring an unavailable database to
+record its own failure.
+
+Reports distinguish missing evidence from zero profit and hypothetical results
+from real account performance. Weekly figures describe recorded decisions,
+costs, completed positions, sampled account declines and profit concentration
+(how much comes from only a few names). Without a separately frozen calibration
+result, the report says no calibrated recommendation is available. Neither the
+reporter nor the simulator changes live settings or restarts trading.
+
+These summaries do not mean an assistant remains active between conversations.
+Review the weekly report here with the saved evidence. Start by establishing
+reliable complete sessions; a first serious restart review after roughly 8–12
+weeks is a planning estimate, not a promise. Longer observation may be needed if
+there are too few completed positions, repeated gaps or only one market regime.
+
 ## Using the dashboard
+
+The **Decision-only portfolio** panel shows separate shadow-worker health,
+hypothetical portfolio runs and saved daily/weekly reports. Its export is a
+labelled shadow dataset, not the raw-observation export or an actual-account
+decision recording. Missing reports, missing progress and blocked initialization
+are not evidence that the process is healthy. A stopped or blocked simulator
+must be investigated before counting its calendar time as useful research.
 
 Select recorded start/end sessions and run the comparison. No starting-capital
 override is offered. The server saves the job, returns its identifier and runs
@@ -159,13 +257,16 @@ activity still rejects the comparison even if it occurred overnight.
 
 ## Automatic comparisons and data window
 
-With `INTRADAY_AUTO_COMPARE=true`, the web service checks hourly and saves at
+In explicit live runtime mode with `INTRADAY_AUTO_COMPARE=true`, the web service checks hourly and saves at
 most one automatic attempt per week over up to 30 calendar days ending in the
 preceding week. Insufficient data produces a saved rejection, not a strategy
 recommendation. Manual requests support up to 93 calendar days by default, with
 50,000-row and 64-MiB input limits to protect the web worker. Evaluate longer
 retained history as multiple windows; **do not sum their dollar differences as
 one continuous portfolio backtest** because each has its own recorded start.
+This actual-decision comparison does not run automatically in observation mode;
+the independent cloud watchdog owns daily and weekly observation/shadow reports.
+Manual actual-decision comparisons remain available for valid historical data.
 
 Retain 365 days of raw observations initially. Use the first 4–8 weeks to check
 coverage and decision reproduction, three months for exploratory comparisons,
@@ -182,13 +283,16 @@ Every live change requires human approval.
 
 ## Offline calibration: select first, evaluate later
 
-Use **Export recorded inputs** for two distinct full-session windows from the
-same account and recorded configuration. The earlier window is training data;
-the later *holdout* must not have informed the parameter choice. Inputs must be
-schema 2 actual-account datasets with continuous recorded decision coverage.
-Raw observer bundles, synthetic cash-only examples, gaps and unsupported
-activity are rejected. This workflow cannot yet calibrate the full strategy
-from observation-only periods that lack live decision inputs.
+Use **Export recorded inputs** for actual recorded decisions, or **Export shadow
+decision inputs** for the hypothetical portfolio. Select two distinct
+full-session windows from the same compatible account/configuration and research
+run. The earlier window is training data; the later *holdout* is evaluation data
+that must not have informed the parameter choice. Schema 2 records actual-account
+decisions; schema 3 identifies shadow inputs and their hypothetical checkpoint
+provenance. Raw observer bundles, synthetic cash-only examples, gaps and
+unsupported activity remain rejected. The decision-only worker supplies the
+missing inputs while real trading is stopped; observation without that worker
+still cannot calibrate the strategy.
 
 Keep private inputs and output files outside the repository. A candidate file
 contains 1-32 explicitly named experiments; the recorded-configuration baseline
@@ -221,6 +325,27 @@ Replace `/private/research` with your secure local directory. No credentials or
 broker connection are needed. Output files are written atomically, and existing
 files are refused unless `--overwrite` is explicitly supplied.
 
+For shadow exports, use the **same research image and nonsecret strategy
+environment** that created the run. Python/package versions and rule globals
+are included in the checkpoint fingerprint. Worker and dashboard install the
+same `requirements-shadow.txt`; an arbitrary local Python environment may
+correctly reject the export as incompatible. The build publishes a commit-SHA
+shadow image tag; preserve the deployed image digest rather than relying on
+mutable `latest`. Run calibration with networking disabled, mounting only the
+private input/output directory. Broker/database/API credentials are unnecessary.
+
+To include a completed frozen evaluation in later weekly reports, explicitly
+archive its output from a secure environment with `SUPABASE_URL` and the
+server-side `INTRADAY_SUPABASE_KEY` configured:
+
+```bash
+python3 research/intraday_reporting.py \
+  --save-calibration /private/research/evaluation.json
+```
+
+This validates and saves an existing evaluation to private research storage; it
+does not select parameters, re-run a sweep or apply anything to trading.
+
 `select` ranks after-cost final account value against the simulated
 recorded-configuration baseline using **training data only**. Ties prefer no
 change. It freezes the winner, all tested candidates/rejections, configuration
@@ -252,8 +377,10 @@ Reports show completed **positions**, not individual partial-sale rows; distinct
 sessions; after-cost account change including holdings; sampled peak-to-trough
 decline; realised losses; and contributions from individual tickers. Removing
 the top one/three ticker contributions is an attribution sensitivity check,
-not a new simulation with replacement trades. Window results cannot be summed
-into a continuous portfolio because each starts from its own recorded account.
+not a new simulation with replacement trades. Window results cannot be summed into a continuous portfolio. Actual-decision
+windows begin from their recorded account; shadow windows begin from the
+verified baseline hypothetical checkpoint. Both holdout variants inherit that
+same checkpoint, not a separately maintained candidate portfolio.
 
 Fewer than 30 completed positions produces an exploratory-sample warning, not
 an automatic rejection or approval gate. More candidate trials increase the
@@ -262,7 +389,8 @@ not prior human inspection of holdout data; reusing the holdout for new choices
 invalidates its independence. The tool never declares a strategy approved or
 profitable, writes settings, or switches deployment back to live mode.
 
-See `decisions/2026-09-30_observer-and-calibration-harness.md` for why these
+See `decisions/2026-09-30_observer-and-calibration-harness.md` and
+`decisions/2026-09-30_shadow-decisions-and-supervised-research.md` for why these
 boundaries are required.
 
 ## Storage and credentials
@@ -282,6 +410,15 @@ Raw events are not copied into the indefinitely retained weekly full backup;
 saved comparison results are. Export important input datasets before their
 retention expires. A result's fingerprint identifies its input but cannot
 recover deleted observations.
+
+Shadow runs are not automatically prefix-pruned: their actual seed and every
+predecessor frame are required to reproduce later hypothetical holdings.
+Full-prefix export is bounded to 50,000 engine events and 64 MiB; these are
+explicit capacity limits, not a promise of unlimited history. Archive complete
+private datasets and retain the matching image/environment. Never delete an
+active run's early frames to make a later export fit.
+The dashboard allows five minutes for full-prefix export, rather than the
+30-second timeout used for ordinary status requests.
 
 See [configuration](configuration.md), [backups](backups.md), and
 `decisions/2026-09-30_intraday-capture-and-approved-research.md` for why.

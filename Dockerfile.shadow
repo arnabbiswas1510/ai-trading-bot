@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    GIT_COMMIT=${GIT_COMMIT} \
+    BUILD_TIME=${BUILD_TIME}
+
+COPY requirements-shadow.txt ./
+RUN pip install --no-cache-dir -r requirements-shadow.txt
+
+COPY shadow_worker.py shadow_inputs.py shadow_store.py shadow_engine.py ./
+COPY research_configuration.py indicators.py market_direction.py market_calendar.py ./
+COPY config.py decision_core.py exit_core.py exit_rules.py cooling_off.py trade_costs.py ./
+COPY intraday_capture.py intraday_replay.py trigger_audit.py ./
+COPY research/live_rule_replay.py research/calibrate_intraday.py ./research/
+
+RUN mkdir -p /app/shadow
+CMD ["python", "shadow_worker.py"]

@@ -12,8 +12,9 @@ See `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 | "Would a different *exit rule* have made my **actual** trades better?" | **Exit replay** (`research/exit_rule_replay.py`) |
 | "Does an entry/ranking/exit idea hold up across a large universe?" | **Research harnesses** (`research/*_bt.py`) |
 | "Is a strategy backtest result **real**, or a lucky window / one outlier?" | **Validation harness** (`research/strategy_validate.py`) |
-| "Which explicit candidate wins on earlier recorded inputs, and how does that frozen choice do later?" | **Offline calibration** (`research/calibrate_intraday.py`), with separate validated actual-account datasets |
+| "Which explicit candidate wins on earlier recorded inputs, and how does that frozen choice do later?" | **Offline calibration** (`research/calibrate_intraday.py`), with separate validated actual-account or labelled shadow datasets |
 | "What happened while the trading agent was stopped?" | **Independent observer** and dashboard raw-observation export; no invented live decisions or performance result |
+| "What would the bot buy, hold and sell while real trading is stopped?" | **Decision-only shadow portfolio**, with durable state, point-in-time inputs and daily/weekly supervision |
 
 > **Which strategy backtester?** Both use current exit-rule primitives.
 > `research/strategy_backtest.py` and `backend/backtester.py` (the dashboard
@@ -44,6 +45,16 @@ evaluation; the later dataset is a *holdout*, meaning it was not used to choose
 the candidate. Reports never apply settings and never authorize restarting
 trading. See [the workflow](intraday_research.md) and
 `decisions/2026-09-30_observer-and-calibration-harness.md`.
+
+The decision-only worker fills the gap between raw observation and calibration.
+It seeds from validated actual-account evidence, then maintains its own
+hypothetical cash and holdings without orders. Schema-3 exports retain actual
+seed and checkpoint provenance; later windows are conditioned on the baseline
+shadow portfolio, not presented as fresh real account snapshots. Missing
+coverage or unsupported initial activity blocks export. Daily summaries and
+weekly hypothetical reports are descriptive until a separately frozen
+experiment has valid later evaluation data. See
+`decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
 
 `research/live_rule_replay.py` is an offline portfolio replay, not a connection
 to IBKR and not a replacement trading daemon. It calls the shared entry gates

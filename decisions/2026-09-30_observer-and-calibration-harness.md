@@ -1,7 +1,14 @@
 # Independent observation and approval-only calibration
 
 Date: 2026-09-30
-Status: Accepted
+Status: Accepted — extended by [decision-only simulation and supervised research](2026-09-30_shadow-decisions-and-supervised-research.md)
+
+> **2026-09-30:** A separate shadow worker now produces decision inputs while
+> trading is stopped, and validated labelled shadow exports can feed calibration.
+> Raw observer records alone still cannot. Observation deployment also starts the
+> shadow worker; cloud daily/weekly reporting replaces automatic actual-decision
+> comparisons in observation mode. The original observation and approval
+> boundaries below remain in force.
 
 ## Context
 

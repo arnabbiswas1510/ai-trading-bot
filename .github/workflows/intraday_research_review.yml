@@ -1,0 +1,38 @@
+name: Intraday Research Collection Watchdog
+
+# Runs outside the observer/web host, including while trading is disabled.
+# GitHub schedules are best-effort; durable period keys catch up delayed reports.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: intraday-research-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install reporting-only dependencies
+        run: pip install requests==2.32.3 exchange-calendars==4.13.2
+      - name: Check collection and deliver due research reports
+        env:
+          TRADING_RUNTIME_MODE: ${{ vars.TRADING_RUNTIME_MODE || 'observe' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          INTRADAY_SUPABASE_KEY: ${{ secrets.INTRADAY_SUPABASE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python research/intraday_reporting.py

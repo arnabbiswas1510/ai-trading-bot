@@ -49,7 +49,10 @@ See [Recorded intraday research](intraday_research.md) and
 `TRADING_RUNTIME_MODE` is a **GitHub repository Actions variable**, not a secret
 or a value read from the host `.env`. It defaults to `observe`; only explicit
 `live` starts the trading agent. Observation deployments stop trading before
-image updates. The local helper accepts the same environment setting:
+image updates and start the observer, shadow worker and dashboard. The helper
+passes the validated mode into the dashboard so actual-account automatic
+comparisons are not attempted against observer-only data.
+The local helper accepts the same environment setting:
 `TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh`. A successful research report never
 changes this selection. See
 `decisions/2026-09-30_observer-and-calibration-harness.md`.
@@ -73,14 +76,35 @@ which controls the recorder embedded in the execution agent.
 | `INTRADAY_MAX_SYMBOLS` | `250` | Sampling budget; exceeding it is a visible coverage gap |
 | `INTRADAY_MAX_QUOTE_AGE_SECONDS` | `600` | Maximum age for an observation reused at a replay event |
 | `INTRADAY_CAPTURE_SPOOL` | `/app/logs/intraday_capture.sqlite3` | Durable upload spool in the existing logs volume |
-| `INTRADAY_AUTO_COMPARE` | `true` | Weekly recorded-data comparisons, never automatic live changes |
+| `INTRADAY_AUTO_COMPARE` | `true` | Weekly actual-decision comparisons in explicit live runtime mode only; cloud shadow reports are separate |
 | `INTRADAY_REPLAY_MAX_DAYS` | `93` | Maximum calendar days per dashboard comparison |
 | `INTRADAY_SUPABASE_KEY` | secret, `@bws` in template | Server-side service-role key for private snapshots/results; code can fall back to `SUPABASE_KEY` only if that key has sufficient privileges |
 
-Apply `migrations/20260930_add_intraday_research.sql` before deployment and add
+Apply `migrations/20260930_add_intraday_research.sql`,
+`migrations/20260930_add_intraday_shadow.sql` and
+`migrations/20260930_add_intraday_reporting.sql` before deployment and add
 the new key to Bitwarden and the weekly backup's GitHub Actions secrets. Never
 put a real key in the template. An unavailable capture database is surfaced to
 the operator; it must not block protective trading actions.
+
+The shadow worker requires explicit `IBKR_ACCOUNT` (or `--account`) for
+actual-account initialization, but does not connect to IBKR. CLI defaults are
+`--poll 30` seconds and `--spool /app/shadow/shadow.sqlite3`; `--once` is a
+diagnostic and `--new-run` explicitly supersedes a previous hypothetical run.
+`SHADOW_SOURCE_SUPABASE_KEY` is an optional separate read key for source tables;
+blank falls back to the private research key. No new live strategy defaults
+are introduced. See
+`decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
+
+The independent cloud watchdog needs Actions secrets `SUPABASE_URL`,
+`INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`, plus its
+built-in GitHub token with issue-write permission. It runs every 15 minutes,
+checks 10-minute freshness/coverage gaps, and schedules daily reporting at
+exchange close plus 30 minutes. Paired buy/monitor decisions have a separate
+20-minute freshness bound because they run every 15 minutes; quote frames run
+every five minutes. Weekly reports become due Monday at 08:00 New York.
+Full setup, delay/catch-up limitations and
+hypothetical portfolio recovery are in [intraday research](intraday_research.md).
 
 Integer research settings must be positive. Invalid values are logged and
 disable recording/automatic comparisons instead of crashing the trading

@@ -15,12 +15,12 @@ const count = (value) => finiteNumber(value) === null ? 'Unknown' : value.toLoca
 const timestamp = (value) => value && !Number.isNaN(Date.parse(value))
   ? new Date(value).toLocaleString() : 'Not recorded';
 
-async function request(url, options = {}) {
+export async function request(url, options = {}, timeoutMs = 30000) {
   const controller = new AbortController();
   const abort = () => controller.abort();
   options.signal?.addEventListener('abort', abort, { once: true });
   if (options.signal?.aborted) controller.abort();
-  const timeout = setTimeout(abort, 30000);
+  const timeout = setTimeout(abort, timeoutMs);
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     const text = await response.text();

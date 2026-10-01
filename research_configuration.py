@@ -1,0 +1,51 @@
+"""Import-safe strategy settings shared with the live agent, never a broker client."""
+import os
+
+from config import (
+    MAX_POSITIONS, STOP_LOSS_PCT, MAX_LOSS_PCT, COOLING_OFF_DAYS,
+    EARNINGS_BLACKOUT_TRADING_DAYS,
+)
+from exit_rules import (
+    TRAIL_PROFIT_TIERS, PROVE_IT_ENABLED, PROVE_IT_P1_DAY0_PCT,
+    PROVE_IT_P1_LATER_PCT, PROVE_IT_P1_DAY0_LAST_DAY, PROVE_IT_P2_ARM_GAIN_PCT,
+    PROVE_IT_P2_FLOOR_PCT, PROVE_IT_BACKSTOP_SLACK_PCT, OCA_EXIT_ENABLED,
+    SMART_EXIT_FOR_RULES, POWER_HOLD_ENABLED, POWER_HOLD_GAIN_PCT,
+    POWER_HOLD_TRIGGER_DAYS, POWER_HOLD_DURATION_DAYS, POWER_HOLD_TRAIL_PCT,
+)
+
+ATR_STOP_MAX_PCT = float(os.getenv("ATR_STOP_MAX_PCT", 0.12))
+MIN_POSITION_SIZE = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
+TRIGGER_LOOKBACK_DAYS = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
+MAX_PIVOT_EXTENSION = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))
+MAX_PIVOT_BREAKDOWN = float(os.getenv("MAX_PIVOT_BREAKDOWN", 0.02))
+MIN_VOL_SURGE_GATE = float(os.getenv("MIN_VOL_SURGE_GATE", 0.75))
+MAX_PRE_BREAKOUT_PIVOT_DIST = float(os.getenv("MAX_PRE_BREAKOUT_PIVOT_DIST", 0.05))
+MIN_TRIGGER_SCORE = int(os.getenv("MIN_TRIGGER_SCORE", 60))
+MIN_PRE_BREAKOUT_SCORE = int(os.getenv("MIN_PRE_BREAKOUT_SCORE", 65))
+MIN_RELAXED_TRIGGER_SCORE = int(os.getenv("MIN_RELAXED_TRIGGER_SCORE", 58))
+PRICE_SAFETY_RESERVE = float(os.getenv("PRICE_SAFETY_RESERVE", 1000.0))
+RANK_REPLACE_THRESHOLD = int(os.getenv("RANK_REPLACE_THRESHOLD", 15))
+RANK_REPLACE_FAIL_THRESHOLD = int(os.getenv("RANK_REPLACE_FAIL_THRESHOLD", 5))
+STALE_EXIT_DAYS = int(os.getenv("STALE_EXIT_DAYS", 10))
+STALE_EXIT_MIN_DAYS_HELD = int(os.getenv("STALE_EXIT_MIN_DAYS_HELD", 7))
+BREAKOUT_VERDICT_MIN_GAIN = float(os.getenv("BREAKOUT_VERDICT_MIN_GAIN", 0.01))
+BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0.75))
+SCALE_OUT_ENABLED = os.getenv("SCALE_OUT_ENABLED", "true").lower() == "true"
+SCALE_OUT_TRIGGER_PCT = float(os.getenv("SCALE_OUT_TRIGGER_PCT", 0.04))
+SCALE_OUT_FRACTION = float(os.getenv("SCALE_OUT_FRACTION", 0.33))
+ARMED_EXIT_TRAIL_PCT = float(os.getenv("ARMED_EXIT_TRAIL_PCT", 0.006))
+ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25))
+MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
+MARKET_DIRECTION_SMA_WINDOW = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
+MARKET_DIRECTION_TICKERS = [t.strip().upper() for t in
+                            os.getenv("MARKET_DIRECTION_TICKERS", "SPY").split(",") if t.strip()]
+MARKET_DIRECTION_BUFFER_PCT = float(os.getenv("MARKET_DIRECTION_BUFFER_PCT", 0.005))
+MARKET_DIRECTION_SLOPE_DAYS = max(1, int(os.getenv("MARKET_DIRECTION_SLOPE_DAYS", 20)))
+MARKET_DIRECTION_MAX_STALE_DAYS = int(os.getenv("MARKET_DIRECTION_MAX_STALE_DAYS", 5))
+
+
+def effective_config():
+    """Same captured shape as live instrumentation, without importing its daemon."""
+    import sys
+    from intraday_capture import effective_config as capture_config
+    return capture_config(sys.modules[__name__])

@@ -90,6 +90,10 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Intraday comparison direction", string: "Positive means removing the D-grade veto helped" },
   { feature: "Actual portfolio replay starts", string: "Actual recorded starting portfolio" },
   { feature: "No synthetic portfolio reset", string: "Cash and holdings are not reset" },
+  { feature: "Separate hypothetical portfolio", string: "Decision-only portfolio" },
+  { feature: "Shadow health", string: "/api/intraday/shadow/status" },
+  { feature: "Labelled shadow export", string: "/api/intraday/shadow/export" },
+  { feature: "Scheduled research reports", string: "Daily summaries and weekly research reports" },
 ];
 
 // -- Source-level structural guards --------------------------------------------

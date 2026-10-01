@@ -82,6 +82,8 @@ LIMITATIONS = [
 ]
 ENGINE_FILES = (
     "research/calibrate_intraday.py", "research/live_rule_replay.py", "intraday_replay.py",
+    "shadow_engine.py",
+    "shadow_inputs.py", "research_configuration.py", "market_direction.py", "indicators.py",
     "decision_core.py", "exit_core.py", "exit_rules.py", "cooling_off.py",
     "market_calendar.py", "trade_costs.py", "trigger_audit.py", "config.py",
 )
@@ -220,6 +222,8 @@ def effective_settings(original, experiment):
 
 
 def validate_dataset(data):
+    if isinstance(data, dict) and data.get("schema_version") == 3:
+        return _validate_shadow_dataset(data)
     require(isinstance(data, dict) and data.get("schema_version") == 2,
             "Require exported actual-account schema2 dataset; observer-only/raw samples lack "
             "recorded buy/monitor decision cycles and cannot be fabricated into a replay")
@@ -270,8 +274,43 @@ def validate_dataset(data):
                 sessions=sessions, input_sha256=digest(data))
 
 
+def _validate_shadow_dataset(data):
+    import shadow_engine as shadow
+    require(len(canonical(data)) <= MAX_BYTES, "Dataset exceeds 64 MiB")
+    shadow.validate_dataset(data)  # Re-executes the actual-seed prefix; a hash alone is not proof.
+    stamps = []
+    for event in data["events"]:
+        stamps.append(core._timestamp(event["timestamp"], "event timestamp"))
+        for group in ("market_observations", "entry_quotes"):
+            stamps.extend(core._timestamp(q["observed_at"], "quote timestamp")
+                         for q in event.get(group, {}).values())
+        stamps.extend(core._timestamp(t["observed_at"], "trigger timestamp")
+                     for t in event.get("triggers", []))
+        stamps.extend(core._timestamp(g["observed_at"], "gate timestamp")
+                     for g in event.get("gate_evidence", []))
+        if "cycle_gates" in event:
+            stamps.append(core._timestamp(event["cycle_gates"]["observed_at"], "gate timestamp"))
+        if "observed_at" in event:
+            stamps.append(core._timestamp(event["observed_at"], "source timestamp"))
+        if "cycle_context" in event:
+            stamps.append(core._timestamp(event["cycle_context"]["started_at"], "cycle start"))
+    return dict(origin=shadow.ORIGIN, conditional_experiment=True,
+                account_id=data["seed"]["account"]["account_id"],
+                actual_seed_sha256=data["capture_evidence"]["actual_seed_sha256"],
+                snapshot_at=data["window_checkpoint"]["last_timestamp"],
+                observed_start=min(stamps).isoformat(), observed_end=max(stamps).isoformat(),
+                sessions=data["capture_evidence"]["sessions"], input_sha256=digest(data),
+                lineage_sha256=digest(data["prefix_frames"] + data["window_frames"]),
+                lineage_frame_count=len(data["prefix_frames"]) + len(data["window_frames"]))
+
+
 def _run(data, experiment):
     effective, changes = effective_settings(settings(data), experiment)
+    if data.get("schema_version") == 3:
+        import shadow_engine as shadow
+        return shadow.replay_window(
+            data, decision_config=effective["decision_config"], exit_config=effective["exit_config"],
+            disable_ai_veto=experiment["disable_ai_veto"], _validated=True), effective, changes
     # _Replay validates the original again. Replace only per-instance pure configs,
     # never capture evidence, original settings or exit_rules module globals.
     engine = core._Replay(copy.deepcopy(data), experiment["disable_ai_veto"])
@@ -308,8 +347,14 @@ def position_attribution(run):
 def equity_attribution(data, run):
     """Exact window equity bridge by ticker, including initial/final holdings and costs."""
     values = {}
-    for mark in data["initial_state"]["broker_positions"]:
-        values[mark["ticker"]] = -mark["shares"] * mark["market_price"]
+    if data.get("schema_version") == 3:
+        checkpoint = data["window_checkpoint"]
+        for position in data["initial_positions"]:
+            ticker = position["ticker"]
+            values[ticker] = -position["shares"] * checkpoint["last_quotes"][ticker]["price"]
+    else:
+        for mark in data["initial_state"]["broker_positions"]:
+            values[mark["ticker"]] = -mark["shares"] * mark["market_price"]
     for fill in run["fills"]:
         ticker = fill["ticker"]
         values[ticker] = values.get(ticker, 0) + (
@@ -331,10 +376,9 @@ def summary(data, run, baseline):
     delta_order = sorted(differences, key=lambda t: (-differences[t], t))
     delta = run["final_equity_net"] - baseline["final_equity_net"]
     attribution = position_attribution(run)
-    return dict(
+    result = dict(
         n_completed_positions=run["closed_position_count"],
         n_distinct_sessions=run["sessions_count"],
-        starting_actual_account=copy.deepcopy(data["initial_state"]["account"]),
         starting_cash=data["initial_cash"], final_equity_net=run["final_equity_net"],
         final_cash=run["cash"], final_holdings_value=run["open_market_value"],
         open_position_count=len(run["open_positions"]), net_profit=run["net_profit"],
@@ -352,6 +396,24 @@ def summary(data, run, baseline):
         warnings=(["Small sample: fewer than 30 completed positions; differences are exploratory, "
                    "not an invented approval gate."] if run["closed_position_count"] < 30 else []),
     )
+    if data.get("schema_version") == 3:
+        result.update(
+            starting_hypothetical_account=dict(
+                account_id=data["seed"]["account"]["account_id"], currency="USD",
+                net_liquidation=data["window_checkpoint"]["equity"]),
+            actual_seed_at=data["seed"]["timestamp"], conditional_experiment=True,
+            starting_state_label="reproduced baseline shadow checkpoint; NOT actual account")
+    else:
+        result["starting_actual_account"] = copy.deepcopy(data["initial_state"]["account"])
+    return result
+
+
+def limitations(data):
+    if data.get("schema_version") != 3:
+        return LIMITATIONS
+    from shadow_engine import LIMITATIONS as shadow_limitations
+    return [item for item in LIMITATIONS if not (
+        item.startswith("Each window starts") or item.startswith("Initial holdings and protective"))] + shadow_limitations
 
 
 def _trial(data, experiment, baseline=None):
@@ -397,7 +459,7 @@ def select(data, candidates):
         original_capture_evidence=copy.deepcopy(data["capture_evidence"]),
         training_trials=trials, selected_name=chosen,
         frozen_experiment=copy.deepcopy(next(r for r in [BASELINE, *rows] if r["name"] == chosen)),
-        limitations=LIMITATIONS,
+        limitations=limitations(data),
     )
     return seal(document)
 
@@ -447,6 +509,15 @@ def evaluate(plan, holdout):
     verify_plan(plan)  # No holdout input is consulted in training selection.
     window = validate_dataset(holdout)
     require(window["account_id"] == plan["training"]["account_id"], "Holdout selected account differs")
+    require(window.get("origin") == plan["training"].get("origin"),
+            "Cannot mix actual-account and conditional shadow windows")
+    if window.get("origin"):
+        require(window["actual_seed_sha256"] == plan["training"]["actual_seed_sha256"],
+                "Shadow holdout must descend from the SAME captured actual seed")
+        count = plan["training"]["lineage_frame_count"]
+        require(len(holdout["prefix_frames"]) >= count
+                and digest(holdout["prefix_frames"][:count]) == plan["training"]["lineage_sha256"],
+                "Holdout baseline prefix differs from the frozen training history")
     require(settings(holdout) == plan["original_settings"],
             "Holdout recorded live configuration/costs differ from training; do not relabel either capture")
     require(core._timestamp(window["observed_start"], "holdout observed start")
@@ -476,7 +547,7 @@ def evaluate(plan, holdout):
                                              if t["name"] == plan["selected_name"])),
         holdout=window, original_settings=settings(holdout),
         original_capture_evidence=copy.deepcopy(holdout["capture_evidence"]),
-        baseline=baseline_report, frozen_candidate=candidate_report, limitations=LIMITATIONS,
+        baseline=baseline_report, frozen_candidate=candidate_report, limitations=limitations(holdout),
     ))
 
 
@@ -523,9 +594,11 @@ def console_report(document):
             print(f"{trial['name']}: REJECTED — {trial['reason']}")
             continue
         s = trial["summary"]
+        account = s.get("starting_hypothetical_account", s.get("starting_actual_account"))
+        label = "hypothetical checkpoint" if s.get("conditional_experiment") else "actual start"
         print(f"{trial['name']}: n={s['n_completed_positions']}, "
-              f"{s['n_distinct_sessions']} distinct sessions, actual start "
-              f"${s['starting_actual_account']['net_liquidation']:.2f}, final including holdings "
+              f"{s['n_distinct_sessions']} distinct sessions, {label} "
+              f"${account['net_liquidation']:.2f}, final including holdings "
               f"${s['final_equity_net']:.2f}, after-cost change ${s['net_profit']:+.2f}, "
               f"vs recorded-config baseline ${s['equity_delta_vs_recorded_config_baseline']:+.2f}; "
               f"sampled drawdown {s['max_sampled_drawdown_pct']:.2f}%, realised completed-position "
@@ -536,7 +609,7 @@ def console_report(document):
         for warning in s["warnings"]:
             print(f"  WARNING: {warning}")
     print(f"Frozen proposal: {document['selected_name']}. Human approval required; no live changes.")
-    for limitation in LIMITATIONS:
+    for limitation in document["limitations"]:
         print(limitation)
 
 

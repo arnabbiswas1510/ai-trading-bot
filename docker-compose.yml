@@ -83,6 +83,25 @@ services:
     networks:
       - trading_bridge
 
+  shadow-worker:
+    profiles: ["observe"]
+    image: ghcr.io/arnabbiswas1510/ai-trading-bot-shadow:latest
+    container_name: shadow-worker
+    restart: unless-stopped
+    stop_grace_period: 90s
+    env_file:
+      - .env
+    volumes:
+      - shadow-data:/app/shadow
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    dns: *external-dns
+    networks:
+      - research_bridge
+
   trading-bot:
     image: ghcr.io/arnabbiswas1510/ai-trading-bot:latest
     container_name: can-slim-trading-bot
@@ -101,17 +120,24 @@ services:
       - .env
     environment:
       - DB_PATH=/app/data/trading_bot.db
+      - TRADING_RUNTIME_MODE=${TRADING_RUNTIME_MODE:-observe}
     dns: *external-dns
     networks:
       - trading_bridge
 
 networks:
+  research_bridge:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1400
   trading_bridge:
     driver: bridge
     driver_opts:
       com.docker.network.driver.mtu: 1400
 
 volumes:
+  shadow-data:
+    driver: local
   bot-data:
     driver: local
   ib-gateway-program:

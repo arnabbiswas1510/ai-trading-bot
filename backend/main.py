@@ -595,6 +595,42 @@ def export_intraday_observations(start_date: datetime.date, end_date: datetime.d
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@app.get("/api/intraday/shadow/status")
+def shadow_research_status():
+    import shadow_service
+    try:
+        return shadow_service.status()
+    except (intraday_service.ResearchUnavailable, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/intraday/shadow/export")
+def export_shadow_research(run_id: str, start_date: datetime.date, end_date: datetime.date):
+    from fastapi.responses import JSONResponse
+    import shadow_service
+    try:
+        dataset = shadow_service.export_dataset(run_id, start_date, end_date)
+        return JSONResponse(dataset, headers={
+            "Content-Disposition": f'attachment; filename="shadow-decisions-{start_date}-{end_date}.json"',
+            "Cache-Control": "no-store",
+        })
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except intraday_service.ResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/intraday/reports")
+def intraday_research_reports():
+    import shadow_service
+    try:
+        return shadow_service.reports()
+    except (intraday_service.ResearchUnavailable, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/api/settings")
 def get_settings():
     try:

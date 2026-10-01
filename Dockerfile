@@ -36,7 +36,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Install backend dependencies
 COPY backend/requirements.txt ./backend/
-RUN pip install --no-cache-dir -r backend/requirements.txt
+COPY requirements-shadow.txt ./
+RUN pip install --no-cache-dir -r backend/requirements.txt -r requirements-shadow.txt
 
 # Copy backend python code
 COPY backend/ ./backend/
@@ -50,6 +51,8 @@ COPY backend/ ./backend/
 COPY config.py exit_rules.py exit_core.py daily_exit_sim.py trade_costs.py ./backend/
 COPY decision_core.py cooling_off.py market_calendar.py intraday_replay.py ./backend/
 COPY trigger_audit.py intraday_capture.py ./backend/
+COPY shadow_engine.py ./backend/
+COPY shadow_inputs.py shadow_store.py research_configuration.py market_direction.py indicators.py ./backend/
 COPY research/live_rule_replay.py ./backend/research/live_rule_replay.py
 
 # Copy compiled frontend assets from Stage 1

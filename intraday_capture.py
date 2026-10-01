@@ -89,7 +89,7 @@ def trade_snapshot(trade):
         "contract": _fields(trade.contract, "conId symbol secType currency exchange"),
         "order": _fields(trade.order, "orderId permId clientId account action orderType "
                          "totalQuantity auxPrice lmtPrice trailingPercent trailStopPrice "
-                         "tif ocaGroup ocaType parentId transmit orderRef"),
+                         "tif ocaGroup ocaType parentId transmit orderRef outsideRth triggerMethod"),
         "status": _fields(trade.orderStatus, "status filled remaining avgFillPrice lastFillPrice"),
     }
 

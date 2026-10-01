@@ -35,7 +35,7 @@ import cooling_off
 import decision_core as dc
 import exit_core as ec
 import exit_rules as er
-from market_calendar import trading_days_between
+from market_calendar import trading_days_between, session_bounds
 from trade_costs import CostModel
 
 NY = ZoneInfo("America/New_York")
@@ -166,6 +166,16 @@ def _observed(value, now, path):
     return observed
 
 
+def trigger_date(value, observed, path="triggered_at"):
+    """Validate a screener date or an aware timestamp without inventing a clock time."""
+    if isinstance(value, str) and len(value) == 10 and value[4] == "-" and value[7] == "-":
+        day = _date(value, path)
+        _require(day <= observed.astimezone(NY).date(),
+                 f"{path}: future trigger date relative to its acquisition")
+        return day
+    return _observed(value, observed, path).astimezone(NY).date()
+
+
 def _ticker(value):
     _require(isinstance(value, str) and value and value == value.strip(),
              "ticker: expected a nonempty, unpadded string")
@@ -200,10 +210,16 @@ def _blocked_buy_reason(evidence, now):
     return ("SCHEMA_BLOCK", "MARGIN_BLOCK", "MARKET_BLOCK")[len(evidence) - 1]
 
 
-def _validate_recorded_cycles(events):
+def _validate_recorded_cycles(events, chronology=None):
     """Pair each scheduled monitor with its own preceding recorded buy attempt."""
-    seen, pending, last_end, session = set(), None, None, None
-    last_monitor_end, buy_seconds = None, 0
+    incremental = chronology is not None
+    chronology = chronology or {}
+    seen = set(chronology.get("seen", []))
+    pending, session = chronology.get("pending"), chronology.get("session")
+    last_end = chronology.get("last_end")
+    last_monitor_end, buy_seconds = chronology.get("last_monitor_end"), chronology.get("buy_seconds", 0)
+    last_end = _timestamp(last_end, "last_end") if last_end else None
+    last_monitor_end = _timestamp(last_monitor_end, "last_monitor_end") if last_monitor_end else None
     for event in events:
         kind = event["type"]
         if kind not in ("buy_cycle", "buy_blocked", "monitor"):
@@ -223,6 +239,8 @@ def _validate_recorded_cycles(events):
         _require(start.astimezone(NY).date().isoformat() == event["session"],
                  f"{kind}: cycle crosses a session boundary")
         if event["session"] != session:
+            if incremental:
+                seen = {cycle_id}
             session, pending = event["session"], None
             last_end = dt.datetime.combine(_date(session, "session"), dt.time(9, 30), NY)
             last_monitor_end, buy_seconds = last_end, 0
@@ -250,9 +268,14 @@ def _validate_recorded_cycles(events):
                          "buy_blocked: gate evidence must be observed within this recorded cycle, in order")
                 previous_gate = observed
         last_end = end
+    return dict(seen=sorted(seen), pending=pending, session=session,
+                last_end=last_end.isoformat() if last_end else None,
+                last_monitor_end=last_monitor_end.isoformat() if last_monitor_end else None,
+                buy_seconds=buy_seconds)
 
 
-def _validate(data):
+def _validate(data, *, complete=True, validate_cycles=True, validate_seed=True,
+              exchange_sessions=False):
     _require(isinstance(data, dict), "dataset: expected an object")
     recorded = data.get("schema_version") == 2
     _keys(data, {
@@ -296,9 +319,11 @@ def _validate(data):
                         ("prove_it_p2_floor_pct", "PROVE_IT_P2_FLOOR_PCT")):
         _require(getattr(exit_cfg, field) == expected[name],
                  f"exit_config.{field}: must match shared_exit_rules.{name}")
-    if recorded:
+    if recorded and validate_seed:
         _validate_initial_state(data)
     events = data["events"]
+    if not complete and events == []:
+        return cfg, exit_cfg, replay_cfg, costs
     _require(isinstance(events, list) and events, "events: empty dataset; record a chronological stream")
     if recorded:
         _require(_timestamp(data["initial_state"]["timestamp"], "initial_state.timestamp") <=
@@ -328,10 +353,13 @@ def _validate(data):
         previous = now
         today = _date(event["session"], f"{path}.session")
         _require(today == now.astimezone(NY).date(), f"{path}.session: must match New York date")
-        _require(trading_days_between(today, today + dt.timedelta(days=1)) == 1,
+        bounds = session_bounds(today) if exchange_sessions else None
+        _require(bool(bounds) if exchange_sessions else
+                 trading_days_between(today, today + dt.timedelta(days=1)) == 1,
                  f"{path}.session: not a NYSE session in the shared calendar")
         clock = now.astimezone(NY).time()
-        _require(dt.time(9, 30) <= clock <= dt.time(16),
+        _require(bounds[0] <= now <= bounds[1] if exchange_sessions else
+                 dt.time(9, 30) <= clock <= dt.time(16),
                  f"{path}: only regular-session observations supported (09:30–16:00 New York)")
         quotes = event[quote_key]
         _require(isinstance(quotes, dict), f"{path}.broker_quotes: expected a ticker map")
@@ -367,9 +395,9 @@ def _validate(data):
                 _ticker(ticker)
                 tickers.append(ticker)
                 observed = _observed(trigger["observed_at"], now, f"{path}.{ticker}.observed_at")
-                triggered = _observed(trigger["triggered_at"], observed, f"{path}.{ticker}.triggered_at")
+                triggered = trigger_date(trigger["triggered_at"], observed, f"{path}.{ticker}.triggered_at")
                 cutoff = today - dt.timedelta(days=replay_cfg.trigger_lookback_days)
-                _require(triggered.astimezone(NY).date() >= cutoff,
+                _require(triggered >= cutoff,
                          f"{path}.{ticker}: trigger is outside trigger_lookback_days")
                 _require(trigger["trigger_type"] in (None, "BREAKOUT", "PRE_BREAKOUT", "PRE_BREAKOUT_RELAXED"),
                          f"{path}.{ticker}: unsupported trigger_type")
@@ -395,7 +423,9 @@ def _validate(data):
             _require(set(event["entry_quotes"]) == set(tickers),
                      f"{path}.entry_quotes: must contain exactly the candidate tickers")
         if kind == "eod_latch":
-            _require(dt.time(15, 45) <= clock < dt.time(16), f"{path}: EOD window is 15:45–16:00")
+            _require(bounds[1] - dt.timedelta(minutes=15) <= now < bounds[1]
+                     if exchange_sessions else dt.time(15, 45) <= clock < dt.time(16),
+                     f"{path}: EOD window is the final 15 minutes before close")
             _observed(event["observed_at"], now, f"{path}.observed_at")
             fresh = event["fresh_trigger_tickers"]
             _require(isinstance(fresh, list), f"{path}.fresh_trigger_tickers: expected a list")
@@ -403,11 +433,11 @@ def _validate(data):
                 _ticker(ticker)
         _require(kind != "end_mark" or i == len(events) - 1,
                  f"{path}: end_mark must be the final event")
-    _require(events[-1]["type"] == "end_mark",
+    _require(not complete or events[-1]["type"] == "end_mark",
              "events: finish with end_mark carrying current marks for every held ticker")
     _require(recorded or any(e["type"] == "buy_cycle" and e["triggers"] for e in events),
              "events: no candidate dataset; at least one nonempty buy_cycle is required")
-    if recorded:
+    if recorded and validate_cycles:
         _validate_recorded_cycles(events)
     return cfg, exit_cfg, replay_cfg, costs
 
@@ -597,8 +627,10 @@ class _Ledger:
 
 
 class _Replay:
-    def __init__(self, data, disable_ai_veto):
-        self.cfg, self.exit_cfg, self.cfg_replay, self.costs = _validate(data)
+    def __init__(self, data, disable_ai_veto, *, incremental=False):
+        self.cfg, self.exit_cfg, self.cfg_replay, self.costs = _validate(
+            data, complete=not incremental, validate_cycles=not incremental,
+            exchange_sessions=incremental)
         self.data = data
         self.disable_ai_veto = disable_ai_veto
         self.cash = float(data["initial_cash"])
@@ -620,6 +652,10 @@ class _Replay:
         self.initial_equity = (data["initial_state"]["account"]["net_liquidation"]
                                if self.recorded else data["initial_cash"])
         self.equity_curve = []
+        self.previous = None
+        self.eod_session = None
+        self.pending_eod = False
+        self.exchange_sessions = incremental
         if self.recorded:
             self.equity_curve.append(dict(timestamp=data["initial_state"]["timestamp"],
                                           equity=self.initial_equity, cash=self.cash))
@@ -773,8 +809,9 @@ class _Replay:
                        execution_buy_price=fill["price"],
                        buy_date=self.today.isoformat(), stop_loss_pct=trail,
                        highest_unrealized_pct=0.0, hwm_price=basis,
-                       closed_above_entry=False, scaled_out=False, power_hold=False,
-                       exit_armed=False, entry_fee_remaining=fill["commission"])
+                       closed_above_entry=False, scaled_out=False, scaled_out_at=None, power_hold=False,
+                       exit_armed=False, exit_armed_at=None, exit_armed_reason=None,
+                       entry_fee_remaining=fill["commission"])
             self.positions[ticker] = pos
             self._bracket(ticker, trail, er.hard_stop_price(pos, basis, 0.0, False, 0),
                           persist_hard=True)
@@ -808,6 +845,7 @@ class _Replay:
             elif decision.action == ec.SCALE_OUT:
                 self._sell(ticker, decision.scale_shares, "Partial scale-out")
                 pos["scaled_out"] = True
+                pos["scaled_out_at"] = self.now.isoformat()
                 self._bracket(ticker, pos["stop_loss_pct"], er.hard_stop_price(
                     pos, pos["buy_price"], pos["highest_unrealized_pct"], False, age),
                     persist_hard=False)
@@ -819,56 +857,64 @@ class _Replay:
                     pos["stop_loss_pct"] = pos["broker_trail_pct"]
         self._broker()
 
+    def advance_event(self, event):
+        """One shared transition, used by both batch replay and the shadow worker."""
+        self.now = _timestamp(event["timestamp"], "timestamp")
+        self.today = dt.date.fromisoformat(event["session"])
+        self.quotes = event["market_observations" if self.recorded else "broker_quotes"]
+        kind = event["type"]
+        _require(not self.pending_eod or kind == "eod_latch",
+                 "EOD-window monitor must be followed immediately by eod_latch; "
+                 "do not omit the live post-monitor proven latch / rotation check")
+        if self.previous and self.previous["session"] != event["session"] and self.positions:
+            _require(self.eod_session == self.previous["session"],
+                     "Held overnight without prior eod_latch; capture the preceding EOD monitor/latch")
+            _require(trading_days_between(_date(self.previous["session"], "session"), self.today) == 1,
+                     "Held book crosses missing NYSE sessions; capture their monitoring/EOD inputs")
+        if self.recorded:
+            self._marks()
+        self._broker()
+        if kind == "buy_cycle":
+            self._buy(event)
+        elif kind == "buy_blocked":
+            self._record(None, dc.SKIP, event["block_reason"], cycle_wide=True,
+                         gate_evidence=copy.deepcopy(event["gate_evidence"]))
+        elif kind == "monitor":
+            self._monitor()
+            if self.exchange_sessions:
+                closing = session_bounds(self.today)[1]
+                self.pending_eod = closing - dt.timedelta(minutes=15) <= self.now < closing
+            else:
+                self.pending_eod = dt.time(15, 45) <= self.now.astimezone(NY).time() < dt.time(16)
+        elif kind == "eod_latch":
+            _require(self.previous is not None and self.previous["type"] == "monitor" and self.pending_eod
+                     and self.previous["session"] == event["session"],
+                     "eod_latch requires the immediately preceding same-session EOD-window "
+                     "intraday monitor; latching first changes the exit phase")
+            self._marks()
+            fresh = set(event["fresh_trigger_tickers"]) - self.positions.keys()
+            older = any(trading_days_between(dt.date.fromisoformat(p["buy_date"]), self.today) >= 7
+                        for p in self.positions.values())
+            _require(not (fresh and older and len(self.positions) >= self.cfg.max_positions),
+                     "Rank & Replace could apply: full book, age >=7 trading days and fresh "
+                     "candidates. Rotation is unsupported; supply a narrower capture or implement it.")
+            for ticker, pos in self.positions.items():
+                pos["closed_above_entry"] |= self.quotes[ticker]["price"] > pos["buy_price"]
+                self._record(ticker, "EOD_LATCH", closed_above_entry=pos["closed_above_entry"])
+            self.eod_session, self.pending_eod = event["session"], False
+        elif kind == "end_mark":
+            self._marks()
+        if self.recorded:
+            self.equity_curve.append(dict(timestamp=self.now.isoformat(), equity=self._marks(),
+                                          cash=self.cash))
+        self.previous = {k: event[k] for k in ("type", "session", "timestamp")}
+
     def run(self):
-        previous = None
-        eod_session = None
-        pending_eod = False
         for event in self.data["events"]:
-            self.now = _timestamp(event["timestamp"], "timestamp")
-            self.today = dt.date.fromisoformat(event["session"])
-            self.quotes = event["market_observations" if self.recorded else "broker_quotes"]
-            kind = event["type"]
-            _require(not pending_eod or kind == "eod_latch",
-                     "EOD-window monitor must be followed immediately by eod_latch; "
-                     "do not omit the live post-monitor proven latch / rotation check")
-            if previous and previous["session"] != event["session"] and self.positions:
-                _require(eod_session == previous["session"],
-                         "Held overnight without prior eod_latch; capture the preceding EOD monitor/latch")
-                _require(trading_days_between(_date(previous["session"], "session"), self.today) == 1,
-                         "Held book crosses missing NYSE sessions; capture their monitoring/EOD inputs")
-            if self.recorded:
-                self._marks()
-            self._broker()
-            if kind == "buy_cycle":
-                self._buy(event)
-            elif kind == "buy_blocked":
-                self._record(None, dc.SKIP, event["block_reason"], cycle_wide=True,
-                             gate_evidence=copy.deepcopy(event["gate_evidence"]))
-            elif kind == "monitor":
-                self._monitor()
-                pending_eod = dt.time(15, 45) <= self.now.astimezone(NY).time() < dt.time(16)
-            elif kind == "eod_latch":
-                _require(previous is not None and previous["type"] == "monitor" and pending_eod
-                         and previous["session"] == event["session"],
-                         "eod_latch requires the immediately preceding same-session EOD-window "
-                         "intraday monitor; latching first changes the exit phase")
-                self._marks()
-                fresh = set(event["fresh_trigger_tickers"]) - self.positions.keys()
-                older = any(trading_days_between(dt.date.fromisoformat(p["buy_date"]), self.today) >= 7
-                            for p in self.positions.values())
-                _require(not (fresh and older and len(self.positions) >= self.cfg.max_positions),
-                         "Rank & Replace could apply: full book, age >=7 trading days and fresh "
-                         "candidates. Rotation is unsupported; supply a narrower capture or implement it.")
-                for ticker, pos in self.positions.items():
-                    pos["closed_above_entry"] |= self.quotes[ticker]["price"] > pos["buy_price"]
-                    self._record(ticker, "EOD_LATCH", closed_above_entry=pos["closed_above_entry"])
-                eod_session, pending_eod = event["session"], False
-            elif kind == "end_mark":
-                self._marks()
-            if self.recorded:
-                self.equity_curve.append(dict(timestamp=self.now.isoformat(), equity=self._marks(),
-                                              cash=self.cash))
-            previous = event
+            self.advance_event(event)
+        return self.result()
+
+    def result(self):
         equity = self._marks()
         result = {
             "variant": "without_ai_veto" if self.disable_ai_veto else "baseline",

@@ -28,6 +28,52 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-09-30 - Relocated strategy declarations and shared market-direction calculation
+
+**Relocated, not retired:** the active configuration declarations below moved
+from `execution_agent.py` to import-safe `research_configuration.py`. The live
+agent re-exports every name; defaults and environment-variable names are
+unchanged. These settings already governed live trading. This is not evidence
+that any particular optional rule fired.
+
+- Entry and sizing: `MIN_POSITION_SIZE`, `TRIGGER_LOOKBACK_DAYS`,
+  `MAX_PIVOT_EXTENSION`, `MAX_PIVOT_BREAKDOWN`, `MIN_VOL_SURGE_GATE`,
+  `MAX_PRE_BREAKOUT_PIVOT_DIST`, `MIN_TRIGGER_SCORE`, `MIN_PRE_BREAKOUT_SCORE`,
+  `MIN_RELAXED_TRIGGER_SCORE`, `PRICE_SAFETY_RESERVE`.
+- Stops, scale-out and armed exits: `ATR_STOP_MAX_PCT`, `SCALE_OUT_ENABLED`,
+  `SCALE_OUT_TRIGGER_PCT`, `SCALE_OUT_FRACTION`, `ARMED_EXIT_TRAIL_PCT`,
+  `ARMED_EXIT_DEADLINE_HOURS`.
+- Rotation inputs: `RANK_REPLACE_THRESHOLD`, `RANK_REPLACE_FAIL_THRESHOLD`,
+  `STALE_EXIT_DAYS`, `STALE_EXIT_MIN_DAYS_HELD`, `BREAKOUT_VERDICT_MIN_GAIN`,
+  `BREAKOUT_VERDICT_MIN_VOL_PCT`.
+- Market direction: `MARKET_DIRECTION_FILTER_ENABLED`,
+  `MARKET_DIRECTION_SMA_WINDOW`, `MARKET_DIRECTION_TICKERS`,
+  `MARKET_DIRECTION_BUFFER_PCT`, `MARKET_DIRECTION_SLOPE_DAYS`,
+  `MARKET_DIRECTION_MAX_STALE_DAYS`.
+
+The returned moving-average verdict in `market_regime._index_is_bullish()`
+now comes from `market_direction.index_verdict()`, shared with the shadow
+input producer. The live wrapper still fetches its data and logs its comparison;
+the helper performs the average/buffer/slope calculation and rejects invalid,
+duplicate, stale or future-dated history.
+
+Importing the live daemon merely to obtain these settings initializes logging,
+network-session and brokerage-related dependencies. The shadow worker instead
+needs the same settings without those capabilities. The extraction and shared
+calculation prevent an independent research copy from drifting away from the
+live rules. See
+`decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
+
+Restore the original declarations and wrapper with
+`git show e1860c3:execution_agent.py` and
+`git show e1860c3:market_regime.py`. Do not restore daemon-only configuration
+while a broker-free consumer needs it; reversing this relocation requires
+another import-safe, single-source configuration boundary. Regression coverage
+includes `tests/test_shadow_worker.py`, `tests/test_market_direction.py`,
+`tests/test_buy_decision_golden.py`, and `tests/test_exit_core.py`.
+
+---
+
 ---
 
 ## 2026-09-30 - Unconditional live-agent startup during deployment
@@ -35,7 +81,8 @@ you knowing a rule was retired but not what its code actually did.
 The deployment sequence in `.github/workflows/deploy_to_server.yml` no longer
 unconditionally removes and starts `execution-agent`. Runtime selection is
 relocated into `scripts/deploy_runtime.sh`: observation mode stops trading
-before image updates and selects only the read-only observer. The old path was
+before image updates and selects the read-only observer plus the broker-free
+shadow worker. The old path was
 active in production; installing an unrelated research update could therefore
 restart trading that the operator had deliberately stopped.
 

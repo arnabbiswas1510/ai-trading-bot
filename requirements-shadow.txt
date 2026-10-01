@@ -1,0 +1,6 @@
+# Shared by the shadow worker and web exporter; versions enter checkpoint fingerprints.
+requests==2.32.3
+supabase==2.31.0
+pandas==3.0.5
+numpy==2.5.1
+exchange-calendars==4.13.2

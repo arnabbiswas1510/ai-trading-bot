@@ -198,6 +198,20 @@ class ReadOnlyBroker:
             }
         fresh_orders, callback_errors = [], []
         original_open_order = ib.wrapper.openOrder
+        original_order_status = getattr(ib.wrapper, "orderStatus", None)
+        fresh_statuses = {}
+
+        def observe_order_status(orderId, status, filled, remaining, avgFillPrice,
+                                 permId, parentId, lastFillPrice, clientId,
+                                 whyHeld, mktCapPrice=0.0):
+            fresh_statuses[(clientId, orderId, permId)] = {
+                "status": status, "filled": filled, "remaining": remaining,
+                "avgFillPrice": avgFillPrice, "lastFillPrice": lastFillPrice,
+            }
+            if original_order_status is not None:
+                original_order_status(orderId, status, filled, remaining, avgFillPrice,
+                                      permId, parentId, lastFillPrice, clientId,
+                                      whyHeld, mktCapPrice)
 
         def observe_open_order(order_id, contract, order, state):
             # SDK 0.9.86 only refreshes selected cached Trade.order fields.
@@ -216,10 +230,14 @@ class ReadOnlyBroker:
                 original_open_order(order_id, contract, order, state)
 
         ib.wrapper.openOrder = observe_open_order
+        if original_order_status is not None:
+            ib.wrapper.orderStatus = observe_order_status
         try:
             raw_orders = completed("open_orders_all_clients", ib.reqAllOpenOrders)
         finally:
             ib.wrapper.openOrder = original_open_order
+            if original_order_status is not None:
+                ib.wrapper.orderStatus = original_order_status
         if not isinstance(raw_orders, (list, tuple)):
             raise ObservationError("Open orders request did not return a completed list.")
         if callback_errors or len(fresh_orders) != len(raw_orders):
@@ -230,7 +248,11 @@ class ReadOnlyBroker:
             if not order["account"]:
                 raise ObservationError("Open order has no account; cannot safely scope snapshot.")
             if order["account"] == account:
-                orders[(order["clientId"], order["orderId"], order["permId"])] = row
+                key = (order["clientId"], order["orderId"], order["permId"])
+                if key in fresh_statuses:
+                    row["status"] = fresh_statuses[key]
+                    row["status_source"] = "fresh_orderStatus_callback_during_completed_request"
+                orders[key] = row
 
         values, marks = {}, {}
 

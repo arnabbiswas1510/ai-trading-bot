@@ -172,7 +172,7 @@ from exit_shadow import compute_exit_shadows
 # Upper bound for the ATR-derived per-position stop. Lowered 0.14 -> 0.12: 14%
 # measured worse than the 10-12% band on both universes, clearly so on the
 # growth names (+34.5 vs +46.4 full period).
-ATR_STOP_MAX_PCT         = float(os.getenv("ATR_STOP_MAX_PCT", 0.12))
+from research_configuration import ATR_STOP_MAX_PCT
 # Trading days a stock is ineligible for re-entry after being sold. At 1 day a
 # stock that just hit its trailing stop was buyable the next morning while still
 # technically broken. 4-slot portfolio sim, CAGR (full / worst period):
@@ -180,14 +180,12 @@ ATR_STOP_MAX_PCT         = float(os.getenv("ATR_STOP_MAX_PCT", 0.12))
 #     7 days  BROAD +16.6/-1.2   GROWTH +22.5/+13.9
 # A modest, consistent gain and no downside in either universe.
 
-MIN_POSITION_SIZE        = float(os.getenv("MIN_POSITION_SIZE", 5000.0))
-TRIGGER_LOOKBACK_DAYS    = int(os.getenv("TRIGGER_LOOKBACK_DAYS", 3))
-MAX_PIVOT_EXTENSION      = float(os.getenv("MAX_PIVOT_EXTENSION", 0.05))  # skip if price > 5% above pivot
+from research_configuration import MIN_POSITION_SIZE, TRIGGER_LOOKBACK_DAYS, MAX_PIVOT_EXTENSION
 # Floor for the same check: skip if price has fallen this far BELOW the pivot.
 # Without it the buy zone was open-ended downward, so a stale trigger whose
 # breakout had already failed was still eligible. Small buffer so ordinary
 # noise around the pivot doesn't reject a valid entry.
-MAX_PIVOT_BREAKDOWN      = float(os.getenv("MAX_PIVOT_BREAKDOWN", 0.02))  # skip if price > 2% below pivot
+from research_configuration import MAX_PIVOT_BREAKDOWN
 # Hard volume surge gate — independent of AI score. A surge below this multiple
 # of the 50-day avg volume means money is NOT confirming the move and is not a
 # valid CAN SLIM breakout signal regardless of how the AI scores the setup.
@@ -197,32 +195,32 @@ MAX_PIVOT_BREAKDOWN      = float(os.getenv("MAX_PIVOT_BREAKDOWN", 0.02))  # skip
 # LOW value is the desirable signal. An earlier revision applied this gate to
 # every trigger type, which inverted pre-breakout selection — see
 # decisions/2026-08-19_volume-gate-inversion.md.
-MIN_VOL_SURGE_GATE       = float(os.getenv("MIN_VOL_SURGE_GATE", 0.75))
+from research_configuration import MIN_VOL_SURGE_GATE
 # For PRE_BREAKOUT triggers, reject if the stock is still too far below its
 # 52-week pivot (pivot_distance_pct stored by the screener). This is distinct
 # from the intraday extension check above, which only measures drift from
 # yesterday's close — not from the actual 52W high the stock needs to breach.
-MAX_PRE_BREAKOUT_PIVOT_DIST = float(os.getenv("MAX_PRE_BREAKOUT_PIVOT_DIST", 0.05))  # 5% below 52W high
+from research_configuration import MAX_PRE_BREAKOUT_PIVOT_DIST
 # Minimum quality floor applied in buy loop to avoid low-conviction entries.
-MIN_TRIGGER_SCORE        = int(os.getenv("MIN_TRIGGER_SCORE", 60))
+from research_configuration import MIN_TRIGGER_SCORE
 # Pre-breakout setups are less confirmed; require a higher floor unless marked as
 # relaxed quota-fill candidates by the screener.
-MIN_PRE_BREAKOUT_SCORE   = int(os.getenv("MIN_PRE_BREAKOUT_SCORE", 65))
+from research_configuration import MIN_PRE_BREAKOUT_SCORE
 # Controlled relaxation floor used only for PRE_BREAKOUT_RELAXED triggers.
-MIN_RELAXED_TRIGGER_SCORE = int(os.getenv("MIN_RELAXED_TRIGGER_SCORE", 58))
+from research_configuration import MIN_RELAXED_TRIGGER_SCORE
 # Flat cash reserve per buy order: absorbs the 15-20 min lag between IBKR delayed
 # price and actual fill price. $1,000 covers ~4% movement on a $25K position.
-PRICE_SAFETY_RESERVE     = float(os.getenv("PRICE_SAFETY_RESERVE", 1000.0))
+from research_configuration import PRICE_SAFETY_RESERVE
 
 # The EMA-21 exit that used to be configured here is retired — see
 # docs/retired_code.md. Prove-It Phase 2 is tighter than a 1% undercut of a
 # 21-day average at every gain level, so it could never fire first.
 
 # Minimum score gap (trigger Mₜ vs held Mₜ) to auto-swap in Rank & Replace (Day 7+).
-RANK_REPLACE_THRESHOLD      = int(os.getenv("RANK_REPLACE_THRESHOLD", 15))
+from research_configuration import RANK_REPLACE_THRESHOLD
 # Lower bar to rotate out of a position whose Day 3 breakout verdict was FAIL:
 # the breakout already failed to confirm, so less evidence is needed to replace it.
-RANK_REPLACE_FAIL_THRESHOLD = int(os.getenv("RANK_REPLACE_FAIL_THRESHOLD", 5))
+from research_configuration import RANK_REPLACE_FAIL_THRESHOLD
 
 # ── Staleness (feeds Rank & Replace) ──────────────────────────────────────────
 # A position that has gone this many TRADING days without making a new high
@@ -266,8 +264,7 @@ RANK_REPLACE_FAIL_THRESHOLD = int(os.getenv("RANK_REPLACE_FAIL_THRESHOLD", 5))
 # staleness signal now discounts the Rank & Replace swap threshold instead, so
 # it can only act when there is somewhere better to put the money.
 # See docs/retired_code.md and decisions/2026-09-04_prove-it-stop.md.
-STALE_EXIT_DAYS             = int(os.getenv("STALE_EXIT_DAYS", 10))
-STALE_EXIT_MIN_DAYS_HELD    = int(os.getenv("STALE_EXIT_MIN_DAYS_HELD", 7))
+from research_configuration import STALE_EXIT_DAYS, STALE_EXIT_MIN_DAYS_HELD
 
 # ── Breakout Verdict ──────────────────────────────────────────────────────────
 # Day 3 EOD verdict: position must close >= +1% above entry AND have Day 3 volume
@@ -275,8 +272,7 @@ STALE_EXIT_MIN_DAYS_HELD    = int(os.getenv("STALE_EXIT_MIN_DAYS_HELD", 7))
 # which rotates FAIL positions on a smaller score gap than PASS ones. It no
 # longer arms any exit of its own (the Intraday Loss Minimiser it used to feed is
 # retired — see docs/retired_code.md).
-BREAKOUT_VERDICT_MIN_GAIN    = float(os.getenv("BREAKOUT_VERDICT_MIN_GAIN",    0.01))  # 1% above entry
-BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0.75)) # 75% of 20d avg
+from research_configuration import BREAKOUT_VERDICT_MIN_GAIN, BREAKOUT_VERDICT_MIN_VOL_PCT
 
 # ── Partial Scale-Out (winner give-back reducer) ───────────────────────────────
 # The winner->loser problem: a position runs to +4-5%, then fades back through
@@ -297,9 +293,7 @@ BREAKOUT_VERDICT_MIN_VOL_PCT = float(os.getenv("BREAKOUT_VERDICT_MIN_VOL_PCT", 0
 # Small sample: this is a PROVISIONAL decision, logged in
 # decisions/provisional_decisions.json for revisit at >=50 trades.
 # See decisions/2026-09-08_partial-scale-out.md.
-SCALE_OUT_ENABLED       = os.getenv("SCALE_OUT_ENABLED", "true").lower() == "true"
-SCALE_OUT_TRIGGER_PCT   = float(os.getenv("SCALE_OUT_TRIGGER_PCT", 0.04))   # +4% peak gain
-SCALE_OUT_FRACTION      = float(os.getenv("SCALE_OUT_FRACTION",    0.33))   # sell 33%
+from research_configuration import SCALE_OUT_ENABLED, SCALE_OUT_TRIGGER_PCT, SCALE_OUT_FRACTION
 
 # ── Exit-rule shadow logger (measurement only — never places an order) ─────────
 # Logs, every monitor cycle, what two register-tracked exit CANDIDATES would do
@@ -316,8 +310,7 @@ EXIT_SHADOW_LOG_ENABLED = os.getenv("EXIT_SHADOW_LOG_ENABLED", "true").lower() =
 # trigger, while a hard deadline forces a market sell if it hasn't already
 # closed out. This bounds the extra hold time so we never wait indefinitely
 # (and risk deeper losses) chasing a better exit.
-ARMED_EXIT_TRAIL_PCT      = float(os.getenv("ARMED_EXIT_TRAIL_PCT",      0.006))  # 0.6%
-ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25))   # ~half a trading day
+from research_configuration import ARMED_EXIT_TRAIL_PCT, ARMED_EXIT_DEADLINE_HOURS
 
 
 # ── CANSLIM "M" — market direction gate ───────────────────────────────────────
@@ -334,14 +327,11 @@ ARMED_EXIT_DEADLINE_HOURS = float(os.getenv("ARMED_EXIT_DEADLINE_HOURS", 3.25)) 
 # A 50>200 requirement and an "either index" (OR) combination were both tested
 # and rejected. See decisions/2026-09-28_market-gate-spy-only-tighter-band.md
 # (retune) and decisions/2026-08-22_market-direction-gate-spy-qqq.md (original).
-MARKET_DIRECTION_FILTER_ENABLED = os.getenv("MARKET_DIRECTION_FILTER_ENABLED", "true").lower() == "true"
-MARKET_DIRECTION_SMA_WINDOW     = int(os.getenv("MARKET_DIRECTION_SMA_WINDOW", 200))
-MARKET_DIRECTION_TICKERS        = [t.strip().upper() for t in
-                                   os.getenv("MARKET_DIRECTION_TICKERS", "SPY").split(",")
-                                   if t.strip()]
-MARKET_DIRECTION_BUFFER_PCT     = float(os.getenv("MARKET_DIRECTION_BUFFER_PCT", 0.005))
-MARKET_DIRECTION_SLOPE_DAYS     = max(1, int(os.getenv("MARKET_DIRECTION_SLOPE_DAYS", 20)))
-MARKET_DIRECTION_MAX_STALE_DAYS = int(os.getenv("MARKET_DIRECTION_MAX_STALE_DAYS", 5))
+from research_configuration import (
+    MARKET_DIRECTION_FILTER_ENABLED, MARKET_DIRECTION_SMA_WINDOW,
+    MARKET_DIRECTION_TICKERS, MARKET_DIRECTION_BUFFER_PCT,
+    MARKET_DIRECTION_SLOPE_DAYS, MARKET_DIRECTION_MAX_STALE_DAYS,
+)
 
 # ── Telegram notifications ─────────────────────────────────────────────────────
 notifier = TelegramNotifier(

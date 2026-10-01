@@ -24,22 +24,32 @@ case "$mode" in
         exit 2
         ;;
 esac
+export TRADING_RUNTIME_MODE="$mode"
 
 # Stop first: a failed pull/start must never leave the opposite runtime active.
 # This does not cancel or replace any orders already held at the broker.
 echo "=== Runtime mode: $mode; stopping $inactive before deployment ==="
-docker compose --profile "$inactive_profile" stop "$inactive"
+if [ "$mode" = observe ]; then
+    docker compose --profile "$inactive_profile" stop "$inactive"
+    set -- intraday-observer shadow-worker trading-bot
+else
+    docker compose --profile "$inactive_profile" stop "$inactive" shadow-worker
+    set -- execution-agent trading-bot
+fi
 
 echo "=== Pulling $selected and dashboard images ==="
-docker compose --profile "$mode" pull "$selected" trading-bot
+docker compose --profile "$mode" pull "$@"
 
 echo "=== Keeping the existing gateway (--no-recreate preserves its session) ==="
 docker compose up -d --no-deps --no-recreate ib-gateway
 
 # Never follow dependencies into a trading service, even if compose is changed.
-docker compose --profile "$mode" up -d --no-deps "$selected" trading-bot
+docker compose --profile "$mode" up -d --no-deps "$@"
 
 echo "=== Selected runtime status (inactive runtime remains stopped) ==="
 docker inspect "$selected" --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
+if [ "$mode" = observe ]; then
+    docker inspect shadow-worker --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
+fi
 docker inspect ib-gateway --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
 docker inspect can-slim-trading-bot --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'

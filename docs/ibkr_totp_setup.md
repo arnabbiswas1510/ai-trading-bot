@@ -78,7 +78,9 @@ Save and exit (Ctrl+X → Y → Enter)
 Apply the delivered patch and push from the operator's machine. Keep
 `TRADING_RUNTIME_MODE`, the GitHub repository Actions variable, unset or
 `observe`. The pipeline stops `execution-agent` and starts the independent
-observer and dashboard; it does not recreate an already-running gateway.
+observer, shadow worker and dashboard; it does not recreate an already-running
+gateway. Apply all three research migrations and configure the cloud watchdog
+as described in `docs/intraday_research.md`.
 Real secrets remain on the production host, never in the patch.
 
 ### Step 9: Restart the gateway
@@ -86,7 +88,7 @@ Real secrets remain on the production host, never in the patch.
 ssh -p 22 pom@192.168.1.2
 cd /home/pom/docker/ai-trading-bot
 docker compose --profile live stop execution-agent
-docker compose --profile observe stop intraday-observer
+docker compose --profile observe stop intraday-observer shadow-worker
 docker compose stop ib-gateway
 docker compose up -d ib-gateway
 ```
@@ -116,7 +118,7 @@ heartbeat, snapshots and errors. Collection does not mean risk management is
 running: existing broker orders remain, but bot-enforced exits are stopped.
 Starting live trading requires separate operator approval and explicit
 `TRADING_RUNTIME_MODE=live`. See `docs/intraday_research.md` and
-`decisions/2026-09-30_observer-and-calibration-harness.md`.
+`decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
 
 ---
 

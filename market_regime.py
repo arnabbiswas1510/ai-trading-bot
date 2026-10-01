@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from ib_insync import IB
 
 from execution_agent_ref import ea
+from market_direction import index_verdict
 
 
 def _fetch_market_closes(ticker: str) -> list[tuple[str, float]]:
@@ -87,7 +88,11 @@ def _index_is_bullish(ticker: str) -> tuple[bool, bool] | None:
           f"{'above' if above else 'below'}, "
           f"SMA{w} slope {ea.MARKET_DIRECTION_SLOPE_DAYS}d "
           f"{'flat/up' if slope_ok else 'down'}")
-    return bool(above), bool(slope_ok)
+    return index_verdict(
+        rows, today=today_ny, window=w, slope_days=ea.MARKET_DIRECTION_SLOPE_DAYS,
+        buffer_pct=ea.MARKET_DIRECTION_BUFFER_PCT,
+        max_stale_days=ea.MARKET_DIRECTION_MAX_STALE_DAYS,
+    )
 
 
 def is_market_bullish() -> bool:

@@ -27,3 +27,6 @@ graphifyy>=0.9.24
 # container ever runs the weekly export. See docs/backups.md.
 pyarrow>=15.0.0
 duckdb>=1.0.0
+
+# Exchange-session bounds used by shadow simulation/reporting and their tests.
+exchange-calendars==4.13.2

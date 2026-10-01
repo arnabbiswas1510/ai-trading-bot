@@ -27,6 +27,8 @@ jobs:
         # only ever runs in the weekly backup workflow. Without them here, the
         # Parquet tests skip silently and the backup goes unverified.
         pip install pyarrow duckdb
+        # Shadow/reporting calendar tests run offline with actual holidays/early closes.
+        pip install exchange-calendars==4.13.2
 
     - name: Run Unit Tests
       run: |

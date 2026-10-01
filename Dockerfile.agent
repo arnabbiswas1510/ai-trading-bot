@@ -26,6 +26,7 @@ COPY agent_entrypoint.py execution_agent.py execution_agent_ref.py exit_rules.py
      telegram_notifier.py force_buy.py force_sell.py managed_exit.py scoring.py config.py \
      trigger_audit.py schema_guard.py flex_query_sync.py cooling_off.py ./
 COPY intraday_capture.py intraday_observer.py exit_core.py trade_costs.py broker_positions.py ./
+COPY research_configuration.py market_direction.py ./
 
 # Execute the agent via the fatal-safe wrapper: it ships any startup crash
 # (including import-time errors, before log shipping is up) to Supabase

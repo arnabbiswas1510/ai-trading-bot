@@ -69,6 +69,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push Broker-Free Shadow Worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.shadow
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER_LC }}/ai-trading-bot-shadow:latest
+            ghcr.io/${{ env.OWNER_LC }}/ai-trading-bot-shadow:${{ github.sha }}
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
+          cache-from: type=gha,scope=shadow
+          cache-to: type=gha,mode=max,scope=shadow
+
       - name: Build and push Trading Bot Web App
         uses: docker/build-push-action@v6
         with:

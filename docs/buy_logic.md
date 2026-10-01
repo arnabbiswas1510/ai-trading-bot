@@ -2,6 +2,14 @@
 
 The complete gate stack a trigger must clear before an order reaches the market.
 
+The decision-only research worker reads the same entry/sizing settings from
+import-safe `research_configuration.py`; `execution_agent` re-exports those
+settings for live callers. Defaults are unchanged. The shared
+`market_direction.index_verdict()` returns no usable verdict for invalid,
+duplicate, stale or future-dated index history, so live acquisition still fails
+closed rather than buying on unusable inputs. See
+`decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
+
 **Source:** `buying.py` — `run_market_open_buys()`, executed once at 09:30 ET
 (re-exported through `execution_agent`).
 Manual equivalent: `force_buy.py`.
