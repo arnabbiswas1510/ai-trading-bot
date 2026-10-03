@@ -82,6 +82,31 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
 const pctAway = (price, level) => (level > 0 ? (price / level - 1) * 100 : null);
 const approxEq = (a, b) => a != null && b != null && Math.abs(a - b) < 1e-6;
 
+export function positionExitConfig(pos) {
+  const legacy = !Object.prototype.hasOwnProperty.call(pos, 'strategy_exit_config');
+  const raw = legacy ? {
+    armed_exit_deadline_hours: RULES_CONFIG.ARMED_EXIT_DEADLINE_HOURS,
+    scale_out_enabled: true,
+    scale_out_trigger_pct: RULES_CONFIG.SCALE_OUT_TRIGGER_PCT,
+    scale_out_fraction: RULES_CONFIG.SCALE_OUT_FRACTION,
+  } : pos.strategy_exit_config;
+  const validObject = raw != null && typeof raw === 'object' && !Array.isArray(raw);
+  const readNumber = (key, min, max) => {
+    const value = validObject ? num(raw[key]) : null;
+    return value != null && value >= min && value <= max ? value : null;
+  };
+  return {
+    deadlineHours: readNumber('armed_exit_deadline_hours', 0.25, 24),
+    scaleEnabled: validObject && typeof raw.scale_out_enabled === 'boolean' ? raw.scale_out_enabled : null,
+    scaleTrigger: readNumber('scale_out_trigger_pct', 0.005, 0.5),
+    scaleFraction: readNumber('scale_out_fraction', 0.01, 0.99),
+    source: legacy ? 'Legacy dashboard defaults — runtime exit settings were not reported.'
+      : 'Uses the effective exit settings reported by the portfolio API.',
+  };
+}
+
+const displayPercent = (fraction) => (fraction * 100).toLocaleString('en-US', { maximumFractionDigits: 10 });
+
 /**
  * Has this position ever CLOSED above entry? Mirror of
  * execution_agent.prove_it_is_proven().
@@ -160,6 +185,7 @@ export function trailLadderRung(gainPct, powerHold, effectivePct = null) {
  */
 export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysHeld, openPositions, equity = null) {  // eslint-disable-line no-unused-vars
   const C = RULES_CONFIG;
+  const runtime = positionExitConfig(pos);
   const buy = num(pos.buy_price) ?? 0;
   const price = num(pos.current_price) ?? buy;
   const hwm = num(pos.hwm_price) ?? buy;
@@ -173,27 +199,33 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
   // Listed first because when it is live it pre-empts everything below it.
   if (pos.exit_armed) {
     const armedAt = pos.exit_armed_at ? new Date(pos.exit_armed_at) : null;
-    const hoursArmed = armedAt ? (Date.now() - armedAt.getTime()) / 3.6e6 : null;
-    const hoursLeft = hoursArmed != null ? C.ARMED_EXIT_DEADLINE_HOURS - hoursArmed : null;
+    const hoursArmed = armedAt && Number.isFinite(armedAt.getTime()) ? (Date.now() - armedAt.getTime()) / 3.6e6 : null;
+    const hoursLeft = hoursArmed != null && runtime.deadlineHours != null ? runtime.deadlineHours - hoursArmed : null;
     rules.push({
       id: 'armed_exit', tier: 'EXIT', name: 'Armed Exit',
       state: STATE.ARMED,
-      headline: hoursLeft != null && hoursLeft > 0
+      headline: hoursLeft == null ? 'Exit armed — forced-sale deadline unavailable'
+        : hoursLeft > 0
         ? `Selling — ${hoursLeft.toFixed(1)}h until forced market sell`
         : 'Selling — deadline reached, forced market sell',
       level: num(pos.exit_armed_price),
       levelLabel: pos.exit_armed_price ? 'Armed at' : null,
       detail: `${(C.ARMED_EXIT_TRAIL_PCT * 100).toFixed(2)}% trailing stop placed at IBKR to follow any bounce. `
-            + `If it is not filled within ${C.ARMED_EXIT_DEADLINE_HOURS}h the agent market-sells.`
+            + (runtime.deadlineHours == null ? 'The reported armed-exit deadline is missing or invalid; no deadline is inferred.'
+              : `If it is not filled within ${runtime.deadlineHours}h the agent market-sells.`)
+            + ` ${runtime.source}`
             + (pos.exit_armed_reason ? `\nReason: ${pos.exit_armed_reason}` : ''),
     });
   } else {
     rules.push({
       id: 'armed_exit', tier: 'EXIT', name: 'Armed Exit',
-      state: STATE.PENDING,
-      headline: 'Standby — no loss rule has fired',
+      state: runtime.deadlineHours == null ? STATE.DEGRADED : STATE.PENDING,
+      headline: runtime.deadlineHours == null ? 'Armed-exit deadline unavailable — invalid runtime settings' : 'Standby — no loss rule has fired',
       detail: `When the Prove-It Stop fires it places a ${(C.ARMED_EXIT_TRAIL_PCT * 100).toFixed(2)}% `
-            + `trailing stop rather than market-selling into the low tick, with a ${C.ARMED_EXIT_DEADLINE_HOURS}h deadline.`,
+            + 'trailing stop rather than market-selling into the low tick. '
+            + (runtime.deadlineHours == null ? 'The reported deadline is missing or invalid; no deadline is inferred.'
+              : `The forced-sale deadline is ${runtime.deadlineHours}h.`)
+            + ` ${runtime.source}`,
     });
   }
 
@@ -270,38 +302,47 @@ export function evaluatePositionRules(pos, daysHeld, daysSinceHwm, calendarDaysH
     }
   }
   // ── 2c. Partial scale-out (winner give-back reducer) ─────────────────────────
-  // Mirrors execute_scale_out(). The first time the PEAK gain reaches +4% the
-  // agent sells 33% of the shares and lets the rest ride the unchanged Prove-It
-  // stop. Fires once (scaled_out latch); suppressed for power-held leaders.
+  // Uses current runtime settings, not the fraction of any historical partial sale.
   {
-    const trigPct = C.SCALE_OUT_TRIGGER_PCT * 100;
+    const trigPct = runtime.scaleTrigger == null ? null : runtime.scaleTrigger * 100;
     const done = !!pos.scaled_out;
     let state, headline, detail;
-    const detailBase = `Books ${(C.SCALE_OUT_FRACTION * 100).toFixed(0)}% of the position at market once the `
-      + `peak gain first reaches +${trigPct.toFixed(0)}%, then lets the remainder ride the unchanged Prove-It stop. `
+    const valid = runtime.scaleEnabled !== null && trigPct !== null && runtime.scaleFraction !== null;
+    const detailBase = valid ? `Books ${displayPercent(runtime.scaleFraction)}% of the position at market once the `
+      + `peak gain first reaches +${displayPercent(runtime.scaleTrigger)}%, then lets the remainder ride the unchanged Prove-It stop. `
       + 'Booking part of a winner is a realised profit a later fade cannot erase; the untouched stop means the '
-      + 'winners are not clipped. Fires once per position. PROVISIONAL — revisit at ≥50 trades.';
-    if (done) {
-      state = STATE.EXPIRED;
-      headline = `Already scaled out ${(C.SCALE_OUT_FRACTION * 100).toFixed(0)}% · remainder rides the Prove-It stop`;
+      + `winners are not clipped. Fires once per position. ${runtime.source}`
+      : `Reported scale-out settings are missing or invalid; no trigger or sale fraction is inferred. ${runtime.source}`;
+    if (runtime.scaleEnabled === false) {
+      state = STATE.OFF;
+      headline = 'Disabled by effective runtime configuration';
+      detail = `No new partial sale is scheduled by this rule.${done ? ' A previous partial sale is recorded for this position.' : ''} ${runtime.source}`;
+    } else if (!valid) {
+      state = STATE.DEGRADED;
+      headline = 'Scale-out status unavailable — invalid runtime settings';
       detail = detailBase;
+    } else if (done) {
+      state = STATE.EXPIRED;
+      headline = 'Already scaled out · remainder rides the Prove-It stop';
+      detail = 'A partial sale is recorded; its historical fraction is not inferred from current settings. ' + detailBase;
     } else if (powerHold) {
       state = STATE.SUPPRESSED;
       headline = 'Suppressed by Power Hold — a leader is not trimmed';
       detail = detailBase;
     } else if (peakPct >= trigPct) {
       state = STATE.TRIGGERED;
-      headline = `Peak +${peakPct.toFixed(2)}% ≥ +${trigPct.toFixed(0)}% — scales out on the next cycle`;
+      headline = `Peak +${peakPct.toFixed(2)}% ≥ +${displayPercent(runtime.scaleTrigger)}% — scales out on the next cycle`;
       detail = detailBase;
     } else {
       const away = trigPct - peakPct;
       state = away <= 1 ? STATE.WATCH : STATE.PENDING;
-      headline = `Peak is +${peakPct.toFixed(2)}% · triggers at +${trigPct.toFixed(0)}%`;
+      headline = `Peak is +${peakPct.toFixed(2)}% · triggers at +${displayPercent(runtime.scaleTrigger)}%`;
       detail = detailBase;
     }
     rules.push({
       id: 'scale_out', tier: 'EXIT', name: 'Partial Scale-Out',
-      state, headline, detail, window: 'Peak ≥ +4%, once',
+      state, headline, detail, window: runtime.scaleEnabled === false ? 'Disabled'
+        : valid ? `Peak ≥ +${displayPercent(runtime.scaleTrigger)}%, once` : 'Unavailable',
     });
   }
   // Replaces the Early Loss Kill-switch, Early Dollar Stop and Thesis Stop with
@@ -609,6 +650,7 @@ const fmtTime = (d) => {
  */
 export function buildLifecycle(pos, evald, daysHeld, daysSinceHwm) {
   const C = RULES_CONFIG;
+  const runtime = positionExitConfig(pos);
   const { rules, phase } = evald;
 
   const buy = num(pos.buy_price) ?? 0;
@@ -731,18 +773,20 @@ export function buildLifecycle(pos, evald, daysHeld, daysSinceHwm) {
 
   if (pos.exit_armed) {
     const armedAt = pos.exit_armed_at ? new Date(pos.exit_armed_at) : null;
-    const deadline = armedAt ? new Date(armedAt.getTime() + C.ARMED_EXIT_DEADLINE_HOURS * 3.6e6) : null;
+    const deadline = armedAt && Number.isFinite(armedAt.getTime()) && runtime.deadlineHours != null
+      ? new Date(armedAt.getTime() + runtime.deadlineHours * 3.6e6) : null;
     const hoursLeft = deadline ? (deadline.getTime() - Date.now()) / 3.6e6 : null;
     next.push({
       key: 'armed_resolution',
       icon: '🔴',
       when: 'Now',
       label: `Selling on a ${(C.ARMED_EXIT_TRAIL_PCT * 100).toFixed(2)}% trail`,
-      detail: deadline
+      detail: (deadline
         ? (hoursLeft > 0
             ? `If it does not fill, the agent market-sells at ${fmtTime(deadline)} (${hoursLeft.toFixed(1)}h away).`
             : 'The deadline has passed — a forced market sell happens on the next cycle.')
-        : 'A forced market sell follows if the trail does not fill.',
+        : 'The forced-sale deadline is unavailable; the armed timestamp or reported deadline is missing or invalid.')
+        + ` ${runtime.source}`,
       tone: 'bad',
     });
   } else {

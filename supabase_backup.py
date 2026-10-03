@@ -86,6 +86,9 @@ TABLES: dict[str, tuple[str, ...]] = {
     "exit_shadow_log":     ("id",),
     "ibkr_fills":          ("exec_id",),
     "intraday_replay_runs": ("id",),
+    "intraday_calibration_settings": ("id",),
+    "intraday_calibration_proposals": ("id",),
+    "intraday_calibration_events": ("id",),
     "portfolio_positions": ("ticker",),
     "trade_history":       ("id",),
     "trigger_decisions":   ("decision_date", "ticker"),
@@ -103,6 +106,10 @@ TABLES: dict[str, tuple[str, ...]] = {
 # contents are reproducible from something else, or if retaining it would
 # actively contradict a policy elsewhere in the system.
 NOT_BACKED_UP: dict[str, str] = {
+    "intraday_calibration_health":
+        "Ephemeral automatic-research heartbeat, recreated by the worker.",
+    "intraday_calibration_lease":
+        "Expiring worker coordination, not research evidence; never restore an old lease.",
     "intraday_capture_events":
         "Private high-volume research observations have a deliberate rolling "
         "INTRADAY_RETENTION_DAYS horizon. Weekly full snapshots retained forever "

@@ -46,6 +46,8 @@ def operational_issue_body(key):
         "quote-coverage": "Quote observations are missing, stale or incomplete.",
         "shadow-heartbeat": "Hypothetical worker heartbeat is missing or stale.",
         "shadow-progress": "Hypothetical decision output is missing, stale or blocked.",
+        "calibration-heartbeat": "The automatic research worker heartbeat is missing or stale.",
+        "calibration-progress": "The automatic research worker reports a blocked or failed research cycle.",
         "database": "Private research database access failed.",
         "notification-delivery": "An approved Telegram recipient did not acknowledge a research notification.",
         "watchdog": "The independent research watchdog could not complete its reporting sweep.",

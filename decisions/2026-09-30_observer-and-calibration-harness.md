@@ -1,7 +1,12 @@
 # Independent observation and approval-only calibration
 
 Date: 2026-09-30
-Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md); research boundaries remain accepted.
+Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md) and [interactive self-calibration](2026-10-03_interactive-self-calibration.md); research and human deployment approval boundaries remain accepted.
+
+> **2026-10-03:** Manual-only experiment orchestration is extended by automatic
+> bounded numeric search and a persistent research inbox. Future evaluation is
+> frozen before observations arrive. Live changes still require explicit
+> approval and an operator-applied artifact; research cannot deploy itself.
 
 > **2026-10-01:** The stopped-trader observation deployment below no longer
 > describes current operation. The dashboard controls new real entries; the

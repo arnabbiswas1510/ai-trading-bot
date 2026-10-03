@@ -162,13 +162,18 @@ def expected_market(now):
 
 
 def health_failures(now, observer, shadow, snapshot, quotes, shadow_output=None, shadow_decision=None,
-                    runtime_mode="observe"):
+                    runtime_mode="observe", calibration=None, calibration_required=False):
     """Heartbeat alone cannot prove broker, quote or shadow output progress."""
     if runtime_mode not in ("observe", "live"):
         raise ReportingError("Unsupported TRADING_RUNTIME_MODE; expected observe or live")
-    if not expected_market(now):
-        return {}
     failures = {}
+    if calibration_required:
+        if not calibration or not fresh(calibration.get("last_seen_at"), now, 1800):
+            failures["calibration-heartbeat"] = "Calibration worker has no heartbeat within 30 minutes."
+        elif calibration.get("status") in ("error", "blocked"):
+            failures["calibration-progress"] = "Calibration worker reports a blocked or failed research cycle."
+    if not expected_market(now):
+        return failures
     if not observer or not fresh(observer.get("last_seen_at"), now):
         failures["observer-heartbeat"] = "Observer health row is missing or heartbeat is older than 10 minutes."
     if not observer or not fresh(observer.get("last_persisted_at"), now):
@@ -566,6 +571,7 @@ def _one(store, table, params):
 def load_health(store):
     observer = _one(store, "intraday_capture_health", {"id": "eq.intraday-observer"})
     shadow = _one(store, "intraday_shadow_health", {"id": "eq.shadow-worker"})
+    calibration = _one(store, "intraday_calibration_health", {"id": "eq.calibration-worker"})
     source_run = ((observer or {}).get("config") or {}).get("run_id")
     shadow_run = (shadow or {}).get("run_id")
     latest = {}
@@ -580,7 +586,8 @@ def load_health(store):
         "run_id": "eq." + shadow_run, "kind": "eq.cycle", "order": "sequence.desc",
         "payload->frame->events": 'cs.[{"type":"buy_cycle"},{"type":"monitor"}]'})
         if shadow_run else None)
-    return {"observer": observer, "shadow": shadow, **latest}
+    return {"observer": observer, "shadow": shadow, "calibration": calibration,
+            "calibration_required": True, **latest}
 
 
 def _attempt_notification(errors, operation, *args, **kwargs):

@@ -37,6 +37,37 @@
   },
   "decisions": [
     {
+      "id": "interactive-calibration-rollout",
+      "title": "Verify usable evidence and the approval-only calibration loop",
+      "kind": "investigation",
+      "status": "active",
+      "decided": "2026-10-03",
+      "implemented": false,
+      "decision": "Use bounded automatic numeric research and fixed future evaluation; leave risk tolerances unset until the operator chooses them. Live changes require a separately approved operator-applied artifact.",
+      "rationale": "The last successful production inspection had zero usable completed shadow trades. The five-session training/evaluation windows and sixteen-candidate budget are unmeasured operational starting limits, not a statistically sufficient sample.",
+      "adr": "decisions/2026-10-03_interactive-self-calibration.md",
+      "revisit": {"min_closed_trades": null, "not_before": "2026-10-20"},
+      "baseline": {
+        "usable_completed_shadow_trades": 0,
+        "training_sessions": 5,
+        "evaluation_sessions": 5,
+        "max_candidates": 16,
+        "risk_policy": null,
+        "profitability_evidence": "No valid production calibration measurement; upstream collection and rollout prerequisites remain."
+      },
+      "review_command": "curl --fail http://localhost:8000/api/calibration",
+      "review_questions": [
+        "Are collection, shadow decisions, automatic research, authenticated inbox actions and independent outage alerts operational?",
+        "How many complete sessions and fully closed positions support the comparison, and are results concentrated in one ticker or market regime?",
+        "Was the risk policy fixed before future evaluation, and did the whole predeclared window complete without missing inputs or daily portfolio resets?",
+        "Does the research budget fit the host and produce informative candidates without turning short-window noise into deployment recommendations?",
+        "Have approved artifacts remained exact, revocable before application and separate from live-entry permission?",
+        "Do research/live dependency differences affect strategy decisions on recorded inputs? Preserve the incumbent live environment; do not silently upgrade libraries to manufacture parity."
+      ],
+      "last_reviewed": null,
+      "history": []
+    },
+    {
       "id": "intraday-capture-readiness",
       "title": "Review intraday capture coverage, storage and replay eligibility",
       "kind": "investigation",

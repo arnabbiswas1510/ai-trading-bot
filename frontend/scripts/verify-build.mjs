@@ -97,6 +97,13 @@ const FEATURE_FINGERPRINTS = [
   { feature: "Real entry control endpoint", string: "/api/trading-control" },
   { feature: "Protect-only permission", string: "INACTIVE: new real buys blocked (protect-only)" },
   { feature: "Unconfirmed agent status", string: "Execution agent unconfirmed / stale" },
+  { feature: "Calibration research inbox", string: "data-calibration-inbox" },
+  { feature: "Calibration inbox API", string: "/api/calibration" },
+  { feature: "Research requests before first campaign", string: "/api/calibration/experiments" },
+  { feature: "Artifact approval is not deployment", string: "Approve artifact — does not deploy or enable buys" },
+  { feature: "Investigation-only approval", string: "Approve experiment only" },
+  { feature: "Effective runtime exit settings", string: "strategy_exit_config" },
+  { feature: "Explicit legacy exit defaults", string: "Legacy dashboard defaults" },
 ];
 
 // -- Source-level structural guards --------------------------------------------

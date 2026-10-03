@@ -3,6 +3,7 @@ import { Play, TrendingUp, BarChart2, Calendar, ShieldAlert, Award, DollarSign }
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import IntradayReplayView from './IntradayReplayView.jsx';
 import ShadowResearchView from './ShadowResearchView.jsx';
+import CalibrationResearchView from './CalibrationResearchView.jsx';
 
 export default function BacktesterView() {
   const [startDate, setStartDate] = useState(() => {
@@ -67,6 +68,7 @@ export default function BacktesterView() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <IntradayReplayView />
       <ShadowResearchView />
+      <CalibrationResearchView />
 
       {/* Parameters Form Card */}
       <div className="card">

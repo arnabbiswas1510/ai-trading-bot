@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Copy deploy artifacts to production server
         uses: appleboy/scp-action@v0.1.7
@@ -28,7 +30,7 @@ jobs:
           # tooling and the scrubbed template, but DO NOT run the resolver here:
           # rendering .env is a manual, operator-validated step (see the SSH
           # script's closing note and decisions/2026-09-27_bitwarden-secret-resolution.md).
-          source: "docker-compose.yml,scripts/deploy_runtime.sh,scripts/restart_6am.sh,scripts/render_env.sh,scripts/render_env.py,.env.template"
+          source: "docker-compose.yml,scripts/deploy_runtime.sh,scripts/restart_6am.sh,scripts/render_env.sh,scripts/render_env.py,scripts/validate_calibration_deployment.py,approved_strategy.env,approved_strategy.json,.env.template"
           target: "/home/pom/docker/ai-trading-bot"
 
       - name: Deploy new images to server via SSH

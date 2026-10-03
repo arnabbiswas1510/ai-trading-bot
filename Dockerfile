@@ -56,6 +56,8 @@ COPY trading_control.py ./backend/
 COPY research_diagnostics.py research_entrypoint.py ./backend/
 COPY shadow_inputs.py shadow_store.py research_configuration.py market_direction.py indicators.py ./backend/
 COPY research/live_rule_replay.py ./backend/research/live_rule_replay.py
+COPY research/calibrate_intraday.py research/auto_calibration.py research/calibration_store.py research/calibration_deployment.py ./backend/research/
+COPY approved_strategy.env approved_strategy.json ./backend/
 
 # Copy compiled frontend assets from Stage 1
 COPY --from=frontend-builder /frontend/dist ./frontend/dist

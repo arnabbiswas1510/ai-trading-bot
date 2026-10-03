@@ -15,6 +15,7 @@ See `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 | "Which explicit candidate wins on earlier recorded inputs, and how does that frozen choice do later?" | **Offline calibration** (`research/calibrate_intraday.py`), with separate validated actual-account or labelled shadow datasets |
 | "What happened while the trading agent was stopped?" | **Independent observer** and dashboard raw-observation export; no invented live decisions or performance result |
 | "What would the bot buy, hold and sell while real trading is stopped?" | **Decision-only shadow portfolio**, with durable state, point-in-time inputs and daily/weekly supervision |
+| "Can the bot search settings and bring me improvements to approve?" | **Interactive calibration**, automatic bounded numeric search, frozen future evaluation and the dashboard research inbox |
 
 > **Which strategy backtester?** Both use current exit-rule primitives.
 > `research/strategy_backtest.py` and `backend/backtester.py` (the dashboard
@@ -55,6 +56,17 @@ coverage or unsupported initial activity blocks export. Daily summaries and
 weekly hypothetical reports are descriptive until a separately frozen
 experiment has valid later evaluation data. See
 `decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
+
+The automatic calibration worker orchestrates that same validated engine:
+five complete training sessions, then five future evaluation sessions by
+default, with at most sixteen numeric candidates. A challenger retains its
+continuous hypothetical holdings throughout the fixed evaluation window.
+Progress reports cannot trigger early approval. Explicit operator risk/evidence
+limits must be frozen before evaluation; absent limits mean exploratory only.
+Broader rule experiments require permission before research, and live changes
+require a separate approved deployment artifact. See
+[interactive calibration](interactive_calibration.md) and
+`decisions/2026-10-03_interactive-self-calibration.md`.
 
 `research/live_rule_replay.py` is an offline portfolio replay, not a connection
 to IBKR and not a replacement trading daemon. It calls the shared entry gates

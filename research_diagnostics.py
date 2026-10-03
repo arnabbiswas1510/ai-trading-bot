@@ -28,7 +28,7 @@ import uuid
 
 SERVICES = frozenset({
     "web", "intraday-observer", "execution-agent", "shadow-worker",
-    "research-reporting",
+    "research-reporting", "calibration-worker",
 })
 TABLES = frozenset({
     "agent_logs", "portfolio_positions", "trade_history", "ibkr_fills",

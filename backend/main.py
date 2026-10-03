@@ -16,9 +16,12 @@ from pricing import resolve_position_price
 from commissions import enrich_trades, summarize_realized
 import intraday_service
 from trading_control_api import router as trading_control_router
+from calibration_api import router as calibration_router
+from research_configuration import effective_config
 
 app = FastAPI(title="CAN SLIM Trading Bot API")
 app.include_router(trading_control_router)
+app.include_router(calibration_router)
 
 # Configure CORS
 app.add_middleware(
@@ -232,6 +235,7 @@ def get_portfolio():
             except Exception as ex:
                 print(f"Could not fetch company names from watchlist: {ex}")
         
+        strategy_exit_config = effective_config()["exit_config"]
         for pos in positions:
             ticker = pos['ticker']
             fmp_name = None
@@ -283,6 +287,7 @@ def get_portfolio():
             # estimate, instead of implying every price came from the broker.
             pos['price_source']   = price_source
             pos['ibkr_synced_at'] = ibkr_synced
+            pos['strategy_exit_config'] = strategy_exit_config
             # Attach company name. The watchlist only holds the current screener
             # snapshot, so a ticker that has since dropped off it (SWK, CPAY) has
             # no row there even though the position is still open — which is why

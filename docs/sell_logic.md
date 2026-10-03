@@ -2,6 +2,14 @@
 
 Every exit rule in the live agent, in evaluation order.
 
+**Approved parameter overlays:** thresholds here describe defaults unless
+operator configuration or `approved_strategy.env` overrides them. Calibration
+artifacts support the armed-exit deadline and scale-out parameters, not Prove-It
+or trailing tiers. Testing a scale-out toggle requires investigation approval.
+The dashboard receives the supported deployed exit values from the backend.
+See [interactive calibration](interactive_calibration.md) and
+`decisions/2026-10-03_interactive-self-calibration.md`.
+
 **Protect-only operation:** switching new real buys OFF in the dashboard leaves
 real position monitoring, stop management, protective exits and reconciliation
 running. Real protective sales remain real trades and stay in real trade history

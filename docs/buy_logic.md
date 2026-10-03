@@ -2,6 +2,13 @@
 
 The complete gate stack a trigger must clear before an order reaches the market.
 
+**Approved parameter overlays:** thresholds here describe defaults unless
+operator configuration or `approved_strategy.env` overrides them.
+`approved_strategy.json` records the exact reviewed values. Research cannot
+apply settings or enable live entries itself. See
+[interactive calibration](interactive_calibration.md) and
+`decisions/2026-10-03_interactive-self-calibration.md`.
+
 **Operator permission comes first.** The dashboard's **Real trading control**
 switch stores `live_entries_enabled`, initially false. OFF blocks automatic and
 manual new real buys and discretionary replacement rotations; it does not stop

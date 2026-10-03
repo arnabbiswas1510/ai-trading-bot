@@ -14,6 +14,12 @@ way.
 Saved intraday comparison results (`intraday_replay_runs`) are included. Their
 private table requires a service-role key: configure the GitHub Actions secret
 `INTRADAY_SUPABASE_KEY`; the exporter prefers it over `SUPABASE_KEY`.
+The research inbox's settings, proposals and append-only decision events
+(`intraday_calibration_settings`, `intraday_calibration_proposals`,
+`intraday_calibration_events`) are also included. Calibration health and
+expiring worker leases are not evidence and are explicitly excluded.
+Apply `migrations/20261003_add_calibration_loop.sql` before deployment.
+See `decisions/2026-10-03_interactive-self-calibration.md`.
 
 Raw `intraday_capture_events` and their sampling membership are deliberately
 excluded from the indefinitely retained full snapshots. They follow

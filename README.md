@@ -10,7 +10,10 @@ evidence rather than hope, and spends most days doing nothing. That last propert
 feature. O'Neil's edge comes from participating in a small number of genuine breakouts, not
 from constant activity.
 
-> **This trades real money.** Every parameter below is live. Read the
+> **This trades real money.** Parameters below describe the default strategy.
+> Operator configuration and approved strategy overlays can override supported
+> settings; inspect `approved_strategy.json` and the dashboard's effective values.
+> Read the
 > [Risk Model](#risk-model) before deploying.
 
 **Backtest fidelity:** daily strategy tools reuse current exit helpers but are
@@ -28,9 +31,10 @@ live strategy parameters. Deploy only after applying
 `INTRADAY_SUPABASE_KEY`. See [setup, data limits and retention](docs/intraday_research.md)
 and `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
 
-**Observation-only deployment is the default.** The independent observer
-collects broker state, orders, fills and candidate prices while `execution-agent`
-stays stopped. It does not place/cancel orders, repair positions or run bot exits.
+**New real entries default OFF; real protection remains running.** The independent
+observer collects broker state, orders, fills and candidate prices alongside
+`execution-agent`, which continues protective exits and reconciliation. The
+observer itself does not place/cancel orders, repair positions or run bot exits.
 The Backtester page shows separate collector health and exports raw observations.
 Offline `research/calibrate_intraday.py` freezes a candidate on earlier validated
 decision inputs and evaluates it on separate later data; it never changes live
@@ -42,6 +46,19 @@ reports, with persistent GitHub incidents for failures. These are automated
 notifications, not an assistant continuously monitoring or messaging interactively.
 See `docs/intraday_research.md` and
 `decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
+
+**Interactive calibration:** a separate broker-free worker searches supported
+numeric parameters, freezes one candidate before future evaluation, and brings
+results to **Backtester > Research inbox**, with Telegram notifications.
+The default research budget is five training sessions, five future evaluation
+sessions and sixteen candidates; it is not a claim of sufficient evidence.
+Operator risk tolerances start unset, blocking deployment recommendations.
+Broader rule experiments need investigation approval first. Eligible numeric
+changes require explicit approval and an operator-applied deployment artifact;
+neither research nor approval enables new real buys. Apply
+`migrations/20261003_add_calibration_loop.sql` before deploying this feature.
+See [interactive calibration](docs/interactive_calibration.md) and
+`decisions/2026-10-03_interactive-self-calibration.md`.
 
 **Unexpected-short safety:** broker-confirmed signed inventory, scoped to the
 selected account, is checked independently of cached position marks. An

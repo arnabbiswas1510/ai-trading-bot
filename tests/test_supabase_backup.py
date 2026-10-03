@@ -29,6 +29,13 @@ from supabase_backup import (
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+
+def test_calibration_decisions_are_archived_but_runtime_coordination_is_not():
+    for name in ("settings", "proposals", "events"):
+        assert TABLES["intraday_calibration_" + name] == ("id",)
+    for name in ("health", "lease"):
+        assert "intraday_calibration_" + name in NOT_BACKED_UP
+
 # NOTE: pyarrow/duckdb are imported per-test, NOT skipped at module level.
 # A module-level importorskip would also skip test_every_known_table_is_backed_up,
 # which needs neither — and that is the one test whose silent absence would let a

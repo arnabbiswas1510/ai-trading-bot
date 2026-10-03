@@ -28,7 +28,11 @@ export async function request(url, options = {}, timeoutMs = 30000) {
     try { data = JSON.parse(text); } catch {
       throw new Error(`Research service returned an unreadable response (HTTP ${response.status}).`);
     }
-    if (!response.ok) throw new Error(apiErrorText(data, `Research request failed (HTTP ${response.status}).`));
+    if (!response.ok) {
+      const error = new Error(apiErrorText(data, `Research request failed (HTTP ${response.status}).`));
+      error.status = response.status;
+      throw error;
+    }
     return data;
   } catch (error) {
     if (error.name === 'AbortError' && !options.signal?.aborted) {

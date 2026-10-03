@@ -120,6 +120,21 @@ def test_missing_workers_fail_during_market_but_no_trader_required():
     assert not any("trader" in key for key in faults)
 
 
+def test_calibration_is_supervised_even_outside_market_hours():
+    now = at("2026-10-03T12:00")
+    inputs = healthy(now)
+    inputs["calibration_required"] = True
+    assert "calibration-heartbeat" in reporting.health_failures(now, **inputs)
+    inputs["calibration"] = {"last_seen_at": now.isoformat(), "status": "waiting_for_data"}
+    assert not reporting.health_failures(now, **inputs)
+    inputs["calibration"]["status"] = "error"
+    assert "calibration-progress" in reporting.health_failures(now, **inputs)
+    inputs["calibration"]["status"] = "disabled"
+    assert not reporting.health_failures(now, **inputs)
+    inputs["calibration"]["last_seen_at"] = (now - dt.timedelta(minutes=31)).isoformat()
+    assert "calibration-heartbeat" in reporting.health_failures(now, **inputs)
+
+
 def test_heartbeat_does_not_hide_missing_or_stale_shadow_output():
     now = at("2026-09-30T10:00")
     inputs = healthy(now)

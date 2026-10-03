@@ -45,6 +45,7 @@ services:
       - ib-gateway
     env_file:
       - .env
+      - approved_strategy.env
     environment:
       - IB_GATEWAY_HOST=ib-gateway
       - IB_GATEWAY_PORT=4000
@@ -69,6 +70,7 @@ services:
     stop_grace_period: 90s
     env_file:
       - .env
+      - approved_strategy.env
     environment:
       - IB_GATEWAY_HOST=ib-gateway
       - IB_GATEWAY_PORT=4000
@@ -90,8 +92,29 @@ services:
     stop_grace_period: 90s
     env_file:
       - .env
+      - approved_strategy.env
     volumes:
       - shadow-data:/app/shadow
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    dns: *external-dns
+    networks:
+      - research_bridge
+
+  calibration-worker:
+    image: ghcr.io/arnabbiswas1510/ai-trading-bot-shadow:latest
+    container_name: calibration-worker
+    command: ["python", "research_entrypoint.py", "calibration-worker"]
+    restart: unless-stopped
+    stop_grace_period: 90s
+    env_file:
+      - .env
+      - approved_strategy.env
+    volumes:
+      - calibration-data:/app/calibration
     logging:
       driver: json-file
       options:
@@ -118,6 +141,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+      - approved_strategy.env
     environment:
       - DB_PATH=/app/data/trading_bot.db
       - TRADING_CONTROL_PATH=/app/control/trading-control.sqlite3
@@ -137,6 +161,8 @@ networks:
       com.docker.network.driver.mtu: 1400
 
 volumes:
+  calibration-data:
+    driver: local
   trading-control:
     driver: local
   shadow-data:

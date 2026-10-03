@@ -48,7 +48,7 @@ See [Recorded intraday research](intraday_research.md) and
 
 `TRADING_RUNTIME_MODE` remains a validated **GitHub repository Actions variable**
 accepting `observe` (default) or `live`. Both start real protective execution,
-the observer, shadow worker and dashboard. Neither value enables new real buys.
+the observer, shadow worker, calibration worker and dashboard. Neither value enables new real buys.
 The local helper accepts the same compatibility setting:
 `TRADING_RUNTIME_MODE=observe sh scripts/deploy_runtime.sh`.
 
@@ -63,6 +63,36 @@ every 10 seconds and treats agent reports older than 90 seconds as unconfirmed.
 OFF blocks new real buys and replacement rotations, not real protective exits.
 Research results never modify the switch. See [trading control](trading_control.md)
 and `decisions/2026-10-01_dashboard-live-entry-control.md`.
+
+### Interactive calibration settings
+
+The private `intraday_calibration_settings` singleton, edited through the
+authenticated research inbox, controls research scheduling rather than live
+trading. Defaults: `enabled=true`, `training_sessions=5`,
+`evaluation_sessions=5`, `max_candidates=16`, `risk_policy=null`.
+Each window accepts 1-40 sessions, their sum cannot exceed 60, and candidate
+budget accepts 1-32. The worker polls every 300 seconds, uses a 900-second cycle
+deadline and an 1800-second exclusive lease. These limits do not measure how
+much financial evidence is sufficient.
+Automatic trials change one supported numeric field at a time, initially by
+5% of its current value in either direction (a zero value uses 1% of its
+allowed range). Scores move by at least one integer point. A deterministic
+rotation based on the training input chooses the bounded subset so the same
+directions are not permanently omitted. Explicit approved requests take priority.
+
+`risk_policy` must be explicitly provided and frozen before evaluation to permit
+a deployment recommendation. See [the policy fields and workflow](interactive_calibration.md).
+The existing `INTRADAY_SUPABASE_KEY`, `TRADING_CONTROL_TOKEN`,
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` are reused; no additional trading
+permission or financial threshold is inferred. Approved numeric settings are
+packaged separately from secrets and applied only through the operator workflow.
+`approved_strategy.env` loads after `.env` for the execution, observer, shadow,
+calibration and web services. Its committed inactive version contains no
+assignments. `approved_strategy.json` binds an approved artifact; neither file
+contains credentials. A host-local `.approved_strategy_activated.json` marker
+prevents accidentally removing an active overlay. The position dashboard uses
+the backend's deployed scale-out settings and armed-exit deadline.
+See `decisions/2026-10-03_interactive-self-calibration.md`.
 
 The independent observer has CLI-only connection controls: `--client-id 71`,
 `--interval 300` seconds for broker snapshots, `--request-timeout 10`,

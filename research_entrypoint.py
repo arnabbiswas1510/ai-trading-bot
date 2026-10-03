@@ -11,19 +11,21 @@ SPOOLS = {
     "execution-agent": "/app/logs/execution-diagnostics",
     "shadow-worker": "/app/shadow/diagnostics",
     "research-reporting": "/tmp/research-reporting-diagnostics",
+    "calibration-worker": "/app/calibration/diagnostics",
 }
 MODULES = {
     "intraday-observer": "intraday_observer",
     "execution-agent": "agent_entrypoint",
     "shadow-worker": "shadow_worker",
     "research-reporting": "research.intraday_reporting",
+    "calibration-worker": "research.calibration_worker",
 }
 
 
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] not in SPOOLS:
-        raise SystemExit("Select web, intraday-observer, execution-agent, shadow-worker or research-reporting.")
+        raise SystemExit("Select web, intraday-observer, execution-agent, shadow-worker, calibration-worker or research-reporting.")
     service, *forwarded = args
     diagnostics.start(service, SPOOLS[service])
     previous = sys.argv

@@ -16,6 +16,8 @@ COPY research_configuration.py indicators.py market_direction.py market_calendar
 COPY config.py decision_core.py exit_core.py exit_rules.py cooling_off.py trade_costs.py ./
 COPY intraday_capture.py intraday_replay.py trigger_audit.py ./
 COPY research/live_rule_replay.py research/calibrate_intraday.py ./research/
+COPY research/auto_calibration.py research/calibration_store.py research/calibration_worker.py ./research/
+COPY research/intraday_reporting_delivery.py ./research/
 COPY research_diagnostics.py research_entrypoint.py ./
 
 RUN mkdir -p /app/shadow

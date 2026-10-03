@@ -14,6 +14,9 @@ See decisions/2026-09-03_ibkr-sourced-position-values.md.
 import sys
 import os
 import pytest
+import ast
+from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
@@ -36,6 +39,38 @@ def make_pos(**kw):
     }
     base.update(kw)
     return base
+
+
+def test_portfolio_exposes_effective_exit_settings_without_broker_access():
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "backend/main.py").read_text())
+    function = next(node for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "get_portfolio")
+    function.decorator_list = []
+
+    class Query:
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: self
+
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    configured = {"armed_exit_deadline_hours": 2.5, "scale_out_enabled": False,
+                  "scale_out_trigger_pct": 0.05, "scale_out_fraction": 0.25}
+    scope = {
+        "db": SimpleNamespace(
+            get_setting=lambda key, default=None: default,
+            get_positions=lambda: [make_pos()],
+            get_trade_history=lambda: [],
+            get_supabase_client=Query,
+            DataSourceUnavailable=RuntimeError),
+        "FMPClient": lambda **kwargs: SimpleNamespace(is_configured=lambda: False),
+        "resolve_position_price": resolve_position_price,
+        "summarize_realized": lambda history: {},
+        "effective_config": lambda: {"exit_config": configured},
+    }
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "portfolio-contract", "exec"), scope)
+    result = scope["get_portfolio"]()
+    assert result["positions"][0]["strategy_exit_config"] == configured
 
 
 class TestIBKRWins:

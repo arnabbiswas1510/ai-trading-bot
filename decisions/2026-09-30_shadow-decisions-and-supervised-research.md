@@ -1,7 +1,12 @@
 # Decision-only portfolio simulation and supervised research
 
 Date: 2026-09-30
-Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md); shadow accounting and supervision remain accepted, with the diagnostic-write exception below.
+Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md) and extended by [interactive self-calibration](2026-10-03_interactive-self-calibration.md); shadow accounting and supervision remain accepted, with the diagnostic-write exception below.
+
+> **2026-10-03:** A separate broker-free calibration worker now searches supported
+> numeric settings and reserves future evaluation. The descriptive reporter
+> itself still does not select or apply strategy settings. A persistent inbox
+> adds operator decisions and approved artifacts without automatic live changes.
 
 > **2026-10-03:** "Writes only private research state" now has one explicit
 > exception: credential-safe operational metadata is written to the existing

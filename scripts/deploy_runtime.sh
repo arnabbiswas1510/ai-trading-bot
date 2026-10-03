@@ -20,6 +20,13 @@ case "$mode" in
 esac
 export TRADING_RUNTIME_MODE="$mode"
 
+# Check before stopping even a legacy agent. An unavailable/stale approval must
+# not interrupt protective execution. Old installations without either artifact
+# remain compatible; a partial installation is an error, not an inactive state.
+if [ -e approved_strategy.json ] || [ -e approved_strategy.env ] || [ -e .approved_strategy_activated.json ]; then
+    python3 scripts/validate_calibration_deployment.py
+fi
+
 # Only the first transition from an ungated image needs stop-before-pull.
 # A failed pull must preserve an already gated agent's protective execution.
 # Listing first distinguishes a missing container from a Docker daemon failure.
@@ -32,10 +39,15 @@ if [ -n "$agent" ]; then
     fi
 fi
 
-set -- execution-agent intraday-observer shadow-worker trading-bot
+set -- execution-agent intraday-observer shadow-worker calibration-worker trading-bot
 echo "=== Compatibility runtime label: $mode; dashboard controls new live entries ==="
 if [ "$action" = deploy ]; then
     docker compose pull "$@"
+    # A newer image can change effective defaults even when the host .env did
+    # not change. Check its isolated configuration before replacing services.
+    if [ -e approved_strategy.json ] || [ -e approved_strategy.env ] || [ -e .approved_strategy_activated.json ]; then
+        python3 scripts/validate_calibration_deployment.py
+    fi
 fi
 
 # Refuse rollback to an image that predates the persistent entry-permission gate.
@@ -58,6 +70,6 @@ else
 fi
 
 echo "=== Protection, independent research, gateway and dashboard status ==="
-for container in execution-agent intraday-observer shadow-worker ib-gateway can-slim-trading-bot; do
+for container in execution-agent intraday-observer shadow-worker calibration-worker ib-gateway can-slim-trading-bot; do
     docker inspect "$container" --format '{{.Name}}: {{.State.Status}} (restarts: {{.RestartCount}})'
 done

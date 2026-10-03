@@ -70,7 +70,7 @@ def deployment():
         shutil.rmtree(work)
 
 
-SERVICES = ["execution-agent", "intraday-observer", "shadow-worker", "trading-bot"]
+SERVICES = ["execution-agent", "intraday-observer", "shadow-worker", "calibration-worker", "trading-bot"]
 GATEWAY = ["compose", "up", "-d", "--no-deps", "--no-recreate", "ib-gateway"]
 
 

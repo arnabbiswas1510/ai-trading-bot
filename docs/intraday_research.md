@@ -14,7 +14,8 @@ history from before recording began.
 
 1. Apply `migrations/20260930_add_intraday_research.sql`,
    `migrations/20260930_add_intraday_shadow.sql`, and
-   `migrations/20260930_add_intraday_reporting.sql` in the Supabase SQL Editor.
+   `migrations/20260930_add_intraday_reporting.sql`, and
+   `migrations/20261003_add_calibration_loop.sql` in the Supabase SQL Editor.
    They are safe to re-run; their final queries report the required objects.
 2. Add `INTRADAY_SUPABASE_KEY` to this application's Bitwarden project with a
    server-side Supabase service-role key. The new tables deliberately refuse
@@ -31,7 +32,7 @@ history from before recording began.
 4. Apply the delivered patch and deploy the web and execution images through
    the existing pipeline. Leave the GitHub repository Actions variable
    `TRADING_RUNTIME_MODE` unset or set it to `observe`: deployment starts real
-   protective execution alongside the independent observer, shadow worker and
+   protective execution alongside the independent observer, shadow worker, calibration worker and
    dashboard. New real buys require the separate dashboard permission, initially
    OFF; neither `observe` nor `live` grants it. The gateway is not recreated.
    See [trading control](trading_control.md) and
@@ -43,7 +44,15 @@ history from before recording began.
    recording health and recorded sessions. Missing migration, permissions,
    price coverage or starting protection is an error, not an empty account.
 
-The migration is **not applied automatically** by deploying the code.
+Migrations are **not applied automatically** by deploying the code.
+The **Research inbox** adds automatic parameter discovery and frozen future
+evaluation, not just descriptive benchmarks. It requires the same private
+research key and an operator-configured `TRADING_CONTROL_TOKEN` for writes.
+Research defaults to five training sessions, five future sessions and sixteen
+candidates. Risk tolerances are deliberately unset; exploratory results cannot
+be approved for deployment until a policy is frozen in a new campaign.
+See [interactive calibration](interactive_calibration.md) and
+`decisions/2026-10-03_interactive-self-calibration.md`.
 **New real buys OFF means protect-only, not an idle execution agent.** Real
 Prove-It monitoring, protective exits, order repair and ledger reconciliation
 continue. The observer itself never manages positions. Existing broker-held
@@ -81,7 +90,7 @@ run, and successfully simulating positions are different states.
 
 Production Docker commands run through `research_entrypoint.py`, which installs
 diagnostics before application imports. The web app, observer, execution
-recorder, shadow worker and cloud reporter use the same safe diagnostic format.
+recorder, shadow worker, calibration worker and cloud reporter use the same safe diagnostic format.
 The existing execution-agent narrative logs remain available separately.
 For an isolated CLI diagnostic, use the same wrapper, e.g.
 `python research_entrypoint.py intraday-observer --once`; ordinary direct module
@@ -90,7 +99,7 @@ invocation does not install the independent shipper.
 Host diagnostic directories survive container recreation at
 `/app/data/research-diagnostics` (web), `/app/logs/observer-diagnostics` (observer),
 `/app/logs/execution-diagnostics` (execution), and `/app/shadow/diagnostics`
-(shadow). Each contains `research-diagnostics.sqlite3`, separate from raw research
+(shadow), and `/app/calibration/diagnostics` (calibration). Each contains `research-diagnostics.sqlite3`, separate from raw research
 spools. Bounded queues/outboxes retry delivery and report lost records; an abrupt
 process crash can lose a not-yet-journaled queue tail. A lost acknowledgement can
 duplicate a row, identifiable by its session/sequence/diagnostic ID.
@@ -265,10 +274,12 @@ result, the report says no calibrated recommendation is available. Neither the
 reporter nor the simulator changes live settings or restarts trading.
 
 These summaries do not mean an assistant remains active between conversations.
-Review the weekly report here with the saved evidence. Start by establishing
-reliable complete sessions; a first serious restart review after roughly 8–12
-weeks is a planning estimate, not a promise. Longer observation may be needed if
-there are too few completed positions, repeated gaps or only one market regime.
+The separate calibration worker performs automatic research and brings proposals
+to the inbox without requiring an assistant session. Search starts when its
+configured usable training window exists; the default adds five predeclared
+future evaluation sessions. Deployment readiness depends on explicit evidence
+and risk limits, not elapsed calendar weeks. Few completed positions, repeated
+gaps or one market regime can still leave every result exploratory.
 
 ## Using the dashboard
 
@@ -296,8 +307,9 @@ hide a recording gap or an unsupported trade. The JSON export preserves a
 replayable dataset only when the required inputs pass validation.
 
 The dashboard comparison tests one change, not every possible strategy.
-Offline calibration is a separate workflow below. Neither manual nor automatic
-jobs can write live parameters or place orders.
+The research inbox automates bounded multi-candidate selection and future
+evaluation; the offline CLI remains available below. Neither manual nor automatic
+research jobs can write live parameters or place orders.
 
 **Export raw observations** preserves evidence even when no replay is possible.
 It includes raw records, a SHA-256 content fingerprint, counts of dates/runs/
@@ -359,16 +371,17 @@ recommendation. Manual requests support up to 93 calendar days by default, with
 50,000-row and 64-MiB input limits to protect the web worker. Evaluate longer
 retained history as multiple windows; **do not sum their dollar differences as
 one continuous portfolio backtest** because each has its own recorded start.
-This actual-decision comparison does not run automatically in observation mode;
-the independent cloud watchdog owns daily and weekly observation/shadow reports.
-Manual actual-decision comparisons remain available for valid historical data.
+The independent cloud watchdog separately owns daily and weekly
+observation/shadow reports. Manual actual-decision comparisons remain available
+for valid historical data.
 
-Retain 365 days of raw observations initially. Use the first 4–8 weeks to check
-coverage and decision reproduction, three months for exploratory comparisons,
-and six to twelve months with varied market conditions for broader evaluation.
-About 100 completed positions is a useful planning target, not proof of
-statistical reliability. Partial exits do not count as separate positions, and
-many observations from one trading date do not constitute many independent
+Retain 365 days of raw observations initially. Check coverage and decision
+reproduction from the first complete session rather than waiting weeks to find
+failures. Automatic exploratory comparisons begin once their training window is
+available. Deployment requires the operator's predeclared evidence and risk
+policy plus separate approval; a larger sample and varied market conditions
+remain important even after numerical gates pass. Partial exits do not count as
+separate positions, and many observations from one date are not independent
 market conditions.
 
 Keep evaluation data that was not used to select parameters. Examine losses
@@ -475,7 +488,9 @@ the top one/three ticker contributions is an attribution sensitivity check,
 not a new simulation with replacement trades. Window results cannot be summed into a continuous portfolio. Actual-decision
 windows begin from their recorded account; shadow windows begin from the
 verified baseline hypothetical checkpoint. Both holdout variants inherit that
-same checkpoint, not a separately maintained candidate portfolio.
+same checkpoint. Within an automatic campaign, progressive evaluations replay
+the whole fixed window from that start, preserving each strategy's evolving
+holdings rather than resetting them every session.
 
 Fewer than 30 completed positions produces an exploratory-sample warning, not
 an automatic rejection or approval gate. More candidate trials increase the
