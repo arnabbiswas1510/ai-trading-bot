@@ -51,6 +51,101 @@ The page does not certify current executor deployment.
 
 See `decisions/2026-10-03_unified-calibration-dashboard.md` for why.
 
+## Risk-adjusted benchmark metrics
+
+**Calibration > Benchmark detail** shows a separate, versioned diagnostic risk
+report for the recorded rules and the frozen candidate. Training and evaluation
+remain separate. The worker reproduces the selected pair and reconciles both
+results with their recorded summaries before calculating these additional
+statistics. It does not search again, change candidate ranking, or add approval
+requirements.
+
+The report stores the exact equity observations, daily returns, historical
+three-month US Treasury yield observations, retrieval timestamps, source hashes
+and calculation-code fingerprints inside the proposal artifact. The reference is
+an approximation of the return available from cash, not the realized return of a
+Treasury investment. Historical feeds may contain revisions: a saved retrieval
+is reproducible, but is not proof of the data vintage visible at the original
+trading instant. Existing rates remain frozen as an evaluation window grows.
+The explicit source is **FRED DGS3MO**, the Federal Reserve H.15 three-month
+Treasury constant-maturity investment-basis yield. There is no automatic switch
+to another series. The worker requests only dates that the current return
+intervals can use, not today's potentially unpublished yield.
+
+Allow outbound HTTPS to `fred.stlouisfed.org` in the calibration container.
+Certificate verification remains enabled. A TLS trust error or network outage
+appears in the report; repair the container's trusted CA configuration or
+connectivity rather than disabling verification. Retrieval is bounded to eight
+seconds per request, three calendar-year requests and 2 MiB per response, with
+31 days of lookback. No key is required.
+
+### Sampling and formulas
+
+Let `r` be a session-to-session fractional equity return and `x = r - rf` its
+return above the Treasury cash proxy. All equity values include the replay's
+modeled costs and marked open holdings. The cash proxy does not add interest to
+the replay's idle cash; it is used only for risk-adjusted comparisons.
+
+| Metric | Definition and boundary |
+|---|---|
+| Sharpe | `mean(x) / sample_stdev(x) * sqrt(252)` |
+| Sortino | `mean(x) / sqrt(mean(min(x, 0)^2)) * sqrt(252)`; the denominator includes all observations, not just losing days |
+| Annualized volatility | `sample_stdev(r) * sqrt(252)` |
+| Annualized growth | `product(1+r)^(252/n) - 1`; an extrapolation, not observed annual profit |
+| Calmar, window estimate | Annualized growth divided by maximum drawdown on the **same session-final series**; not a conventional 36-month Calmar history |
+| Full-window sampled maximum drawdown | Largest decline from the starting equity or a later sampled peak, using all available intraday marks |
+| Session-final maximum drawdown | Largest decline on the daily-return series; this is the Calmar denominator |
+| Historical 95% daily VaR | Signed loss at the empirical nearest-rank 5th-percentile return, available only with at least 20 daily returns |
+| Historical 95% expected shortfall | Mean signed loss of the worst `ceil(0.05*n)` daily returns; negative means the historical tail was a gain |
+| Profit factor, win rate, expectancy | Completed positions opened within the window, with partial sales grouped; carried-in positions are excluded |
+
+The daily series uses the last recorded terminal mark of each exchange session,
+not every intraday tick and not an asserted official closing price. The first
+partial interval from the starting portfolio is excluded: five session marks
+provide only four daily returns. Missing sessions are not skipped. Calmar and
+daily returns therefore have a different explicitly labelled starting point from
+full-window P&L and intraday drawdown.
+
+For each return interval, use the latest Treasury observation dated **strictly
+before the interval's starting session**. Apply simple ACT/365 cash accrual:
+`annual_yield_pct / 100 * calendar_days / 365`, including weekends and holidays.
+An observation older than seven calendar days is rejected. This conservative
+date lag avoids using an end-of-day yield in a return period that had already
+begun; it does not remove possible historical feed revisions.
+
+Sharpe, Sortino and volatility require at least two complete daily returns.
+Zero excess-return variance, zero downside deviation, zero drawdown, missing
+rates and nonfinite calculations produce **Unavailable**, with a reason, never
+zero, infinity or a substituted 0% Treasury yield. A source outage does not
+silently change the reference. Other metrics can remain visible.
+
+Annualization assumes the usual square-root-of-time scaling and does not correct
+for serial correlation. Fewer than 30 daily returns receive a strong short-sample
+warning; fewer than 252 disclose sub-year extrapolation. Those are display
+warnings, not investment approval thresholds. Neither additional decimal places
+nor a large ratio establishes statistical confidence. The empirical tail of a
+20-day sample contains only one observation.
+
+Pre-feature completed artifacts are not backfilled. Newly produced worker results
+carry diagnostic reports; an existing active campaign can acquire evaluation
+diagnostics without changing its frozen strategy plan. Missing Treasury data is
+retried for one unapproved campaign per enabled worker cycle, including a campaign
+that has already completed evaluation. These retries use saved replay outputs,
+not a new strategy simulation. Revision-checked, audited writes can replace only
+the diagnostic subdocument; they never change the frozen strategy, evaluation,
+status or approval. Approved, rejected and deferred proposals are excluded.
+An approval that races a refresh wins or forces a stale-revision rejection; an
+approved artifact cannot be overwritten.
+
+Apply `migrations/20261003_refresh_calibration_risk_diagnostics.sql` before
+deploying these diagnostic retries. The migration adds a narrowly scoped
+service-role-only database function, not a new table or trading setting.
+No new secret or approval gate is introduced. Legacy Backtester ratios
+have different assumptions and are not relabelled as these Treasury-adjusted
+campaign measurements.
+
+See `decisions/2026-10-03_calibration-risk-metrics.md` for why.
+
 ## What runs automatically
 
 `calibration-worker` checks every five minutes. It uses the latest reproducible

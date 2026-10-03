@@ -10,6 +10,12 @@ from test_intraday_replay import records  # noqa: F401
 from test_shadow_calibration import training_and_holdout
 
 
+@pytest.fixture(autouse=True)
+def isolate_diagnostic_analytics(monkeypatch):
+    monkeypatch.setattr(worker, "build_risk_report", Mock(return_value={
+        "version": 1, "status": "partial", "reference_snapshot": {"fixture": True}}))
+
+
 class MemoryStore:
     def __init__(self):
         self.config = {"revision": 0, "value": copy.deepcopy(auto_calibration.DEFAULT_SETTINGS)}
@@ -38,6 +44,11 @@ class MemoryStore:
                 for row in self.rows.values()
                 if row["status"] in ("evaluating", "deferred", "investigation_approved")]
 
+    def risk_retry_queue(self):
+        return [{"id": row["id"]} for row in self.rows.values()
+                if row["status"] in ("evaluating", "ready", "no_change")
+                and row.get("artifact", {}).get("risk_analytics", {}).get("retry_pending")][:1]
+
     def create_proposal(self, row):
         if row["id"] not in self.rows:
             self.rows[row["id"]] = {**copy.deepcopy(row), "revision": 0,
@@ -53,6 +64,11 @@ class MemoryStore:
             self.create_proposal(child)
         self.add_event(identifier, event, note, data)
         return copy.deepcopy(row)
+
+    def refresh_risk_analytics(self, identifier, expected_revision, artifact, risk_analytics):
+        self.update_proposal(identifier, expected_revision,
+                             {"artifact": {**artifact, "risk_analytics": risk_analytics}},
+                             "risk_reference_retry")
 
     def add_event(self, proposal_id, event, note="", data=None, event_id=None):
         identifier = event_id or str(len(self.log))
@@ -124,6 +140,68 @@ def test_freezes_one_campaign_and_deduplicates_week(setup):
     instance.step()
     assert len(store.rows) == 1
     assert len(store.log) == 1
+
+
+def test_diagnostic_risk_reports_are_stored_separately_from_strategy_plan(setup):
+    store, datasets = setup
+    worker.Worker(store, datasets, clock=lambda: stamp("2026-10-03")).step()
+    row = next(iter(store.rows.values()))
+    assert row["artifact"]["risk_analytics"]["training"]["status"] == "partial"
+    assert "risk_analytics" not in row["artifact"]["frozen"]["selection"]
+    assert row["artifact_sha256"] == worker.calibrate_intraday.digest(row["artifact"])
+
+
+def test_risk_math_failure_is_visible_without_changing_selection(setup, monkeypatch):
+    store, datasets = setup
+    monkeypatch.setattr(worker, "build_risk_report", Mock(side_effect=ValueError("Invalid daily marks")))
+    worker.Worker(store, datasets, clock=lambda: stamp("2026-10-03")).step()
+    row = next(iter(store.rows.values()))
+    assert row["status"] == "evaluating"
+    assert row["artifact"]["risk_analytics"]["training"]["status"] == "unavailable"
+    assert row["artifact"]["risk_analytics"]["training"]["error"] == "Invalid daily marks"
+    preserved = {"reference_snapshot": {"previous": "immutable"}}
+    assert worker.Worker._risk_analytics({}, {}, previous=preserved)["reference_snapshot"] == preserved["reference_snapshot"]
+
+
+@pytest.mark.parametrize("status", ["ready", "no_change", "evaluating"])
+def test_terminal_and_active_reference_retries_do_not_change_strategy(setup, monkeypatch, status):
+    store, datasets = setup
+    old = {"calculation_inputs": {"exact": "recorded"}, "reference_snapshot": {"status": "unavailable"}}
+    artifact = {"frozen": {"selection": {"unchanged": True}},
+                "evaluation_complete": True, "risk_analytics": {"training": old, "evaluation": old, "retry_pending": True}}
+    store.create_proposal({"id": "retry", "status": status, "artifact": artifact})
+    monkeypatch.setattr(worker, "refresh_risk_reference", lambda saved: {
+        **saved, "reference_snapshot": {"status": "available"}})
+    worker.Worker(store, datasets)._retry_risk_analytics()
+    result = store.proposal("retry")
+    assert result["status"] == status
+    assert result["artifact"]["frozen"] == artifact["frozen"]
+    assert result["artifact"]["evaluation_complete"]
+    assert not result["artifact"]["risk_analytics"]["retry_pending"]
+    assert result["artifact"]["risk_analytics"]["training"]["reference_snapshot"]["status"] == "available"
+    datasets.load.assert_not_called()
+
+
+@pytest.mark.parametrize("status", ["approved", "rejected", "deferred"])
+def test_reference_retry_does_not_mutate_operator_frozen_states(setup, monkeypatch, status):
+    store, datasets = setup
+    row = store.create_proposal({"id": "no-retry", "status": status,
+                                "artifact": {"risk_analytics": {"retry_pending": True}}})
+    retry = Mock()
+    monkeypatch.setattr(worker, "refresh_risk_reference", retry)
+    worker.Worker(store, datasets)._retry_risk_analytics()
+    retry.assert_not_called()
+    assert store.proposal("no-retry") == row
+
+
+def test_risk_refresh_losing_approval_race_is_not_retried_as_a_write(setup, monkeypatch):
+    store, datasets = setup
+    store.create_proposal({"id": "race", "status": "ready",
+                          "artifact": {"risk_analytics": {"retry_pending": True}}})
+    refresh = Mock(side_effect=worker.Conflict("Approved concurrently"))
+    monkeypatch.setattr(store, "refresh_risk_analytics", refresh)
+    worker.Worker(store, datasets)._retry_risk_analytics()
+    refresh.assert_called_once()
 
 
 def test_missing_source_is_visible_not_zero_performance(setup):

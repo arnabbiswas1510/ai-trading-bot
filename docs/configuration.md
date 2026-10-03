@@ -94,6 +94,27 @@ prevents accidentally removing an active overlay. The position dashboard uses
 the backend's deployed scale-out settings and armed-exit deadline.
 See `decisions/2026-10-03_interactive-self-calibration.md`.
 
+Calibration risk diagnostics use fixed, versioned calculation conventions, not
+live environment settings: 252 return periods per year; historical three-month
+Treasury yields with a strictly-prior-session date and maximum seven-calendar-day
+age; simple ACT/365 accrual; two daily returns for dispersion and twenty for
+empirical 95% tail metrics. Short-sample warnings at 30 and 252 daily returns are
+not approval gates. There is no 0% risk-free fallback. Treasury access requires
+outbound HTTPS from the calibration worker but no new API secret. Frozen source
+data and methodology are retained in the existing proposal artifact. These
+diagnostics do not change any research-policy or live-trading thresholds.
+The reference source is explicitly FRED `DGS3MO` (Federal Reserve H.15 Treasury
+three-month constant-maturity yield), from `fred.stlouisfed.org`. Requests use
+normal TLS verification, an eight-second timeout, a 2 MiB response cap, at most
+three calendar years and a 31-day lookback. There is no automatic alternative
+series or certificate-verification bypass.
+Enable diagnostic retries by applying
+`migrations/20261003_refresh_calibration_risk_diagnostics.sql` before deployment.
+One pending unapproved campaign is retried per enabled research cycle; there is
+no separate retry toggle and no automatic rewrite of approved artifacts.
+See [risk metric definitions](interactive_calibration.md#risk-adjusted-benchmark-metrics)
+and `decisions/2026-10-03_calibration-risk-metrics.md`.
+
 The independent observer has CLI-only connection controls: `--client-id 71`,
 `--interval 300` seconds for broker snapshots, `--request-timeout 10`,
 `--persist-timeout 45` for `--once`, `--max-reconnects 3` and

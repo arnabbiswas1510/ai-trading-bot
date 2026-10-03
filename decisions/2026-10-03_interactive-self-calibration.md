@@ -1,7 +1,13 @@
 # Automatic research with operator-approved strategy deployment
 
 Date: 2026-10-03
-Status: Accepted; production activation requires the migration, credentials and deployment.
+Status: Accepted with the diagnostic-refresh exception below; production activation requires the migration, credentials and deployment.
+
+> 2026-10-03: [Diagnostic risk refresh](2026-10-03_calibration-risk-metrics.md)
+> adds a narrowly scoped exception for the new risk-analytics subdocument of
+> unapproved campaigns. Frozen strategy plans, evaluation results and approved
+> artifacts remain immutable. The existing general mutation guard is unchanged;
+> a separate row-locked function governs this diagnostic-only refresh.
 
 ## Context
 

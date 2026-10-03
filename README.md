@@ -55,6 +55,14 @@ progress, detailed same-window benchmarks, ticker contributions and paginated
 simulated trades/decisions. It stays accessible when real-portfolio data fails;
 missing or stale research evidence is not reported as zero performance.
 Existing Backtester research tools remain available.
+Benchmark detail includes Treasury-adjusted Sharpe/Sortino, a clearly labelled
+window-estimate Calmar, sampled maximum drawdown, volatility and loss statistics.
+Daily observations and historical rates are saved with each experiment;
+undefined or short-sample ratios are explicitly qualified, not treated as proof
+of a better strategy. See `decisions/2026-10-03_calibration-risk-metrics.md`.
+Apply `migrations/20261003_refresh_calibration_risk_diagnostics.sql` before
+deploying risk diagnostics; it allows audited Treasury retries without rewriting
+frozen strategy evidence or approved artifacts.
 See `decisions/2026-10-03_unified-calibration-dashboard.md` for the visibility design.
 The default research budget is five training sessions, five future evaluation
 sessions and sixteen candidates; it is not a claim of sufficient evidence.

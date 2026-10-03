@@ -93,6 +93,12 @@ class CalibrationStore:
             raise StoreUnavailable("Research queue exceeds 200 entries; operator review is required.")
         return rows
 
+    def risk_retry_queue(self):
+        return self._query(self.client.table("intraday_calibration_proposals")
+                           .select("id").in_("status", ["evaluating", "ready", "no_change"])
+                           .eq("artifact->risk_analytics->>retry_pending", "true")
+                           .order("updated_at").order("id").limit(1))
+
     def has_proposal(self, identifier):
         rows = self._query(self.client.table("intraday_calibration_proposals").select("id")
                            .eq("id", _text(identifier, "proposal id")).limit(1))
@@ -182,6 +188,33 @@ class CalibrationStore:
                    "event": _text(event, "event"), "note": note, "data": data or {}}
         artifact_digest(payload)
         return self._rpc("event", payload)
+
+    def refresh_risk_analytics(self, identifier, expected_revision, artifact, risk_analytics):
+        if not isinstance(artifact, dict) or not isinstance(risk_analytics, dict):
+            raise ValidationError("Artifact and risk analytics must be objects.")
+        payload = {
+            "id": _text(identifier, "proposal id"),
+            "expected_revision": _revision(expected_revision),
+            "expected_artifact_sha256": artifact_digest(artifact),
+            "risk_analytics": risk_analytics,
+            "artifact_sha256": artifact_digest({**artifact, "risk_analytics": risk_analytics}),
+            "event_id": uuid.uuid4().hex,
+        }
+        artifact_digest(payload)
+        try:
+            result = self._query(self.client.rpc("intraday_calibration_refresh_risk", {
+                "p_payload": payload,
+            }))
+        except StoreUnavailable as exc:
+            if getattr(exc.__cause__, "code", None) in ("PGRST202", "42883"):
+                raise StoreUnavailable(
+                    "Diagnostic refresh RPC is missing; apply "
+                    "migrations/20261003_refresh_calibration_risk_diagnostics.sql."
+                ) from exc
+            raise
+        if result is None:
+            raise StoreUnavailable("Research inbox write was not confirmed.")
+        return result
 
     def health(self):
         rows = self._query(self.client.table("intraday_calibration_health").select("*")

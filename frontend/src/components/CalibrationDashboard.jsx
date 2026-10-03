@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Activity, Download, FlaskConical, RefreshCw } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import CalibrationResearchView from './CalibrationResearchView.jsx';
+import CalibrationRiskMetrics from './CalibrationRiskMetrics.jsx';
 import IntradayReplayView, { request } from './IntradayReplayView.jsx';
 import { finiteNumber } from '../lib/intradayReplay.js';
 import { experimentFields, heartbeatLabel, metricText } from '../lib/calibrationResearch.js';
@@ -221,6 +222,7 @@ function Benchmarks({ resource, onReview }) {
           </BarChart></ResponsiveContainer>
         </div>}
       </>}
+      <CalibrationRiskMetrics proposal={proposal} phase={phase} />
       <h4>Exact settings under comparison</h4>
       {Array.isArray(view.changes) ? <div className="table-container"><table>
         <thead><tr><th>Parameter</th><th>Recorded value</th><th>Candidate value</th></tr></thead>

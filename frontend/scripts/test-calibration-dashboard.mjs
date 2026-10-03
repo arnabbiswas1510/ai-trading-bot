@@ -7,6 +7,7 @@ import { experimentFields } from '../src/lib/calibrationResearch.js';
 import {
   activityPageValid, activityRows, benchmarkView, calibrationTabs, campaignProgress,
   contributionRows, initialCampaign, metricDelta, recordedEquity, sortedTrials,
+  riskMetricsView,
 } from '../src/lib/calibrationDashboard.js';
 
 const baseline = { name: 'baseline', status: 'modeled', settings_diff: [],
@@ -90,14 +91,14 @@ const { code } = await transformWithEsbuild(withoutImports, 'CalibrationDashboar
 const mockComponent = () => null;
 const names = ['React', 'experimentFields', 'benchmarkView', 'campaignProgress', 'metricDelta', 'sortedTrials',
   'finiteNumber', 'metricText', 'heartbeatLabel', 'Activity', 'Download', 'FlaskConical', 'RefreshCw',
-  'ResponsiveContainer', 'BarChart', 'CartesianGrid', 'XAxis', 'YAxis', 'Tooltip', 'ReferenceLine', 'Bar'];
+  'ResponsiveContainer', 'BarChart', 'CartesianGrid', 'XAxis', 'YAxis', 'Tooltip', 'ReferenceLine', 'Bar', 'CalibrationRiskMetrics'];
 // Hooks reference the imported useState binding, supplied without adding a testing dependency.
 const renderSource = code.replace(/\buseState\(/g, 'React.useState(');
 const { Benchmarks: RenderBenchmarks, Overview } = new Function(...names, `${renderSource}; return { Benchmarks, Overview };`)(
   React, experimentFields, benchmarkView, campaignProgress, metricDelta, sortedTrials,
   (v) => typeof v === 'number' && Number.isFinite(v) ? v : null,
   (v, cash) => typeof v === 'number' && Number.isFinite(v) ? cash ? `$${v.toFixed(2)}` : String(v) : 'Unavailable',
-  () => '', ...Array(12).fill(mockComponent),
+  () => '', ...Array(13).fill(mockComponent),
 );
 const resource = { data: { proposal }, loading: false, error: '', updated: '2026-10-03T16:00:00Z' };
 const html = renderToStaticMarkup(React.createElement(RenderBenchmarks, { resource, onReview() {} }));
@@ -116,4 +117,45 @@ const errorHtml = renderToStaticMarkup(React.createElement(Overview, {
 assert.match(errorHtml, /Service offline/);
 assert.match(errorHtml, /Unavailable/);
 assert.doesNotMatch(errorHtml, /\$0\.00/);
+assert.equal(riskMetricsView(proposal), null);
+const riskProposal = structuredClone(proposal);
+riskProposal.artifact.frozen.selection.artifact_sha256 = 'a'.repeat(64);
+riskProposal.artifact.evaluation.evaluation.artifact_sha256 = 'b'.repeat(64);
+riskProposal.artifact.evaluation.evaluation.holdout.input_sha256 = 'c'.repeat(64);
+riskProposal.artifact.risk_analytics = { evaluation: {
+  phase: 'evaluation', status: 'available', selected_name: 'candidate',
+  selection_sha256: 'a'.repeat(64), benchmark_sha256: 'b'.repeat(64), input_sha256: 'c'.repeat(64),
+  reference_snapshot: { status: 'available', source: 'US Treasury 3-month', error: null, observations: [] },
+  baseline: { metrics: { sharpe: null, calmar: null, max_sampled_drawdown_pct: 0 },
+    unavailable: { sharpe: 'Zero excess-return variance', calmar: 'Zero drawdown' }, sample: { sessions: 5, daily_returns: 4 } },
+  candidate: { metrics: { sharpe: 1.25, calmar: 2, max_sampled_drawdown_pct: 2 }, sample: { sessions: 5, daily_returns: 4 },
+    warnings: ['Short sample: exploratory only'] },
+} };
+assert.equal(riskMetricsView(riskProposal).candidate.metrics.sharpe, 1.25);
+assert.equal(riskMetricsView(riskProposal, 'training'), null, 'Do not show evaluation ratios in the training tab');
+const wrongRisk = structuredClone(riskProposal);
+wrongRisk.artifact.risk_analytics.evaluation.input_sha256 = 'wrong-window';
+assert.match(riskMetricsView(wrongRisk).error, /do not match/);
+const riskSource = readFileSync(new URL('../src/components/CalibrationRiskMetrics.jsx', import.meta.url), 'utf8');
+const riskCode = (await transformWithEsbuild(riskSource.replace(/^import[\s\S]*?;\n/gm, '')
+  .replace('export default function', 'function'), 'CalibrationRiskMetrics.jsx', { loader: 'jsx', jsx: 'transform' })).code;
+const RiskMetrics = new Function('React', 'finiteNumber', 'riskMetricsView', `${riskCode};return CalibrationRiskMetrics;`)(
+  React, (value) => typeof value === 'number' && Number.isFinite(value) ? value : null, riskMetricsView);
+const riskHtml = renderToStaticMarkup(React.createElement(RiskMetrics, { proposal: riskProposal, phase: 'evaluation' }));
+assert.match(riskHtml, /Sharpe ratio/);
+assert.match(riskHtml, /Calmar ratio/);
+assert.match(riskHtml, /Zero excess-return variance/);
+assert.match(riskHtml, /Zero drawdown/);
+assert.match(riskHtml, /0\.00%/);
+assert.match(riskHtml, /1\.25/);
+assert.match(riskHtml, /Short sample/);
+const offlineRisk = structuredClone(riskProposal);
+offlineRisk.artifact.risk_analytics.evaluation.reference_snapshot.status = 'unavailable';
+offlineRisk.artifact.risk_analytics.evaluation.reference_snapshot.error = 'Historical rates missing';
+offlineRisk.artifact.risk_analytics.evaluation.candidate.metrics.sharpe = null;
+const offlineHtml = renderToStaticMarkup(React.createElement(RiskMetrics, { proposal: offlineRisk, phase: 'evaluation' }));
+assert.match(offlineHtml, /Historical rates missing/);
+assert.match(offlineHtml, /do not silently fall back/);
+const oldRiskHtml = renderToStaticMarkup(React.createElement(RiskMetrics, { proposal, phase: 'training' }));
+assert.match(oldRiskHtml, /Older artifacts are not retroactively rewritten/);
 console.log('Calibration dashboard: missing-data, comparison, progress, pagination, navigation and rendered-panel checks passed.');

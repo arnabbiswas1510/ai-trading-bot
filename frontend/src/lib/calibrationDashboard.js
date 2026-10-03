@@ -45,6 +45,25 @@ export function benchmarkView(proposal, phase = 'evaluation') {
   };
 }
 
+export function riskMetricsView(proposal, phase = 'evaluation') {
+  const saved = proposal?.artifact?.risk_analytics?.[phase];
+  if (!saved) return null;
+  if (saved.status === 'unavailable') return { error: saved.error || 'Risk analytics unavailable.' };
+  const selection = proposal?.artifact?.frozen?.selection;
+  const benchmark = phase === 'training' ? selection : proposal?.artifact?.evaluation?.evaluation;
+  const window = phase === 'training' ? benchmark?.training : benchmark?.holdout;
+  if (!benchmark || ![saved.input_sha256, saved.benchmark_sha256, saved.selection_sha256]
+    .every((value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value))
+      || saved.phase !== phase || saved.selected_name !== selection?.selected_name
+      || saved.input_sha256 !== window?.input_sha256
+      || saved.benchmark_sha256 !== benchmark?.artifact_sha256
+      || saved.selection_sha256 !== selection?.artifact_sha256
+      || !saved.baseline?.metrics || !saved.candidate?.metrics) {
+    return { error: 'Risk metrics do not match this campaign and data window; no comparison is shown.' };
+  }
+  return saved;
+}
+
 export function contributionRows(values) {
   if (!values || typeof values !== 'object' || Array.isArray(values)) return null;
   if (Object.values(values).some((value) => finiteNumber(value) === null)) return null;

@@ -67,6 +67,21 @@ strategy or contact the broker. The **Recorded-input tools** tab retains the
 manual comparison/export workflow, also available through Backtester.
 See `decisions/2026-10-03_unified-calibration-dashboard.md` for why.
 
+The calibration worker also stores separately versioned diagnostic risk reports.
+It reproduces only the recorded reference and frozen candidate, reconciles their
+summaries, and uses terminal-session equity marks rather than intraday samples
+as independent daily returns. Historical three-month Treasury rates and source
+hashes accompany Sharpe/Sortino; Calmar uses the same daily window for both growth
+and drawdown. Missing data and short samples remain explicit. Core selection and
+replay fingerprints are unchanged, so an existing campaign is not reseeded just
+to add diagnostics. Missing Treasury references are retried from saved outputs,
+even after evaluation completes, but only while the campaign remains unapproved
+and research is enabled. Apply
+`migrations/20261003_refresh_calibration_risk_diagnostics.sql` before deploying
+the worker; its row-locked function can update only diagnostics, not frozen
+strategy evidence or approvals. See [risk metric definitions](interactive_calibration.md#risk-adjusted-benchmark-metrics)
+and `decisions/2026-10-03_calibration-risk-metrics.md`.
+
 **New real buys OFF means protect-only, not an idle execution agent.** Real
 Prove-It monitoring, protective exits, order repair and ledger reconciliation
 continue. The observer itself never manages positions. Existing broker-held

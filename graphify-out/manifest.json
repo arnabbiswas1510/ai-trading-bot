@@ -65,8 +65,8 @@
     "semantic_hash": ""
   },
   "frontend/scripts/verify-build.mjs": {
-    "mtime": 1791068089.1545823,
-    "ast_hash": "fa691c03a87544730f2c3b3bee18a0c0",
+    "mtime": 1791069709.9743762,
+    "ast_hash": "6098ddfadc199d66f70f22e9d71f7146",
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1791068229.8026934,
-    "ast_hash": "5629e9f5a4e74e3f7368e55739f00fa2",
+    "mtime": 1791070445.1083043,
+    "ast_hash": "7ae00a81fca702cd2426eb689acb3f3f",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1791054226.9875252,
-    "ast_hash": "422f0b201bcbaf88d9d006ec817dad7c",
+    "mtime": 1791070445.0805929,
+    "ast_hash": "49bbccc8f9e17614f5743cc8b815d111",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -1910,8 +1910,8 @@
     "semantic_hash": ""
   },
   "docs/intraday_research.md": {
-    "mtime": 1791068229.8139558,
-    "ast_hash": "6b819dac2cfcb816e7e0a9758c6554a2",
+    "mtime": 1791070445.0938058,
+    "ast_hash": "adbc7ca92f68620825b1899482c9bc0a",
     "semantic_hash": ""
   },
   "broker_positions.py": {
@@ -2210,13 +2210,13 @@
     "semantic_hash": ""
   },
   "research/calibration_store.py": {
-    "mtime": 1791054012.1246336,
-    "ast_hash": "26ab8542c0a4eba1caa9202a00f0b074",
+    "mtime": 1791070540.4135962,
+    "ast_hash": "16b290eba1e7ddf98d096bce8932b1a2",
     "semantic_hash": ""
   },
   "research/calibration_worker.py": {
-    "mtime": 1791054546.271282,
-    "ast_hash": "ecb2b4b8a5b8b95baa2802dd8dee13ad",
+    "mtime": 1791070402.9624302,
+    "ast_hash": "b823b5d53e532daede8c57a4067de6bd",
     "semantic_hash": ""
   },
   "scripts/apply_calibration_artifact.py": {
@@ -2250,33 +2250,33 @@
     "semantic_hash": ""
   },
   "tests/test_calibration_worker.py": {
-    "mtime": 1791054546.2819352,
-    "ast_hash": "572bd4b60747160f41d313381d8bae86",
+    "mtime": 1791070402.984647,
+    "ast_hash": "2c8626143c8ca871d3b4927799bce059",
     "semantic_hash": ""
   },
   "decisions/2026-10-03_interactive-self-calibration.md": {
-    "mtime": 1791054887.722563,
-    "ast_hash": "885169df5ddf6f3624722dbe0f65e528",
+    "mtime": 1791070525.0696287,
+    "ast_hash": "e973b8471552799b0db430bb0ab58ba5",
     "semantic_hash": ""
   },
   "docs/interactive_calibration.md": {
-    "mtime": 1791068229.7882185,
-    "ast_hash": "d95e28cfa821cb4a3e636de5bfdbf400",
+    "mtime": 1791070431.4974918,
+    "ast_hash": "41863f0c575a6ba5154cd2e1a5e03a46",
     "semantic_hash": ""
   },
   "frontend/scripts/test-calibration-dashboard.mjs": {
-    "mtime": 1791068296.8763607,
-    "ast_hash": "e23508bf386c38d8b662a62ed1c33b25",
+    "mtime": 1791069885.1237857,
+    "ast_hash": "90c71d6048ccfa273a8c1eb6695a9740",
     "semantic_hash": ""
   },
   "frontend/src/components/CalibrationDashboard.jsx": {
-    "mtime": 1791068286.4333477,
-    "ast_hash": "521e4055b320181b557aaf390c57e591",
+    "mtime": 1791069709.9538863,
+    "ast_hash": "1e331b3a3446c6f97f6cb1b1b15368ad",
     "semantic_hash": ""
   },
   "frontend/src/lib/calibrationDashboard.js": {
-    "mtime": 1791068003.3430932,
-    "ast_hash": "438323cec33fbc7a3fd4a1b445f37d24",
+    "mtime": 1791069885.1054156,
+    "ast_hash": "de8a0cf1e89e2ca8195f7995773b67b5",
     "semantic_hash": ""
   },
   "tests/test_shadow_activity.py": {
@@ -2287,6 +2287,56 @@
   "decisions/2026-10-03_unified-calibration-dashboard.md": {
     "mtime": 1791068229.823045,
     "ast_hash": "237cd719d047b519119ff7459a9f3329",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/CalibrationRiskMetrics.jsx": {
+    "mtime": 1791070402.9727206,
+    "ast_hash": "36dff7a44468724e4d837a2407ccf925",
+    "semantic_hash": ""
+  },
+  "migrations/20261003_refresh_calibration_risk_diagnostics.sql": {
+    "mtime": 1791070487.0996246,
+    "ast_hash": "926882f2b0aa1b417ed671a3e51c6f9d",
+    "semantic_hash": ""
+  },
+  "research/calibration_risk.py": {
+    "mtime": 1791069664.467933,
+    "ast_hash": "b0fd95fee80a60b3d481db989e93a6d5",
+    "semantic_hash": ""
+  },
+  "research/calibration_risk_report.py": {
+    "mtime": 1791070624.97045,
+    "ast_hash": "dca2cd6c79894b7e84116db939b7a159",
+    "semantic_hash": ""
+  },
+  "research/treasury_reference.py": {
+    "mtime": 1791069944.4013665,
+    "ast_hash": "f771cb9e36d6edf9df8d941e1bb4675b",
+    "semantic_hash": ""
+  },
+  "tests/test_calibration_risk.py": {
+    "mtime": 1791069664.4825246,
+    "ast_hash": "c6bc8c91f844e9ec595880d66e9896a7",
+    "semantic_hash": ""
+  },
+  "tests/test_calibration_risk_refresh_store.py": {
+    "mtime": 1791070540.4254391,
+    "ast_hash": "69903dd4894ad6d4d4792a9e44c35b8c",
+    "semantic_hash": ""
+  },
+  "tests/test_calibration_risk_report.py": {
+    "mtime": 1791070402.994865,
+    "ast_hash": "09b9ef2ea40d08e528bf2cd8844f575e",
+    "semantic_hash": ""
+  },
+  "tests/test_treasury_reference.py": {
+    "mtime": 1791069944.412764,
+    "ast_hash": "8879e781dc4ee8163eb717991f00f4d3",
+    "semantic_hash": ""
+  },
+  "decisions/2026-10-03_calibration-risk-metrics.md": {
+    "mtime": 1791070445.0555162,
+    "ast_hash": "5f37750f347de5610e2fb74eb90fc959",
     "semantic_hash": ""
   }
 }

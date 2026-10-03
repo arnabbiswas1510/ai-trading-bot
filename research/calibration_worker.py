@@ -15,7 +15,8 @@ import research_diagnostics as diagnostics
 import shadow_engine
 from market_calendar import session_bounds
 from research import auto_calibration, calibrate_intraday
-from research.calibration_store import CalibrationStore
+from research.calibration_risk_report import build_risk_report, refresh_risk_reference
+from research.calibration_store import CalibrationStore, Conflict
 from research.intraday_reporting_delivery import (
     Store as DeliveryStore, Telegram, deliver, ReportingError, StorageError,
 )
@@ -135,6 +136,48 @@ class Worker:
     def __init__(self, store, datasets, clock=lambda: dt.datetime.now(UTC)):
         self.store, self.datasets, self.clock = store, datasets, clock
 
+    @staticmethod
+    def _risk_analytics(data, selection, evaluation=None, previous=None):
+        try:
+            return build_risk_report(data, selection, evaluation, previous=previous)
+        except (ValueError, KeyError, TypeError, OverflowError) as exc:
+            LOG.error("Diagnostic risk analytics unavailable (%s): %s", type(exc).__name__, exc)
+            return {"version": 1, "status": "unavailable", "error": str(exc),
+                    "reference_snapshot": (previous or {}).get("reference_snapshot"),
+                    "scope": "Risk analytics failed; no ratios inferred. Strategy selection and approval rules are unchanged."}
+
+    @staticmethod
+    def _risk_bundle(reports):
+        reports = {key: value for key, value in reports.items() if key in ("training", "evaluation")}
+        pending = any(report.get("calculation_inputs")
+                      and report.get("reference_snapshot", {}).get("status") == "unavailable"
+                      and not report.get("retry_error") for report in reports.values())
+        return {**reports, "retry_pending": pending}
+
+    def _retry_risk_analytics(self):
+        for item in self.store.risk_retry_queue():
+            row = self.store.proposal(item["id"])
+            if row["status"] not in ("evaluating", "ready", "no_change"):
+                continue
+            reports = dict(row["artifact"].get("risk_analytics", {}))
+            for phase in ("training", "evaluation"):
+                old = reports.get(phase, {})
+                if (not old.get("calculation_inputs") or old.get("retry_error")
+                        or old.get("reference_snapshot", {}).get("status") != "unavailable"):
+                    continue
+                try:
+                    reports[phase] = refresh_risk_reference(old)
+                except (ValueError, KeyError, TypeError, OverflowError) as exc:
+                    LOG.error("Diagnostic reference retry refused: %s", exc)
+                    reports[phase] = {**old, "retry_error": str(exc)}
+                    reports[phase]["sha256"] = calibrate_intraday.digest(
+                        {key: value for key, value in reports[phase].items() if key != "sha256"})
+            try:
+                self.store.refresh_risk_analytics(row["id"], row["revision"], row["artifact"],
+                                                 self._risk_bundle(reports))
+            except Conflict:
+                LOG.info("Research decision changed during diagnostic retry; no artifact was overwritten.")
+
     def _weekly_status(self, note, now):
         monday = now.astimezone(NY).date() - dt.timedelta(days=now.astimezone(NY).weekday())
         self.store.add_event(proposal_id=None, event="weekly_update", note=note,
@@ -201,6 +244,7 @@ class Worker:
             "settings_revision": settings["revision"],
             "portfolio_scope": "One continuous challenger over the fixed evaluation window; "
                                "reconstructed from the same starting checkpoint, never reset daily.",
+            "risk_analytics": self._risk_bundle({"training": self._risk_analytics(data, frozen["selection"])}),
         }
         selected = frozen["selection"]["selected_name"]
         status = "no_change" if selected == "baseline" else "evaluating"
@@ -256,7 +300,11 @@ class Worker:
             evaluated["eligibility"]["reasons"].append(
                 "Research settings changed after freezing; a new campaign with future evidence is required.")
         updated = {**artifact, "evaluation": evaluated, "last_evaluated_session": through,
-                   "evaluation_complete": final}
+                   "evaluation_complete": final,
+                   "risk_analytics": self._risk_bundle({**artifact.get("risk_analytics", {}),
+                                      "evaluation": self._risk_analytics(
+                                          data, artifact["frozen"]["selection"], evaluated["evaluation"],
+                                          artifact.get("risk_analytics", {}).get("evaluation"))})}
         status = ("ready" if evaluated["eligibility"]["eligible"] else "no_change") if final else "evaluating"
         self.store.update_proposal(
             proposal["id"], proposal["revision"],
@@ -274,6 +322,7 @@ class Worker:
         if not settings["value"]["enabled"]:
             self.store.set_health("disabled")
             return
+        self._retry_risk_analytics()
         proposals = self.store.research_queue()
         active = [row for row in proposals if row["status"] == "evaluating"]
         if len(active) > 1:
