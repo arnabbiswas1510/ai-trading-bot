@@ -14,6 +14,7 @@ from supabase import create_client
 
 import config
 import database as db
+import research_diagnostics as diagnostics
 from intraday_replay import build_dataset, run_comparison
 
 log = logging.getLogger(__name__)
@@ -31,19 +32,33 @@ class ResearchUnavailable(RuntimeError):
     pass
 
 
+def report_failure(event, exc, query=None):
+    identifier = diagnostics.emit("web", event, error=exc,
+                                  context=diagnostics.query_context(query))
+    details = diagnostics.exception_details(exc)
+    category = details.get("category", "unknown")
+    code = details.get("code")
+    return (f"Diagnostic {identifier or 'not-queued'}: {category}"
+            f"{' (' + code + ')' if code else ''}. "
+            "Read [RESEARCH-DIAGNOSTIC] entries in Supabase agent_logs.")
+
+
 def get_client():
     global _client
     if _client is None:
         key = os.getenv("INTRADAY_SUPABASE_KEY") or db.SUPABASE_KEY
         if not db.SUPABASE_URL or not key:
-            raise ResearchUnavailable("Intraday research database credentials are not configured.")
+            exc = ResearchUnavailable("Intraday research database credentials are not configured.")
+            detail = report_failure("research_credentials_missing", exc)
+            raise ResearchUnavailable(f"{exc} {detail}")
         try:
             _client = create_client(db.SUPABASE_URL, key)
         except Exception as exc:
             log.error("Intraday client initialization failed (%s)", type(exc).__name__)
+            detail = report_failure("research_client_failed", exc)
             raise ResearchUnavailable(
                 "Intraday research credentials or database URL are invalid; "
-                "check the server-side configuration."
+                f"check the server-side configuration. {detail}"
             ) from None
     return _client
 
@@ -54,10 +69,11 @@ def _query(query):
     except Exception as exc:
         # SDK errors may include URLs; keep credentials out of UI and capture health.
         log.error("Intraday research database request failed (%s)", type(exc).__name__)
+        detail = report_failure("research_query_failed", exc, query)
         raise ResearchUnavailable(
             "Intraday research database is unavailable. Apply "
             "20260930_add_intraday_research.sql and configure a server-side "
-            "service-role INTRADAY_SUPABASE_KEY; check server logs/connectivity."
+            f"service-role INTRADAY_SUPABASE_KEY. {detail}"
         ) from exc
 
 
@@ -234,7 +250,8 @@ def _execute_job(row):
             update = {"status": "failed", "error": str(exc)}
         except Exception as exc:
             log.error("Intraday replay %s failed (%s)", row["id"], type(exc).__name__)
-            update = {"status": "failed", "error": "Replay failed; inspect server logs before retrying."}
+            detail = report_failure("replay_failed", exc)
+            update = {"status": "failed", "error": f"Replay failed. {detail}"}
         update["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
         with _pending_lock:
             _pending_terminal[row["id"]] = update
@@ -304,6 +321,7 @@ async def scheduler():
             await asyncio.to_thread(_mark_interrupted)
             await asyncio.to_thread(automatic_review)
         except (ResearchUnavailable, ValueError, BlockingIOError) as exc:
+            diagnostics.emit("web", "automatic_comparison_unavailable", error=exc, level="WARN")
             log.warning("Automatic intraday comparison unavailable: %s", exc)
         await asyncio.sleep(3600)
 

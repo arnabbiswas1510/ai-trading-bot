@@ -21,6 +21,7 @@ import threading
 import time
 import uuid
 from zoneinfo import ZoneInfo
+import research_diagnostics as diagnostics
 from config import (
     INTRADAY_CAPTURE_ENABLED, INTRADAY_SAMPLE_SECONDS, INTRADAY_RETENTION_DAYS,
     INTRADAY_MAX_SYMBOLS, INTRADAY_MAX_QUOTE_AGE_SECONDS, INTRADAY_CAPTURE_SPOOL,
@@ -252,6 +253,7 @@ def collector_config():
 def start(ib, ea):
     global _recorder, _startup_error
     if not INTRADAY_CAPTURE_ENABLED:
+        diagnostics.emit("execution-agent", "capture_disabled", level="INFO")
         return
     try:
         if _recorder is None:
@@ -292,6 +294,7 @@ def start(ib, ea):
                 loop.call_later(5, tick)
         loop.call_later(5, tick)
     except Exception as exc:
+        diagnostics.emit("execution-agent", "capture_startup_failed", error=exc)
         _startup_error = {"message": f"startup: {type(exc).__name__}", "occurred_at": now()}
         if _recorder:
             _recorder.error(f"startup: {type(exc).__name__}")
@@ -360,6 +363,10 @@ class Recorder:
                                  "reason": self.last_error, "error_count": pending})
         LOG.error("Intraday capture incomplete (%s coalesced errors): %s",
                   pending, self.last_error)
+        diagnostics.emit(self.health_id, "capture_incomplete", context={
+            "error_count": pending, "dropped_events": self.dropped,
+            "pending_events": self.queue.qsize(),
+        })
 
     def _event(self, kind, payload, event_id=None):
         """Called under the short sequence lock, never during disk/network I/O."""
@@ -589,6 +596,8 @@ class Recorder:
                 data["source_times"][table] = {"started_at": started, "received_at": now(),
                                               "filter_lte": cutoff, "filter_gte": lower}
             except Exception as exc:
+                diagnostics.emit(self.health_id, "snapshot_source_failed", error=exc,
+                                 context={"table": table, "operation": "select"})
                 data["complete"] = False
                 data["errors"].append(f"{table}: {type(exc).__name__}")
                 data[table] = None
@@ -693,6 +702,8 @@ class Recorder:
                 if not isinstance(rows, list):
                     raise ValueError("FMP response is not a quote list")
             except Exception as exc:
+                diagnostics.emit(self.health_id, "quote_request_failed", error=exc,
+                                 context={"operation": "fmp_batch_quote"})
                 errors.extend({"ticker": t, "reason": "quote_request_failed",
                                "error_type": type(exc).__name__} for t in chunk)
                 continue
@@ -726,6 +737,8 @@ class Recorder:
     def run(self):
         db = client = http = None
         next_sample = next_health = next_discovery = next_purge = 0
+        next_diagnostic = 0
+        operation = "recorder_imports"
         try:
             import requests
             from supabase import create_client
@@ -733,18 +746,23 @@ class Recorder:
             http = requests.Session()
             while not self.stopping.is_set() or not self.queue.empty():
                 try:
+                    operation = "open_spool"
                     if db is None:
                         db = self.open_spool()
+                    operation = "journal"
                     self.journal(db)
                     if self.stopping.is_set():
                         self.drain(db)
                         break
                     if client is None:
+                        operation = "research_client"
                         client = create_client(os.environ["SUPABASE_URL"],
                             os.getenv("INTRADAY_SUPABASE_KEY") or os.environ["SUPABASE_KEY"],
                             options=ClientOptions(postgrest_client_timeout=10))
+                    operation = "snapshot_jobs"
                     self.process_snapshot_jobs(db, client)
                     if time.monotonic() >= next_discovery:
+                        operation = "universe_discovery"
                         next_discovery = time.monotonic() + 900
                         self.refresh_universe(client)
                         self.journal(db)
@@ -776,16 +794,20 @@ class Recorder:
                                 list(self.symbols.values())[offset:offset + 100],
                                 on_conflict="ticker").execute()
                     if time.monotonic() >= next_sample:
+                        operation = "quote_sample"
                         next_sample = time.monotonic() + self.sample_seconds
                         local = dt.datetime.now(NY)
                         if local.weekday() < 5 and (9, 30) <= (local.hour, local.minute) < (16, 0):
                             self.sample(http)
+                    operation = "journal"
                     self.journal(db)
                     if self.stopping.is_set():
                         continue
+                    operation = "capture_upload"
                     self.flush(db, client)
                     self.log_errors()
                     if time.monotonic() >= next_purge:
+                        operation = "retention"
                         client.rpc("purge_intraday_capture",
                                    {"keep_days": self.retention_days}).execute()
                         cutoff = (dt.datetime.now(UTC) - dt.timedelta(days=self.retention_days)).isoformat()
@@ -795,9 +817,20 @@ class Recorder:
                         self.symbols = {t: r for t, r in self.symbols.items() if r["last_seen_at"] >= cutoff}
                         next_purge = time.monotonic() + 86400
                     if time.monotonic() >= next_health:
+                        operation = "health_upload"
                         next_health = time.monotonic() + 15
                         self.health(db, client)
+                    if time.monotonic() >= next_diagnostic:
+                        next_diagnostic = time.monotonic() + 60
+                        diagnostics.emit(self.health_id, "capture_progress", level="INFO", context={
+                            "last_persisted_at": self.last_persisted_at,
+                            "sequence": self.last_uploaded_sequence,
+                            "pending_events": db.execute("SELECT count(*) FROM pending").fetchone()[0],
+                            "dropped_events": self.dropped,
+                        })
                 except Exception as exc:
+                    diagnostics.emit(self.health_id, "capture_worker_failed", error=exc,
+                                     context={"operation": operation, "dropped_events": self.dropped})
                     # Never include transport exception text: it may contain the API key URL.
                     self.error(f"worker: {type(exc).__name__}")
                     self.emit("capture_gap", {"area": "worker", "complete": False,
@@ -810,16 +843,21 @@ class Recorder:
                             client = create_client(os.environ["SUPABASE_URL"],
                                 os.getenv("INTRADAY_SUPABASE_KEY") or os.environ["SUPABASE_KEY"],
                                 options=ClientOptions(postgrest_client_timeout=10))
-                        except Exception:
+                        except Exception as health_exc:
+                            diagnostics.emit(self.health_id, "capture_health_client_failed", error=health_exc)
                             self.error("Intraday capture health client unavailable")
                     if client:
                         try:
                             self.health(db, client)
-                        except Exception:
+                        except Exception as health_exc:
+                            diagnostics.emit(self.health_id, "capture_health_upload_failed", error=health_exc,
+                                             context={"table": "intraday_capture_health"})
                             self.error("Intraday capture health upload unavailable")
                     self.stopping.wait(5)
                 self.stopping.wait(0.25)
         except Exception as exc:
+            diagnostics.emit(self.health_id, "capture_worker_stopped", error=exc, level="CRITICAL",
+                             context={"operation": operation})
             self.error(f"worker stopped: {type(exc).__name__}")
         finally:
             if db:

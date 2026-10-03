@@ -104,7 +104,8 @@ are introduced. See
 `decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
 
 The independent cloud watchdog needs Actions secrets `SUPABASE_URL`,
-`INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`, plus its
+`INTRADAY_SUPABASE_KEY`, `SUPABASE_KEY` (independent operational diagnostics),
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`, plus its
 built-in GitHub token with issue-write permission. It runs every 15 minutes,
 checks 10-minute freshness/coverage gaps, and schedules daily reporting at
 exchange close plus 30 minutes. Paired buy/monitor decisions have a separate
@@ -247,8 +248,9 @@ Cycle-time shipping only covers what happens *after* `TeeLogger` is installed. A
 crash during **import or startup** — a bad config, a missing dependency, an
 import error — happens before that pipeline exists, so it would otherwise appear
 only in `docker logs` (an SSH session on the home-network host). To close that
-blind spot the container's entrypoint is `agent_entrypoint.py`, a thin wrapper
-that runs the agent inside a `try/except` and, on any startup failure, writes a
+blind spot the container runs `agent_entrypoint.py` inside
+`research_entrypoint.py execution-agent`. The inner wrapper
+runs the agent inside a `try/except` and, on any startup failure, writes a
 single `CRITICAL` row prefixed `[STARTUP-CRASH]` — carrying the full traceback —
 straight to `agent_logs` before exiting non-zero. It depends only on the standard
 library and `supabase`, never on the agent code that may have failed to load, and
@@ -262,6 +264,41 @@ WHERE message LIKE '[STARTUP-CRASH]%' ORDER BY logged_at DESC LIMIT 5;
 ```
 
 See `decisions/2026-09-27_startup-crash-shipping.md` for why.
+
+#### Independent research diagnostics
+
+`research_entrypoint.py` starts a separate, broker-independent diagnostic
+shipper before importing each deployed Python service. It uses `SUPABASE_URL`
+and the ordinary `SUPABASE_KEY` for `agent_logs`; only if that key is absent
+does it use `INTRADAY_SUPABASE_KEY`. Private capture, shadow and report access
+continues to require the private key. No private-table grants are relaxed.
+The research-watchdog Actions workflow also needs the ordinary `SUPABASE_KEY`
+secret for this independent path.
+
+Messages prefixed `[RESEARCH-DIAGNOSTIC]` contain only allowlisted operational
+metadata, not raw exceptions or research payloads. Startup credential
+presence/key family, database error codes, HTTP status, failing source locations,
+blocking states and upload progress can therefore be read with the existing
+operational credential. A fresh logging heartbeat is not a successful research
+cycle. Delivery retries use separate bounded local spools on existing volumes;
+Supabase outages delay visibility and require the existing independent watchdog.
+These diagnostics do not depend on `AGENT_LOG_SHIP_ALL`; cloud rows share the
+existing `agent_logs` retention managed by the execution agent.
+
+The diagnostic shipper has fixed safety bounds, not new environment settings:
+512 queued rows, 4,096 outbox rows, 16,384 SQLite pages (about 64 MiB at 4 KiB per
+page), and 32-row upload batches. HTTP connect/read timeouts are 3/5 seconds;
+retry delays grow from 1 to at most 30 seconds. Heartbeats and repeated-error
+summaries run every 60 seconds, with at most 256 tracked error signatures.
+Shutdown waits at most 10 seconds and attempts a final upload, retaining
+unacknowledged disk rows. A crash can lose the in-memory queue/repetition tail.
+Exception inspection is bounded to six linked exceptions and 12 locations each.
+If diagnostic storage fails, a worker-only direct cloud notification is attempted
+at most every 30 seconds; if both disk and cloud fail, complete recovery cannot
+be promised.
+
+See [the SSH-free diagnostic procedure](intraday_research.md#diagnose-research-failures-without-production-ssh)
+and `decisions/2026-10-03_independent-research-diagnostics.md`.
 
 #### Keeping the table small
 

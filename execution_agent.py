@@ -86,6 +86,10 @@ def _flush_logs_on_shutdown(signum=None, frame=None):
     except Exception:
         pass
     if signum is not None:
+        import research_diagnostics as diagnostics
+        diagnostics.emit("execution-agent", "service_signal", level="INFO",
+                         context={"exit_code": 128 + signum})
+        diagnostics.close()
         # Restore the default disposition and re-raise, so this hook only buys
         # time to flush and does not change how the agent actually terminates.
         try:

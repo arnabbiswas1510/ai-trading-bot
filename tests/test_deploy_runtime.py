@@ -235,7 +235,7 @@ def test_capture_uses_host_settings_with_distinct_default_spools_and_client_ids(
     assert "INTRADAY_CAPTURE_ENABLED" not in service_block("execution-agent")
     observer = service_block("intraday-observer")
     assert "INTRADAY_CAPTURE_ENABLED" not in observer
-    assert 'command: ["python", "intraday_observer.py"]' in observer
+    assert 'command: ["python", "research_entrypoint.py", "intraday-observer"]' in observer
     source = (ROOT / "intraday_observer.py").read_text()
     assert 'result.add_argument("--client-id", type=int, default=71)' in source
     assert 'DEFAULT_SPOOL = "/app/logs/intraday_observer.sqlite3"' in source

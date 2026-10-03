@@ -338,7 +338,8 @@ def test_report_workflow_is_independent_private_and_failure_visible():
     assert "vars.TRADING_RUNTIME_MODE || 'observe'" in text
     assert "continue-on-error" not in text
     assert "|| true" not in text
-    assert "python research/intraday_reporting.py" in text
+    assert "python research_entrypoint.py research-reporting" in text
+    assert "SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}" in text
 
 
 def test_private_reporting_schema_and_delivery_identity():

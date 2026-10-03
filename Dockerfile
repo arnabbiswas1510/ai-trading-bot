@@ -53,6 +53,7 @@ COPY decision_core.py cooling_off.py market_calendar.py intraday_replay.py ./bac
 COPY trigger_audit.py intraday_capture.py ./backend/
 COPY shadow_engine.py ./backend/
 COPY trading_control.py ./backend/
+COPY research_diagnostics.py research_entrypoint.py ./backend/
 COPY shadow_inputs.py shadow_store.py research_configuration.py market_direction.py indicators.py ./backend/
 COPY research/live_rule_replay.py ./backend/research/live_rule_replay.py
 
@@ -67,4 +68,4 @@ EXPOSE 8000
 # Set working directory to backend so Python path imports function properly
 WORKDIR /app/backend
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "research_entrypoint.py", "web"]

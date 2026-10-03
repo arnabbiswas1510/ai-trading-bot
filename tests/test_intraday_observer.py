@@ -537,7 +537,7 @@ def test_compose_observer_runs_independently_alongside_protection():
     service = compose["services"]["intraday-observer"]
     assert "profiles" not in service
     assert "profiles" not in compose["services"]["execution-agent"]
-    assert service["command"] == ["python", "intraday_observer.py"]
+    assert service["command"] == ["python", "research_entrypoint.py", "intraday-observer"]
     assert "depends_on" not in service
     assert service["restart"] == "unless-stopped"
     assert not any(value.startswith("INTRADAY_CAPTURE_ENABLED=") for value in service["environment"])

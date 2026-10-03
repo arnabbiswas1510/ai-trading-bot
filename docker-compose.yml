@@ -64,7 +64,7 @@ services:
   intraday-observer:
     image: ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest
     container_name: intraday-observer
-    command: ["python", "intraday_observer.py"]
+    command: ["python", "research_entrypoint.py", "intraday-observer"]
     restart: unless-stopped  # Resume after gateway downtime/reboot, unless explicitly stopped.
     stop_grace_period: 90s
     env_file:

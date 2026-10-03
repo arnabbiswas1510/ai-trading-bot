@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 import sqlite3
 
+import research_diagnostics as diagnostics
+
 SHADOW_TABLES = frozenset({
     "intraday_shadow_runs", "intraday_shadow_events",
     "intraday_shadow_checkpoints", "intraday_shadow_health",
@@ -229,7 +231,12 @@ class ShadowStore:
             body = json.loads(row["body"])
             if row["target"] == "intraday_shadow_health":
                 body["last_persisted_at"] = now()
-            client.table(row["target"]).upsert(body).execute()
+            try:
+                client.table(row["target"]).upsert(body).execute()
+            except Exception as exc:
+                diagnostics.emit("shadow-worker", "shadow_table_upload_failed", error=exc,
+                                 context={"table": row["target"], "operation": "upsert"})
+                raise
             with self.db:
                 self.db.execute("DELETE FROM outbox WHERE id=?", (row["id"],))
                 if row["target"] == "intraday_shadow_health":

@@ -31,6 +31,7 @@ import requests
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import research_diagnostics as diagnostics
 from market_calendar import session_bounds
 from research.intraday_reporting_delivery import (
     CALIBRATIONS, INCIDENTS, RECEIPTS, REPORTS, STATE, WRITE_TABLES,
@@ -747,11 +748,14 @@ def main(env=None, http=requests, now=None):
                            "Collection recovery is assessed during expected market hours, independently of live entry permission.",
                            recovery=True)
         print(json.dumps(result))
+        diagnostics.emit("research-reporting", "reporting_sweep_completed", level="INFO")
         return 0
     except CollectionAttention as exc:
+        diagnostics.emit("research-reporting", "collection_needs_attention", error=exc)
         print("::error::" + safe_detail(exc), file=sys.stderr)
         return 1
     except (Exception, RuntimeBudgetExceeded) as exc:
+        diagnostics.emit("research-reporting", "reporting_sweep_failed", error=exc)
         detail = ("Reporting sweep exceeded its nine-minute runtime budget"
                   if isinstance(exc, RuntimeBudgetExceeded) else safe_detail(exc))
         print("::error::Intraday research reporting failed: " + detail, file=sys.stderr)
@@ -759,6 +763,7 @@ def main(env=None, http=requests, now=None):
         try:
             fallback_alert(issues, telegram, key, LABEL + "\nIndependent watchdog failure: " + detail)
         except Exception as fallback_exc:
+            diagnostics.emit("research-reporting", "reporting_fallback_failed", error=fallback_exc)
             print("::error::" + safe_detail(fallback_exc), file=sys.stderr)
         return 1
 
@@ -785,6 +790,7 @@ if __name__ == "__main__":
             store = Store(os.getenv("SUPABASE_URL", ""), os.getenv("INTRADAY_SUPABASE_KEY", ""))
             print(save_calibration(store, json.loads(raw)))
         except Exception as exc:
+            diagnostics.emit("research-reporting", "calibration_archive_failed", error=exc)
             print("::error::" + safe_detail(exc), file=sys.stderr)
             raise SystemExit(1)
     else:

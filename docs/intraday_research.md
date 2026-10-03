@@ -45,6 +45,64 @@ continue. The observer itself never manages positions. Existing broker-held
 orders remain live and can fill; the switch does not cancel them. Check the
 separate execution-agent status and broker protection before relying on it.
 
+## Diagnose research failures without production SSH
+
+Start with Supabase's existing `agent_logs`, using the ordinary operational
+credential. Research diagnostics do **not** require a working private research
+key or permission to read the private capture/shadow tables:
+
+```sql
+SELECT logged_at, session_id, seq, level, repeat_count, message
+FROM agent_logs
+WHERE message LIKE '[RESEARCH-DIAGNOSTIC]%'
+ORDER BY logged_at DESC, id DESC
+LIMIT 100;
+```
+
+Each structured message identifies the service and event. Errors retain safe
+database codes, HTTP status when available, and source locations. For example,
+`42501` indicates denied privileges; `42P01` or `PGRST205` indicates an unavailable
+table; `401` without a more specific database code indicates authentication
+failure. These are evidence, unlike the generic API migration/key hint.
+API errors include a diagnostic reference so the failed request can be matched
+to its log. The reference means queued for delivery, not confirmed persisted.
+
+Startup records describe whether required credentials are present and their key
+family/role, never their values. `capture_progress` reports persisted observation
+progress; `shadow_cycle_committed` reports local simulation progress;
+`shadow_upload_progress` includes remaining uploads. A diagnostic heartbeat only
+proves the logging process is alive. Waiting for a market session, a blocked
+run, and successfully simulating positions are different states.
+
+Production Docker commands run through `research_entrypoint.py`, which installs
+diagnostics before application imports. The web app, observer, execution
+recorder, shadow worker and cloud reporter use the same safe diagnostic format.
+The existing execution-agent narrative logs remain available separately.
+For an isolated CLI diagnostic, use the same wrapper, e.g.
+`python research_entrypoint.py intraday-observer --once`; ordinary direct module
+invocation does not install the independent shipper.
+
+Host diagnostic directories survive container recreation at
+`/app/data/research-diagnostics` (web), `/app/logs/observer-diagnostics` (observer),
+`/app/logs/execution-diagnostics` (execution), and `/app/shadow/diagnostics`
+(shadow). Each contains `research-diagnostics.sqlite3`, separate from raw research
+spools. Bounded queues/outboxes retry delivery and report lost records; an abrupt
+process crash can lose a not-yet-journaled queue tail. A lost acknowledgement can
+duplicate a row, identifiable by its session/sequence/diagnostic ID.
+If the diagnostic disk spool is unusable but Supabase is reachable, the worker
+sends a safe `diagnostic_spool_failed` notification directly, at most once every
+30 seconds. This fallback does not make unwritten local events durable.
+
+If Supabase itself or the host's network is unavailable, no logger can publish
+there immediately. Pending host diagnostics retry after recovery; the independent
+GitHub/Telegram watchdog remains the outage alarm. Its GitHub runner uses a
+temporary diagnostic spool, not storage guaranteed across workflow runs.
+Configure the ordinary `SUPABASE_KEY` Actions secret as well as the private
+`INTRADAY_SUPABASE_KEY`, so private-key failures do not disable its diagnostics.
+Never weaken private-table permissions to make the status page work.
+
+See `decisions/2026-10-03_independent-research-diagnostics.md` for why.
+
 ## Independent observer
 
 The observer owns a separate IBKR connection (client ID `71` by default) and
@@ -147,7 +205,8 @@ remain reasons to investigate, not permission to loosen validation.
 
 Enable `.github/workflows/intraday_research_review.yml` on the repository's
 default branch. Configure GitHub Actions secrets `SUPABASE_URL`,
-`INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`, using the
+`INTRADAY_SUPABASE_KEY`, `SUPABASE_KEY` (independent operational diagnostics),
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`, using the
 already approved recipients. The workflow's built-in `GITHUB_TOKEN` needs
 `issues: write`; no broker credentials are needed. Bitwarden/host environment
 provisioning does not automatically create these Actions secrets.

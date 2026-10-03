@@ -1,6 +1,11 @@
 # 2026-09-27 — Startup crashes ship to Supabase; execution_agent import cycle removed
 
-**Status:** Accepted
+**Status:** Accepted - bootstrap extended by [independent research diagnostics](2026-10-03_independent-research-diagnostics.md).
+
+> **2026-10-03:** The execution bootstrap below remains in place, but is no
+> longer the direct container command. `research_entrypoint.py execution-agent`
+> starts independent operational diagnostics before invoking it. The same outer
+> boundary covers the web app, observer, shadow worker and cloud reporter.
 
 ## Context
 

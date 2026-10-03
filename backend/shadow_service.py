@@ -13,9 +13,10 @@ def _query(query):
         rows = query.execute().data
     except Exception as exc:
         research.log.error("Shadow research query failed (%s)", type(exc).__name__)
+        detail = research.report_failure("shadow_query_failed", exc, query)
         raise research.ResearchUnavailable(
             "Shadow research is unavailable. Apply 20260930_add_intraday_shadow.sql "
-            "and 20260930_add_intraday_reporting.sql; check the private research key and connectivity."
+            f"and 20260930_add_intraday_reporting.sql; check the private research key and connectivity. {detail}"
         ) from None
     if not isinstance(rows, list):
         raise research.ResearchUnavailable("Shadow research returned an invalid response.")

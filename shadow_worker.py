@@ -7,6 +7,9 @@ import logging
 import os
 import signal
 import threading
+import time
+
+import research_diagnostics as diagnostics
 
 from market_calendar import session_bounds
 from research_configuration import effective_config
@@ -68,12 +71,15 @@ class Worker:
         if engine is None:
             import shadow_engine as engine
         self.store, self.producer, self.cloud, self.engine, self.clock = store, producer, cloud, engine, clock
+        self._next_diagnostic = 0
 
     def tick(self, *, new_run=False):
         now = self.clock()
         run = self.store.active()
         if run and run["status"] != "running" and not new_run:
             self.store.health("blocked", "Run is blocked; correct input sources and explicitly use --new-run.")
+            diagnostics.emit("shadow-worker", "shadow_run_blocked",
+                             context={"run_status": run["status"], "reason_code": "explicit_new_run_required"})
             return False
         try:
             if run is None or new_run:
@@ -87,6 +93,7 @@ class Worker:
                 state = self.engine.initialize(seed, self.producer.config)
                 self.store.create_run(seed, self.producer.config, self.engine.checkpoint(state),
                                       self.engine.engine_fingerprint(), explicit=new_run)
+                diagnostics.emit("shadow-worker", "shadow_run_created", level="INFO")
                 run = self.store.active()
             if semantic_config_fingerprint(run["config"]) != semantic_config_fingerprint(self.producer.config):
                 raise InputGap("Effective strategy configuration changed; explicit new run is required.")
@@ -118,13 +125,18 @@ class Worker:
             if hasattr(self.producer, "committed"):
                 self.producer.committed(frame)
             self.store.health("running", cycle_at=frame["occurred_at"])
+            diagnostics.emit("shadow-worker", "shadow_cycle_committed", level="INFO",
+                             context={"cycle_at": frame["occurred_at"], "run_status": "running"})
             return True
         except (InputGap, ValueError, StoreError) as exc:
+            diagnostics.emit("shadow-worker", "shadow_input_blocked", error=exc,
+                             context={"reason_code": "input_or_engine_validation"})
             # Messages in these classes contain controlled validation text, not URLs/keys.
             self.store.block(str(exc)[:1000], now.isoformat())
             LOG.error("Shadow input/engine blocked: %s", exc)
             return False
         except Exception as exc:
+            diagnostics.emit("shadow-worker", "shadow_acquisition_failed", error=exc)
             # Never persist HTTP exceptions containing secret-bearing URLs.
             message = f"Shadow acquisition failed ({type(exc).__name__}); explicit new run required."
             self.store.block(message, now.isoformat())
@@ -134,8 +146,17 @@ class Worker:
     def flush(self):
         try:
             self.store.upload(self.cloud)
+            if time.monotonic() >= self._next_diagnostic:
+                self._next_diagnostic = time.monotonic() + 60
+                active = self.store.active()
+                diagnostics.emit("shadow-worker", "shadow_upload_progress", level="INFO", context={
+                    "run_status": active["status"] if active else "waiting",
+                    "sequence": active["sequence"] if active else 0,
+                    "pending_events": self.store.db.execute("SELECT COUNT(*) FROM outbox").fetchone()[0],
+                })
             return True
         except Exception as exc:
+            diagnostics.emit("shadow-worker", "shadow_upload_failed", error=exc)
             self.store.health("upload_error", f"Cloud upload failed ({type(exc).__name__}); durable outbox retained.")
             LOG.error("Shadow upload failed (%s); retained for retry.", type(exc).__name__)
             return False
@@ -195,6 +216,7 @@ def main():
     try:
         return run(parser().parse_args(), stop=stop)
     except Exception as exc:
+        diagnostics.emit("shadow-worker", "shadow_startup_failed", error=exc, level="CRITICAL")
         LOG.error("Shadow startup failed (%s); inspect configuration and local spool permissions.",
                   type(exc).__name__)
         return 1

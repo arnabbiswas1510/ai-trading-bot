@@ -29,9 +29,10 @@ COPY agent_entrypoint.py execution_agent.py execution_agent_ref.py exit_rules.py
 COPY intraday_capture.py intraday_observer.py exit_core.py trade_costs.py broker_positions.py ./
 COPY research_configuration.py market_direction.py ./
 COPY trading_control.py restart_and_health_check.py ./
+COPY research_diagnostics.py research_entrypoint.py ./
 
 # Execute the agent via the fatal-safe wrapper: it ships any startup crash
 # (including import-time errors, before log shipping is up) to Supabase
 # agent_logs, so a boot failure is diagnosable without SSHing into the host.
 # See decisions/2026-09-27_startup-crash-shipping.md.
-CMD ["python", "agent_entrypoint.py"]
+CMD ["python", "research_entrypoint.py", "execution-agent"]

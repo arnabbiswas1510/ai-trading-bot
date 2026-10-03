@@ -10,6 +10,7 @@ import json
 import re
 
 import requests
+import research_diagnostics as diagnostics
 
 REPORTS = "intraday_research_reports"
 INCIDENTS = "intraday_research_incidents"
@@ -78,11 +79,23 @@ class Store:
             response = self.http.request(method, self.url + path, headers=headers,
                                          params=params, json=data, timeout=(5, 20))
             if response.status_code not in (200, 201, 204, 206):
-                raise StorageError(f"Private intraday database HTTP {response.status_code}")
+                error = StorageError(f"Private intraday database HTTP {response.status_code}")
+                error.status_code = response.status_code
+                try:
+                    body = response.json()
+                except ValueError:
+                    body = None
+                if isinstance(body, dict):
+                    error.code = body.get("code")
+                diagnostics.emit("research-reporting", "reporting_database_failed", error=error,
+                                 context={"table": path, "operation": method})
+                raise error
             return None if response.status_code == 204 or not response.content else response.json()
         except StorageError:
             raise
         except Exception as exc:
+            diagnostics.emit("research-reporting", "reporting_transport_failed", error=exc,
+                             context={"table": path, "operation": method})
             raise StorageError("Private intraday database request failed: " + type(exc).__name__) from None
 
     def select(self, table, params=None):

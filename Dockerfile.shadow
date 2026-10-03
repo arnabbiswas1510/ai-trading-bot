@@ -16,6 +16,7 @@ COPY research_configuration.py indicators.py market_direction.py market_calendar
 COPY config.py decision_core.py exit_core.py exit_rules.py cooling_off.py trade_costs.py ./
 COPY intraday_capture.py intraday_replay.py trigger_audit.py ./
 COPY research/live_rule_replay.py research/calibrate_intraday.py ./research/
+COPY research_diagnostics.py research_entrypoint.py ./
 
 RUN mkdir -p /app/shadow
-CMD ["python", "shadow_worker.py"]
+CMD ["python", "research_entrypoint.py", "shadow-worker"]

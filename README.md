@@ -457,7 +457,20 @@ connection.
 | `selling.py` | 300 | `execute_sell` + `execute_scale_out` |
 | `agent_logging.py` | 435 | `TeeLogger` + Supabase log ship/purge |
 | `execution_agent_ref.py` | 71 | Lazy, entrypoint-safe `ea` proxy — resolves `execution_agent` via `sys.modules` at access time so siblings never form a load-time import cycle |
-| `agent_entrypoint.py` | 96 | Container `CMD`. Runs the agent inside `try/except` and ships any **startup** crash (incl. import-time) to `agent_logs` as `[STARTUP-CRASH]` before exiting |
+| `agent_entrypoint.py` | 96 | Inner execution bootstrap, called by `research_entrypoint.py`. Ships execution **startup** crashes to `agent_logs` as `[STARTUP-CRASH]` before exiting |
+
+Research failures are diagnosable through Supabase `agent_logs` without
+production SSH or private research-table access. `research_entrypoint.py`
+installs an independent diagnostic shipper before importing the web app,
+observer, execution agent, shadow worker or cloud reporter. Look for
+`[RESEARCH-DIAGNOSTIC]`: service/phase, safe database error codes and HTTP status,
+credential presence (never values), source locations and collection/upload
+progress. Diagnostics use the ordinary `SUPABASE_KEY`, with bounded retry spools
+on existing host volumes; private observations and simulated performance stay
+private. Logging heartbeats do not certify successful benchmarking, and a total
+Supabase outage still needs the independent GitHub/Telegram watchdog.
+See [research diagnostics](docs/intraday_research.md#diagnose-research-failures-without-production-ssh)
+and `decisions/2026-10-03_independent-research-diagnostics.md`.
 
 Start at `exit_rules.py` to answer *"why did this position exit?"*, at `monitoring.py`
 for *"what did the 15-minute loop do?"*, and at `execution_agent.py` for module wiring

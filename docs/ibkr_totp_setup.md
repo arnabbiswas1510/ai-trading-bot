@@ -191,6 +191,17 @@ the generic exception alert.
 
 ## Troubleshooting
 
+**Research/observer failure when production SSH is unavailable:**
+
+Read Supabase `agent_logs` rows prefixed `[RESEARCH-DIAGNOSTIC]` using the
+ordinary operational key. The observer's broker connection/snapshot failures
+and the recorder's cloud failures use this independent path; private research
+table access is not required. Production containers start through
+`research_entrypoint.py` before importing their service code. A queued snapshot
+is not a confirmed upload, and a fresh diagnostic heartbeat is not proof of
+broker protection. See [research diagnostics](intraday_research.md#diagnose-research-failures-without-production-ssh)
+and `decisions/2026-10-03_independent-research-diagnostics.md`.
+
 **"Incorrect 2FA code" in gateway logs:**
 - Verify the Base32 secret was copied exactly (no spaces, all caps)
 - Check server clock sync: `timedatectl` — TOTP fails if clock is off by >30s

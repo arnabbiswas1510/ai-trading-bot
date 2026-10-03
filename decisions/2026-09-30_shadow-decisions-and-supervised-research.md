@@ -1,7 +1,13 @@
 # Decision-only portfolio simulation and supervised research
 
 Date: 2026-09-30
-Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md); shadow accounting and supervision remain accepted.
+Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md); shadow accounting and supervision remain accepted, with the diagnostic-write exception below.
+
+> **2026-10-03:** "Writes only private research state" now has one explicit
+> exception: credential-safe operational metadata is written to the existing
+> public-readable `agent_logs` through an independent sink. Private observations,
+> hypothetical holdings and performance remain private; no real trading writes
+> are added. See [independent research diagnostics](2026-10-03_independent-research-diagnostics.md).
 
 > **2026-10-01:** Only the mutually exclusive runtime selection below is replaced.
 > The real risk manager, observer and shadow worker now run together. Disabling

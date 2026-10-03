@@ -17,6 +17,7 @@ import threading
 import time
 from types import SimpleNamespace
 
+import research_diagnostics as diagnostics
 from intraday_capture import Recorder, _fields, collector_config, now, trade_snapshot
 
 LOG = logging.getLogger(__name__)
@@ -336,6 +337,8 @@ def run(args, *, ib_factory=None, recorder_factory=Recorder, stop_event=None):
             or Path(args.spool).resolve() == Path(INTRADAY_CAPTURE_SPOOL).resolve()
             or INTRADAY_CONFIG_ERRORS):
         LOG.error("Invalid observer settings, shared execution spool, or invalid research configuration.")
+        diagnostics.emit("intraday-observer", "observer_invalid_settings",
+                         context={"reason_code": "invalid_settings_or_shared_spool"})
         return 2
     if ib_factory is None:
         from ib_insync import IB
@@ -359,10 +362,14 @@ def run(args, *, ib_factory=None, recorder_factory=Recorder, stop_event=None):
             try:
                 if not broker.connected():
                     broker.connect(args.host, args.port, args.client_id, args.account)
+                    diagnostics.emit("intraday-observer", "broker_connected", level="INFO",
+                                     context={"client_id": args.client_id})
                 if time.monotonic() >= next_snapshot:
                     event = broker.snapshot()
                     if event is None:
                         raise ObservationError("Recorder rejected snapshot.")
+                    diagnostics.emit("intraday-observer", "broker_snapshot_queued", level="INFO",
+                                     context={"sequence": event["sequence"]})
                     next_snapshot = time.monotonic() + args.interval
                     if args.once:
                         deadline = time.monotonic() + args.persist_timeout
@@ -378,6 +385,7 @@ def run(args, *, ib_factory=None, recorder_factory=Recorder, stop_event=None):
                         break
                 broker.pump(0.25)
             except Exception as exc:
+                diagnostics.emit("intraday-observer", "observer_capture_failed", error=exc)
                 # Transport text can contain credentials; only our safe errors get text.
                 reason = str(exc) if isinstance(exc, ObservationError) else type(exc).__name__
                 LOG.error("Observer capture failed: %s", reason)
@@ -392,6 +400,7 @@ def run(args, *, ib_factory=None, recorder_factory=Recorder, stop_event=None):
                 stop_event.wait(args.reconnect_delay)
                 next_snapshot = 0
     except Exception as exc:
+        diagnostics.emit("intraday-observer", "observer_stopped", error=exc, level="CRITICAL")
         LOG.error("Observer stopped: %s", type(exc).__name__)
         rec.error(f"observer stopped: {type(exc).__name__}")
         result = 2
@@ -400,6 +409,7 @@ def run(args, *, ib_factory=None, recorder_factory=Recorder, stop_event=None):
             try:
                 broker.disconnect()
             except Exception as exc:
+                diagnostics.emit("intraday-observer", "observer_disconnect_failed", error=exc)
                 LOG.error("Observer disconnect failed: %s", type(exc).__name__)
                 result = 2
         if args.once and not diagnostic_uploaded:
@@ -410,6 +420,8 @@ def run(args, *, ib_factory=None, recorder_factory=Recorder, stop_event=None):
         if rec.thread is not None:
             rec.thread.join()
         if rec.dropped or not rec.queue.empty():
+            diagnostics.emit("intraday-observer", "observer_shutdown_incomplete",
+                             context={"dropped_events": rec.dropped, "pending_events": rec.queue.qsize()})
             LOG.error("Observer shutdown lost records; inspect durable spool and health.")
             result = 2
     return result
