@@ -19,10 +19,15 @@ history from before recording began.
 2. Add `INTRADAY_SUPABASE_KEY` to this application's Bitwarden project with a
    server-side Supabase service-role key. The new tables deliberately refuse
    anonymous/publishable-key access. Do not put the value in source, a patch or
-   the browser. `.env.template` resolves it through `@bws`; deploy fails rather
-   than inventing a missing secret.
-3. Configure the same name as a GitHub Actions secret for the weekly backup
-   job, which also archives private saved comparisons.
+   the browser. `.env.template` resolves it through `@bws`, but deployment does
+   not run the resolver automatically. Render and review the host configuration,
+   preserving its operator settings, then recreate affected containers to load
+   the key. A Bitwarden entry alone does not update an existing host `.env` or
+   running container. The resolver fails if a required secret is missing;
+   a successful image deployment alone does not prove research access.
+3. Configure the same name as a GitHub Actions repository secret for both the
+   independent research watchdog and weekly backup. Bitwarden provisioning does
+   not populate GitHub Actions secrets.
 4. Apply the delivered patch and deploy the web and execution images through
    the existing pipeline. Leave the GitHub repository Actions variable
    `TRADING_RUNTIME_MODE` unset or set it to `observe`: deployment starts real
@@ -100,6 +105,32 @@ temporary diagnostic spool, not storage guaranteed across workflow runs.
 Configure the ordinary `SUPABASE_KEY` Actions secret as well as the private
 `INTRADAY_SUPABASE_KEY`, so private-key failures do not disable its diagnostics.
 Never weaken private-table permissions to make the status page work.
+
+### Startup and upload prerequisites
+
+`ReadOnlyBroker` supports weak references so the real `ib_insync`/`eventkit`
+callback registry can attach its error and disconnection handlers. A traceback
+ending in `Broker capability does not expose __weakref__` identifies an old,
+broken observer image, not a filesystem permission problem. Brokerage write
+methods remain forbidden at both SDK layers; weak-reference support does not
+grant order access.
+
+The recorder constructs `SyncClientOptions`, including its ten-second request
+timeout, for the synchronous Supabase client. With the deployed Supabase SDK,
+the base `ClientOptions` lacks `storage` and fails before any database request.
+`AttributeError: 'ClientOptions' object has no attribute 'storage'` therefore
+requires the recorder compatibility fix, not a schema or permission change.
+Regression tests construct the actual SDK objects without network connections;
+fake event handlers alone cannot reproduce these startup failures.
+
+After recovery, preserve the existing SQLite spools and check that pending
+uploads drain. Uploaded startup/error records are not usable broker snapshots or
+simulated trades. Require completed `observer_snapshot` records and advancing
+shadow cycles during an actual market session before counting a day as evidence.
+A connected local gateway socket does not prove IBKR's upstream account/data
+connection is healthy. Broker errors such as `2110` and incomplete requests remain
+explicit gaps; the observer retries without restarting the gateway or inventing
+account state.
 
 See `decisions/2026-10-03_independent-research-diagnostics.md` for why.
 

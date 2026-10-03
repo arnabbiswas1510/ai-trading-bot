@@ -36,6 +36,31 @@ def test_immutable_queue_and_sequence_gap_are_visible(recorder):
     assert next_event["sequence"] == first["sequence"] + 2
 
 
+def test_worker_constructs_real_synchronous_supabase_client(recorder, monkeypatch):
+    import supabase
+
+    create_client = supabase.create_client
+    clients = []
+
+    def construct(*args, **kwargs):
+        try:
+            client = create_client(*args, **kwargs)
+            clients.append(client)
+            return client
+        finally:
+            recorder.stopping.set()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://example.invalid")
+    monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "sb_secret_offline_test")
+    monkeypatch.setattr(supabase, "create_client", construct)
+    monkeypatch.setattr(recorder, "process_snapshot_jobs", lambda *_: None)
+    monkeypatch.setattr(recorder, "refresh_universe", lambda *_: None)
+    recorder.run()
+    assert len(clients) == 1
+    assert clients[0].options.postgrest_client_timeout == 10
+    assert recorder.last_error is None
+
+
 def test_spool_survives_restart_and_retry_never_overwrites(recorder):
     db = recorder.open_spool()
     recorder.emit("candidate_universe", {"triggers": [{"ticker": "ABC"}]})

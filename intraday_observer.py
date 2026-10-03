@@ -49,8 +49,9 @@ def _deny_write(*args, **kwargs):
 
 class ReadOnlyBroker:
     """Only completed reads, event pumping, and connection lifecycle are exposed."""
+    # eventkit registers bound callbacks through weak references to their owner.
     __slots__ = ("__ib", "__recorder", "__account", "__timeout", "__owner",
-                 "__closing", "__faults", "__seen_fills")
+                 "__closing", "__faults", "__seen_fills", "__weakref__")
 
     def __init__(self, ib, recorder, timeout=10):
         self.__ib = ib

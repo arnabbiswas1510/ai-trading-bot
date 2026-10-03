@@ -9,6 +9,7 @@ import time
 from types import SimpleNamespace as NS
 from unittest.mock import MagicMock
 import uuid
+import weakref
 
 import pytest
 
@@ -165,6 +166,29 @@ def test_guard_denies_high_low_and_raw_capabilities(recorder):
         with pytest.raises(PermissionError):
             getattr(broker, name)
     assert fake.RaiseRequestErrors
+
+
+def test_real_sdk_callback_registration_preserves_read_only_guards(recorder):
+    from ib_insync import IB
+
+    ib = IB()
+    broker = observer.ReadOnlyBroker(ib, recorder)
+    assert weakref.ref(broker)() is broker
+    assert not broker.connected()
+    ib.errorEvent.emit(12, 321, "request failed", None)
+    ib.disconnectedEvent.emit()
+    events = list(recorder.queue.queue)
+    assert any(e["kind"] == "observer_broker_error" for e in events)
+    assert any(e["kind"] == "capture_gap" for e in events)
+    for target in (broker, ib, ib.client):
+        for name in ("placeOrder", "cancelOrder", "reqGlobalCancel",
+                     "reqAutoOpenOrders", "exerciseOptions", "replaceFA"):
+            with pytest.raises(PermissionError):
+                getattr(target, name)(None)
+    for name in ("client", "wrapper", "sendMsg", "reqOpenOrders"):
+        with pytest.raises(PermissionError):
+            getattr(broker, name)
+    broker.disconnect()
 
 
 @pytest.mark.parametrize("accounts,requested", [

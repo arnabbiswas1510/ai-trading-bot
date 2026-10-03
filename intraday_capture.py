@@ -742,7 +742,7 @@ class Recorder:
         try:
             import requests
             from supabase import create_client
-            from supabase.lib.client_options import ClientOptions
+            from supabase.lib.client_options import SyncClientOptions
             http = requests.Session()
             while not self.stopping.is_set() or not self.queue.empty():
                 try:
@@ -758,7 +758,7 @@ class Recorder:
                         operation = "research_client"
                         client = create_client(os.environ["SUPABASE_URL"],
                             os.getenv("INTRADAY_SUPABASE_KEY") or os.environ["SUPABASE_KEY"],
-                            options=ClientOptions(postgrest_client_timeout=10))
+                            options=SyncClientOptions(postgrest_client_timeout=10))
                     operation = "snapshot_jobs"
                     self.process_snapshot_jobs(db, client)
                     if time.monotonic() >= next_discovery:
@@ -842,7 +842,7 @@ class Recorder:
                         try:
                             client = create_client(os.environ["SUPABASE_URL"],
                                 os.getenv("INTRADAY_SUPABASE_KEY") or os.environ["SUPABASE_KEY"],
-                                options=ClientOptions(postgrest_client_timeout=10))
+                                options=SyncClientOptions(postgrest_client_timeout=10))
                         except Exception as health_exc:
                             diagnostics.emit(self.health_id, "capture_health_client_failed", error=health_exc)
                             self.error("Intraday capture health client unavailable")
