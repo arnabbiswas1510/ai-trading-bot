@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "backend/main.py": {
-    "mtime": 1791053823.4008312,
-    "ast_hash": "c9ebd0904721f3825d30deda49c7a85a",
+    "mtime": 1791067884.2282093,
+    "ast_hash": "f46d63d1febdea7fd6f750695c2050e2",
     "semantic_hash": ""
   },
   "backend/screener.py": {
@@ -60,18 +60,18 @@
     "semantic_hash": ""
   },
   "frontend/package.json": {
-    "mtime": 1791053862.351269,
-    "ast_hash": "26caf9a87d93392680db78b211b9c049",
+    "mtime": 1791068089.1626453,
+    "ast_hash": "240ce9221bd15d8535f95a8bc714735b",
     "semantic_hash": ""
   },
   "frontend/scripts/verify-build.mjs": {
-    "mtime": 1791053862.3616788,
-    "ast_hash": "57b5100b8f843ab300cdf07f80b113db",
+    "mtime": 1791068089.1545823,
+    "ast_hash": "fa691c03a87544730f2c3b3bee18a0c0",
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
-    "mtime": 1790865871.4583037,
-    "ast_hash": "675f8d1e8be5a4e614170c3bb78c313d",
+    "mtime": 1791068089.1187687,
+    "ast_hash": "6ba9ad7987f7ba77c7a60b15a7fbf68a",
     "semantic_hash": ""
   },
   "frontend/src/components/BacktesterView.jsx": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1791053944.6436138,
-    "ast_hash": "31e4183d2cdc6366775be2255f2d17c8",
+    "mtime": 1791068229.8026934,
+    "ast_hash": "5629e9f5a4e74e3f7368e55739f00fa2",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -1910,8 +1910,8 @@
     "semantic_hash": ""
   },
   "docs/intraday_research.md": {
-    "mtime": 1791054354.4415207,
-    "ast_hash": "f94ba86a87d1ba3abdf770a9842af791",
+    "mtime": 1791068229.8139558,
+    "ast_hash": "6b819dac2cfcb816e7e0a9758c6554a2",
     "semantic_hash": ""
   },
   "broker_positions.py": {
@@ -1975,8 +1975,8 @@
     "semantic_hash": ""
   },
   "backend/shadow_service.py": {
-    "mtime": 1791050389.5773075,
-    "ast_hash": "bd33d419653078b89feb29ab028f696f",
+    "mtime": 1791068078.3574042,
+    "ast_hash": "bc0f34dfbe0e9cd708e8b135aa8e2e1d",
     "semantic_hash": ""
   },
   "frontend/src/components/ShadowResearchView.jsx": {
@@ -2185,8 +2185,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/CalibrationResearchView.jsx": {
-    "mtime": 1791053747.2909858,
-    "ast_hash": "dbfbeb9fe056e9e57988e62dbf3fda8c",
+    "mtime": 1791068286.4188592,
+    "ast_hash": "e6222500128499c7f5cb463cfd67ff6c",
     "semantic_hash": ""
   },
   "frontend/src/lib/calibrationResearch.js": {
@@ -2260,8 +2260,33 @@
     "semantic_hash": ""
   },
   "docs/interactive_calibration.md": {
-    "mtime": 1791054887.7097986,
-    "ast_hash": "079845de389fbc30de162900b4f0a9d8",
+    "mtime": 1791068229.7882185,
+    "ast_hash": "d95e28cfa821cb4a3e636de5bfdbf400",
+    "semantic_hash": ""
+  },
+  "frontend/scripts/test-calibration-dashboard.mjs": {
+    "mtime": 1791068296.8763607,
+    "ast_hash": "e23508bf386c38d8b662a62ed1c33b25",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/CalibrationDashboard.jsx": {
+    "mtime": 1791068286.4333477,
+    "ast_hash": "521e4055b320181b557aaf390c57e591",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/calibrationDashboard.js": {
+    "mtime": 1791068003.3430932,
+    "ast_hash": "438323cec33fbc7a3fd4a1b445f37d24",
+    "semantic_hash": ""
+  },
+  "tests/test_shadow_activity.py": {
+    "mtime": 1791068078.3681333,
+    "ast_hash": "d1ca396134eda0b41461abf3fd7a5e4b",
+    "semantic_hash": ""
+  },
+  "decisions/2026-10-03_unified-calibration-dashboard.md": {
+    "mtime": 1791068229.823045,
+    "ast_hash": "237cd719d047b519119ff7459a9f3329",
     "semantic_hash": ""
   }
 }

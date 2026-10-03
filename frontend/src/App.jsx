@@ -9,7 +9,8 @@ import {
   History,
   Activity,
   LineChart,
-  AlertTriangle
+  AlertTriangle,
+  FlaskConical
 } from 'lucide-react';
 
 import DashboardView from './components/DashboardView';
@@ -20,6 +21,7 @@ import TradesView from './components/TradesView';
 import BreakoutsView from './components/BreakoutsView';
 import ReturnsView from './components/ReturnsView';
 import TradingControl from './components/TradingControl';
+import CalibrationDashboard from './components/CalibrationDashboard';
 
 /**
  * Turn a failed API response into a message that says what is actually wrong.
@@ -163,6 +165,7 @@ export default function App() {
   };
 
   const renderView = () => {
+    if (currentView === 'calibration') return <CalibrationDashboard />;
     if (dataLoading) {
       return (
         <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', minHeight: '60vh' }}>
@@ -315,6 +318,17 @@ export default function App() {
           <li>
             <button
               type="button"
+              className={`nav-item ${currentView === 'calibration' ? 'active' : ''}`}
+              onClick={() => setCurrentView('calibration')}
+              aria-current={currentView === 'calibration' ? 'page' : undefined}
+            >
+              <FlaskConical />
+              <span>Calibration</span>
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
               className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
               onClick={() => setCurrentView('settings')}
               aria-current={currentView === 'settings' ? 'page' : undefined}
@@ -345,6 +359,7 @@ export default function App() {
             {currentView === 'screener' && "Live stock ranking, multi-factor scorecard checks, and technical details."}
             {currentView === 'breakouts' && "Technical breakout alerts and daily triggers monitored by the execution agent."}
             {currentView === 'backtester' && "Simulate technical breakout entries and automated exits on historical ranges."}
+            {currentView === 'calibration' && "Follow collection health, simulated trades, strategy comparisons and approval-gated research."}
             {currentView === 'history' && "Comprehensive history of all completed buying and selling transactions."}
             {currentView === 'performance' && "Time-Weighted Returns, cash flows, and exact portfolio growth."}
             {currentView === 'settings' && "Manage trading budgets, risk constraints, and active ticker watchlists."}

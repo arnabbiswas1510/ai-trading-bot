@@ -1,9 +1,55 @@
 # Interactive self-calibration
 
-The **Backtester > Research inbox** is the decision point between automatic
+The **Calibration > Review & approve** tab is the decision point between automatic
 research and live strategy changes. The bot searches supported parameter
 settings, tests a frozen candidate on future recorded observations and brings
 the result here. It does **not** change live settings or enable real buys.
+
+## Follow the process in the dashboard
+
+Open **Calibration** in the sidebar. This page reads research services separately
+from the real portfolio and remains accessible if the real-portfolio API fails.
+Each unavailable source has its own error; missing data never becomes a zero
+balance, zero trades, or a successful evaluation.
+
+| Tab | What it shows |
+|---|---|
+| Overview & health | Collector and simulation heartbeats, latest persisted output, pending/dropped records, research blockers, risk-policy availability, pending reviews and the selected campaign's reserved dates/progress |
+| Benchmark detail | Recorded rules versus the frozen candidate for the same training or future-evaluation window; after-cost equity change, sampled drawdown, fees, position counts, exact parameter differences, ticker contributions and frozen risk limits |
+| Simulated activity | Recorded reference-run holdings, simulated fills, buy/hold/skip/exit decisions and actual saved equity marks, with ticker filtering and older-cycle pages |
+| Review & approve | The existing authenticated inbox, durable feedback, research requests, policy settings and separately approved deployment artifacts |
+| Recorded-input tools | Existing manually requested replay comparisons and exports; these remain available through Backtester too |
+
+Use the campaign selector to inspect a particular experiment. **Open this proposal
+in the review inbox** carries that selection into its feedback and approval
+controls. Unsaved inbox drafts and the memory-only token survive switching
+Calibration tabs, but not leaving the page. A pending inbox action locks campaign
+selection. Clear the token explicitly when finished.
+
+Health and campaign summaries refresh every 30 seconds. Simulated activity is a
+manual-refresh snapshot, with 50 recorded cycles per page. Each cycle may contain
+many fills or none. Older pages stay inside the same published sequence boundary;
+**Refresh newest page** explicitly starts a new snapshot. Holdings describe the
+latest verified checkpoint within that boundary, not the older page's date.
+Actual equity marks are charted only for the displayed page. A recorded gap
+breaks the curve; missing event sequences fail visibly, and a pruned older prefix
+is labelled incomplete. Exports contain the selected private evidence or activity
+page, not a reconstructed full trading history.
+
+Captured dates are **not** necessarily complete usable training sessions.
+A heartbeat is **not** proof of decision coverage. Closed-position counts belong
+to one reference simulation run, not the live account or the frozen challenger.
+Training gains selected the candidate; they are not independent validation.
+Interim evaluation gains cannot authorize early approval. Reports and campaigns
+may overlap: never add their dollar results together.
+
+The benchmark view displays the risk policy fixed at selection time, including
+worst-loss and concentration checks. The review inbox still checks the current
+artifact and approval requirements; passing displayed numbers alone is not
+authorization. An approved artifact is **not** evidence that it has been deployed.
+The page does not certify current executor deployment.
+
+See `decisions/2026-10-03_unified-calibration-dashboard.md` for why.
 
 ## What runs automatically
 

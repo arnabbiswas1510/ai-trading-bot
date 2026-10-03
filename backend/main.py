@@ -611,6 +611,35 @@ def shadow_research_status():
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@app.get("/api/intraday/shadow/runs/{run_id}/activity")
+def shadow_research_activity(run_id: str, limit: str = "50",
+                             before_sequence: str = None, through_sequence: str = None):
+    from fastapi.responses import JSONResponse
+    import re
+    import shadow_service
+
+    def cursor(value, name):
+        if value is None:
+            return None
+        if not re.fullmatch(r"[0-9]+", value) or len(value) > 19:
+            raise ValueError(f"{name} must be a positive integer.")
+        return int(value)
+
+    headers = {"Cache-Control": "no-store"}
+    try:
+        result = shadow_service.activity(
+            run_id, limit=cursor(limit, "limit"),
+            before_sequence=cursor(before_sequence, "before_sequence"),
+            through_sequence=cursor(through_sequence, "through_sequence"))
+        return JSONResponse(result, headers=headers)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc), headers=headers) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc), headers=headers) from exc
+    except intraday_service.ResearchUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc), headers=headers) from exc
+
+
 @app.get("/api/intraday/shadow/export")
 def export_shadow_research(run_id: str, start_date: datetime.date, end_date: datetime.date):
     from fastapi.responses import JSONResponse

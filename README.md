@@ -49,7 +49,13 @@ See `docs/intraday_research.md` and
 
 **Interactive calibration:** a separate broker-free worker searches supported
 numeric parameters, freezes one candidate before future evaluation, and brings
-results to **Backtester > Research inbox**, with Telegram notifications.
+results to **Calibration > Review & approve**, with Telegram notifications.
+The dedicated **Calibration** page also shows collection health, campaign
+progress, detailed same-window benchmarks, ticker contributions and paginated
+simulated trades/decisions. It stays accessible when real-portfolio data fails;
+missing or stale research evidence is not reported as zero performance.
+Existing Backtester research tools remain available.
+See `decisions/2026-10-03_unified-calibration-dashboard.md` for the visibility design.
 The default research budget is five training sessions, five future evaluation
 sessions and sixteen candidates; it is not a claim of sufficient evidence.
 Operator risk tolerances start unset, blocking deployment recommendations.

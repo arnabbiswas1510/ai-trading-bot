@@ -40,12 +40,12 @@ history from before recording began.
    spools live at `/app/logs/intraday_observer.sqlite3` and
    `/app/logs/intraday_capture.sqlite3`, respectively, in the persistent logs
    mount. Never share a spool between running collectors.
-5. Open **Backtester → Recorded intraday research**. Confirm a recent capture,
+5. Open **Calibration > Overview & health**. Confirm a recent capture,
    recording health and recorded sessions. Missing migration, permissions,
    price coverage or starting protection is an error, not an empty account.
 
 Migrations are **not applied automatically** by deploying the code.
-The **Research inbox** adds automatic parameter discovery and frozen future
+The **Calibration > Review & approve** inbox adds automatic parameter discovery and frozen future
 evaluation, not just descriptive benchmarks. It requires the same private
 research key and an operator-configured `TRADING_CONTROL_TOKEN` for writes.
 Research defaults to five training sessions, five future sessions and sixteen
@@ -53,6 +53,20 @@ candidates. Risk tolerances are deliberately unset; exploratory results cannot
 be approved for deployment until a policy is frozen in a new campaign.
 See [interactive calibration](interactive_calibration.md) and
 `decisions/2026-10-03_interactive-self-calibration.md`.
+
+The **Benchmark detail** tab compares a selected campaign's recorded rules with
+its frozen candidate without mixing training and future evaluation.
+**Simulated activity** reads stored reference-shadow fills, decisions and equity
+marks through a bounded read-only endpoint,
+`GET /api/intraday/shadow/runs/{run_id}/activity`. Pages default to 50 cycles
+(maximum 100); `through_sequence` freezes the published boundary and
+`before_sequence` requests older cycles. Only published output is displayed.
+Gaps remain explicit, sequence holes fail visibly, and pruned earlier history is
+labelled rather than implied complete. Viewing these records does not replay a
+strategy or contact the broker. The **Recorded-input tools** tab retains the
+manual comparison/export workflow, also available through Backtester.
+See `decisions/2026-10-03_unified-calibration-dashboard.md` for why.
+
 **New real buys OFF means protect-only, not an idle execution agent.** Real
 Prove-It monitoring, protective exits, order repair and ledger reconciliation
 continue. The observer itself never manages positions. Existing broker-held

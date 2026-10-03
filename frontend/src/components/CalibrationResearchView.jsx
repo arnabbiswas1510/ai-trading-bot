@@ -201,7 +201,7 @@ function ResearchSettings({ settings, authorized, busy, onSave }) {
   </details>;
 }
 
-export default function CalibrationResearchView() {
+export default function CalibrationResearchView({ focusProposalId = '', focusRequest = 0, onSelectProposal, onBusyChange } = {}) {
   const [inbox, setInbox] = useState(null);
   const [selectedId, setSelectedId] = useState('');
   const [detail, setDetail] = useState(null);
@@ -222,6 +222,11 @@ export default function CalibrationResearchView() {
   const proposal = detail?.proposal?.id === selectedId ? detail.proposal : null;
   const authorized = inbox?.write_configured === true && Boolean(token.trim());
   const eligibility = deploymentEligibility(proposal, inbox?.settings);
+
+  useEffect(() => {
+    if (focusProposalId) setSelectedId(focusProposalId);
+  }, [focusProposalId, focusRequest]);
+  useEffect(() => { onBusyChange?.(Boolean(busy)); }, [busy, onBusyChange]);
 
   async function refreshInbox() {
     inboxController.current?.abort();
@@ -280,7 +285,7 @@ export default function CalibrationResearchView() {
         const link = document.createElement('a');
         link.href = url; link.download = download.filename; link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setDownloadDetails({ proposalId: currentId.current, filename: download.filename,
+        setDownloadDetails({ proposalId: proposal.id, filename: download.filename,
           sha256: result.sha256, manifest: result.manifest, notes: result.notes });
         setMessage(`Downloaded ${download.filename}. Patch-text SHA-256: ${result.sha256}. Use the authenticated operator script from your own machine. No live setting changed.`);
       } else setMessage('Saved to the durable research history. No live deployment or buy permission changed.');
@@ -324,7 +329,7 @@ export default function CalibrationResearchView() {
     {error && <p role="alert" style={{ color: 'var(--color-warn)' }}>{error}</p>}
     {message && <p role="status" style={{ ...muted, overflowWrap: 'anywhere' }}>{message}</p>}
     <div className="form-group">
-      <label htmlFor="cal-token">Operator token (memory only; cleared when leaving this view)</label>
+      <label htmlFor="cal-token">Operator token (memory only; retained between Calibration tabs, cleared when leaving this page)</label>
       <input id="cal-token" className="form-control" type="password" autoComplete="off" value={token}
         onChange={(event) => setToken(event.target.value)} />
       <button type="button" className="btn btn-secondary" onClick={() => setToken('')} disabled={!token}>Clear token</button>
@@ -356,7 +361,9 @@ export default function CalibrationResearchView() {
         {inbox.health?.status === 'blocked' ? ' The worker is blocked; inspect its error and evidence above.'
           : inbox.settings.value.enabled ? ' Waiting for complete research sessions or a worker cycle.' : ' Research is paused.'}</p>}
       <div style={row}>{inbox.proposals.map((item) => <button type="button" key={item.id} className="btn btn-secondary"
-        aria-pressed={selectedId === item.id} disabled={Boolean(busy)} onClick={() => setSelectedId(item.id)}>
+        aria-pressed={selectedId === item.id} disabled={Boolean(busy)} onClick={() => {
+          setSelectedId(item.id); onSelectProposal?.(item.id);
+        }}>
         {item.title ?? item.id} · {label(item.status)} · {item.kind === 'rule' ? 'Rule experiment' : 'Parameters'}
       </button>)}</div>
     </>}

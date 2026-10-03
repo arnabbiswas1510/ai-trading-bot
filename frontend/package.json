@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "npm test && vite build && node scripts/verify-build.mjs",
     "verify": "npm test && node scripts/verify-build.mjs",
-    "test": "node scripts/test-exit-details.mjs && node scripts/test-realized-periods.mjs && node scripts/test-intraday-replay.mjs && node scripts/test-trading-control.mjs && node scripts/test-calibration-research.mjs && node scripts/test-position-rules-runtime.mjs",
+    "test": "node scripts/test-exit-details.mjs && node scripts/test-realized-periods.mjs && node scripts/test-intraday-replay.mjs && node scripts/test-trading-control.mjs && node scripts/test-calibration-research.mjs && node scripts/test-position-rules-runtime.mjs && node scripts/test-calibration-dashboard.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
