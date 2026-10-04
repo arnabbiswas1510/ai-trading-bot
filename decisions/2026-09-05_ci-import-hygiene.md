@@ -1,7 +1,13 @@
 # Keep the test suite importable with the root requirements alone
 
 - **Date:** 2026-09-05
-- **Status:** Accepted
+- **Status:** Superseded in part by [the complete CI test environment](2026-10-04_calibration-readiness-and-exploratory-policy.md)
+
+> 2026-10-04: The root-only test-dependency constraint below no longer applies.
+> Daily Screener installs `requirements-test.txt`, including FastAPI for actual
+> API tests, before running the full suite. Runtime dependency separation and
+> framework-independent pricing logic remain in force. The historical decision
+> and its measurements below are preserved.
 
 ## Context
 

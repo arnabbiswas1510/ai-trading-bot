@@ -31,7 +31,7 @@ SERVICES = frozenset({
     "research-reporting", "calibration-worker",
 })
 TABLES = frozenset({
-    "agent_logs", "portfolio_positions", "trade_history", "ibkr_fills",
+    "agent_logs", "portfolio_positions", "trade_history", "ibkr_fills", "exit_shadow_log",
     "intraday_capture_events", "intraday_capture_health",
     "intraday_capture_symbols", "intraday_capture_sessions",
     "intraday_replay_runs", "intraday_shadow_runs", "intraday_shadow_events", "intraday_shadow_health",

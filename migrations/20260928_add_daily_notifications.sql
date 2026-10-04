@@ -13,10 +13,10 @@
 -- It is deliberately generic — keyed by report_type — so any future once-a-day
 -- notification can reuse it without a new table.
 --
--- NOT BACKED UP ON PURPOSE. This is regenerable operational state, not trading
--- data; it is intentionally excluded from supabase_backup.py's TABLES so a
--- missing/late migration can never abort the weekly backup (the exact failure
--- mode exit_shadow_log caused on 2026-09-27).
+-- Included in the required weekly backup inventory as of 2026-10-04, alongside
+-- research delivery state, to retain the recorded notification history.
+-- Missing schema or permissions fail the backup rather than silently omitting
+-- this ledger. See decisions/2026-10-04_backup-vault-and-private-exit-shadow.md.
 --
 -- See decisions/2026-09-28_unfilled-slot-daily-alert.md.
 

@@ -28,6 +28,76 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-10-04 - Shadow seed numeric sweep and quote transport relocation
+
+`build_seed()` in `shadow_inputs.py` no longer converts every USD account tag
+to a number. That active path prevented initialization when IBKR supplied its
+legitimate text ledger and settlement tags; only the required account-wide USD
+`NetLiquidation` is numeric input. Account/model scope, uniqueness and finite
+positive equity remain mandatory. No live trading rule or broker order path is
+removed; the failed path never produced a shadow seed in the observed incident.
+
+The HTTP request loop in `Recorder.sample()` (`intraday_capture.py`) is
+**relocated**, not retired, to `quote_transport.fetch_quotes()`. Both that recorder
+and `PublicMarketData.quotes()` (`shadow_inputs.py`) use its bounded HTTP-402-only
+individual-quote fallback. The shadow-only batch requirement is retired because
+the active subscription rejects the batch endpoint. Quote validation remains in
+each consumer, preserving recorder gaps and shadow all-or-nothing frames.
+Regression coverage lives in `tests/test_intraday_capture.py` and
+`tests/test_shadow_worker.py`. These are operational bug fixes, not strategy
+decisions. Restore reference: `git show a48a0c6:shadow_inputs.py` and
+`git show a48a0c6:intraday_capture.py`. Restoring the numeric sweep would require
+an account schema guaranteed to contain only numbers; restoring batch-only
+shadow fetching would require guaranteed batch entitlement.
+
+## 2026-10-04 - Root-only CI dependency constraint
+
+The active root-only test environment in
+`.github/workflows/daily_screener.yml` and the corresponding unconditional
+web-import prohibition in `tests/test_ci_import_hygiene.py` are replaced by
+`requirements-test.txt`. The same named import guard now rejects **undeclared**
+web dependencies; runtime separation and pure-pricing checks survive.
+No trading rule or test coverage is removed.
+
+The latest reproduced scheduled failure stopped at collection because FastAPI
+was missing, preventing all three screening stages. Actual API tests require
+that framework; installing it for tests is different from adding it to execution
+images. See `decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
+Restore references: `git show a48a0c6:.github/workflows/daily_screener.yml` and
+`git show a48a0c6:tests/test_ci_import_hygiene.py`. A root-only gate could return
+only if API coverage had a separate complete environment, not by silently
+skipping those tests.
+
+## 2026-10-04 - Relocated backup credentials and private exit-shadow writes
+
+**Relocated, not retired:** `.github/workflows/weekly_supabase_backup.yml` no
+longer loads `SUPABASE_URL`, `SUPABASE_KEY`, `INTRADAY_SUPABASE_KEY`,
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` from individual Actions secrets.
+The backup uses the existing Bitwarden project loader through
+`scripts/run_supabase_backup_bws.py`; its only application-credential bootstrap
+secret is `BWS_ACCESS_TOKEN`. Deployment SSH secrets remain separate.
+
+The ordinary-client `client.table("exit_shadow_log").insert(...)` path in
+`monitoring.py` is replaced by an isolated private writer in
+`exit_shadow_store.py`. The special suppression of `exit_shadow_log`, `PGRST`
+and `42P01` errors is removed: failed research writes remain nonfatal but emit
+credential-safe diagnostics. Candidate calculations remain in `exit_shadow.py`;
+no live exit rule or order path is retired or changed.
+
+Both paths were active. The September 27 backup failed on the missing table;
+October 4 inspection showed the ordinary writer used an anon credential while
+the table's policy permits only service_role. Successful historic shadow writes
+have not been established. The general trading client is deliberately not
+upgraded and row-level security is not weakened.
+
+Restore with `git show a48a0c6:monitoring.py` and
+`git show a48a0c6:.github/workflows/weekly_supabase_backup.yml`. Restore direct
+Actions credentials only with an explicit alternative rotation/source-of-truth
+design; restore the ordinary writer only if it has deliberately scoped access,
+never by making private observations public. Silent research-write failure
+must not return. See
+`decisions/2026-10-04_backup-vault-and-private-exit-shadow.md`.
+
 ## 2026-10-04 - Replaced batch-only intraday quote transport
 
 `Recorder.sample()` in `intraday_capture.py` no longer requires FMP

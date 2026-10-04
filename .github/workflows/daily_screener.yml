@@ -17,18 +17,16 @@ jobs:
       with:
         python-version: '3.10'
         cache: 'pip'
+        cache-dependency-path: |
+          requirements.txt
+          requirements-test.txt
 
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        # Needed only by tests/test_supabase_backup.py. Deliberately not in
-        # requirements.txt — they would bloat both runtime images for code that
-        # only ever runs in the weekly backup workflow. Without them here, the
-        # Parquet tests skip silently and the backup goes unverified.
-        pip install pyarrow duckdb
-        # Shadow/reporting calendar tests run offline with actual holidays/early closes.
-        pip install exchange-calendars==4.13.2
+        # Includes root runtime dependencies plus API, YAML, backup and calendar
+        # test dependencies. Keep these extras out of the runtime images.
+        python -m pip install -r requirements-test.txt
 
     - name: Run Unit Tests
       run: |

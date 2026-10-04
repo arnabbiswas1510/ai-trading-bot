@@ -64,6 +64,12 @@ OFF blocks new real buys and replacement rotations, not real protective exits.
 Research results never modify the switch. See [trading control](trading_control.md)
 and `decisions/2026-10-01_dashboard-live-entry-control.md`.
 
+The production operator token is managed in Bitwarden. Normal deployment
+preserves the configured `.env`, including its quoted token. When deliberately
+re-rendering that file, preserve the token securely: the blank template default
+would remove API access, and arbitrary vault values need valid dotenv quoting.
+Never copy the token into a committed template or an approval artifact.
+
 ### Interactive calibration settings
 
 The private `intraday_calibration_settings` singleton, edited through the
@@ -93,6 +99,17 @@ contains credentials. A host-local `.approved_strategy_activated.json` marker
 prevents accidentally removing an active overlay. The position dashboard uses
 the backend's deployed scale-out settings and armed-exit deadline.
 See `decisions/2026-10-03_interactive-self-calibration.md`.
+
+Production has an explicit operator-approved override, saved on 2026-10-04:
+five training sessions, ten future evaluation sessions, sixteen candidates;
+at least ten fully completed positions in **each** strategy and ten distinct
+evaluation sessions; at least $1,000 modeled after-cost improvement; at most
+one percentage point additional maximum drawdown and $100 additional worst
+completed-position loss; at least three positively contributing tickers, with
+no ticker exceeding 50% of total **positive** ticker improvement. Defaults above
+remain unchanged. These exploratory limits do not establish statistical
+confidence or authorize a live change. See
+`decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
 
 Calibration risk diagnostics use fixed, versioned calculation conventions, not
 live environment settings: 252 return periods per year; historical three-month
@@ -141,12 +158,13 @@ which controls the recorder embedded in the execution agent.
 Apply `migrations/20260930_add_intraday_research.sql`,
 `migrations/20260930_add_intraday_shadow.sql` and
 `migrations/20260930_add_intraday_reporting.sql` before deployment and add
-the new key to Bitwarden and the weekly backup's GitHub Actions secrets. Never
+the new key to Bitwarden. The watchdog and weekly backup retrieve it using the
+Actions bootstrap secret `BWS_ACCESS_TOKEN`. Never
 put a real key in the template. An unavailable capture database is surfaced to
 the operator; it must not block protective trading actions.
 
 Quote sampling starts with FMP `stable/batch-quote`. HTTP 402 selects
-`stable/quote` for the remainder of that recorder process; authentication and
+`stable/quote` for the remainder of that consumer instance; authentication and
 network errors do not trigger this fallback. Each cycle has at most one request
 per tracked symbol plus one entitlement probe and a cooperative fetch budget
 of `min(30 seconds, INTRADAY_SAMPLE_SECONDS / 2, INTRADAY_MAX_QUOTE_AGE_SECONDS / 2)`.
@@ -154,19 +172,24 @@ Requests timeouts cannot impose a hard deadline on DNS or a trickling response.
 Missing, stale or unrequested quotes and budget exhaustion remain explicit
 incomplete coverage, never synthetic prices. No additional environment setting
 is needed.
+The shadow input reader uses the same transport, but rejects incomplete frames
+rather than treating partial recorder coverage as a usable decision input.
+Shadow initialization parses only the required numeric `NetLiquidation` tag;
+textual USD account tags remain preserved raw, not coerced into money.
 
-The independent watchdog uses the GitHub Actions repository secret
+The independent watchdog and weekly backup use the GitHub Actions repository secret
 `BWS_ACCESS_TOKEN`, not five duplicated application secrets. This bootstrap
 token must grant read access to Bitwarden project `ai-trading-bot`; it belongs
 in Actions, not `.env.template`. The workflow installs checksum-pinned `bws`
 2.1.0 and resolves `SUPABASE_URL`, `SUPABASE_KEY`, `INTRADAY_SUPABASE_KEY`,
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` by exact name. Missing, duplicate,
-empty, multiline and `@bws` values fail before reporting starts. The watchdog
-always requires the private key; it does **not** use the general-key fallback
+empty, multiline and `@bws` values fail before either workload starts. Both
+always require the private key; they do **not** use the general-key fallback
 described for other consumers above. Secrets remain in memory and the CI
-Bitwarden profile disables authentication-state caching. Host rendering and the
-weekly backup's existing Actions secrets are unchanged. See
-`decisions/2026-10-04_watchdog-bitwarden-bootstrap.md`.
+Bitwarden profile disables authentication-state caching. Host rendering and
+the backup's SSH transport secrets remain separate. See
+`decisions/2026-10-04_watchdog-bitwarden-bootstrap.md` and
+`decisions/2026-10-04_backup-vault-and-private-exit-shadow.md`.
 
 The shadow worker requires explicit `IBKR_ACCOUNT` (or `--account`) for
 actual-account initialization, but does not connect to IBKR. CLI defaults are
@@ -564,12 +587,16 @@ live +2% (`PROVE_IT_P2_ARM_GAIN_PCT`); **Q2** = a **5%** give-back trail from th
 high-water mark instead of the live 1.5% profit-lock. It exists to feed the
 `exit-parameters-proveit` and `ladder-width-runon` scheduled reviews with live,
 out-of-regime evidence the 5-minute single-regime backtest cannot produce. The
-call is fully exception-wrapped: if
-`migrations/20260927_add_exit_shadow_log.sql` is not yet applied, it no-ops
-silently and trading is unaffected. A live shadow only observes divergence up to
+writer uses an isolated private client requiring `INTRADAY_SUPABASE_KEY`, with a
+five-second PostgREST request timeout. It never upgrades the global trading
+client's privileges. Missing credentials, permissions or
+`migrations/20260927_add_exit_shadow_log.sql` generate sanitized warnings and
+independent diagnostics; research failure does not abort trading.
+A live shadow only observes divergence up to
 the real exit, so it captures the wick/timing side of these rules but not the
 run-on upside of holding a winner past the live exit — that stays harness-only
-(`--runon`). See `decisions/2026-09-27_exit-shadow-log.md`.
+(`--runon`). See `decisions/2026-09-27_exit-shadow-log.md` and
+`decisions/2026-10-04_backup-vault-and-private-exit-shadow.md`.
 
 ### Armed exit
 
@@ -808,26 +835,21 @@ with pre-cost runs). See `decisions/2026-09-29_backtest-costs-slippage.md` and
 
 ### Dependency manifests
 
-There are two, and they are **not** interchangeable:
+Runtime and test manifests are **not** interchangeable:
 
 | Manifest | Installed into | Adds |
 |---|---|---|
-| `requirements.txt` (root) | execution agent, screeners, **all CI workflows** | `requests`, `pandas`, `supabase`, `httpx`, `pytest`, `watchdog`, `ib_insync`, `openai` |
+| `requirements.txt` (root) | execution agent and screeners; included by the test manifest | `requests`, `pandas`, `supabase`, `httpx`, `pytest`, `watchdog`, `ib_insync`, `openai` |
 | `backend/requirements.txt` | `trading-bot` container only | `fastapi`, `uvicorn`, `yfinance`, `numpy` |
+| `requirements-shadow.txt` | isolated research images and web research support | Pinned research/calendar dependencies |
+| `requirements-test.txt` | Daily Screener's Python 3.10 full-suite gate | Root dependencies plus FastAPI, PyYAML, PyArrow, DuckDB and exchange calendars |
 
-The Daily Screener workflow installs **only the root manifest** and runs the
-full pytest suite before any screening step. A test that imports FastAPI —
-directly, or by importing a `backend/` module that does — therefore aborts
-collection on CI and takes the day's fundamental scan, breakout scan and AI
-evaluation with it. This will not reproduce locally, where the backend
-requirements are usually installed as well.
-
-So: **tests may import a `backend/` module only if that module is importable
-with the root manifest alone.** Pure logic that needs coverage belongs in a
-dependency-free module such as `backend/pricing.py`, which `backend/main.py`
-imports. `tests/test_ci_import_hygiene.py` enforces this and fails with the
-required fix in its message. See `decisions/2026-09-05_ci-import-hygiene.md`
-for why.
+The Daily Screener installs `requirements-test.txt` and runs the full suite
+before the fundamental, technical and AI stages. API tests run with FastAPI
+present; they are not skipped to make the gate green. Runtime agent images do
+not inherit test-only web dependencies. Pure pricing logic remains independent
+of web frameworks, and the import-hygiene guard enforces that narrower boundary.
+See `decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
 
 ---
 
@@ -854,7 +876,7 @@ for why.
 | `cash_flows` | Deposits and withdrawals |
 | `ibkr_fills` | Every IBKR execution with its commission. Tier 1 of the sell-price ladder — the only fill record that survives an agent or Gateway restart |
 | `breakout_learnings` | Post-close outcome rows fed back into screener tuning |
-| `daily_notifications` | Dedup ledger for once-per-day operator alerts (`report_type`,`report_date` PK). Backs the "unfilled slots" summary so it fires once per ET day across restarts. Regenerable state — **not** in `supabase_backup.py`. See `migrations/20260928_add_daily_notifications.sql` |
+| `daily_notifications` | Dedup ledger for once-per-day operator alerts (`report_type`,`report_date` PK). Backs the "unfilled slots" summary so it fires once per ET day across restarts. Included in the 27-table backup inventory; reconcile restored delivery state before resuming workers. See `migrations/20260928_add_daily_notifications.sql` and `decisions/2026-10-04_backup-vault-and-private-exit-shadow.md` |
 
 Key `portfolio_positions` columns driving exits: `hwm_price`, `hwm_date`, `stop_loss_pct`,
 `entry_atr_pct`, `closed_above_entry`, `power_hold`, `exit_armed*`, `breakout_verdict`,

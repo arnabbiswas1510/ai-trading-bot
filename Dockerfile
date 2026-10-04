@@ -50,7 +50,7 @@ COPY backend/ ./backend/
 # decisions/2026-09-29_backtester-option-a-live-exits.md.
 COPY config.py exit_rules.py exit_core.py daily_exit_sim.py trade_costs.py ./backend/
 COPY decision_core.py cooling_off.py market_calendar.py intraday_replay.py ./backend/
-COPY trigger_audit.py intraday_capture.py ./backend/
+COPY trigger_audit.py intraday_capture.py quote_transport.py ./backend/
 COPY shadow_engine.py ./backend/
 COPY trading_control.py ./backend/
 COPY research_diagnostics.py research_entrypoint.py ./backend/

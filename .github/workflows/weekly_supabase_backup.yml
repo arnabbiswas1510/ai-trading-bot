@@ -55,18 +55,28 @@ jobs:
           # runtime Docker images for a weekly export they never run.
           pip install pyarrow
 
+      - name: Install verified Bitwarden CLI
+        run: |
+          mkdir -p .ci-tools
+          curl --fail --silent --show-error --location \
+            https://github.com/bitwarden/sdk-sm/releases/download/bws-v2.1.0/bws-x86_64-unknown-linux-gnu-2.1.0.zip \
+            --output .ci-tools/bws.zip
+          echo 'ba8233c3a4aee5d43e3c73bbd04d99e9bc5aba13bbbfd06d89b073abe732b860  .ci-tools/bws.zip' | sha256sum --check
+          unzip -q .ci-tools/bws.zip -d .ci-tools
+          chmod +x .ci-tools/bws
+          rm .ci-tools/bws.zip
+          echo "$GITHUB_WORKSPACE/.ci-tools" >> "$GITHUB_PATH"
+
       - name: Export Supabase to Parquet
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          INTRADAY_SUPABASE_KEY: ${{ secrets.INTRADAY_SUPABASE_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+          BACKUP_DRY_RUN: ${{ inputs.dry_run }}
+          BACKUP_SNAPSHOT_DATE: ${{ inputs.snapshot_date }}
         run: |
-          ARGS="--out-dir ./backup-staging"
-          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
-          if [ -n "${{ inputs.snapshot_date }}" ]; then ARGS="$ARGS --snapshot-date ${{ inputs.snapshot_date }}"; fi
-          python supabase_backup.py $ARGS
+          ARGS=(--out-dir ./backup-staging)
+          if [ "$BACKUP_DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
+          if [ -n "$BACKUP_SNAPSHOT_DATE" ]; then ARGS+=(--snapshot-date "$BACKUP_SNAPSHOT_DATE"); fi
+          python -m scripts.run_supabase_backup_bws "${ARGS[@]}"
 
       - name: Show what will be shipped
         if: ${{ inputs.dry_run != true }}

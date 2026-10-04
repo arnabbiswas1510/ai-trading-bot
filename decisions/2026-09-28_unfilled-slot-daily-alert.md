@@ -1,7 +1,12 @@
 # Once-daily "unfilled slots" operator summary
 
 - **Date:** 2026-09-28
-- **Status:** Accepted
+- **Status:** Accepted; backup exclusion superseded by [2026-10-04](2026-10-04_backup-vault-and-private-exit-shadow.md)
+
+> **2026-10-04:** The daily-notification behavior remains in force. The backup
+> exclusion recorded below is no longer current: the operator explicitly
+> includes `daily_notifications` in the required 27-table weekly inventory
+> alongside shadow and research reporting evidence.
 
 ## Context
 

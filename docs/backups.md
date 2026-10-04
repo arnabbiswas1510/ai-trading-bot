@@ -11,15 +11,50 @@ way.
 
 ## What runs, and when
 
+The workflow uses `scripts/run_supabase_backup_bws.py`, which reuses the
+watchdog's Bitwarden loader and no-cache `scripts/bws_ci.toml` profile. Configure
+only the GitHub Actions application bootstrap secret `BWS_ACCESS_TOKEN`; its
+machine account must read the `ai-trading-bot` Bitwarden project. That project
+must contain one valid value each for `SUPABASE_URL`, `SUPABASE_KEY`,
+`INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`. Values are
+loaded into the exporter subprocess environment only, masked in Actions output,
+and never written to an environment file or CLI cache. Missing/ambiguous vault
+values fail before export, without falling back to individual Actions secrets.
+
 Saved intraday comparison results (`intraday_replay_runs`) are included. Their
-private table requires a service-role key: configure the GitHub Actions secret
-`INTRADAY_SUPABASE_KEY`; the exporter prefers it over `SUPABASE_KEY`.
+private table requires the project's service-role `INTRADAY_SUPABASE_KEY`; the
+exporter prefers it over `SUPABASE_KEY`. The same credential can read the
+service-role-only `exit_shadow_log`; an ordinary anon key is not sufficient.
+The unrelated production SSH secrets remain Actions secrets.
+See `decisions/2026-10-04_backup-vault-and-private-exit-shadow.md` for why.
 The research inbox's settings, proposals and append-only decision events
 (`intraday_calibration_settings`, `intraday_calibration_proposals`,
 `intraday_calibration_events`) are also included. Calibration health and
 expiring worker leases are not evidence and are explicitly excluded.
 Apply `migrations/20261003_add_calibration_loop.sql` before deployment.
 See `decisions/2026-10-03_interactive-self-calibration.md`.
+
+The required inventory contains **27 tables**, including all ten previously
+unclassified notification, reporting and shadow tables:
+
+| Tables | Stable export ordering |
+|---|---|
+| `daily_notifications` | `report_type`, `report_date` |
+| `intraday_shadow_checkpoints` | `run_id`, `sequence` |
+| `intraday_shadow_runs`, `intraday_shadow_events`, `intraday_shadow_health` | `id` |
+| `intraday_research_reports`, `intraday_research_calibration_artifacts` | `id` |
+| `intraday_research_incidents`, `intraday_research_delivery_receipts`, `intraday_research_reporting_state` | `id` |
+
+These are required exports, not optional exclusions: a missing table or denied
+read fails the backup. Shadow seeds, complete published event histories,
+checkpoints, research reports and calibration artifacts are retained together
+with their delivery and operational context. The operator explicitly includes
+shadow health, reporting coordination state and the daily-notification ledger
+in these snapshots, even though they are operational rather than trade data.
+Apply `20260928_add_daily_notifications.sql`,
+`20260930_add_intraday_shadow.sql` and `20260930_add_intraday_reporting.sql`
+before export. See
+`decisions/2026-10-04_backup-vault-and-private-exit-shadow.md`.
 
 Raw `intraday_capture_events` and their sampling membership are deliberately
 excluded from the indefinitely retained full snapshots. They follow
@@ -65,7 +100,37 @@ Two unrelated causes, for the record:
   `decisions/2026-09-28_backup-ship-host-key-trust.md`.
 
 Run it by hand from the Actions tab. `dry_run` reports row counts without
-writing or shipping anything; `snapshot_date` overrides the partition date.
+writing or shipping anything; `snapshot_date` overrides the partition date and
+must be a valid `YYYY-MM-DD` date. Inputs pass as quoted arguments, never as
+shell source. The Bitwarden wrapper preserves the exporter's exit code.
+
+### A failed export is not a retained partial backup
+
+The exporter attempts every declared table, records failures in its manifest
+and exits nonzero if any failed. Other successful table files remain in the
+runner's staging directory, **not** on production: a failed export skips
+shipping and verification, and this workflow does not upload a fallback
+artifact. The previous successful server archive remains intact. A fresh
+complete archive requires correcting the failure, rerunning the workflow and
+verifying its dated manifest on the server.
+
+### Private exit-shadow observations
+
+`exit_shadow.py` remains a pure candidate-rule calculation. The monitor writes
+its genuine observations through `exit_shadow_store.py`, with a separate cached
+client using `INTRADAY_SUPABASE_KEY` and a 5-second PostgREST request timeout.
+There is no fallback to the ordinary trading key and no replacement of the
+global trading client. The service-role-only policy remains unchanged.
+
+Write and calculation errors cannot prevent the monitor from continuing its
+live exit decisions. They produce a credential-safe console warning and
+`exit_shadow_write_failed` research diagnostics instead of silently suppressing
+missing-table or permission errors. Neither raw exception messages nor position
+payloads are included in those warnings.
+
+After deployment, verify a real monitor-cycle observation rather than inserting
+test rows or invoking the live monitor solely as a probe. A successful empty
+REST read confirms read access only, not insert authorization or actual capture.
 
 ## Layout
 
@@ -200,6 +265,21 @@ uses is missing from `TABLES`.
 
 The files are plain tables — read the Parquet and upsert back into Supabase.
 Check `parquet_sha256` in the manifest first if a file's integrity is in doubt.
+
+Restore while producers and delivery workers are stopped. Restore
+`intraday_shadow_runs` before its events, checkpoints and health references;
+check that each restored published sequence has its full event history before
+resuming calibration. The exporter reads tables sequentially, not in a single
+database transaction, so inclusion of all tables is not by itself proof that
+their captured versions are mutually consistent.
+
+Saved `intraday_research_reporting_state` lease fields and
+`intraday_shadow_health` timestamps are historical context, not proof of a
+current worker. Do not reactivate an archived lease or treat restored health as
+live. Reconcile reporting receipts/status before enabling delivery to avoid
+resending historical notifications. Raw capture retention exclusions above
+still apply; this archive is not a complete replacement for retained raw
+intraday quotes.
 
 ⚠️ **This has never been rehearsed.** Tracked as FU-010.
 

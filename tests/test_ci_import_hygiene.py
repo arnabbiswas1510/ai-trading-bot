@@ -1,11 +1,9 @@
 """
 Guards that the test suite stays runnable in CI's dependency environment.
 
-The Daily Screener workflow installs ONLY the root requirements.txt, then runs
-the whole suite before executing any screener step. Anything the tests import
-that lives solely in backend/requirements.txt (the trading-bot image) fails at
-*collection*, which aborts the entire run -- so a test-only mistake silently
-takes out the day's fundamental scan, technical scan and AI evaluation.
+The Daily Screener installs requirements-test.txt, including root runtime
+dependencies and explicit test-only extras, before running the whole suite.
+An undeclared import can abort collection and prevent every screener step.
 
 That is not hypothetical: it happened on 2026-09-05, when
 tests/test_dashboard_pricing.py imported backend.main for a pure function.
@@ -13,34 +11,51 @@ backend/main.py does `from fastapi import FastAPI` at module scope, FastAPI is
 not in the root requirements, and the screener never ran. The fix was to move
 the function to backend/pricing.py, which has no third-party imports at all.
 
-The rule these tests enforce: tests may import from backend/ only where the
-module is importable with the root requirements alone.
+API tests now require FastAPI itself, unlike pure pricing tests. It is explicitly
+installed only for tests; undeclared web dependencies remain forbidden and the
+runtime manifests stay separate.
 """
 import ast
 import os
 import pathlib
 import pytest
+import yaml
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 TESTS_DIR = REPO_ROOT / "tests"
 BACKEND_DIR = REPO_ROOT / "backend"
 
-# Declared in backend/requirements.txt but NOT in the root requirements.txt that
-# the Daily Screener workflow installs. Importing any of these at module scope
-# in a file the tests reach will break collection on CI while passing locally.
+# Web packages must stay out of the agent/screener runtime manifest.
 WEB_ONLY_PACKAGES = {"fastapi", "uvicorn", "yfinance"}
 
 
-def _root_requirements() -> set[str]:
+def _root_requirements(path=REPO_ROOT / "requirements.txt") -> set[str]:
     names = set()
-    for line in (REPO_ROOT / "requirements.txt").read_text().splitlines():
+    for line in path.read_text().splitlines():
         line = line.split("#")[0].strip()
         if not line:
+            continue
+        if line.startswith("-r "):
+            names.update(_root_requirements(path.parent / line[3:].strip()))
             continue
         for sep in ("==", ">=", "<=", "~=", ">", "<", "["):
             line = line.split(sep)[0]
         names.add(line.strip().lower().replace("-", "_"))
     return names
+
+
+def test_daily_gate_installs_complete_test_manifest():
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github/workflows/daily_screener.yml").read_text()
+    )
+    steps = workflow["jobs"]["run-screeners"]["steps"]
+    install = next(step["run"] for step in steps if step.get("name") == "Install Dependencies")
+    assert "python -m pip install -r requirements-test.txt" in install
+    requirements = _root_requirements(REPO_ROOT / "requirements-test.txt")
+    assert {"fastapi", "pyyaml", "pyarrow", "duckdb", "exchange_calendars"} <= requirements
+    test_step = next(step for step in steps if step.get("name") == "Run Unit Tests")
+    assert "python -m pytest tests/" in test_step["run"]
+    assert not test_step.get("continue-on-error", False)
 
 
 def _module_level_imports(path: pathlib.Path) -> set[str]:
@@ -76,15 +91,16 @@ def test_web_only_packages_are_absent_from_root_requirements():
 @pytest.mark.parametrize("test_file", _test_files(), ids=lambda p: p.name)
 def test_no_test_imports_a_web_only_dependency_transitively(test_file):
     """
-    A test must not import a backend module that needs the web stack.
+    A test must not import an undeclared part of the web stack.
 
     Checked one level deep, which is where the real risk sits: a test importing
     a backend module whose own module-scope imports pull in FastAPI.
     """
+    unavailable = WEB_ONLY_PACKAGES - _root_requirements(REPO_ROOT / "requirements-test.txt")
     for name in _module_level_imports(test_file):
-        assert name not in WEB_ONLY_PACKAGES, (
+        assert name not in unavailable, (
             f"{test_file.name} imports {name!r} directly, which CI does not "
-            f"install (root requirements.txt only). This aborts collection and "
+            f"install (requirements-test.txt). This aborts collection and "
             f"takes the Daily Screener down with it."
         )
 
@@ -92,11 +108,11 @@ def test_no_test_imports_a_web_only_dependency_transitively(test_file):
         if not backend_module.exists():
             continue
 
-        leaked = _module_level_imports(backend_module) & WEB_ONLY_PACKAGES
+        leaked = _module_level_imports(backend_module) & unavailable
         assert not leaked, (
             f"{test_file.name} imports backend/{name}.py, which imports "
-            f"{sorted(leaked)} at module scope. CI installs only the root "
-            f"requirements.txt, so this fails at collection and the Daily "
+            f"{sorted(leaked)} at module scope. CI installs "
+            f"requirements-test.txt, so this fails at collection and the Daily "
             f"Screener never runs. Move the code under test into a module with "
             f"no web-stack imports (see backend/pricing.py)."
         )

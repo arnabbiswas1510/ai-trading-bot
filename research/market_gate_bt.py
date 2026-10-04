@@ -29,7 +29,8 @@ import os
 import sys
 import urllib.request
 import ssl
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 SMA_WINDOW = 200
 FWD = 20  # forward-return horizon in sessions, matches the ADR
@@ -43,7 +44,7 @@ def _fetch(symbol: str, insecure: bool) -> list[dict]:
     if not key:
         sys.exit("FMP_API_KEY not set — run: set -a && . ~/.config/ai-trading-bot/secrets.env && set +a")
     url = ("https://financialmodelingprep.com/stable/historical-price-eod/full"
-           f"?symbol={symbol}&from=2007-01-01&to={date.today()}&apikey={key}")
+           f"?symbol={symbol}&from=2007-01-01&to={datetime.now(ZoneInfo('America/New_York')).date()}&apikey={key}")
     ctx = ssl._create_unverified_context() if insecure else None
     with urllib.request.urlopen(url, context=ctx, timeout=30) as r:
         data = json.load(r)

@@ -15,6 +15,7 @@ from ib_insync import IB, Stock
 from execution_agent_ref import ea
 import intraday_capture as capture
 import trading_control
+import exit_shadow_store
 
 @capture.capture_phase("monitor")
 def monitor_portfolio_intraday(ib: IB):
@@ -206,13 +207,9 @@ def monitor_portfolio_intraday(ib: IB):
                     days_held,
                 )
                 shadow["cycle_ts"] = now_ny.isoformat()
-                client.table("exit_shadow_log").insert(shadow).execute()
+                exit_shadow_store.write_observation(shadow)
             except Exception as _shadow_err:
-                # Missing table (migration not yet applied) or any transient
-                # error: degrade silently, do NOT fire Telegram, do NOT spam.
-                es = str(_shadow_err)
-                if not ("exit_shadow_log" in es or "PGRST" in es or "42P01" in es):
-                    print(f"   ⚠️ exit-shadow log skipped for {ticker}: {es}")
+                exit_shadow_store.report_failure(_shadow_err)
 
         if (prove_it_level is not None
                 and current_price <= prove_it_level

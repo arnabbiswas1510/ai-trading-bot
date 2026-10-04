@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements-shadow.txt
 COPY shadow_worker.py shadow_inputs.py shadow_store.py shadow_engine.py ./
 COPY research_configuration.py indicators.py market_direction.py market_calendar.py ./
 COPY config.py decision_core.py exit_core.py exit_rules.py cooling_off.py trade_costs.py ./
-COPY intraday_capture.py intraday_replay.py trigger_audit.py ./
+COPY intraday_capture.py intraday_replay.py quote_transport.py trigger_audit.py ./
 COPY research/live_rule_replay.py research/calibrate_intraday.py ./research/
 COPY research/auto_calibration.py research/calibration_store.py research/calibration_worker.py ./research/
 COPY research/calibration_risk.py research/calibration_risk_report.py research/treasury_reference.py ./research/

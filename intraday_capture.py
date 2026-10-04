@@ -22,6 +22,7 @@ import time
 import uuid
 from zoneinfo import ZoneInfo
 import research_diagnostics as diagnostics
+from quote_transport import fetch_quotes, quote_budget_seconds
 from config import (
     INTRADAY_CAPTURE_ENABLED, INTRADAY_SAMPLE_SECONDS, INTRADAY_RETENTION_DAYS,
     INTRADAY_MAX_SYMBOLS, INTRADAY_MAX_QUOTE_AGE_SECONDS, INTRADAY_CAPTURE_SPOOL,
@@ -677,7 +678,7 @@ class Recorder:
                                      "received_at": now()})
 
     def quote_budget_seconds(self):
-        return min(30.0, self.sample_seconds / 2, self.max_quote_age / 2)
+        return quote_budget_seconds(self.sample_seconds, self.max_quote_age)
 
     def sample(self, http):
         cutoff = (dt.datetime.now(UTC) - dt.timedelta(days=self.retention_days)).isoformat()
@@ -697,67 +698,20 @@ class Recorder:
                       "received_at": now()})
             return
         budget = self.quote_budget_seconds()
-        deadline = time.monotonic() + budget
-        request_limit = len(tickers) + 1  # At most one entitlement probe plus one call per symbol.
-        request_count, offset = 0, 0
-        ordered = tickers
-        if self.next_quote_symbol in tickers:
-            start = tickers.index(self.next_quote_symbol)
-            ordered = tickers[start:] + tickers[:start]
-        quotes, errors, seen, returned = [], [], set(), set()
-        endpoints = []
-        while offset < len(ordered):
-            if self.stopping.is_set():
-                return
-            remaining = deadline - time.monotonic()
-            if remaining <= 0 or request_count >= request_limit:
-                errors.append({"reason": "quote_budget_exhausted",
-                               "unrequested_symbols": ordered[offset:]})
-                break
-            endpoint = self.quote_endpoint
-            chunk = ordered[offset:offset + (100 if endpoint == "batch-quote" else 1)]
-            params = ({"symbols": ",".join(chunk)} if endpoint == "batch-quote"
-                      else {"symbol": chunk[0]})
-            request_count += 1
-            if endpoint not in endpoints:
-                endpoints.append(endpoint)
-            try:
-                response = http.get(f"https://financialmodelingprep.com/stable/{endpoint}",
-                                    params={**params, "apikey": os.getenv("FMP_API_KEY", "")},
-                                    timeout=(min(3, remaining / 2), min(10, remaining / 2)),
-                                    allow_redirects=False)
-                if self.stopping.is_set():
-                    return
-                status = getattr(response, "status_code", None)
-                if endpoint == "batch-quote" and status == 402:
-                    self.quote_endpoint = "quote"
-                    self.quote_fallback_reason = "batch_quote_http_402"
-                    diagnostics.emit(self.health_id, "quote_endpoint_selected", level="INFO",
-                                     context={"operation": "fmp_individual_quote",
-                                              "reason_code": self.quote_fallback_reason})
-                    continue
-                response.raise_for_status()
-                if isinstance(status, int) and 300 <= status < 400:
-                    raise ValueError("FMP quote redirect refused")
-                received = now()
-                rows = response.json()
-                if not isinstance(rows, list):
-                    raise ValueError("FMP response is not a quote list")
-                if time.monotonic() >= deadline:
-                    errors.append({"reason": "quote_budget_exhausted",
-                                   "unrecorded_symbols": ordered[offset:]})
-                    break
-            except Exception as exc:
-                diagnostics.emit(self.health_id, "quote_request_failed", error=exc,
-                                 context={"operation": f"fmp_{endpoint.replace('-', '_')}"})
-                errors.extend({"ticker": t, "reason": "quote_request_failed",
-                               "error_type": type(exc).__name__} for t in chunk)
-                offset += len(chunk)
-                # Do not fan an unavailable individual endpoint out across the whole universe.
-                if endpoint == "quote":
-                    break
-                continue
-            offset += len(chunk)
+        transport = fetch_quotes(
+            http, os.getenv("FMP_API_KEY", ""), tickers, budget=budget,
+            clock=now, monotonic=time.monotonic, endpoint=self.quote_endpoint,
+            fallback_reason=self.quote_fallback_reason, next_symbol=self.next_quote_symbol,
+            stopped=self.stopping.is_set,
+            diagnostic=lambda event, **kwargs: diagnostics.emit(self.health_id, event, **kwargs))
+        self.quote_endpoint = transport["endpoint_mode"]
+        self.quote_fallback_reason = transport["fallback_reason"]
+        if transport["cancelled"]:
+            return
+        quotes, errors, seen, returned = [], transport["errors"], set(), set()
+        for response in transport["responses"]:
+            rows, chunk, proof = response["rows"], response["symbols"], response["proof"]
+            received, endpoint = proof["received_at"], proof["endpoint"]
             for row in rows:
                 if not isinstance(row, dict):
                     errors.append({"reason": "invalid_quote_row"})
@@ -783,15 +737,16 @@ class Recorder:
                     seen.add(ticker)
                 except (KeyError, TypeError, ValueError, OverflowError):
                     errors.append({"ticker": ticker, "reason": "invalid_or_stale_quote"})
-        self.next_quote_symbol = ordered[offset % len(ordered)]
+        self.next_quote_symbol = transport["next_symbol"]
         errors.extend({"ticker": t, "reason": "quote_missing"} for t in tickers if t not in seen)
         self.emit("quote_sample", {"quotes": quotes, "requested_symbols": tickers,
                                   "complete": not errors, "errors": errors,
                                   "missing_quotes": [t for t in tickers if t not in seen],
                                   "endpoint_mode": self.quote_endpoint,
-                                  "endpoints_attempted": endpoints,
+                                  "endpoints_attempted": transport["endpoints_attempted"],
                                   "fallback_reason": self.quote_fallback_reason,
-                                  "request_count": request_count, "request_limit": request_limit,
+                                  "request_count": transport["request_count"],
+                                  "request_limit": transport["request_limit"],
                                   "budget_seconds": budget,
                                   "received_at": now()})
         if errors:

@@ -207,9 +207,9 @@ investigation, reject it, defer it, resume it, or approve an eligible numeric
 deployment artifact. Actions carry revision checks: if new results or another
 operator changed the proposal, reload and review before deciding again.
 
-Research settings initially have **no risk policy**. This is deliberate: the
-operator has not yet specified what "materially worse risk" means in dollars and
-percentage points. Set all of the following in the inbox before a new campaign:
+New installations initially have **no risk policy**: software defaults must not
+guess an operator's acceptable financial risk. Set all of the following in the
+inbox before a new campaign:
 
 | Policy field | Meaning |
 |---|---|
@@ -225,6 +225,37 @@ Without a policy, research remains exploratory and approval is blocked. A policy
 added or relaxed after seeing results cannot qualify that experiment: another
 campaign with future evidence is required. A result can also legitimately say
 **no change justified**. No threshold guarantees future profitability.
+
+### Production policy
+
+The operator-approved cloud settings saved on 2026-10-04 use five complete
+training sessions, ten future evaluation sessions and at most sixteen candidates.
+These are explicit settings, not changes to the five/five software defaults.
+
+| Requirement | Approved value |
+|---|---|
+| Fully completed positions | At least 10 in each strategy |
+| Distinct evaluation sessions | At least 10 |
+| Modeled profit improvement after costs | At least $1,000 |
+| Additional maximum drawdown | At most 1 percentage point |
+| Additional worst completed-position loss | At most $100 |
+| Stocks contributing positive improvement | At least 3 |
+| One stock's share of total positive improvement | At most 50%, before negative contributors are deducted |
+
+For example, 5% reference-strategy drawdown permits at most 6%, not 5.05%.
+These are exploratory operator tolerances, not statistically calibrated
+profitability thresholds. Fewer than 30 completed positions remains a small
+sample even if eligibility passes. Too few trades means no eligible result;
+the bot must not force entries to meet the quota.
+
+From no usable history, this policy needs at least fifteen complete sessions,
+plus enough completed positions. Missing data or a partial initial session
+extends that interval; no fixed first-recommendation date is promised.
+The policy was saved before any proposal existed. Human approval and separate
+operator deployment remain mandatory, and real buying remains OFF.
+Its date-driven review is in `decisions/provisional_decisions.json`; it does not
+wait for real trades while real entries are paused. See
+`decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
 
 ## Approval and deployment
 

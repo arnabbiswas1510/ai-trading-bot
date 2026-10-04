@@ -59,7 +59,7 @@ import hashlib
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -81,6 +81,7 @@ TABLES: dict[str, tuple[str, ...]] = {
     "account_balances":    ("date",),
     "breakout_learnings":  ("id",),
     "cash_flows":          ("id",),
+    "daily_notifications": ("report_type", "report_date"),
     "daily_triggers":      ("triggered_at", "ticker"),
     "exit_requests":       ("id",),
     "exit_shadow_log":     ("id",),
@@ -89,6 +90,15 @@ TABLES: dict[str, tuple[str, ...]] = {
     "intraday_calibration_settings": ("id",),
     "intraday_calibration_proposals": ("id",),
     "intraday_calibration_events": ("id",),
+    "intraday_research_calibration_artifacts": ("id",),
+    "intraday_research_delivery_receipts": ("id",),
+    "intraday_research_incidents": ("id",),
+    "intraday_research_reporting_state": ("id",),
+    "intraday_research_reports": ("id",),
+    "intraday_shadow_checkpoints": ("run_id", "sequence"),
+    "intraday_shadow_events": ("id",),
+    "intraday_shadow_health": ("id",),
+    "intraday_shadow_runs": ("id",),
     "portfolio_positions": ("ticker",),
     "trade_history":       ("id",),
     "trigger_decisions":   ("decision_date", "ticker"),
@@ -444,6 +454,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     snapshot_date = args.snapshot_date or datetime.now(NY).strftime("%Y-%m-%d")
+    try:
+        if date.fromisoformat(snapshot_date).isoformat() != snapshot_date:
+            raise ValueError
+    except ValueError:
+        print("❌ snapshot-date must be a valid YYYY-MM-DD date.")
+        return 2
     out_dir = Path(args.out_dir).expanduser().resolve()
 
     tables = dict(TABLES)

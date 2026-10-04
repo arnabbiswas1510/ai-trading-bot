@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import math
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeout
 from zoneinfo import ZoneInfo
 
@@ -11,6 +12,7 @@ from indicators import calculate_ema, calculate_sma, compute_rsi
 from market_calendar import trading_days_between
 from market_direction import index_verdict
 from shadow_store import fingerprint
+from quote_transport import fetch_quotes, quote_budget_seconds
 
 NY = ZoneInfo("America/New_York")
 UTC = dt.timezone.utc
@@ -97,6 +99,11 @@ class PublicMarketData:
     def __init__(self, http, api_key, clock=lambda: dt.datetime.now(UTC)):
         require(bool(api_key), "FMP_API_KEY is required for hypothetical-universe prices.")
         self.http, self.api_key, self.clock = http, api_key, clock
+        self.quote_endpoint = "batch-quote"
+        self.quote_fallback_reason = None
+        from config import INTRADAY_SAMPLE_SECONDS, INTRADAY_MAX_QUOTE_AGE_SECONDS
+        self.quote_budget = quote_budget_seconds(
+            INTRADAY_SAMPLE_SECONDS, INTRADAY_MAX_QUOTE_AGE_SECONDS)
         self._history_cache = {}
         from research_configuration import (
             MARKET_DIRECTION_TICKERS, MARKET_DIRECTION_SMA_WINDOW, MARKET_DIRECTION_SLOPE_DAYS,
@@ -119,25 +126,45 @@ class PublicMarketData:
                       "requested_at": started, "received_at": self.clock().isoformat()}
 
     def quotes(self, symbols):
+        import research_diagnostics as diagnostics
         symbols = sorted(set(symbols))
         require(len(symbols) <= MAX_SYMBOLS, "Hypothetical universe exceeds quote budget.")
-        result, evidence = {}, []
-        for offset in range(0, len(symbols), 100):
-            rows, proof = self._get("batch-quote", {"symbols": ",".join(symbols[offset:offset + 100])})
-            evidence.append(proof)
+        transport = fetch_quotes(
+            self.http, self.api_key, symbols, budget=self.quote_budget,
+            clock=lambda: self.clock().isoformat(), monotonic=time.monotonic,
+            endpoint=self.quote_endpoint, fallback_reason=self.quote_fallback_reason,
+            diagnostic=lambda event, **kwargs: diagnostics.emit("shadow-worker", event, **kwargs))
+        self.quote_endpoint = transport["endpoint_mode"]
+        self.quote_fallback_reason = transport["fallback_reason"]
+        require(not transport["errors"], "FMP quote acquisition incomplete: " + ", ".join(
+            sorted({e["reason"] for e in transport["errors"]})))
+        result = {}
+        for response in transport["responses"]:
+            rows, proof = response["rows"], response["proof"]
             for row in rows:
+                require(isinstance(row, dict), "Invalid FMP quote row.")
                 symbol = row.get("symbol")
+                require(isinstance(symbol, str) and symbol in response["symbols"],
+                        "Unrequested FMP quote symbol.")
                 require(symbol not in result, "Duplicate FMP quote symbol.")
                 provider = row.get("timestamp")
                 require(isinstance(provider, (int, float)) and not isinstance(provider, bool),
                         f"{symbol}: quote provider timestamp missing.")
+                number(provider, f"{symbol}.provider_timestamp")
+                try:
+                    provider_time = dt.datetime.fromtimestamp(provider, UTC).isoformat()
+                except (ValueError, OverflowError, OSError):
+                    raise InputGap(f"{symbol}: invalid quote provider timestamp.") from None
                 result[symbol] = {
                     "price": number(row.get("price"), f"{symbol}.price", positive=True),
-                    "provider_timestamp": dt.datetime.fromtimestamp(provider, UTC).isoformat(),
+                    "provider_timestamp": provider_time,
                     "received_at": proof["received_at"], "source": "FMP",
-                    "raw": row,
+                    "raw": row, "endpoint": "stable/" + proof["endpoint"],
                 }
-        require(set(symbols) <= result.keys(), "FMP quote response omitted requested symbols.")
+        require(set(symbols) == result.keys(), "FMP quote response omitted requested symbols.")
+        metadata = {k: transport[k] for k in (
+            "endpoint_mode", "fallback_reason", "request_count", "request_limit", "budget_seconds")}
+        evidence = [{**proof, **metadata} for proof in transport["requests"]]
         return {s: result[s] for s in symbols}, evidence
 
     def history(self, symbol, as_of):
@@ -321,12 +348,20 @@ def build_seed(pair, before, after, history, fills, *, account, as_of, config):
             "filled": 0, "remaining": qty, "protection_source": "bot",
             "outside_rth": o.get("outsideRth"), "trigger_method": o.get("triggerMethod"),
         })
-    account_values = {}
-    for v in right["account_values"]:
-        if v.get("account") == account and v.get("currency") == "USD":
-            account_values[v["tag"]] = number(v["value"], "account value")
-    require("NetLiquidation" in account_values, "Missing completed USD NetLiquidation.")
-    equity = account_values["NetLiquidation"]
+    for snapshot in (left, right):
+        equity_rows = []
+        for row in snapshot["account_values"]:
+            require(isinstance(row, dict) and row.get("account") == account,
+                    "Foreign/unscoped account value in completed account download.")
+            require(row.get("modelCode", "") == "",
+                    "Model-scoped account values cannot seed the whole account.")
+            # Ledger/settlement tags include legitimate text; only equity is consumed.
+            if row.get("tag") == "NetLiquidation":
+                require(row.get("currency") == "USD", "Unsupported NetLiquidation currency.")
+                equity_rows.append(row)
+        require(len(equity_rows) == 1,
+                "Missing or ambiguous completed USD NetLiquidation.")
+        equity = number(equity_rows[0].get("value"), "NetLiquidation", positive=True)
     value = sum(p["shares"] * p["market_price"] for p in broker_positions)
     require(equity > 0 and equity - value >= 0, "Unsupported negative cash/margin seed.")
     for row in fills["rows"]:

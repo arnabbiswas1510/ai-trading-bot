@@ -292,6 +292,14 @@ manual requests or missing history prevent initialization. The worker never
 silently assumes an empty portfolio or resets cash. Subsequent actual account
 activity does not replace the hypothetical portfolio.
 
+Both adjacent completed account downloads must contain exactly one positive,
+finite, account-wide USD `NetLiquidation` row. Duplicate/conflicting equity,
+foreign-account values, model-specific values and unsupported equity currencies
+block initialization. Other account tags remain raw evidence: legitimate text
+such as `SettledCashByDate` or `$LEDGER-Currency` is not parsed as money.
+Seed cash remains observed equity minus the observed position value; no ledger
+cash tag substitutes for the broker's equity.
+
 Its dedicated `shadow-data` volume holds `/app/shadow/shadow.sqlite3`.
 Inputs are staged before simulation, and portfolio changes, decisions and upload
 outbox entries are committed transactionally. Re-uploading an acknowledged cycle
@@ -618,10 +626,12 @@ See [configuration](configuration.md), [backups](backups.md), and
 
 ## Quote endpoint compatibility and budgets
 
-Both execution recording and the independent observer use `Recorder.sample()`.
+Execution recording and the independent observer use `Recorder.sample()`;
+the shadow worker uses `PublicMarketData.quotes()`. Both share the injected,
+storage-free HTTP transport in `quote_transport.py`.
 It first requests FMP `stable/batch-quote` in groups of at most 100. An explicit
 HTTP 402 from that endpoint selects `stable/quote`, one symbol per request,
-for the remainder of that recorder process. A restart probes batch access again.
+for the remainder of that consumer instance. A restart probes batch access again.
 Authentication, rate-limit, network and server failures never select a different
 endpoint. An individual request failure ends that round instead of repeating the
 failure across the retained universe. This fixes subscription compatibility
@@ -632,8 +642,8 @@ Each round has a dispatch budget of the smallest of **30 seconds**, half
 **N + 1 HTTP requests** are dispatched for N retained symbols. There are no
 retries or redirects. Each request's connect/read timeouts are capped at 3/10
 seconds respectively, with each additionally limited to half the remaining
-round budget. Shutdown is checked between requests. Expired-budget responses
-are not recorded, and further requests stop; the next round starts with the first
+round budget. Recorder shutdown is checked between requests. Expired-budget responses
+are not recorded, and further requests stop; the recorder's next round starts with the first
 unserved symbol rather than repeatedly favoring the alphabet's beginning.
 These are cooperative dispatch/socket timeout limits, not a hard operating-system
 deadline: DNS resolution and a server continuously trickling response bytes can
@@ -649,3 +659,12 @@ fallback emits an informational diagnostic, not a coverage error.
 Unserved symbols remain in `missing_quotes` with `complete=false`; exhausted
 budgets explicitly report `quote_budget_exhausted`. Retention and symbol-cap
 guards still apply to the entire requested universe.
+
+Shadow frames are all-or-nothing: any transport error, incomplete coverage,
+duplicate/unrequested row, invalid price or missing/invalid provider timestamp
+blocks the frame. Their request evidence retains endpoint, parameters without
+the API key, request/receipt times, HTTP status, fallback reason and round limits;
+each quote retains its raw provider row. Retrieval does not relabel an old quote
+as current: Friday timestamps stay Friday on Sunday, and frame acquisition
+rejects stale/future provider quotes under its unchanged 600-second age gate.
+Completed shadow evidence remains usable by same-window replay and calibration.

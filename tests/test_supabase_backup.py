@@ -36,6 +36,31 @@ def test_calibration_decisions_are_archived_but_runtime_coordination_is_not():
     for name in ("health", "lease"):
         assert "intraday_calibration_" + name in NOT_BACKED_UP
 
+
+def test_shadow_and_reporting_evidence_are_required_with_stable_primary_keys():
+    required = {
+        "daily_notifications": ("report_type", "report_date"),
+        "intraday_research_calibration_artifacts": ("id",),
+        "intraday_research_delivery_receipts": ("id",),
+        "intraday_research_incidents": ("id",),
+        "intraday_research_reporting_state": ("id",),
+        "intraday_research_reports": ("id",),
+        "intraday_shadow_checkpoints": ("run_id", "sequence"),
+        "intraday_shadow_events": ("id",),
+        "intraday_shadow_health": ("id",),
+        "intraday_shadow_runs": ("id",),
+    }
+    for table, primary_key in required.items():
+        assert TABLES[table] == primary_key
+        assert table not in NOT_BACKED_UP
+
+
+@pytest.mark.parametrize("table", ["daily_notifications", "intraday_shadow_checkpoints"])
+def test_new_composite_primary_keys_order_every_component(table):
+    client = make_client({table: []})
+    assert fetch_table(client, table, TABLES[table]) == []
+    assert client.ordered_by[table] == list(TABLES[table])
+
 # NOTE: pyarrow/duckdb are imported per-test, NOT skipped at module level.
 # A module-level importorskip would also skip test_every_known_table_is_backed_up,
 # which needs neither — and that is the one test whose silent absence would let a
@@ -148,6 +173,23 @@ def test_migrations_and_source_actually_found_tables():
 def test_every_table_has_order_columns():
     for table, order_by in TABLES.items():
         assert order_by, f"{table} has no ordering key; multi-page fetches would be unsafe"
+
+
+@pytest.mark.parametrize("value", [
+    "../outside", "2026-10-04/../../outside", "$(touch unwanted)",
+    "2026-02-30", "20261004", "2026-W40-7", "2026-10-04\n",
+])
+def test_snapshot_date_rejected_before_client_or_files(value, monkeypatch, tmp_path, capsys):
+    import supabase
+    factory = MagicMock()
+    monkeypatch.setattr(supabase, "create_client", factory)
+    destination = tmp_path / "must-not-exist"
+    assert supabase_backup.main([
+        "--out-dir", str(destination), "--snapshot-date", value,
+    ]) == 2
+    factory.assert_not_called()
+    assert not destination.exists()
+    assert "valid YYYY-MM-DD" in capsys.readouterr().out
 
 
 # ── Fetching ─────────────────────────────────────────────────────────────────

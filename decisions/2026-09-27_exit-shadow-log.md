@@ -1,9 +1,16 @@
 # 2026-09-27 — Exit-rule shadow logger (measure Q1 arm@+3% and Q2 5% give-back trail in production, without trading on them)
 
-- **Status:** Accepted
+- **Status:** Accepted; silent failures and writer credentials superseded by [2026-10-04](2026-10-04_backup-vault-and-private-exit-shadow.md)
 - **Kind:** Instrumentation (no live rule reads it)
 - **Register entry:** `exit-shadow-log`
 - **Feeds reviews:** `exit-parameters-proveit` (Q1), `ladder-width-runon` (Q2)
+
+> **2026-10-04:** Candidate calculations and live-order isolation still hold.
+> The silent degradation described below is no longer current: research-write
+> failures emit credential-safe diagnostics. Observations use an isolated
+> private client rather than the ordinary anon trading client. The table's
+> service-role-only policy is unchanged. Historical successful writes have not
+> been established; do not assume the original deployment produced evidence.
 
 ## Context
 

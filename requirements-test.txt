@@ -1,0 +1,11 @@
+# Complete offline test-gate environment; not installed in runtime images.
+-r requirements.txt
+
+# API permission/calibration tests must run, not disappear via importorskip.
+fastapi>=0.110.0
+PyYAML>=6.0
+
+# Backup format/query tests and exchange-session calendar tests.
+pyarrow>=15.0.0
+duckdb>=1.0.0
+exchange-calendars==4.13.2

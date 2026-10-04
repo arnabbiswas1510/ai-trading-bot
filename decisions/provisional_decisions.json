@@ -37,14 +37,52 @@
   },
   "decisions": [
     {
+      "id": "exploratory-calibration-policy",
+      "title": "Review the operator's ten-session, ten-position research policy",
+      "kind": "parameter",
+      "status": "active",
+      "decided": "2026-10-04",
+      "implemented": true,
+      "decision": "Use the explicit production research policy saved as revision 1 before any proposal existed; eligibility never substitutes for human approval or operator deployment.",
+      "rationale": "These are operator-selected profit/risk preferences, not measured sufficient evidence. Ten completed hypothetical positions can remain dominated by a few stocks or one market period; real-entry permission stays off.",
+      "adr": "decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md",
+      "revisit": {"min_closed_trades": null, "not_before": "2026-10-20"},
+      "baseline": {
+        "proposals_at_policy_selection": 0,
+        "usable_completed_shadow_positions": 0,
+        "training_sessions": 5,
+        "evaluation_sessions": 10,
+        "max_candidates": 16,
+        "risk_policy": {
+          "min_completed_positions": 10,
+          "min_distinct_sessions": 10,
+          "min_improvement_usd": 1000,
+          "max_drawdown_increase_pp": 1,
+          "max_worst_loss_increase_usd": 100,
+          "min_positive_tickers": 3,
+          "max_largest_contributor_fraction": 0.5
+        }
+      },
+      "review_command": "curl --fail http://localhost:8000/api/calibration",
+      "review_questions": [
+        "How many complete evaluation sessions and fully completed positions exist in each modeled strategy? Do not substitute real closed-trade count.",
+        "Are results still exploratory, concentrated by stock or market period, or dependent on a single contributor despite the declared limits?",
+        "Were all limits fixed before evaluation and the complete future window retained, including unfavorable or missing evidence?",
+        "Do the ten-session and ten-position limits need a larger future sample before any deployment is considered? Do not relax them retrospectively to qualify an existing result.",
+        "Have all live changes remained subject to explicit approval and a separate operator-applied artifact?"
+      ],
+      "last_reviewed": null,
+      "history": []
+    },
+    {
       "id": "interactive-calibration-rollout",
       "title": "Verify usable evidence and the approval-only calibration loop",
       "kind": "investigation",
       "status": "active",
       "decided": "2026-10-03",
       "implemented": false,
-      "decision": "Use bounded automatic numeric research and fixed future evaluation; leave risk tolerances unset until the operator chooses them. Live changes require a separately approved operator-applied artifact.",
-      "rationale": "The last successful production inspection had zero usable completed shadow trades. The five-session training/evaluation windows and sixteen-candidate budget are unmeasured operational starting limits, not a statistically sufficient sample.",
+      "decision": "Use bounded automatic numeric research and fixed future evaluation. The operator's explicit production risk policy is tracked by exploratory-calibration-policy; live changes require a separately approved operator-applied artifact.",
+      "rationale": "The last successful production inspection had zero usable completed shadow trades. The original five-session windows and sixteen-candidate budget were unmeasured starting limits; production now has an explicit ten-session evaluation policy. The original baseline below is retained as history, not current configuration.",
       "adr": "decisions/2026-10-03_interactive-self-calibration.md",
       "revisit": {"min_closed_trades": null, "not_before": "2026-10-20"},
       "baseline": {

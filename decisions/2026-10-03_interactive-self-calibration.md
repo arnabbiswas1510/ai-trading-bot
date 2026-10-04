@@ -3,6 +3,12 @@
 Date: 2026-10-03
 Status: Accepted with the diagnostic-refresh exception below; production activation requires the migration, credentials and deployment.
 
+> 2026-10-04: [Production operator policy](2026-10-04_calibration-readiness-and-exploratory-policy.md)
+> specifies ten future evaluation sessions and explicit exploratory risk limits.
+> The five/five software defaults below remain unchanged. Operator access and
+> cloud settings are provisioned; complete market-session evidence is still
+> required before a profitability recommendation.
+
 > 2026-10-03: [Diagnostic risk refresh](2026-10-03_calibration-risk-metrics.md)
 > adds a narrowly scoped exception for the new risk-analytics subdocument of
 > unapproved campaigns. Frozen strategy plans, evaluation results and approved

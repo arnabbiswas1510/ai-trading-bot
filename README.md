@@ -74,6 +74,19 @@ neither research nor approval enables new real buys. Apply
 See [interactive calibration](docs/interactive_calibration.md) and
 `decisions/2026-10-03_interactive-self-calibration.md`.
 
+Production's explicitly chosen research policy uses five training sessions and
+ten future evaluation sessions, at least ten completed positions per strategy,
+$1,000 after-cost improvement, at most +1 percentage point maximum drawdown and
+$100 additional worst-position loss. Improvement must include at least three
+positive ticker contributors; one ticker may supply at most 50% of total positive
+improvement. This is exploratory, not a profitability guarantee or automatic
+permission to deploy. See [the production policy](docs/interactive_calibration.md#production-policy).
+The shadow seed and quote reader share the recorder's supported quote transport;
+missing or stale inputs still block a usable experiment. The daily screening
+test gate installs its own complete dependency manifest, and
+[weekly backups](docs/backups.md) use Bitwarden and include 27 required tables.
+See `decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
+
 **Unexpected-short safety:** broker-confirmed signed inventory, scoped to the
 selected account, is checked independently of cached position marks. An
 unexpected short or unavailable inventory blocks new buys and quarantines

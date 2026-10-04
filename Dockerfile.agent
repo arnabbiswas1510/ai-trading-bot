@@ -20,13 +20,13 @@ RUN pip install --no-cache-dir \
     openai>=1.0.0
 
 # Copy script files into the container (include trigger_audit for execution_agent import)
-COPY agent_entrypoint.py execution_agent.py execution_agent_ref.py exit_rules.py exit_shadow.py indicators.py market_calendar.py \
+COPY agent_entrypoint.py execution_agent.py execution_agent_ref.py exit_rules.py exit_shadow.py exit_shadow_store.py indicators.py market_calendar.py \
      market_regime.py sentiment.py ibkr_data.py orders.py \
     trade_history.py fills.py reconciliation.py buying.py decision_core.py \
     monitoring.py selling.py agent_logging.py \
      telegram_notifier.py force_buy.py force_sell.py managed_exit.py scoring.py config.py \
      trigger_audit.py schema_guard.py flex_query_sync.py cooling_off.py ./
-COPY intraday_capture.py intraday_observer.py exit_core.py trade_costs.py broker_positions.py ./
+COPY intraday_capture.py intraday_observer.py quote_transport.py exit_core.py trade_costs.py broker_positions.py ./
 COPY research_configuration.py market_direction.py ./
 COPY trading_control.py restart_and_health_check.py ./
 COPY research_diagnostics.py research_entrypoint.py ./

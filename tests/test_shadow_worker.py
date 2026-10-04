@@ -3,6 +3,7 @@ import datetime as dt
 from pathlib import Path
 import shutil
 import uuid
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -178,6 +179,48 @@ def test_actual_flat_seed_uses_observed_cash_not_fake_balance():
     assert seed["coherence"] == "adjacent_concordant_completed_requests_not_atomic"
 
 
+def test_seed_ignores_text_account_tags_and_preserves_raw_evidence():
+    pair, proof, now, config = flat_evidence()
+    tags = ["SettledCashByDate", "SettledCashByDate-S", "$LEDGER-AccountOrGroup",
+            "$LEDGER-Cryptocurrency", "$LEDGER-Currency", "$LEDGER-RealCurrency"]
+    for snapshot in pair:
+        values = snapshot["payload"]["account_values"]
+        values[0]["modelCode"] = ""
+        values.extend({"account": "U_TEST", "modelCode": "", "currency": "USD",
+                       "tag": tag, "value": "non-numeric broker metadata"} for tag in tags)
+    seed = build_seed(pair, proof, proof, proof, proof, account="U_TEST", as_of=now, config=config)
+    assert seed["account"]["net_liquidation"] == seed["account"]["cash"] == 12345
+    assert seed["source_evidence"]["observer"] == pair
+
+
+@pytest.mark.parametrize("side", [0, 1])
+@pytest.mark.parametrize("mutation", [
+    lambda rows: rows.clear(),
+    lambda rows: rows.append(dict(rows[0])),
+    lambda rows: rows.append(dict(rows[0], value="99999")),
+    lambda rows: rows[0].update(value=None),
+    lambda rows: rows[0].update(value="not-numeric"),
+    lambda rows: rows[0].update(value="nan"),
+    lambda rows: rows[0].update(value="inf"),
+    lambda rows: rows[0].update(value="-inf"),
+    lambda rows: rows[0].update(value=True),
+    lambda rows: rows[0].update(value="0"),
+    lambda rows: rows[0].update(value="-1"),
+    lambda rows: rows[0].update(account="FOREIGN"),
+    lambda rows: rows[0].pop("account"),
+    lambda rows: rows[0].update(modelCode="MODEL"),
+    lambda rows: rows[0].update(modelCode=None),
+    lambda rows: rows[0].update(currency="EUR"),
+    lambda rows: rows.append(dict(rows[0], modelCode="MODEL")),
+    lambda rows: rows.append(dict(rows[0], account="FOREIGN", tag="$LEDGER-Currency", value="USD")),
+])
+def test_seed_rejects_invalid_ambiguous_or_unscoped_equity(side, mutation):
+    pair, proof, now, config = flat_evidence()
+    mutation(pair[side]["payload"]["account_values"])
+    with pytest.raises(InputGap):
+        build_seed(pair, proof, proof, proof, proof, account="U_TEST", as_of=now, config=config)
+
+
 def test_actual_long_seed_preserves_flags_protection_and_cash(records):
     pair, proof, now, _ = flat_evidence()
     raw = records[0]["payload"]
@@ -278,6 +321,134 @@ def test_public_quotes_use_one_batch_and_keep_provider_time():
     assert len(http.calls) == 1
     assert quotes["PAPER_ONLY"]["provider_timestamp"] == now.astimezone(UTC).isoformat()
     assert "apikey" not in str(evidence)
+
+
+def shadow_quote_response(rows=None, status=200):
+    response = MagicMock(status_code=status)
+    response.json.return_value = [] if rows is None else rows
+    if status >= 400:
+        response.raise_for_status.side_effect = RuntimeError("HTTP failure; apikey=DO-NOT-LOG")
+    return response
+
+
+def test_shadow_quotes_45_symbol_fallback_preserves_mode_raw_data_and_provenance():
+    now = dt.datetime.fromisoformat("2026-10-04T11:00:00-04:00")
+    friday = now - dt.timedelta(days=2)
+    symbols = [f"T{i:02}" for i in range(45)]
+    http = MagicMock()
+    http.get.side_effect = [shadow_quote_response(status=402)] + [
+        shadow_quote_response([{"symbol": s, "price": 20, "timestamp": friday.timestamp(),
+                                "volume": 100}]) for s in symbols]
+    market = PublicMarketData(http, "DO-NOT-LOG", lambda: now)
+    quotes, evidence = market.quotes(symbols)
+    assert len(quotes) == 45 and http.get.call_count == 46
+    assert evidence[0]["endpoint"] == "batch-quote" and evidence[0]["status_code"] == 402
+    assert evidence[-1]["request_count"] == evidence[-1]["request_limit"] == 46
+    assert evidence[-1]["endpoint_mode"] == "quote"
+    assert evidence[-1]["fallback_reason"] == "batch_quote_http_402"
+    assert all(q["provider_timestamp"] == friday.astimezone(UTC).isoformat()
+               and q["received_at"] == now.isoformat() and q["raw"]["volume"] == 100
+               and q["endpoint"] == "stable/quote" for q in quotes.values())
+    assert all(c.kwargs["allow_redirects"] is False for c in http.get.call_args_list)
+    assert "DO-NOT-LOG" not in str(evidence)
+    http.reset_mock()
+    http.get.side_effect = [
+        shadow_quote_response([{"symbol": s, "price": 20, "timestamp": friday.timestamp()}])
+        for s in symbols]
+    _, evidence = market.quotes(symbols)
+    assert http.get.call_count == 45
+    assert all(c.args[0].endswith("/stable/quote") for c in http.get.call_args_list)
+    assert evidence[-1]["request_count"] == 45
+
+
+@pytest.mark.parametrize("status", [301, 401, 403, 429, 500])
+def test_shadow_only_402_enables_fallback_without_leaking_errors(status):
+    http = MagicMock()
+    http.get.return_value = shadow_quote_response(status=status)
+    market = PublicMarketData(http, "DO-NOT-LOG")
+    with pytest.raises(InputGap, match="quote_request_failed") as error:
+        market.quotes(["ABC"])
+    assert "DO-NOT-LOG" not in str(error.value)
+    assert http.get.call_count == 1 and market.quote_endpoint == "batch-quote"
+
+
+@pytest.mark.parametrize("rows", [
+    [],
+    ["not-a-quote"],
+    [{"symbol": "OTHER", "price": 20, "timestamp": 123}],
+    [{"symbol": "ABC", "price": 20}],
+    [{"symbol": "ABC", "price": 20, "timestamp": True}],
+    [{"symbol": "ABC", "price": 20, "timestamp": "123"}],
+    [{"symbol": "ABC", "price": 20, "timestamp": float("nan")}],
+    [{"symbol": "ABC", "price": 20, "timestamp": float("inf")}],
+    [{"symbol": "ABC", "price": 20, "timestamp": 1e100}],
+    [{"symbol": "ABC", "price": True, "timestamp": 123}],
+    [{"symbol": "ABC", "price": float("nan"), "timestamp": 123}],
+    [{"symbol": "ABC", "price": 20, "timestamp": 123}] * 2,
+    [{"symbol": "ABC", "price": 20, "timestamp": 123},
+     {"symbol": "OTHER", "price": 20, "timestamp": 123}],
+])
+@pytest.mark.parametrize("individual", [False, True])
+def test_shadow_quotes_fail_closed_on_incomplete_or_malformed_coverage(rows, individual):
+    http = MagicMock()
+    http.get.side_effect = ([shadow_quote_response(status=402)] if individual else []) + [
+        shadow_quote_response(rows)]
+    with pytest.raises(InputGap):
+        PublicMarketData(http, "synthetic").quotes(["ABC"])
+
+
+def test_shadow_quote_budget_discards_partial_results_and_preserves_fallback(monkeypatch):
+    import shadow_inputs
+    now = dt.datetime.fromisoformat("2026-09-30T10:00:00-04:00")
+    elapsed = [0.0]
+    monkeypatch.setattr(shadow_inputs.time, "monotonic", lambda: elapsed[0])
+    http = MagicMock()
+    market = PublicMarketData(http, "synthetic", lambda: now)
+    market.quote_budget = 2.5
+    def get(url, *, params, timeout, allow_redirects):
+        assert sum(timeout) <= 2.5 - elapsed[0]
+        if url.endswith("batch-quote"):
+            return shadow_quote_response(status=402)
+        elapsed[0] += 1.5
+        return shadow_quote_response([{"symbol": params["symbol"], "price": 20,
+                                       "timestamp": now.timestamp()}])
+    http.get.side_effect = get
+    with pytest.raises(InputGap, match="quote_budget_exhausted"):
+        market.quotes(["ABC", "DEF", "GHI"])
+    assert http.get.call_count == 3 and market.quote_endpoint == "quote"
+    http.reset_mock()
+    http.get.side_effect = [shadow_quote_response(status=429)]
+    with pytest.raises(InputGap, match="quote_request_failed"):
+        market.quotes(["ABC", "DEF", "GHI"])
+    assert http.get.call_count == 1
+
+
+def test_shadow_frame_rejects_old_friday_quotes_on_sunday():
+    from research_configuration import effective_config
+    from market_calendar import trading_days_between
+    now = dt.datetime.fromisoformat("2026-10-04T11:00:00-04:00")
+    friday = dt.datetime.fromisoformat("2026-10-02T16:00:00-04:00")
+    class Sources:
+        def read(self, *args, **kwargs):
+            return {"rows": [], "complete": True, "requested_at": now.isoformat(),
+                    "received_at": now.isoformat()}
+    http = MagicMock()
+    http.get.side_effect = [shadow_quote_response(status=402), shadow_quote_response([
+        {"symbol": "ABC", "price": 20, "timestamp": friday.timestamp()}])]
+    market = PublicMarketData(http, "synthetic", lambda: now)
+    bars, day = [], now.date() - dt.timedelta(days=500)
+    while day < now.date():
+        if trading_days_between(day, day + dt.timedelta(days=1)):
+            price = 100 + len(bars)
+            bars.append(dict(date=day.isoformat(), open=price, high=price + 2,
+                             low=price - 1, close=price + 1, volume=10000))
+        day += dt.timedelta(days=1)
+    market.histories = lambda symbols, as_of: {
+        s: {"bars": bars, "available_at": now.isoformat()} for s in symbols}
+    producer = InputProducer(Sources(), market, "U_TEST", effective_config(), clock=lambda: now)
+    with pytest.raises(InputGap, match="stale/future provider quote"):
+        producer.frame({"positions": {}, "universe": ["ABC"], "cash": 1000},
+                       now.isoformat(), now)
 
 
 @pytest.mark.parametrize("recorded_atr", ["absent", None, 0.0, 8.0])

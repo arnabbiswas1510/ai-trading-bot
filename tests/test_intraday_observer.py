@@ -289,7 +289,7 @@ def test_real_sdk_concurrent_bootstrap_and_repeated_downloads_are_isolated(
         # synchronous connect deadline, proving it cannot hide the failure.
         if bootstrap_failure != "outer_timeout":
             ib.RequestTimeout = 1
-        error = TimeoutError if bootstrap_failure == "outer_timeout" else observer.ObservationError
+        error = asyncio.TimeoutError if bootstrap_failure == "outer_timeout" else observer.ObservationError
         with pytest.raises(error):
             broker.connect("no-network", 4000, 71)
         assert wire.max_pending == 2

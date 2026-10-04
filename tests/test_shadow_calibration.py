@@ -152,13 +152,14 @@ def test_early_close_export_uses_exchange_close(records):
     assert calibration.validate_dataset(exported)["sessions"] == [day]
 
 
-def test_actual_producer_store_export_selection_and_later_holdout():
+@pytest.mark.parametrize("individual_quotes", [False, True])
+def test_actual_producer_store_export_selection_and_later_holdout(individual_quotes):
     from market_calendar import trading_days_between
     from research_configuration import effective_config
-    from shadow_inputs import InputProducer, build_seed
+    from shadow_inputs import InputProducer, PublicMarketData, build_seed
     from shadow_store import ShadowStore
     from shadow_worker import Worker, session_ticks
-    from test_shadow_worker import Cloud, flat_evidence
+    from test_shadow_worker import Cloud, flat_evidence, shadow_quote_response
 
     pair, proof, now, _ = flat_evidence()
     now = now.replace(hour=9, minute=30)
@@ -196,6 +197,17 @@ def test_actual_producer_store_export_selection_and_later_holdout():
     class Market:
         def __init__(self):
             self._history_cache = {}
+            self.public = PublicMarketData(self, "synthetic", lambda: now)
+
+        def get(self, url, *, params, timeout, allow_redirects):
+            if individual_quotes and url.endswith("batch-quote"):
+                return shadow_quote_response(status=402)
+            symbols = params["symbols"].split(",") if "symbols" in params else [params["symbol"]]
+            price = (104 if now.date().isoformat() == "2026-09-30" else 95) if (
+                now.hour, now.minute) > (9, 30) else 100
+            return shadow_quote_response([
+                dict(symbol=symbol, price=price if symbol == "VETOED" else 100,
+                     timestamp=now.timestamp()) for symbol in symbols])
 
         def history(self, symbol, as_of):
             key = symbol, as_of.date()
@@ -212,12 +224,7 @@ def test_actual_producer_store_export_selection_and_later_holdout():
             return copy.deepcopy(self._history_cache[key])
 
         def quotes(self, symbols):
-            price = (104 if now.date().isoformat() == "2026-09-30" else 95) if (
-                now.hour, now.minute) > (9, 30) else 100
-            return {symbol: dict(
-                price=price if symbol == "VETOED" else 100,
-                provider_timestamp=now.isoformat(), received_at=now.isoformat(), source="FMP")
-                for symbol in symbols}, []
+            return self.public.quotes(symbols)
 
     path = Path.cwd() / "tests" / (".shadow-calibration-" + uuid.uuid4().hex)
     path.mkdir()
@@ -248,6 +255,10 @@ def test_actual_producer_store_export_selection_and_later_holdout():
                            if table == "intraday_shadow_events"], key=lambda row: row["sequence"])
         assert uploaded == persisted
         for row in uploaded:
+            requests = row["payload"]["source_evidence"]["quote_requests"]
+            assert requests[-1]["endpoint_mode"] == ("quote" if individual_quotes else "batch-quote")
+            assert requests[-1]["fallback_reason"] == (
+                "batch_quote_http_402" if individual_quotes else None)
             assert all(row["payload"]["frame"]["source_evidence"].get(key) == value
                        for key, value in row["payload"]["source_evidence"].items())
         rows = [{k: row["payload"][k] for k in ("frame", "output")} for row in uploaded]
