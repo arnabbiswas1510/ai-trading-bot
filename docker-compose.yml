@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
     ports:
       - "4002:4000"   # IB Gateway API port
-      - "15800:15800" # VNC web viewer (no password required for local access)
+      - "15800:5800"  # Host browser access -> the pinned image's noVNC listener
     environment:
       - IB_USERNAME=${IBKR_LIVE_USER}
       - IB_PASSWORD=${IBKR_LIVE_PASS}

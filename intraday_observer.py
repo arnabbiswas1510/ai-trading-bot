@@ -8,6 +8,7 @@ with read-only permissions remain the stronger operational boundary.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import math
 import os
@@ -51,7 +52,8 @@ class ReadOnlyBroker:
     """Only completed reads, event pumping, and connection lifecycle are exposed."""
     # eventkit registers bound callbacks through weak references to their owner.
     __slots__ = ("__ib", "__recorder", "__account", "__timeout", "__owner",
-                 "__closing", "__faults", "__seen_fills", "__weakref__")
+                 "__closing", "__faults", "__seen_fills", "__account_requests",
+                 "__weakref__")
 
     def __init__(self, ib, recorder, timeout=10):
         self.__ib = ib
@@ -62,6 +64,7 @@ class ReadOnlyBroker:
         self.__closing = False
         self.__faults = 0
         self.__seen_fills = {}
+        self.__account_requests = {}
         for target in (ib, ib.client):
             for name in ("placeOrder", "cancelOrder", "reqGlobalCancel",
                          "reqAutoOpenOrders", "exerciseOptions", "replaceFA"):
@@ -70,6 +73,130 @@ class ReadOnlyBroker:
         ib.RaiseRequestErrors = True
         ib.errorEvent += self.__error
         ib.disconnectedEvent += self.__disconnected
+        original_account_update = ib.wrapper.accountUpdateMulti
+
+        def account_update(req_id, account, model, tag, value, currency):
+            request = self.__account_requests.get(req_id)
+            if request is not None:
+                owner, requested_model, future, values = request
+                if not future.done() and account == owner and model == requested_model:
+                    values[(tag, currency)] = {
+                        "account": account, "tag": tag, "value": value,
+                        "currency": currency, "modelCode": model,
+                        "request_id": req_id, "received_at": now(),
+                        "source": "IBKR_ACCOUNT_UPDATE_MULTI",
+                    }
+            original_account_update(req_id, account, model, tag, value, currency)
+
+        ib.wrapper.accountUpdateMulti = account_update
+        # readonly=True still starts BOTH account APIs during SDK connectAsync.
+        # Route each bootstrap request independently, never acquiring the legacy
+        # single-subscriber stream used by protective execution.
+        ib.reqAccountUpdatesAsync = self.__account_download
+        ib.reqAccountUpdatesMultiAsync = self.__account_download
+        ib.client.reqAccountUpdates = _deny_write
+
+    async def __account_download(self, account, modelCode=""):
+        ib = self.__ib
+        req_id = ib.client.getReqId()
+        future = ib.wrapper.startReq(req_id)
+        values = {}
+        self.__account_requests[req_id] = (account, modelCode, future, values)
+        try:
+            ib.client.reqAccountUpdatesMulti(req_id, account, modelCode, False)
+            await asyncio.wait_for(future, self.__timeout)
+            if not any(row["tag"] == "NetLiquidation" for row in values.values()):
+                raise ObservationError("Fresh completed account download lacks NetLiquidation.")
+            return list(values.values())
+        except BaseException:
+            # SDK connectAsync gathers exceptions and may still report success.
+            self.__faults += 1
+            self.__recorder.error("observer account download failed")
+            raise
+        finally:
+            self.__account_requests.pop(req_id, None)
+            try:
+                ib.client.cancelAccountUpdatesMulti(req_id)
+            except Exception:
+                self.__faults += 1
+                self.__recorder.error("observer account download cancellation failed")
+                raise
+            finally:
+                future.cancel()
+                ib.wrapper._endReq(req_id)
+                ib.wrapper._results.pop(req_id, None)
+
+    async def __portfolio_marks(self, positions, account_values):
+        ib, account = self.__ib, self.__account
+        requests = {}
+        original_pnl = ib.wrapper.pnlSingle
+        base_currencies = {row["currency"] for row in account_values
+                           if row["tag"] == "NetLiquidation"
+                           and row["currency"] not in ("", "BASE")}
+        base_currency = next(iter(base_currencies)) if len(base_currencies) == 1 else None
+
+        def pnl(req_id, quantity, daily, unrealized, realized, value):
+            request = requests.get(req_id)
+            if request is not None:
+                position, future = request
+                if not future.done():
+                    if (quantity != position["position"]
+                            or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                                   or not math.isfinite(v) or abs(v) >= 1e307
+                                   for v in (quantity, value))
+                            or quantity == 0 or value / quantity <= 0):
+                        ib.wrapper._endReq(req_id, ObservationError(
+                            "Fresh broker position valuation is invalid or changed quantity."),
+                            success=False)
+                    else:
+                        ib.wrapper._endReq(req_id, {
+                            "account": account, "position": quantity,
+                            "marketPrice": value / quantity
+                            if position["contract"]["secType"] == "STK"
+                            and position["contract"]["currency"] == base_currency else None,
+                            "marketValue": value,
+                            "value_currency": base_currency,
+                            "averageCost": position["avgCost"],
+                            "unrealizedPNL": unrealized if math.isfinite(unrealized)
+                            and abs(unrealized) < 1e307 else None,
+                            # PnL realized values reset daily, unlike legacy marks.
+                            "realizedPNL": None,
+                            "ticker": position["ticker"], "contract": position["contract"],
+                            "source": "IBKR_PNL_SINGLE_VALUE",
+                            "price_calculation": "broker_value_divided_by_signed_quantity"
+                            if position["contract"]["secType"] == "STK"
+                            and position["contract"]["currency"] == base_currency
+                            else "unavailable_unit_price_or_currency_conversion",
+                            "request_id": req_id, "received_at": now(),
+                            "provider_timestamp": None,
+                        })
+            original_pnl(req_id, quantity, daily, unrealized, realized, value)
+
+        ib.wrapper.pnlSingle = pnl
+        try:
+            for position in positions:
+                if position["position"] == 0:
+                    continue
+                req_id = ib.client.getReqId()
+                future = ib.wrapper.startReq(req_id)
+                requests[req_id] = (position, future)
+                ib.client.reqPnLSingle(req_id, account, "", position["contract"]["conId"])
+            return await asyncio.wait_for(asyncio.gather(
+                *(future for _, future in requests.values())), self.__timeout)
+        finally:
+            ib.wrapper.pnlSingle = original_pnl
+            cancellation_error = None
+            for req_id, (_, future) in requests.items():
+                try:
+                    ib.client.cancelPnLSingle(req_id)
+                except Exception as exc:
+                    cancellation_error = exc
+                finally:
+                    future.cancel()
+                    ib.wrapper._endReq(req_id)
+                    ib.wrapper._results.pop(req_id, None)
+            if cancellation_error is not None:
+                raise ObservationError("Broker position valuation cancellation failed.") from cancellation_error
 
     def __getattr__(self, name):
         raise PermissionError(f"Broker capability does not expose {name}.")
@@ -112,11 +239,12 @@ class ReadOnlyBroker:
             raise ObservationError("Observer client ID must be positive and distinct from execution ID 1.")
         self.__closing = False
         self.__account = None
+        faults = self.__faults
         self.__ib.connect(host, port, clientId=client_id, readonly=True,
                           account=account or "", timeout=self.__timeout)
         self.__account = select_account(self.__ib.managedAccounts(), account)
-        if not self.connected():
-            raise ObservationError("Broker disconnected during observer connection.")
+        if not self.connected() or self.__faults != faults:
+            raise ObservationError("Broker disconnected or account synchronization failed during observer connection.")
         self.__recorder.emit("observer_connection", {
             "account": self.__account, "client_id": client_id, "connected": True,
             "readonly_sdk_flag": True, "broker_enforced_readonly": False,
@@ -256,32 +384,9 @@ class ReadOnlyBroker:
                     row["status_source"] = "fresh_orderStatus_callback_during_completed_request"
                 orders[key] = row
 
-        values, marks = {}, {}
-
-        def account_value(row):
-            if row.account == account:
-                values[(row.tag, row.currency)] = _fields(row, "account tag value currency")
-
-        def portfolio_value(row):
-            if row.account == account:
-                marks[row.contract.conId] = {
-                    **_fields(row, "account position marketPrice marketValue averageCost unrealizedPNL realizedPNL"),
-                    "ticker": row.contract.symbol, "contract": _fields(row.contract, CONTRACT_FIELDS),
-                    "source": "IBKR_ACCOUNT_DOWNLOAD", "received_at": now(),
-                    "provider_timestamp": None,
-                }
-
-        ib.accountValueEvent += account_value
-        ib.updatePortfolioEvent += portfolio_value
-        try:
-            # End the previous read subscription to force a new accountDownloadEnd.
-            ib.client.reqAccountUpdates(False, account)
-            completed("account_download", lambda: ib.reqAccountUpdates(account))
-        finally:
-            ib.accountValueEvent -= account_value
-            ib.updatePortfolioEvent -= portfolio_value
-        if not values or not any(row["tag"] == "NetLiquidation" for row in values.values()):
-            raise ObservationError("Fresh completed account download lacks NetLiquidation.")
+        values = completed("account_download", lambda: ib._run(self.__account_download(account)))
+        marks = completed("portfolio_marks", lambda: ib._run(
+            self.__portfolio_marks(list(positions.values()), values)))
         from ib_insync import ExecutionFilter
         fills = completed("executions", lambda: ib.reqExecutions(
             ExecutionFilter(acctCode=account)))
@@ -304,9 +409,10 @@ class ReadOnlyBroker:
             "freshness": "completed_requests_with_component_receipt_times",
             "component_times": times, "positions": rows,
             "short_positions": [p for p in rows if p["position"] < 0],
-            "portfolio_marks": list(marks.values()), "open_orders": list(orders.values()),
+            "portfolio_marks": marks, "open_orders": list(orders.values()),
+            "portfolio_mark_semantics": "request_scoped_pnl_value_not_legacy_account_download",
             "open_order_scope": "all_clients_visible_to_gateway_selected_account",
-            "account_values": list(values.values()), "fills": scoped_fills,
+            "account_values": values, "fills": scoped_fills,
             "execution_scope": "gateway_available_history_not_complete_account_history",
             "commissions_complete": all(f["commission_complete"] for f in scoped_fills),
             "decision_inputs_available": False,

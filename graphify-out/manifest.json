@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1791070445.1083043,
-    "ast_hash": "7ae00a81fca702cd2426eb689acb3f3f",
+    "mtime": 1791092294.7100766,
+    "ast_hash": "c6f06f0b291a2f7c59c7714feafdbe92",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -295,8 +295,8 @@
     "semantic_hash": ""
   },
   "docker-compose.yml": {
-    "mtime": 1791053679.6770744,
-    "ast_hash": "a55253771a0b34f88dc22a6ac58c5f2b",
+    "mtime": 1791091579.7630873,
+    "ast_hash": "b5e10fefd40b1814200097c68024969b",
     "semantic_hash": ""
   },
   "docs/buy_logic.md": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1791070445.0805929,
-    "ast_hash": "49bbccc8f9e17614f5743cc8b815d111",
+    "mtime": 1791092802.225544,
+    "ast_hash": "32c647165f08aa5d993ab0da7d595c3d",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -315,8 +315,8 @@
     "semantic_hash": ""
   },
   "docs/ibkr_totp_setup.md": {
-    "mtime": 1791050592.3645902,
-    "ast_hash": "b238740e67473b0e5cfa2383c5cb427a",
+    "mtime": 1791091579.7805777,
+    "ast_hash": "b78212ce1ada795dda8ed649692cf1f1",
     "semantic_hash": ""
   },
   "docs/sell_logic.md": {
@@ -900,8 +900,8 @@
     "semantic_hash": ""
   },
   "docs/retired_code.md": {
-    "mtime": 1790866362.2166023,
-    "ast_hash": "acc5e8cfbf481e00eadf21129aae69f5",
+    "mtime": 1791092572.6885247,
+    "ast_hash": "64a5084428f51316f669d6e732a773c7",
     "semantic_hash": ""
   },
   "tests/test_dashboard_pricing.py": {
@@ -1870,8 +1870,8 @@
     "semantic_hash": ""
   },
   "intraday_capture.py": {
-    "mtime": 1791051639.7934153,
-    "ast_hash": "5303f149e9e1f7c4ddaac80458b9a18c",
+    "mtime": 1791092802.1974604,
+    "ast_hash": "758a467f5e3ba3144e003db5aa91f531",
     "semantic_hash": ""
   },
   "intraday_replay.py": {
@@ -1885,8 +1885,8 @@
     "semantic_hash": ""
   },
   "tests/test_intraday_capture.py": {
-    "mtime": 1791051639.8054857,
-    "ast_hash": "55e38ca766da16a5222bfe5bab6fda37",
+    "mtime": 1791092615.6331632,
+    "ast_hash": "869ec3d2f807c335f9151d5d9aebf80b",
     "semantic_hash": ""
   },
   "tests/test_intraday_capture_integration.py": {
@@ -1910,8 +1910,8 @@
     "semantic_hash": ""
   },
   "docs/intraday_research.md": {
-    "mtime": 1791070445.0938058,
-    "ast_hash": "adbc7ca92f68620825b1899482c9bc0a",
+    "mtime": 1791092649.3448486,
+    "ast_hash": "55bb031934bd78fdbf840441f9085d95",
     "semantic_hash": ""
   },
   "broker_positions.py": {
@@ -1940,8 +1940,8 @@
     "semantic_hash": ""
   },
   "intraday_observer.py": {
-    "mtime": 1791051402.3265524,
-    "ast_hash": "927803e06637d06f2951750a6f420221",
+    "mtime": 1791091831.4033287,
+    "ast_hash": "1f256d3efdaeff21a17ac8af458918ac",
     "semantic_hash": ""
   },
   "research/calibrate_intraday.py": {
@@ -1955,8 +1955,8 @@
     "semantic_hash": ""
   },
   "tests/test_deploy_runtime.py": {
-    "mtime": 1791053264.6407976,
-    "ast_hash": "b855a0e2201491d6b2c27582f269f6b6",
+    "mtime": 1791091579.7720854,
+    "ast_hash": "7c2591c857fd8380006c560035c8c8c2",
     "semantic_hash": ""
   },
   "tests/test_intraday_calibration.py": {
@@ -1965,8 +1965,8 @@
     "semantic_hash": ""
   },
   "tests/test_intraday_observer.py": {
-    "mtime": 1791051402.3378458,
-    "ast_hash": "93d964182bc013e20c0e17320686d4d0",
+    "mtime": 1791091831.4177814,
+    "ast_hash": "266e8f96a4e8d16acbd2b56662f34b3d",
     "semantic_hash": ""
   },
   "decisions/2026-09-30_observer-and-calibration-harness.md": {
@@ -2035,8 +2035,8 @@
     "semantic_hash": ""
   },
   "tests/test_intraday_reporting.py": {
-    "mtime": 1791053487.8028185,
-    "ast_hash": "668c696d79d72f612077398c18f8c1a7",
+    "mtime": 1791091716.7873216,
+    "ast_hash": "e595e4103c6ba4fa207f983fe9109d95",
     "semantic_hash": ""
   },
   "tests/test_shadow_calibration.py": {
@@ -2065,8 +2065,8 @@
     "semantic_hash": ""
   },
   ".github/workflows/intraday_research_review.yml": {
-    "mtime": 1791050389.614031,
-    "ast_hash": "c1007d5b525ec0dad095fb5fa36e73de",
+    "mtime": 1791091891.5253818,
+    "ast_hash": "b876068ffd0a7cf442b639a45cd78074",
     "semantic_hash": ""
   },
   "decisions/2026-09-30_shadow-decisions-and-supervised-research.md": {
@@ -2310,8 +2310,8 @@
     "semantic_hash": ""
   },
   "research/treasury_reference.py": {
-    "mtime": 1791069944.4013665,
-    "ast_hash": "f771cb9e36d6edf9df8d941e1bb4675b",
+    "mtime": 1791091761.2634661,
+    "ast_hash": "abcd2d51908f8f723589287d3d07387e",
     "semantic_hash": ""
   },
   "tests/test_calibration_risk.py": {
@@ -2330,13 +2330,28 @@
     "semantic_hash": ""
   },
   "tests/test_treasury_reference.py": {
-    "mtime": 1791069944.412764,
-    "ast_hash": "8879e781dc4ee8163eb717991f00f4d3",
+    "mtime": 1791091761.2872384,
+    "ast_hash": "9d995d6174ff10dd555635d3d1aef144",
     "semantic_hash": ""
   },
   "decisions/2026-10-03_calibration-risk-metrics.md": {
     "mtime": 1791070445.0555162,
     "ast_hash": "5f37750f347de5610e2fb74eb90fc959",
+    "semantic_hash": ""
+  },
+  "scripts/run_intraday_reporting_bws.py": {
+    "mtime": 1791091716.7532942,
+    "ast_hash": "aee2b9841117689b19793351e7d64294",
+    "semantic_hash": ""
+  },
+  "tests/test_intraday_reporting_bws.py": {
+    "mtime": 1791091747.8063078,
+    "ast_hash": "ce3b6cfec6d8295433a8720efe4dc847",
+    "semantic_hash": ""
+  },
+  "decisions/2026-10-04_watchdog-bitwarden-bootstrap.md": {
+    "mtime": 1791091802.1887856,
+    "ast_hash": "614d692fe83aad9c615ed1b9a522943a",
     "semantic_hash": ""
   }
 }

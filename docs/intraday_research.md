@@ -26,9 +26,13 @@ history from before recording began.
    the key. A Bitwarden entry alone does not update an existing host `.env` or
    running container. The resolver fails if a required secret is missing;
    a successful image deployment alone does not prove research access.
-3. Configure the same name as a GitHub Actions repository secret for both the
-   independent research watchdog and weekly backup. Bitwarden provisioning does
-   not populate GitHub Actions secrets.
+3. For the independent watchdog, configure **one** GitHub Actions repository
+   secret, `BWS_ACCESS_TOKEN`: a Bitwarden machine-account token with read access
+   to project `ai-trading-bot`. The workflow fetches `SUPABASE_URL`, `SUPABASE_KEY`,
+   `INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` by exact
+   name from that project; do not duplicate those five values into Actions.
+   The weekly backup remains separate and still requires its existing GitHub
+   Actions secrets, including `INTRADAY_SUPABASE_KEY`.
 4. Apply the delivered patch and deploy the web and execution images through
    the existing pipeline. Leave the GitHub repository Actions variable
    `TRADING_RUNTIME_MODE` unset or set it to `observe`: deployment starts real
@@ -45,6 +49,30 @@ history from before recording began.
    price coverage or starting protection is an error, not an empty account.
 
 Migrations are **not applied automatically** by deploying the code.
+
+### Watchdog credential bootstrap
+
+The hosted runner installs official `bws` 2.1.0 with a pinned SHA-256 check, then
+`scripts/run_intraday_reporting_bws.py` loads only the five watchdog credentials.
+The project name must resolve uniquely; every required name must have exactly
+one nonempty, single-line value other than `@bws`. The private research key is
+mandatory and never falls back to the ordinary Supabase key.
+
+Values are masked with escaped GitHub commands and passed directly to the
+reporting child process in memory. No secret `.env`, `GITHUB_ENV`, artifact or
+Bitwarden authentication cache is written. The bootstrap token is not passed to
+the reporting child. Existing GitHub issue/Telegram reporting and nonzero exit
+codes remain in effect after successful bootstrap.
+
+A bootstrap failure names `BWS_ACCESS_TOKEN`, the vault operation or the missing
+required secret in the failed Actions step, without exposing transport output.
+Bootstrap failure occurs before database/Telegram access, so its notification is
+the failed Actions run, not a claim that a collection incident was delivered.
+Saving a value in Bitwarden alone cannot authenticate an unconfigured runner.
+The host token file is not available to GitHub-hosted runners; an operator must
+configure the Actions bootstrap secret once. See
+`decisions/2026-10-04_watchdog-bitwarden-bootstrap.md` for why.
+
 The **Calibration > Review & approve** inbox adds automatic parameter discovery and frozen future
 evaluation, not just descriptive benchmarks. It requires the same private
 research key and an operator-configured `TRADING_CONTROL_TOKEN` for writes.
@@ -140,8 +168,9 @@ If Supabase itself or the host's network is unavailable, no logger can publish
 there immediately. Pending host diagnostics retry after recovery; the independent
 GitHub/Telegram watchdog remains the outage alarm. Its GitHub runner uses a
 temporary diagnostic spool, not storage guaranteed across workflow runs.
-Configure the ordinary `SUPABASE_KEY` Actions secret as well as the private
-`INTRADAY_SUPABASE_KEY`, so private-key failures do not disable its diagnostics.
+Keep both ordinary `SUPABASE_KEY` and private `INTRADAY_SUPABASE_KEY` values in
+Bitwarden project `ai-trading-bot`. The watchdog imports both using its Actions
+`BWS_ACCESS_TOKEN`, so private-key failures do not disable ordinary diagnostics.
 Never weaken private-table permissions to make the status page work.
 
 ### Startup and upload prerequisites
@@ -180,6 +209,30 @@ clients, account values and executions. Negative holdings are recorded as
 shorts, never filtered away. Fills retain execution IDs, observation times and
 commission availability; commission updates are separate observations, not
 additional executions to count twice.
+
+Account downloads use the request-ID-scoped `reqAccountUpdatesMulti` protocol,
+including the SDK's concurrent connection-bootstrap reads. The legacy
+`reqAccountUpdates` subscription is never acquired or cancelled by the observer:
+it can displace the execution agent's single-account subscription even with
+`readonly=True`. Every download waits for its own `accountUpdateMultiEnd` and
+accepts only callbacks matching its request ID, account and model. Requests are
+cancelled on success or failure. Shared SDK account caches and unscoped
+`accountValueEvent` notifications are not freshness evidence.
+
+The multi-account API does **not** supply portfolio marks. Each nonzero holding
+therefore gets a separate read-only `reqPnLSingle` request, scoped to its account
+and contract, and cancelled after its first matching valuation response.
+The signed quantity must match the completed inventory request. For stocks in the
+account's base currency (identified by the fresh `NetLiquidation` currency),
+market price is calculated from the broker's position value divided by signed
+quantity; this is explicitly labelled `IBKR_PNL_SINGLE_VALUE`, not a legacy
+account download or a quote. Non-stock or foreign-currency unit prices remain
+unavailable rather than assuming a contract multiplier or exchange rate.
+Daily realized P&L is not substituted for
+legacy realized P&L. Response times are local receipt times, not broker price
+timestamps, and `component_times.portfolio_marks` records the acquisition window.
+Timeouts, invalid/missing valuations, request errors and disconnects remain failed
+snapshots; no cached marks or artificial zero values fill the gap.
 
 The connection uses `readonly=True`, but that SDK flag is **not** a broker
 permission boundary. A restricted broker interface also blocks SDK order
@@ -273,12 +326,13 @@ remain reasons to investigate, not permission to loosen validation.
 ## Independent daily/weekly supervision
 
 Enable `.github/workflows/intraday_research_review.yml` on the repository's
-default branch. Configure GitHub Actions secrets `SUPABASE_URL`,
-`INTRADAY_SUPABASE_KEY`, `SUPABASE_KEY` (independent operational diagnostics),
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`, using the
-already approved recipients. The workflow's built-in `GITHUB_TOKEN` needs
-`issues: write`; no broker credentials are needed. Bitwarden/host environment
-provisioning does not automatically create these Actions secrets.
+default branch. Configure the GitHub Actions secret `BWS_ACCESS_TOKEN` with
+read access to Bitwarden project `ai-trading-bot`. The workflow imports
+`SUPABASE_URL`, `INTRADAY_SUPABASE_KEY`, `SUPABASE_KEY` (independent operational
+diagnostics), `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` from that project,
+using the already approved recipients. Its built-in `GITHUB_TOKEN` needs
+`issues: write`; no broker credentials are needed. Host provisioning does not
+configure the Actions bootstrap token.
 
 The cloud workflow runs every 15 minutes independently of the production host.
 It checks actual broker/quote/decision progress as well as heartbeat age, sends
@@ -561,3 +615,37 @@ The dashboard allows five minutes for full-prefix export, rather than the
 
 See [configuration](configuration.md), [backups](backups.md), and
 `decisions/2026-09-30_intraday-capture-and-approved-research.md` for why.
+
+## Quote endpoint compatibility and budgets
+
+Both execution recording and the independent observer use `Recorder.sample()`.
+It first requests FMP `stable/batch-quote` in groups of at most 100. An explicit
+HTTP 402 from that endpoint selects `stable/quote`, one symbol per request,
+for the remainder of that recorder process. A restart probes batch access again.
+Authentication, rate-limit, network and server failures never select a different
+endpoint. An individual request failure ends that round instead of repeating the
+failure across the retained universe. This fixes subscription compatibility
+without changing trading rules or requiring a subscription upgrade.
+
+Each round has a dispatch budget of the smallest of **30 seconds**, half
+`INTRADAY_SAMPLE_SECONDS`, and half `INTRADAY_MAX_QUOTE_AGE_SECONDS`; at most
+**N + 1 HTTP requests** are dispatched for N retained symbols. There are no
+retries or redirects. Each request's connect/read timeouts are capped at 3/10
+seconds respectively, with each additionally limited to half the remaining
+round budget. Shutdown is checked between requests. Expired-budget responses
+are not recorded, and further requests stop; the next round starts with the first
+unserved symbol rather than repeatedly favoring the alphabet's beginning.
+These are cooperative dispatch/socket timeout limits, not a hard operating-system
+deadline: DNS resolution and a server continuously trickling response bytes can
+outlast a Requests socket timeout.
+
+Each recorded quote names its actual `stable/batch-quote` or `stable/quote`
+endpoint, retains FMP's provider timestamp, and undergoes the same positive,
+finite price and freshness validation. Missing/stale/timestampless quotes are
+never fabricated. Duplicate and unrequested rows are not recorded. Samples
+include the attempted endpoints, selection reason, request count/limit and time
+budget. Health includes the selected endpoint and reason; successful HTTP-402
+fallback emits an informational diagnostic, not a coverage error.
+Unserved symbols remain in `missing_quotes` with `complete=false`; exhausted
+budgets explicitly report `quote_budget_exhausted`. Retention and symbol-cap
+guards still apply to the entire requested universe.

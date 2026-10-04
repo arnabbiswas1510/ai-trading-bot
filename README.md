@@ -675,10 +675,18 @@ Hypothetical trades remain in private shadow tables and never enter real
 balances, trade history or performance. Apply the shadow/reporting SQL
 migrations and configure the cloud reporting secrets described in
 [intraday research](docs/intraday_research.md) before deployment.
+The watchdog loads its database and Telegram credentials from Bitwarden;
+GitHub Actions needs the separate `BWS_ACCESS_TOKEN` bootstrap secret with
+read access to project `ai-trading-bot`, not duplicate application secrets.
 Use the deployment helper rather than bare `docker compose up -d`: it rejects
 old execution images that lack the entry gate. Runtime services no longer have
 mutually exclusive Compose profiles. Inspect current positions and broker-held
 protection: an observer heartbeat alone does not confirm real risk management.
+
+The gateway's browser desktop is at `http://192.168.1.2:15800/` on the trusted
+LAN (host `15800` maps to container `5800`). It is unauthenticated: do not expose
+it to the internet. Port-mapping corrections require an explicitly authorized
+gateway recreation; ordinary application deploys leave the gateway running.
 
 Each open position expands into a **Position Journey** panel that states, without needing
 this document: which lifecycle phase the position is in (`Unproven` → `Proven` →

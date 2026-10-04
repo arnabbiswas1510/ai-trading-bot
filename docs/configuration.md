@@ -145,6 +145,29 @@ the new key to Bitwarden and the weekly backup's GitHub Actions secrets. Never
 put a real key in the template. An unavailable capture database is surfaced to
 the operator; it must not block protective trading actions.
 
+Quote sampling starts with FMP `stable/batch-quote`. HTTP 402 selects
+`stable/quote` for the remainder of that recorder process; authentication and
+network errors do not trigger this fallback. Each cycle has at most one request
+per tracked symbol plus one entitlement probe and a cooperative fetch budget
+of `min(30 seconds, INTRADAY_SAMPLE_SECONDS / 2, INTRADAY_MAX_QUOTE_AGE_SECONDS / 2)`.
+Requests timeouts cannot impose a hard deadline on DNS or a trickling response.
+Missing, stale or unrequested quotes and budget exhaustion remain explicit
+incomplete coverage, never synthetic prices. No additional environment setting
+is needed.
+
+The independent watchdog uses the GitHub Actions repository secret
+`BWS_ACCESS_TOKEN`, not five duplicated application secrets. This bootstrap
+token must grant read access to Bitwarden project `ai-trading-bot`; it belongs
+in Actions, not `.env.template`. The workflow installs checksum-pinned `bws`
+2.1.0 and resolves `SUPABASE_URL`, `SUPABASE_KEY`, `INTRADAY_SUPABASE_KEY`,
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` by exact name. Missing, duplicate,
+empty, multiline and `@bws` values fail before reporting starts. The watchdog
+always requires the private key; it does **not** use the general-key fallback
+described for other consumers above. Secrets remain in memory and the CI
+Bitwarden profile disables authentication-state caching. Host rendering and the
+weekly backup's existing Actions secrets are unchanged. See
+`decisions/2026-10-04_watchdog-bitwarden-bootstrap.md`.
+
 The shadow worker requires explicit `IBKR_ACCOUNT` (or `--account`) for
 actual-account initialization, but does not connect to IBKR. CLI defaults are
 `--poll 30` seconds and `--spool /app/shadow/shadow.sqlite3`; `--once` is a
@@ -154,9 +177,10 @@ blank falls back to the private research key. No new live strategy defaults
 are introduced. See
 `decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
 
-The independent cloud watchdog needs Actions secrets `SUPABASE_URL`,
+The independent cloud watchdog imports `SUPABASE_URL`,
 `INTRADAY_SUPABASE_KEY`, `SUPABASE_KEY` (independent operational diagnostics),
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`, plus its
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` from Bitwarden using the Actions
+bootstrap secret `BWS_ACCESS_TOKEN`. It also uses its
 built-in GitHub token with issue-write permission. It runs every 15 minutes,
 checks 10-minute freshness/coverage gaps, and schedules daily reporting at
 exchange close plus 30 minutes. Paired buy/monitor decisions have a separate
@@ -323,8 +347,8 @@ shipper before importing each deployed Python service. It uses `SUPABASE_URL`
 and the ordinary `SUPABASE_KEY` for `agent_logs`; only if that key is absent
 does it use `INTRADAY_SUPABASE_KEY`. Private capture, shadow and report access
 continues to require the private key. No private-table grants are relaxed.
-The research-watchdog Actions workflow also needs the ordinary `SUPABASE_KEY`
-secret for this independent path.
+The research-watchdog Actions workflow also imports the ordinary `SUPABASE_KEY`
+from Bitwarden for this independent path.
 
 Messages prefixed `[RESEARCH-DIAGNOSTIC]` contain only allowlisted operational
 metadata, not raw exceptions or research payloads. Startup credential

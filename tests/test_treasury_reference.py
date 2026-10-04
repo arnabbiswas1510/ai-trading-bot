@@ -134,6 +134,15 @@ def test_tls_failure_explains_trust_problem_without_disabling_verification(monke
     assert "secret" not in str(caught.value)
 
 
+def test_transport_keeps_urllib_standard_user_agent(monkeypatch):
+    calls = transport(monkeypatch, Response(csv_bytes("2025-01-02,4.36")))
+    treasury._get(treasury.FEED_URL + "?id=DGS3MO")
+    request, timeout = calls[0]
+    assert request.get_header("User-agent") is None
+    assert request.get_header("Accept") == "text/csv"
+    assert timeout == treasury.REQUEST_TIMEOUT_SECONDS
+
+
 def test_redirects_are_not_followed():
     assert treasury._NoRedirect().redirect_request(None, None, 302, "", {}, "https://other") is None
 

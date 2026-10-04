@@ -348,13 +348,14 @@ def test_report_workflow_is_independent_private_and_failure_visible():
     assert "'*/15 * * * *'" in text
     assert "issues: write" in text
     assert "cancel-in-progress: false" in text
-    assert "INTRADAY_SUPABASE_KEY" in text
+    assert "BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}" in text
     assert "FMP_API_KEY" not in text
     assert "vars.TRADING_RUNTIME_MODE || 'observe'" in text
     assert "continue-on-error" not in text
     assert "|| true" not in text
-    assert "python research_entrypoint.py research-reporting" in text
-    assert "SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}" in text
+    assert "python -m scripts.run_intraday_reporting_bws" in text
+    assert "secrets.SUPABASE_KEY" not in text
+    assert "sha256sum --check" in text
 
 
 def test_private_reporting_schema_and_delivery_identity():

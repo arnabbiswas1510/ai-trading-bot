@@ -345,6 +345,9 @@ class Recorder:
         self.stats_loaded = False
         self.snapshot_job_cursor = 0
         self.last_uploaded_sequence = 0
+        self.quote_endpoint = "batch-quote"
+        self.quote_fallback_reason = None
+        self.next_quote_symbol = None
 
     def error(self, message):
         """Producer-safe state only: never acquire a logging handler or do I/O."""
@@ -541,6 +544,9 @@ class Recorder:
                        "enabled": True, "sample_seconds": self.sample_seconds,
                        "max_symbols": self.max_symbols, "retention_days": self.retention_days,
                        "max_quote_age_seconds": self.max_quote_age,
+                       "quote_endpoint": self.quote_endpoint,
+                       "quote_fallback_reason": self.quote_fallback_reason,
+                       "quote_budget_seconds": self.quote_budget_seconds(),
                        "max_spool_events": self.max_spool_events,
                        "ingress_queue_capacity": self.queue.maxsize,
                        "spool_available": db is not None,
@@ -670,6 +676,9 @@ class Recorder:
         self.emit("source_snapshot", {"table": "portfolio_positions", "positions": rows,
                                      "received_at": now()})
 
+    def quote_budget_seconds(self):
+        return min(30.0, self.sample_seconds / 2, self.max_quote_age / 2)
+
     def sample(self, http):
         cutoff = (dt.datetime.now(UTC) - dt.timedelta(days=self.retention_days)).isoformat()
         tickers = sorted(t for t, row in self.symbols.items() if row["last_seen_at"] >= cutoff)
@@ -687,33 +696,80 @@ class Recorder:
                       "reason": "symbol_limit_exceeded", "symbol_count": len(tickers),
                       "received_at": now()})
             return
-        quotes, errors, seen = [], [], set()
-        for offset in range(0, len(tickers), 100):
+        budget = self.quote_budget_seconds()
+        deadline = time.monotonic() + budget
+        request_limit = len(tickers) + 1  # At most one entitlement probe plus one call per symbol.
+        request_count, offset = 0, 0
+        ordered = tickers
+        if self.next_quote_symbol in tickers:
+            start = tickers.index(self.next_quote_symbol)
+            ordered = tickers[start:] + tickers[:start]
+        quotes, errors, seen, returned = [], [], set(), set()
+        endpoints = []
+        while offset < len(ordered):
             if self.stopping.is_set():
                 return
-            chunk = tickers[offset:offset + 100]
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or request_count >= request_limit:
+                errors.append({"reason": "quote_budget_exhausted",
+                               "unrequested_symbols": ordered[offset:]})
+                break
+            endpoint = self.quote_endpoint
+            chunk = ordered[offset:offset + (100 if endpoint == "batch-quote" else 1)]
+            params = ({"symbols": ",".join(chunk)} if endpoint == "batch-quote"
+                      else {"symbol": chunk[0]})
+            request_count += 1
+            if endpoint not in endpoints:
+                endpoints.append(endpoint)
             try:
-                response = http.get("https://financialmodelingprep.com/stable/batch-quote",
-                                    params={"symbols": ",".join(chunk), "apikey": os.getenv("FMP_API_KEY", "")},
-                                    timeout=(3, 10))
+                response = http.get(f"https://financialmodelingprep.com/stable/{endpoint}",
+                                    params={**params, "apikey": os.getenv("FMP_API_KEY", "")},
+                                    timeout=(min(3, remaining / 2), min(10, remaining / 2)),
+                                    allow_redirects=False)
+                if self.stopping.is_set():
+                    return
+                status = getattr(response, "status_code", None)
+                if endpoint == "batch-quote" and status == 402:
+                    self.quote_endpoint = "quote"
+                    self.quote_fallback_reason = "batch_quote_http_402"
+                    diagnostics.emit(self.health_id, "quote_endpoint_selected", level="INFO",
+                                     context={"operation": "fmp_individual_quote",
+                                              "reason_code": self.quote_fallback_reason})
+                    continue
                 response.raise_for_status()
+                if isinstance(status, int) and 300 <= status < 400:
+                    raise ValueError("FMP quote redirect refused")
                 received = now()
                 rows = response.json()
                 if not isinstance(rows, list):
                     raise ValueError("FMP response is not a quote list")
+                if time.monotonic() >= deadline:
+                    errors.append({"reason": "quote_budget_exhausted",
+                                   "unrecorded_symbols": ordered[offset:]})
+                    break
             except Exception as exc:
                 diagnostics.emit(self.health_id, "quote_request_failed", error=exc,
-                                 context={"operation": "fmp_batch_quote"})
+                                 context={"operation": f"fmp_{endpoint.replace('-', '_')}"})
                 errors.extend({"ticker": t, "reason": "quote_request_failed",
                                "error_type": type(exc).__name__} for t in chunk)
+                offset += len(chunk)
+                # Do not fan an unavailable individual endpoint out across the whole universe.
+                if endpoint == "quote":
+                    break
                 continue
+            offset += len(chunk)
             for row in rows:
                 if not isinstance(row, dict):
                     errors.append({"reason": "invalid_quote_row"})
                     continue
                 ticker = row.get("symbol")
                 if ticker not in chunk:
+                    errors.append({"reason": "unrequested_quote_row"})
                     continue
+                if ticker in returned:
+                    errors.append({"ticker": ticker, "reason": "duplicate_quote_row"})
+                    continue
+                returned.add(ticker)
                 try:
                     price = float(row["price"])
                     stamp = float(row["timestamp"])
@@ -721,15 +777,22 @@ class Recorder:
                     if not math.isfinite(price) or price <= 0 or not math.isfinite(stamp) or not -60 <= age <= self.max_quote_age:
                         raise ValueError("invalid price or stale provider timestamp")
                     quotes.append({"ticker": ticker, "price": price, "source": "FMP",
+                                   "endpoint": f"stable/{endpoint}",
                                    "provider_timestamp": dt.datetime.fromtimestamp(stamp, UTC).isoformat(),
                                    "received_at": received})
                     seen.add(ticker)
                 except (KeyError, TypeError, ValueError, OverflowError):
                     errors.append({"ticker": ticker, "reason": "invalid_or_stale_quote"})
+        self.next_quote_symbol = ordered[offset % len(ordered)]
         errors.extend({"ticker": t, "reason": "quote_missing"} for t in tickers if t not in seen)
         self.emit("quote_sample", {"quotes": quotes, "requested_symbols": tickers,
                                   "complete": not errors, "errors": errors,
                                   "missing_quotes": [t for t in tickers if t not in seen],
+                                  "endpoint_mode": self.quote_endpoint,
+                                  "endpoints_attempted": endpoints,
+                                  "fallback_reason": self.quote_fallback_reason,
+                                  "request_count": request_count, "request_limit": request_limit,
+                                  "budget_seconds": budget,
                                   "received_at": now()})
         if errors:
             self.error(f"quote coverage incomplete: {len(errors)} errors")

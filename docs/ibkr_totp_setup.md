@@ -209,4 +209,14 @@ and `decisions/2026-10-03_independent-research-diagnostics.md`.
 
 **"Login dialog timeout" in gateway logs:**
 - IBKR may be showing an unexpected popup (new account notice, etc.)
-- Check VNC at `192.168.1.2:5900` (VNC viewer, password from .env) to see the gateway screen
+- Open `http://192.168.1.2:15800/` on the trusted LAN to see the gateway screen.
+  Docker maps host port `15800` to the pinned gateway image's noVNC listener
+  on container port `5800`; raw VNC port `5900` is not published.
+- A connection reset at that URL can mean a wrong Docker port mapping, not a
+  failed IBKR login. Check `docker port ib-gateway 5800/tcp`. A changed mapping
+  requires recreating the gateway, not merely restarting it. Normal application
+  deployment deliberately does not recreate a running gateway. Recreate it only
+  during an authorized maintenance window, keeping new real buys OFF and checking
+  broker connectivity and protective monitoring afterward.
+- The viewer has no application authentication. Do not expose it to the internet
+  or untrusted networks.

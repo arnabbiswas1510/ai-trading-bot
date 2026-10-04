@@ -122,10 +122,8 @@ def unavailable_reference(error, start_date, end_date, previous=None):
 
 
 def _get(url):
-    request = Request(url, headers={
-        "Accept": "text/csv",
-        "User-Agent": "TreasuryReference/1.0",
-    })
+    # FRED drops responses to the custom product agent; keep urllib's standard agent.
+    request = Request(url, headers={"Accept": "text/csv"})
     try:
         # No redirects, credentials, request body, retries or TLS overrides.
         with build_opener(_NoRedirect()).open(

@@ -308,6 +308,172 @@ def test_http_failure_records_missing_quotes_without_secret_url(monkeypatch, rec
     assert "NEVER-LOG" not in recorder.last_error
 
 
+def quote_response(rows=None, status=200):
+    response = MagicMock(status_code=status)
+    response.json.return_value = [] if rows is None else rows
+    if status >= 400:
+        response.raise_for_status.side_effect = RuntimeError(f"HTTP {status}")
+    return response
+
+
+def test_batch_entitlement_fallback_covers_45_symbols_and_records_provenance(recorder):
+    tickers = [f"T{i:02}" for i in range(45)]
+    recorder.symbols = {t: {"last_seen_at": capture.now()} for t in tickers}
+    stamp = capture.dt.datetime.now(capture.UTC).timestamp()
+    http = MagicMock()
+    http.get.side_effect = [quote_response(status=402)] + [
+        quote_response([{"symbol": t, "price": 20, "timestamp": stamp}]) for t in tickers]
+    recorder.sample(http)
+    payload = recorder.queue.get_nowait()["payload"]
+    assert payload["complete"] is True
+    assert payload["missing_quotes"] == payload["errors"] == []
+    assert [q["ticker"] for q in payload["quotes"]] == tickers
+    assert all(q["endpoint"] == "stable/quote" for q in payload["quotes"])
+    assert payload["endpoint_mode"] == "quote"
+    assert payload["fallback_reason"] == "batch_quote_http_402"
+    assert payload["endpoints_attempted"] == ["batch-quote", "quote"]
+    assert payload["request_count"] == payload["request_limit"] == 46
+    assert recorder.last_error is None
+    calls = http.get.call_args_list
+    assert calls[0].args[0].endswith("/stable/batch-quote")
+    assert [c.kwargs["params"]["symbol"] for c in calls[1:]] == tickers
+    assert all(c.kwargs["allow_redirects"] is False for c in calls)
+
+    http.reset_mock()
+    http.get.side_effect = [
+        quote_response([{"symbol": t, "price": 20, "timestamp": stamp}]) for t in tickers]
+    recorder.sample(http)
+    assert http.get.call_count == 45
+    assert all(c.args[0].endswith("/stable/quote") for c in http.get.call_args_list)
+    assert recorder.queue.get_nowait()["payload"]["complete"] is True
+    client = MagicMock()
+    recorder.health(None, client)
+    config = client.table().upsert.call_args.args[0]["config"]
+    assert config["quote_endpoint"] == "quote"
+    assert config["quote_fallback_reason"] == "batch_quote_http_402"
+
+
+@pytest.mark.parametrize("status", [301, 401, 403, 429, 500])
+def test_only_batch_402_enables_individual_fallback(recorder, status):
+    recorder.symbols = {"ABC": {"last_seen_at": capture.now()}}
+    http = MagicMock()
+    http.get.return_value = quote_response(status=status)
+    recorder.sample(http)
+    assert http.get.call_count == 1
+    assert recorder.quote_endpoint == "batch-quote"
+    payload = recorder.queue.get_nowait()["payload"]
+    assert payload["complete"] is False
+    assert payload["missing_quotes"] == ["ABC"]
+    assert payload["fallback_reason"] is None
+
+
+def test_individual_request_failure_stops_fanout_without_retry(recorder):
+    recorder.symbols = {t: {"last_seen_at": capture.now()} for t in ("ABC", "DEF", "GHI")}
+    http = MagicMock()
+    http.get.side_effect = [quote_response(status=402), quote_response(status=429)]
+    recorder.sample(http)
+    assert http.get.call_count == 2
+    payload = recorder.queue.get_nowait()["payload"]
+    assert payload["missing_quotes"] == ["ABC", "DEF", "GHI"]
+    assert payload["complete"] is False
+    assert recorder.next_quote_symbol == "DEF"
+
+
+def test_quote_budget_stops_requests_and_rotates_unserved_symbols(recorder, monkeypatch):
+    recorder.sample_seconds = 5
+    recorder.max_quote_age = 600
+    recorder.symbols = {t: {"last_seen_at": capture.now()} for t in ("ABC", "DEF", "GHI")}
+    elapsed = [0.0]
+    monkeypatch.setattr(capture.time, "monotonic", lambda: elapsed[0])
+    stamp = capture.dt.datetime.now(capture.UTC).timestamp()
+    timeouts = []
+
+    def get(url, *, params, timeout, allow_redirects):
+        assert sum(timeout) <= 2.5 - elapsed[0]
+        timeouts.append(timeout)
+        if url.endswith("batch-quote"):
+            return quote_response(status=402)
+        elapsed[0] += 1.5
+        return quote_response([{"symbol": params["symbol"], "price": 20, "timestamp": stamp}])
+
+    http = MagicMock()
+    http.get.side_effect = get
+    recorder.sample(http)
+    payload = recorder.queue.get_nowait()["payload"]
+    assert payload["budget_seconds"] == 2.5
+    assert payload["request_count"] == 3
+    assert [q["ticker"] for q in payload["quotes"]] == ["ABC"]
+    assert payload["missing_quotes"] == ["DEF", "GHI"]
+    assert any(e["reason"] == "quote_budget_exhausted" for e in payload["errors"])
+    assert timeouts[-1] == (0.5, 0.5)
+    assert recorder.next_quote_symbol == "DEF"
+
+    http.reset_mock()
+    http.get.side_effect = lambda url, **kw: quote_response([
+        {"symbol": kw["params"]["symbol"], "price": 20, "timestamp": stamp}])
+    recorder.sample(http)
+    payload = recorder.queue.get_nowait()["payload"]
+    assert http.get.call_args_list[0].kwargs["params"]["symbol"] == "DEF"
+    assert payload["complete"] is True
+    assert set(q["ticker"] for q in payload["quotes"]) == {"ABC", "DEF", "GHI"}
+
+
+def test_quote_budget_is_capped_by_sampling_freshness_and_worker_liveness(recorder):
+    recorder.sample_seconds = recorder.max_quote_age = 1000
+    assert recorder.quote_budget_seconds() == 30
+    recorder.sample_seconds = 10
+    assert recorder.quote_budget_seconds() == 5
+    recorder.max_quote_age = 4
+    assert recorder.quote_budget_seconds() == 2
+
+
+@pytest.mark.parametrize("bad_row", [
+    {"symbol": "ABC", "price": 20},
+    {"symbol": "ABC", "price": 20, "timestamp": 1},
+    {"symbol": "ABC", "price": float("nan"), "timestamp": 1},
+    {"symbol": "OTHER", "price": 20, "timestamp": 1},
+    "not-a-quote",
+])
+def test_individual_fallback_preserves_strict_quote_validation(recorder, bad_row):
+    recorder.symbols = {"ABC": {"last_seen_at": capture.now()}}
+    http = MagicMock()
+    http.get.side_effect = [quote_response(status=402), quote_response([bad_row])]
+    recorder.sample(http)
+    payload = recorder.queue.get_nowait()["payload"]
+    assert payload["complete"] is False
+    assert payload["quotes"] == []
+    assert payload["missing_quotes"] == ["ABC"]
+
+
+@pytest.mark.parametrize("individual", [False, True])
+def test_quote_duplicates_and_unrequested_rows_are_not_recorded(recorder, individual):
+    recorder.symbols = {"ABC": {"last_seen_at": capture.now()}}
+    stamp = capture.dt.datetime.now(capture.UTC).timestamp()
+    rows = [{"symbol": t, "price": 20, "timestamp": stamp} for t in ("ABC", "ABC", "OTHER")]
+    http = MagicMock()
+    http.get.side_effect = ([quote_response(status=402)] if individual else []) + [quote_response(rows)]
+    recorder.sample(http)
+    payload = recorder.queue.get_nowait()["payload"]
+    assert [q["ticker"] for q in payload["quotes"]] == ["ABC"]
+    assert payload["complete"] is False
+    assert {e["reason"] for e in payload["errors"]} == {
+        "duplicate_quote_row", "unrequested_quote_row"}
+
+
+def test_stop_during_entitlement_probe_does_not_start_individual_requests(recorder):
+    recorder.symbols = {"ABC": {"last_seen_at": capture.now()}}
+    http = MagicMock()
+
+    def get(*args, **kwargs):
+        recorder.stopping.set()
+        return quote_response(status=402)
+
+    http.get.side_effect = get
+    recorder.sample(http)
+    assert http.get.call_count == 1
+    assert recorder.quote_endpoint == "batch-quote"
+
+
 def test_worker_purges_daily_and_sends_health_when_market_closed(monkeypatch, recorder):
     import supabase
     client = MagicMock()

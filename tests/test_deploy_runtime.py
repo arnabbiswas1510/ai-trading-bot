@@ -219,6 +219,13 @@ def test_compose_runs_protection_and_research_independent_of_runtime_label():
     assert "depends_on:" not in dashboard
 
 
+def test_gateway_browser_port_targets_pinned_image_listener():
+    gateway = service_block("ib-gateway")
+    assert '"15800:5800"' in gateway
+    assert '"15800:15800"' not in gateway
+    assert '"4002:4000"' in gateway
+
+
 def test_only_dashboard_and_execution_share_persistent_fixed_control_path():
     for name in ("execution-agent", "trading-bot"):
         block = service_block(name)

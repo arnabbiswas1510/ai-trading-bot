@@ -1,0 +1,4 @@
+[profiles.watchdog]
+server_api = "https://api.bitwarden.com"
+server_identity = "https://identity.bitwarden.com"
+state_opt_out = "true"

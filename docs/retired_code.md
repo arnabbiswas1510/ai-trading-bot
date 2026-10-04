@@ -28,6 +28,79 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-10-04 - Replaced batch-only intraday quote transport
+
+`Recorder.sample()` in `intraday_capture.py` no longer requires FMP
+`stable/batch-quote` access. The batch path is **retained**, with individual
+`stable/quote` requests used only after an explicit batch HTTP 402. The old
+unbounded sum of chunk request timeouts is replaced by a per-round time/request
+budget; timestamp, symbol-limit and retention checks remain.
+
+Batch-only collection was active, but production returned HTTP 402 for SPY
+while the same credential returned a valid timestamped individual SPY quote.
+This blocked recorded research prices, not real order placement. Historical
+successful use of that batch endpoint has not been established. This is a
+subscription-compatibility bug fix, not a trading decision; no ADR is required.
+See [recording transport](intraday_research.md#quote-endpoint-compatibility-and-budgets).
+The old implementation and tests are recoverable with
+`git show 2128a1a3c48432852f4bdd528ab47219c7e05bc9:intraday_capture.py`
+and the same commit's `tests/test_intraday_capture.py`.
+Restore batch-only behavior only if batch entitlement is guaranteed for every
+collector deployment; bounded worker time and explicit missing coverage must
+still remain.
+
+## 2026-10-04 - Relocated research-watchdog credential loading
+
+**Relocated, not retired:** the direct GitHub Actions secret mappings for
+`SUPABASE_URL`, `SUPABASE_KEY`, `INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_IDS` in `.github/workflows/intraday_research_review.yml`.
+Their new source is the workflow's in-memory Bitwarden loader,
+`scripts/run_intraday_reporting_bws.py`, using the no-cache configuration
+`scripts/bws_ci.toml` and the Actions `BWS_ACCESS_TOKEN` bootstrap credential;
+the consumer variable
+names, credentials' purpose, collection checks and Telegram alert functionality
+remain in place. This does not change any broker order or trading rule.
+
+The direct mappings were active but the required values were present in
+Bitwarden and never loaded by this workflow. GitHub Actions run `37171852451`,
+at 2026-10-03 22:42 America/New_York, failed before collection checks could run.
+Keeping independent, unsynchronised credential sources left the watchdog unable
+to evaluate recording health. The credentials themselves are not deleted or
+copied into the repository.
+
+Restore the old mapping with
+`git show 2128a1a:.github/workflows/intraday_research_review.yml`.
+Restore it only if the operator deliberately returns to synchronised GitHub
+Actions secrets and establishes protection against drift from the vault.
+This is an operational credential-loading repair, not retirement of the
+watchdog's checks or alerting. See
+`decisions/2026-10-04_watchdog-bitwarden-bootstrap.md` for the decision.
+
+## 2026-10-04 - Replaced observer legacy account subscriptions
+
+**Replaced:** `ReadOnlyBroker.connect()`'s implicit SDK legacy-account bootstrap
+and `snapshot()`'s `reqAccountUpdates(False/True)` cycle, `account_value()` and
+`portfolio_value()` event capture in `intraday_observer.py`, with their fake
+legacy-download implementation in `tests/test_intraday_observer.py`.
+These paths were active but repeatedly failed: the observer recorded broker
+error 2100 and account-download timeouts, not completed snapshots. No real
+trades were submitted by the observer.
+
+The legacy subscription is shared with the protective execution client;
+`readonly=True` does not disable it. Account values are now captured from
+request-ID-scoped multi-account callbacks, with cancellation after each download.
+Portfolio valuation is replaced, not removed: separate account/contract-scoped
+read-only PnL callbacks provide broker position value and quantity, without
+claiming a legacy `updatePortfolio` download or using its cached marks.
+Missing or invalid responses still fail the snapshot. This is a protocol bug
+repair, not a trading-rule decision; see `docs/intraday_research.md`.
+
+Restore the original implementation with
+`git show 2128a1a:intraday_observer.py` (and the matching test path).
+Restoration would require proof that account subscriptions cannot displace the
+execution client's subscription and that every snapshot obtains a fresh,
+account-isolated completion, including reconnects and concurrent SDK bootstrap.
+
 ## 2026-10-01 - Replaced deployment-only trading permission
 
 **Replaced:** the mutually exclusive `TRADING_RUNTIME_MODE=observe|live`

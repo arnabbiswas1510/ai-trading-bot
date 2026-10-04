@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 import shutil
@@ -40,14 +41,23 @@ def forbidden(*args, **kwargs):
 
 class FakeIB:
     def __init__(self):
+        from ib_insync.wrapper import Wrapper
+
+        self.next_req_id = 0
+        self.cancelled_accounts = []
+        self.cancelled_marks = []
         self.client = NS(
-            reqAccountUpdates=lambda *args: None, placeOrder=forbidden,
+            reqAccountUpdates=forbidden, placeOrder=forbidden,
+            getReqId=self.get_req_id, reqAccountUpdatesMulti=self.account_updates_multi,
+            cancelAccountUpdatesMulti=self.cancelled_accounts.append,
+            reqPnLSingle=self.pnl_single, cancelPnLSingle=self.cancelled_marks.append,
             cancelOrder=forbidden, reqGlobalCancel=forbidden)
         self.errorEvent = Event()
         self.disconnectedEvent = Event()
         self.accountValueEvent = Event()
         self.updatePortfolioEvent = Event()
-        self.wrapper = NS(openOrder=lambda *args: None)
+        self.wrapper = Wrapper(self)
+        self.wrapper.openOrder = lambda *args: None
         self.live = False
         self.accounts = ["U1"]
         self.connect_calls = []
@@ -101,16 +111,26 @@ class FakeIB:
                                    getattr(trade, "orderStatus", NS()))
         return self.orders
 
-    def reqAccountUpdates(self, account):
+    def get_req_id(self):
+        self.next_req_id += 1
+        return self.next_req_id
+
+    def _run(self, *awaitables):
+        from ib_insync import util
+        return util.run(*awaitables, timeout=self.RequestTimeout)
+
+    def account_updates_multi(self, req_id, account, model, ledger):
         self.reads.append("account_updates")
-        if self.account_download_empty:
-            return
-        for owner in ("U1", "U2"):
-            self.accountValueEvent.emit(NS(account=owner, tag="NetLiquidation",
-                                           value="1000", currency="USD"))
-            self.updatePortfolioEvent.emit(NS(
-                account=owner, contract=self.contract, position=-2, marketPrice=21,
-                marketValue=-42, averageCost=20, unrealizedPNL=-2, realizedPNL=0))
+        if not self.account_download_empty:
+            for owner in ("U1", "U2"):
+                self.wrapper.accountUpdateMulti(req_id, owner, model, "NetLiquidation", "1000", "USD")
+        self.wrapper.accountUpdateMultiEnd(req_id)
+
+    def pnl_single(self, req_id, account, model, con_id):
+        self.reads.append("portfolio_mark")
+        position = next(p for p in reversed(self.positions)
+                        if p.account == account and p.contract.conId == con_id)
+        self.wrapper.pnlSingle(req_id, position.position, 0, -2, 0, position.position * 21)
 
     def reqExecutions(self, execution_filter):
         self.reads.append("executions")
@@ -190,6 +210,224 @@ def test_real_sdk_callback_registration_preserves_read_only_guards(recorder):
             getattr(broker, name)
     broker.disconnect()
 
+@pytest.mark.parametrize("bootstrap_failure", [
+    None, "request_error", "missing_end", "outer_timeout", "cancel_error",
+])
+def test_real_sdk_concurrent_bootstrap_and_repeated_downloads_are_isolated(
+        recorder, monkeypatch, bootstrap_failure):
+    from ib_insync import IB, Stock
+
+    ib = IB()
+    wire = NS(live=False, legacy_owner=1, active=set(), cancelled=[], sequence=0,
+              wave=0, max_pending=0, downloads=[])
+    contract = Stock("ABC", "SMART", "USD", conId=10)
+
+    async def connect_transport(*args):
+        wire.live = True
+        ib.wrapper.managedAccounts("U1")
+
+    def next_id():
+        wire.sequence += 1
+        return wire.sequence
+
+    def positions():
+        ib.wrapper.position("U1", contract, -2, 20)
+        ib.wrapper.positionEnd()
+
+    def account(req_id, owner, model, ledger):
+        assert owner == "U1" and model == "" and ledger is False
+        wire.active.add(req_id)
+        wire.max_pending = max(wire.max_pending, len(wire.active))
+        wire.downloads.append(req_id)
+
+        def reply():
+            if bootstrap_failure == "request_error":
+                ib.wrapper.error(req_id, 321, "rejected", "")
+                return
+            if bootstrap_failure in ("missing_end", "outer_timeout"):
+                return
+            # Shared account events/cache contain unrelated and stale callbacks.
+            if wire.cancelled:
+                ib.wrapper.accountUpdateMulti(wire.cancelled[0], "U1", "", "NetLiquidation", "99999", "USD")
+                ib.wrapper.accountUpdateMultiEnd(wire.cancelled[0])
+            ib.wrapper.updateAccountValue("NetLiquidation", "88888", "USD", "U1")
+            ib.wrapper.accountUpdateMulti(req_id, "U2", "", "ForeignOnly", "5", "USD")
+            ib.wrapper.accountUpdateMulti(req_id, "U1", "OTHER", "OtherModelOnly", "6", "USD")
+            ib.wrapper.accountUpdateMulti(req_id, "U1", "", "NetLiquidation", str(1000 + wire.wave), "USD")
+            ib.wrapper.accountUpdateMultiEnd(req_id)
+            # Even this request's updates AFTER its end are not snapshot input.
+            ib.wrapper.accountUpdateMulti(req_id, "U1", "", "NetLiquidation", "77777", "USD")
+
+        asyncio.get_event_loop().call_soon(reply)
+
+    def cancel_account(req_id):
+        wire.active.remove(req_id)
+        wire.cancelled.append(req_id)
+        if bootstrap_failure == "cancel_error":
+            raise ConnectionError("cancellation failed")
+
+    monkeypatch.setattr(ib.client, "connectAsync", connect_transport)
+    monkeypatch.setattr(ib.client, "isReady", lambda: wire.live)
+    monkeypatch.setattr(ib.client, "getAccounts", lambda: ["U1"])
+    monkeypatch.setattr(ib.client, "getReqId", next_id)
+    monkeypatch.setattr(ib.client, "reqPositions", positions)
+    monkeypatch.setattr(ib.client, "reqExecutions", lambda req_id, _: ib.wrapper.execDetailsEnd(req_id))
+    monkeypatch.setattr(ib.client, "reqAllOpenOrders", ib.wrapper.openOrderEnd)
+    monkeypatch.setattr(ib.client, "reqAccountUpdatesMulti", account)
+    monkeypatch.setattr(ib.client, "cancelAccountUpdatesMulti", cancel_account)
+    cancelled_marks = []
+    monkeypatch.setattr(ib.client, "cancelPnLSingle", cancelled_marks.append)
+
+    def pnl(req_id, account, model, con_id):
+        assert account == "U1" and model == "" and con_id == 10
+        ib.wrapper.pnlSingle(req_id, -2, 0, -2, 0, -42 - 2 * wire.wave)
+
+    monkeypatch.setattr(ib.client, "reqPnLSingle", pnl)
+    broker = observer.ReadOnlyBroker(ib, recorder, timeout=0.05)
+    if bootstrap_failure:
+        # Let SDK bootstrap gather its own timed-out reads before the outer
+        # synchronous connect deadline, proving it cannot hide the failure.
+        if bootstrap_failure != "outer_timeout":
+            ib.RequestTimeout = 1
+        error = TimeoutError if bootstrap_failure == "outer_timeout" else observer.ObservationError
+        with pytest.raises(error):
+            broker.connect("no-network", 4000, 71)
+        assert wire.max_pending == 2
+        assert len(wire.cancelled) == 2 and not wire.active
+        assert not ib.wrapper._futures and not ib.wrapper._results
+        assert not any(e["kind"] == "observer_connection" for e in recorder.queue.queue)
+        return
+    broker.connect("no-network", 4000, 71)
+    assert wire.max_pending == 2  # Real IB.connectAsync starts both concurrently.
+    assert len(wire.cancelled) == 2 and not wire.active
+    assert not ib.wrapper._futures and not ib.wrapper._results
+    for wave in (1, 2):
+        wire.wave = wave
+        snapshot = broker.snapshot()["payload"]
+        assert snapshot["account_values"] == [{
+            **snapshot["account_values"][0], "tag": "NetLiquidation", "value": str(1000 + wave),
+        }]
+        assert snapshot["account_values"][0]["request_id"] == wire.downloads[-1]
+        assert snapshot["account_values"][0]["account"] == "U1"
+        assert snapshot["account_values"][0]["modelCode"] == ""
+        assert snapshot["portfolio_marks"][0]["marketPrice"] == 21 + wave
+        assert snapshot["portfolio_marks"][0]["source"] == "IBKR_PNL_SINGLE_VALUE"
+        assert snapshot["complete"]
+        assert not wire.active and not ib.wrapper._futures and not ib.wrapper._results
+        for component in snapshot["component_times"].values():
+            assert snapshot["started_at"] <= component["requested_at"] <= component["completed_at"] <= snapshot["snapshot_at"]
+    assert len(wire.cancelled) == len(set(wire.cancelled)) == 4
+    assert len(cancelled_marks) == 2
+    assert wire.legacy_owner == 1
+    with pytest.raises(PermissionError):
+        ib.client.reqAccountUpdates(True, "U1")
+
+
+@pytest.mark.parametrize("fault", [
+    "no_end", "foreign_only", "model_only", "wrong_id", "request_error", "disconnect",
+])
+def test_account_multi_failure_never_uses_cached_values(recorder, fault):
+    fake = FakeIB()
+    broker = observer.ReadOnlyBroker(fake, recorder, timeout=0.02)
+    broker.connect("offline", 4000, 71)
+    fake.wrapper.updateAccountValue("NetLiquidation", "9999", "USD", "U1")
+
+    def request(req_id, account, model, ledger):
+        owner = "U2" if fault == "foreign_only" else account
+        request_model = "OTHER" if fault == "model_only" else model
+        response_id = req_id + 99 if fault == "wrong_id" else req_id
+        fake.wrapper.accountUpdateMulti(response_id, owner, request_model, "NetLiquidation", "1000", "USD")
+        if fault == "request_error":
+            fake.wrapper.error(req_id, 321, "rejected", "")
+        elif fault == "disconnect":
+            fake.disconnect()
+        elif fault != "no_end":
+            fake.wrapper.accountUpdateMultiEnd(response_id)
+
+    fake.client.reqAccountUpdatesMulti = request
+    with pytest.raises(observer.ObservationError):
+        broker.snapshot()
+    assert fake.cancelled_accounts == [1]
+    assert not fake.wrapper._futures and not fake.wrapper._results
+    assert not any(e["kind"] == "observer_snapshot" for e in recorder.queue.queue)
+    assert not fake.accountValueEvent.handlers and not fake.updatePortfolioEvent.handlers
+
+
+@pytest.mark.parametrize("fault", [
+    "no_callback", "wrong_id", "quantity_changed", "nan_value", "unset_value", "negative_price",
+    "request_error", "disconnect", "cancel_error",
+])
+def test_portfolio_valuation_failure_is_not_completed_snapshot(recorder, fault):
+    fake = FakeIB()
+    broker = observer.ReadOnlyBroker(fake, recorder, timeout=0.02)
+    broker.connect("offline", 4000, 71)
+    original_pnl = fake.wrapper.pnlSingle
+
+    def request(req_id, account, model, con_id):
+        if fault == "request_error":
+            fake.wrapper.error(req_id, 321, "rejected", "")
+        elif fault == "disconnect":
+            fake.disconnect()
+        elif fault != "no_callback":
+            fake.wrapper.pnlSingle(
+                req_id + 99 if fault == "wrong_id" else req_id,
+                -3 if fault == "quantity_changed" else -2, 0, -2, 0,
+                {"nan_value": float("nan"), "unset_value": sys.float_info.max,
+                 "negative_price": 42}.get(fault, -42),
+            )
+
+    fake.client.reqPnLSingle = request
+    if fault == "cancel_error":
+        def cancel(req_id):
+            fake.cancelled_marks.append(req_id)
+            raise ConnectionError("cancel failed")
+        fake.client.cancelPnLSingle = cancel
+    with pytest.raises(observer.ObservationError):
+        broker.snapshot()
+    assert fake.cancelled_accounts == [1] and fake.cancelled_marks == [2]
+    assert fake.wrapper.pnlSingle == original_pnl
+    assert not fake.wrapper._futures and not fake.wrapper._results
+    assert not any(e["kind"] == "observer_snapshot" for e in recorder.queue.queue)
+
+
+def test_flat_account_needs_no_portfolio_subscription(recorder):
+    broker, fake = connected(recorder)
+    fake.positions = []
+    data = broker.snapshot()["payload"]
+    assert data["portfolio_marks"] == [] and data["complete"]
+    assert not fake.cancelled_marks
+
+
+@pytest.mark.parametrize("sec_type,currency", [("OPT", "USD"), ("STK", "CAD")])
+def test_portfolio_value_does_not_invent_unit_price_for_other_assets(recorder, sec_type, currency):
+    broker, fake = connected(recorder)
+    fake.contract.secType = sec_type
+    fake.contract.currency = currency
+    mark = broker.snapshot()["payload"]["portfolio_marks"][0]
+    assert mark["marketValue"] == -42
+    assert mark["value_currency"] == "USD"
+    assert mark["marketPrice"] is None
+    assert mark["realizedPNL"] is None
+    assert mark["price_calculation"] == "unavailable_unit_price_or_currency_conversion"
+
+
+def test_all_position_requests_cancel_even_when_one_cancellation_fails(recorder):
+    broker, fake = connected(recorder)
+    fake.positions.append(NS(
+        account="U1", contract=NS(conId=11, symbol="XYZ", secType="STK", currency="USD"),
+        position=3, avgCost=20,
+    ))
+    def cancel(req_id):
+        fake.cancelled_marks.append(req_id)
+        if req_id == 2:
+            raise ConnectionError("failed cancellation")
+    fake.client.cancelPnLSingle = cancel
+    with pytest.raises(observer.ObservationError):
+        broker.snapshot()
+    assert fake.cancelled_marks == [2, 3]
+    assert not fake.wrapper._futures and not fake.wrapper._results
+    assert not any(e["kind"] == "observer_snapshot" for e in recorder.queue.queue)
+
 
 @pytest.mark.parametrize("accounts,requested", [
     ([], None), (["U1", "DU1"], None), (["U1", "U2"], None), (["U1"], "U2"),
@@ -233,11 +471,16 @@ def test_fresh_signed_snapshot_keeps_short_zero_other_assets_and_order_owners(re
     assert len(data["short_positions"]) == 2
     assert [o["order"]["clientId"] for o in data["open_orders"]] == [1, 99]
     assert data["account_values"][0]["account"] == "U1"
-    assert len(data["account_values"]) == len(data["portfolio_marks"]) == 1
+    assert len(data["account_values"]) == 1
+    assert len(data["portfolio_marks"]) == 2
     assert data["portfolio_marks"][0]["provider_timestamp"] is None
     assert data["complete"] and not data["atomic"]
-    assert set(data["component_times"]) == {"positions", "open_orders_all_clients", "account_download", "executions"}
-    assert fake.reads == ["positions", "all_open_orders", "account_updates", "executions"]
+    assert set(data["component_times"]) == {
+        "positions", "open_orders_all_clients", "account_download", "portfolio_marks", "executions",
+    }
+    assert fake.reads == [
+        "positions", "all_open_orders", "account_updates", "portfolio_mark", "portfolio_mark", "executions",
+    ]
     assert "portfolio_snapshot" not in [e["kind"] for e in recorder.queue.queue]
 
 
