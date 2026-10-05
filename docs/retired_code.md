@@ -28,6 +28,37 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-10-04 - Research tables removed from weekly backup scope
+
+**Retired from backup only, not deleted from Supabase:** `exit_shadow_log`,
+`intraday_replay_runs`, `intraday_calibration_settings`,
+`intraday_calibration_proposals`, `intraday_calibration_events`,
+`intraday_research_calibration_artifacts`, `intraday_research_delivery_receipts`,
+`intraday_research_incidents`, `intraday_research_reporting_state`,
+`intraday_research_reports`, `intraday_shadow_checkpoints`,
+`intraday_shadow_events`, `intraday_shadow_health`, `intraday_shadow_runs`.
+Their required entries in `supabase_backup.TABLES` move to `NOT_BACKED_UP`.
+The exporter's preference for `INTRADAY_SUPABASE_KEY` and the backup wrapper's
+requirement for that vault secret are removed; the research watchdog still
+requires it. Tests live in `tests/test_supabase_backup.py` and
+`tests/test_supabase_backup_bws.py`; the shared loader is in
+`scripts/run_intraday_reporting_bws.py`.
+
+These active paths coupled trading-state backups to private research tables.
+The operator reports recurring grant failures; local read-only requests with
+the ordinary key returned authorization errors for 13 research tables.
+Successful historical exports of these tables were not established here.
+The operator explicitly excludes calibration and benchmarking, accepting that
+future weekly snapshots cannot restore those datasets. Existing archives and
+all research collection/writer paths remain intact.
+
+Restore the former scope and credential behavior from
+`git show 90ab261:supabase_backup.py` and the same commit's
+`scripts/run_supabase_backup_bws.py`, shared loader and tests. Reintroduce
+research backups only with an explicit retention/recovery requirement and
+verified read grants, preferably in an independent job.
+See `decisions/2026-10-04_trading-only-backup-scope.md`.
+
 ## 2026-10-04 - Invalid trigger ordering and provider ticker assumptions
 
 The `InputProducer.frame()` query in `shadow_inputs.py` no longer orders

@@ -6,11 +6,17 @@ import sys
 from scripts.run_intraday_reporting_bws import BootstrapError, ROOT, load_credentials
 
 
+REQUIRED = ("SUPABASE_URL", "SUPABASE_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_IDS")
+
+
 def main(argv=None, env=None, runner=subprocess.run):
     env = dict(os.environ if env is None else env)
     try:
-        credentials = load_credentials(env, runner)
-        child_env = {key: value for key, value in env.items() if not key.startswith("BWS_")}
+        credentials = load_credentials(env, runner, required=REQUIRED)
+        child_env = {
+            key: value for key, value in env.items()
+            if not key.startswith("BWS_") and key != "INTRADAY_SUPABASE_KEY"
+        }
         child_env.update(credentials)
         return runner(
             [sys.executable, str(ROOT / "supabase_backup.py"),

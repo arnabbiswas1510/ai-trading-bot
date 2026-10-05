@@ -1,7 +1,7 @@
 """
 supabase_backup.py
 
-Weekly point-in-time export of every Supabase table to flat files on the
+Weekly point-in-time export of retained trading-state tables to flat files on the
 production server.
 
 WHY THIS EXISTS
@@ -66,8 +66,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 # ── Tables ───────────────────────────────────────────────────────────────────
-# Every table the bot reads or writes, mapped to the columns that uniquely and
-# stably order it.
+# Retained trading-state tables, mapped to the columns that uniquely and stably
+# order them. Research/calibration/benchmarking tables are excluded below.
 #
 # The ordering is NOT cosmetic. PostgREST paginates with LIMIT/OFFSET, and
 # Postgres gives no ordering guarantee without an ORDER BY, so an unordered
@@ -76,7 +76,7 @@ import pandas as pd
 #
 # This list is asserted complete by tests/test_supabase_backup.py, which scans
 # migrations/ and the Supabase calls in the source. A new table that is not
-# added here fails that test rather than being quietly omitted from backups.
+# classified here or in NOT_BACKED_UP fails rather than being quietly omitted.
 TABLES: dict[str, tuple[str, ...]] = {
     "account_balances":    ("date",),
     "breakout_learnings":  ("id",),
@@ -84,21 +84,7 @@ TABLES: dict[str, tuple[str, ...]] = {
     "daily_notifications": ("report_type", "report_date"),
     "daily_triggers":      ("triggered_at", "ticker"),
     "exit_requests":       ("id",),
-    "exit_shadow_log":     ("id",),
     "ibkr_fills":          ("exec_id",),
-    "intraday_replay_runs": ("id",),
-    "intraday_calibration_settings": ("id",),
-    "intraday_calibration_proposals": ("id",),
-    "intraday_calibration_events": ("id",),
-    "intraday_research_calibration_artifacts": ("id",),
-    "intraday_research_delivery_receipts": ("id",),
-    "intraday_research_incidents": ("id",),
-    "intraday_research_reporting_state": ("id",),
-    "intraday_research_reports": ("id",),
-    "intraday_shadow_checkpoints": ("run_id", "sequence"),
-    "intraday_shadow_events": ("id",),
-    "intraday_shadow_health": ("id",),
-    "intraday_shadow_runs": ("id",),
     "portfolio_positions": ("ticker",),
     "trade_history":       ("id",),
     "trigger_decisions":   ("decision_date", "ticker"),
@@ -112,10 +98,52 @@ TABLES: dict[str, tuple[str, ...]] = {
 # tests/test_supabase_backup.py requires every table found in migrations/ or in
 # the source to appear in TABLES *or* here.
 #
-# The bar for adding to this set is high. A table belongs here only if its
-# contents are reproducible from something else, or if retaining it would
-# actively contradict a policy elsewhere in the system.
+# Research evidence is not necessarily reproducible. Its exclusion is an
+# operator-approved recovery limitation, not a claim that it is disposable.
+# See decisions/2026-10-04_trading-only-backup-scope.md.
 NOT_BACKED_UP: dict[str, str] = {
+    "exit_shadow_log":
+        "Candidate exit-rule observations are research, outside the weekly "
+        "trading-state recovery scope; export separately if preservation is needed.",
+    "intraday_replay_runs":
+        "Saved replay and benchmark results are excluded by the operator's "
+        "research backup policy; weekly snapshots cannot restore them.",
+    "intraday_calibration_settings":
+        "Research calibration settings are excluded by operator policy; "
+        "preserve separately if the research configuration must be recoverable.",
+    "intraday_calibration_proposals":
+        "Research proposals are excluded by operator policy; export separately "
+        "if their decision evidence must be recoverable.",
+    "intraday_calibration_events":
+        "Calibration decision history is excluded by operator policy, not "
+        "assumed reproducible; weekly snapshots cannot restore it.",
+    "intraday_research_calibration_artifacts":
+        "Generated calibration artifacts are outside trading-state backups; "
+        "export required research artifacts separately.",
+    "intraday_research_delivery_receipts":
+        "Research report delivery receipts are outside trading-state backups; "
+        "reconcile delivery independently when recovering research workers.",
+    "intraday_research_incidents":
+        "Research incident history is excluded by operator policy; weekly "
+        "snapshots do not provide research incident recovery.",
+    "intraday_research_reporting_state":
+        "Research reporting coordination is outside trading-state backups; "
+        "never restore an expired worker lease as active.",
+    "intraday_research_reports":
+        "Research and benchmarking reports are excluded by operator policy; "
+        "preserve selected reports separately if needed.",
+    "intraday_shadow_checkpoints":
+        "Simulated portfolio checkpoints belong to excluded research runs; "
+        "weekly snapshots cannot recover simulated portfolio state.",
+    "intraday_shadow_events":
+        "Simulated trading events are research, not live fills; their history "
+        "is excluded and must be preserved separately if needed.",
+    "intraday_shadow_health":
+        "Simulated portfolio worker health is outside trading-state backups "
+        "and must not be restored as a current heartbeat.",
+    "intraday_shadow_runs":
+        "Simulated portfolio and benchmark run seeds are excluded research "
+        "state; weekly snapshots cannot restore those runs.",
     "intraday_calibration_health":
         "Ephemeral automatic-research heartbeat, recreated by the worker.",
     "intraday_calibration_lease":
@@ -123,8 +151,8 @@ NOT_BACKED_UP: dict[str, str] = {
     "intraday_capture_events":
         "Private high-volume research observations have a deliberate rolling "
         "INTRADAY_RETENTION_DAYS horizon. Weekly full snapshots retained forever "
-        "would defeat that policy and multiply storage. Replay results are "
-        "archived separately; export a specific dataset before its horizon expires.",
+        "would defeat that policy and multiply storage. Export a specific "
+        "dataset before its horizon expires; replay results are also excluded.",
     "intraday_capture_symbols":
         "Retained sampling membership follows the same rolling horizon as "
         "intraday_capture_events, not a permanent weekly archive.",
@@ -303,6 +331,11 @@ README_TEXT = """\
 
 Weekly full snapshots written by `supabase_backup.py` (GitHub Actions, Sundays).
 Each run adds a new dated partition. Nothing here is ever overwritten.
+Only retained trading-state tables are exported. Calibration, benchmarking,
+replay and simulated-shadow research are excluded, as are retention-managed
+raw captures and diagnostic logs. The dated manifest's `excluded_tables`
+records the exclusions and reasons; these snapshots cannot restore research.
+Older archives may contain tables no longer included in new snapshots.
 
     parquet/table_name=<name>/snapshot_date=<YYYY-MM-DD>/data.parquet
     manifest/<YYYY-MM-DD>.json                                    <- row counts + checksums
@@ -394,6 +427,7 @@ def run_backup(client, out_dir: Path, snapshot_date: str, tables: dict[str, tupl
         "started_at": datetime.now(timezone.utc).isoformat(),
         "git_sha": os.getenv("GITHUB_SHA", "unknown"),
         "tables": {},
+        "excluded_tables": dict(NOT_BACKED_UP),
     }
 
     for table, order_by in sorted(tables.items()):
@@ -443,12 +477,12 @@ def notify_failure(message: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Export all Supabase tables to Parquet.")
+    parser = argparse.ArgumentParser(description="Export retained trading-state tables to Parquet.")
     parser.add_argument("--out-dir", required=True, help="Backup root directory.")
     parser.add_argument("--snapshot-date", default=None,
                         help="Partition date (YYYY-MM-DD). Defaults to today in America/New_York.")
     parser.add_argument("--tables", default=None,
-                        help="Comma-separated subset of tables. Defaults to all.")
+                        help="Comma-separated subset of retained tables. Research tables are excluded.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Fetch and report row counts without writing any file.")
     args = parser.parse_args(argv)
@@ -465,6 +499,10 @@ def main(argv: list[str] | None = None) -> int:
     tables = dict(TABLES)
     if args.tables:
         requested = [t.strip() for t in args.tables.split(",") if t.strip()]
+        excluded = [t for t in requested if t in NOT_BACKED_UP]
+        if excluded:
+            print(f"❌ Table(s) excluded by backup policy: {', '.join(excluded)}")
+            return 2
         unknown = [t for t in requested if t not in TABLES]
         if unknown:
             print(f"❌ Unknown table(s): {', '.join(unknown)}")
@@ -472,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
         tables = {t: TABLES[t] for t in requested}
 
     supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("INTRADAY_SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+    supabase_key = os.getenv("SUPABASE_KEY")
     if not supabase_url or not supabase_key:
         print("❌ SUPABASE_URL and SUPABASE_KEY must be set.")
         return 2
@@ -483,6 +521,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"📦 Supabase backup — snapshot_date={snapshot_date}")
     print(f"   Destination: {out_dir}{' (DRY RUN — nothing will be written)' if args.dry_run else ''}")
+    print(f"   Excluded by policy: {', '.join(sorted(NOT_BACKED_UP))}")
 
     if args.dry_run:
         failed = []

@@ -1,10 +1,15 @@
 # Backup vault credentials and isolated private exit-shadow persistence
 
 - **Date:** 2026-10-04
-- **Status:** Accepted
+- **Status:** Superseded in part by [trading-only backup scope](2026-10-04_trading-only-backup-scope.md)
 - **Scope:** Operational credentials and research persistence; no trading rules
 
 ## Context
+
+> **2026-10-04:** The 27-table backup requirement and backup dependency on the
+> private research key are superseded: 13 trading-state tables remain required;
+> all calibration/benchmarking research is excluded. Bitwarden bootstrap,
+> input handling and isolated private research writes remain in force.
 
 The September 27 scheduled backup failed during export because PostgREST could
 not expose `exit_shadow_log` (`PGRST205`). Shipping was skipped. October 4

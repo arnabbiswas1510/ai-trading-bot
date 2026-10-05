@@ -23,7 +23,8 @@ def test_backup_credentials_arguments_and_exit_code(exit_code, capsys):
     assert kwargs["cwd"] == shared.ROOT
     assert not kwargs.get("shell", False)
     assert not any(key.startswith("BWS_") for key in kwargs["env"])
-    assert all(kwargs["env"][key] == "synthetic-" + key for key in shared.REQUIRED)
+    assert all(kwargs["env"][key] == "synthetic-" + key for key in backup.REQUIRED)
+    assert "INTRADAY_SUPABASE_KEY" not in kwargs["env"]
     assert "stale-direct-secret" not in str(calls[-1])
     assert not capsys.readouterr().err
 
@@ -36,13 +37,23 @@ def test_input_is_passed_as_a_single_argument_not_executed():
     assert not calls[-1][1].get("shell")
 
 
-def test_no_direct_secret_fallback_when_vault_private_key_is_absent(capsys):
+def test_backup_does_not_require_or_forward_private_research_key(capsys):
     rows = [row for row in secret_rows() if row["key"] != "INTRADAY_SUPABASE_KEY"]
     runner, calls = fake_runner(rows=rows)
-    assert backup.main([], {**ENV, "INTRADAY_SUPABASE_KEY": "stale-secret"}, runner) == 1
+    assert backup.main([], {**ENV, "INTRADAY_SUPABASE_KEY": "stale-secret"}, runner) == 0
+    assert len(calls) == 3
+    assert "INTRADAY_SUPABASE_KEY" not in calls[-1][1]["env"]
+    assert not capsys.readouterr().err
+
+
+@pytest.mark.parametrize("key", backup.REQUIRED)
+def test_no_direct_secret_fallback_when_required_vault_secret_is_absent(key, capsys):
+    rows = [row for row in secret_rows() if row["key"] != key]
+    runner, calls = fake_runner(rows=rows)
+    assert backup.main([], {**ENV, key: "stale-secret"}, runner) == 1
     assert len(calls) == 2
     error = capsys.readouterr().err
-    assert "INTRADAY_SUPABASE_KEY" in error
+    assert key in error
     assert "stale-secret" not in error
 
 

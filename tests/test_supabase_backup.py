@@ -30,32 +30,33 @@ from supabase_backup import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_calibration_decisions_are_archived_but_runtime_coordination_is_not():
-    for name in ("settings", "proposals", "events"):
-        assert TABLES["intraday_calibration_" + name] == ("id",)
-    for name in ("health", "lease"):
-        assert "intraday_calibration_" + name in NOT_BACKED_UP
-
-
-def test_shadow_and_reporting_evidence_are_required_with_stable_primary_keys():
+def test_only_trading_state_is_required_with_stable_primary_keys():
     required = {
+        "account_balances": ("date",),
+        "breakout_learnings": ("id",),
+        "cash_flows": ("id",),
         "daily_notifications": ("report_type", "report_date"),
-        "intraday_research_calibration_artifacts": ("id",),
-        "intraday_research_delivery_receipts": ("id",),
-        "intraday_research_incidents": ("id",),
-        "intraday_research_reporting_state": ("id",),
-        "intraday_research_reports": ("id",),
-        "intraday_shadow_checkpoints": ("run_id", "sequence"),
-        "intraday_shadow_events": ("id",),
-        "intraday_shadow_health": ("id",),
-        "intraday_shadow_runs": ("id",),
+        "daily_triggers": ("triggered_at", "ticker"),
+        "exit_requests": ("id",),
+        "ibkr_fills": ("exec_id",),
+        "portfolio_positions": ("ticker",),
+        "trade_history": ("id",),
+        "trigger_decisions": ("decision_date", "ticker"),
+        "trigger_history": ("triggered_at", "ticker"),
+        "watchlist": ("ticker",),
+        "watchlist_history": ("snapshot_date", "ticker"),
     }
-    for table, primary_key in required.items():
-        assert TABLES[table] == primary_key
-        assert table not in NOT_BACKED_UP
+    assert TABLES == required
 
 
-@pytest.mark.parametrize("table", ["daily_notifications", "intraday_shadow_checkpoints"])
+def test_all_known_research_tables_are_explicitly_excluded():
+    known = _tables_from_migrations() | _tables_from_source()
+    research = {t for t in known if t.startswith("intraday_")} | {"exit_shadow_log"}
+    assert research <= set(NOT_BACKED_UP)
+    assert not research & set(TABLES)
+
+
+@pytest.mark.parametrize("table", ["daily_notifications", "daily_triggers", "trigger_history"])
 def test_new_composite_primary_keys_order_every_component(table):
     client = make_client({table: []})
     assert fetch_table(client, table, TABLES[table]) == []
@@ -309,6 +310,67 @@ def test_empty_table_is_recorded_not_written(tmp_path):
 
 
 # ── Orchestration ────────────────────────────────────────────────────────────
+def test_backup_never_queries_excluded_tables_and_records_policy(tmp_path):
+    client = make_client({})
+    query = client.table.side_effect
+
+    def deny_research(table):
+        if table in NOT_BACKED_UP:
+            raise PermissionError("permission denied for research table")
+        return query(table)
+
+    client.table.side_effect = deny_research
+    manifest = run_backup(client, tmp_path, "2026-10-04", TABLES)
+    assert manifest["failed"] == []
+    assert manifest["excluded_tables"] == NOT_BACKED_UP
+    assert {call.args[0] for call in client.table.call_args_list} == set(TABLES)
+
+
+@pytest.mark.parametrize("table", sorted(NOT_BACKED_UP))
+def test_cli_cannot_reinclude_excluded_tables(table, monkeypatch, tmp_path, capsys):
+    import supabase
+    factory = MagicMock()
+    monkeypatch.setattr(supabase, "create_client", factory)
+    assert supabase_backup.main([
+        "--out-dir", str(tmp_path), "--tables", "trade_history," + table,
+    ]) == 2
+    factory.assert_not_called()
+    assert "excluded by backup policy" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize("denied", [False, True])
+def test_cli_uses_trading_key_and_fails_on_retained_table_denial(
+    dry_run, denied, monkeypatch, tmp_path,
+):
+    import supabase
+    client = make_client({})
+    query = client.table.side_effect
+
+    def table_request(table):
+        if denied and table == "trade_history":
+            raise PermissionError("permission denied for trade_history")
+        return query(table)
+
+    client.table.side_effect = table_request
+    factory = MagicMock(return_value=client)
+    monkeypatch.setattr(supabase, "create_client", factory)
+    monkeypatch.setattr(supabase_backup, "notify_failure", MagicMock())
+    monkeypatch.setenv("SUPABASE_URL", "https://example.invalid")
+    monkeypatch.setenv("SUPABASE_KEY", "synthetic-trading")
+    monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "synthetic-research")
+    args = ["--out-dir", str(tmp_path)]
+    if dry_run:
+        args.append("--dry-run")
+    assert supabase_backup.main(args) == (1 if denied else 0)
+    factory.assert_called_once_with("https://example.invalid", "synthetic-trading")
+    assert {call.args[0] for call in client.table.call_args_list} == set(TABLES)
+    if not dry_run:
+        manifest = json.loads((tmp_path / "manifest/latest.json").read_text())
+        assert manifest["excluded_tables"] == NOT_BACKED_UP
+        assert manifest["failed"] == (["trade_history"] if denied else [])
+
+
 def test_run_backup_writes_all_tables_and_totals_rows(tmp_path):
     pytest.importorskip("pyarrow")
     client = make_client({

@@ -1,7 +1,7 @@
 name: Weekly Supabase Backup
 
-# Full point-in-time snapshot of every Supabase table, written to flat files on
-# the production server.
+# Full snapshot of retained trading-state tables, excluding calibration and
+# benchmarking research, written to flat files on the production server.
 #
 # Supabase is the only durable home for trade_history, which every scheduled
 # parameter review in docs/tech_debt_and_requirements_tracker.md replays. Losing

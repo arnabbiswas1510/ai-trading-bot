@@ -158,8 +158,9 @@ which controls the recorder embedded in the execution agent.
 Apply `migrations/20260930_add_intraday_research.sql`,
 `migrations/20260930_add_intraday_shadow.sql` and
 `migrations/20260930_add_intraday_reporting.sql` before deployment and add
-the new key to Bitwarden. The watchdog and weekly backup retrieve it using the
-Actions bootstrap secret `BWS_ACCESS_TOKEN`. Never
+the new key to Bitwarden. The watchdog retrieves it using the
+Actions bootstrap secret `BWS_ACCESS_TOKEN`; the weekly trading-state backup
+does not require or use the private research key. Never
 put a real key in the template. An unavailable capture database is surfaced to
 the operator; it must not block protective trading actions.
 
@@ -183,18 +184,19 @@ Shadow initialization parses only the required numeric `NetLiquidation` tag;
 textual USD account tags remain preserved raw, not coerced into money.
 
 The independent watchdog and weekly backup use the GitHub Actions repository secret
-`BWS_ACCESS_TOKEN`, not five duplicated application secrets. This bootstrap
+`BWS_ACCESS_TOKEN`, not duplicated application secrets. This bootstrap
 token must grant read access to Bitwarden project `ai-trading-bot`; it belongs
 in Actions, not `.env.template`. The workflow installs checksum-pinned `bws`
-2.1.0 and resolves `SUPABASE_URL`, `SUPABASE_KEY`, `INTRADAY_SUPABASE_KEY`,
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` by exact name. Missing, duplicate,
-empty, multiline and `@bws` values fail before either workload starts. Both
-always require the private key; they do **not** use the general-key fallback
-described for other consumers above. Secrets remain in memory and the CI
+2.1.0. Both jobs resolve `SUPABASE_URL`, `SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN`
+and `TELEGRAM_CHAT_IDS` by exact name. Only the watchdog additionally requires
+`INTRADAY_SUPABASE_KEY`. The backup uses `SUPABASE_KEY` exclusively and does not
+forward the private key to its exporter. Missing, duplicate, empty, multiline
+and `@bws` values for a job's required secrets fail before that workload starts.
+Secrets remain in memory and the CI
 Bitwarden profile disables authentication-state caching. Host rendering and
 the backup's SSH transport secrets remain separate. See
 `decisions/2026-10-04_watchdog-bitwarden-bootstrap.md` and
-`decisions/2026-10-04_backup-vault-and-private-exit-shadow.md`.
+`decisions/2026-10-04_trading-only-backup-scope.md`.
 
 The shadow worker requires explicit `IBKR_ACCOUNT` (or `--account`) for
 actual-account initialization, but does not connect to IBKR. CLI defaults are
@@ -881,7 +883,7 @@ See `decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
 | `cash_flows` | Deposits and withdrawals |
 | `ibkr_fills` | Every IBKR execution with its commission. Tier 1 of the sell-price ladder — the only fill record that survives an agent or Gateway restart |
 | `breakout_learnings` | Post-close outcome rows fed back into screener tuning |
-| `daily_notifications` | Dedup ledger for once-per-day operator alerts (`report_type`,`report_date` PK). Backs the "unfilled slots" summary so it fires once per ET day across restarts. Included in the 27-table backup inventory; reconcile restored delivery state before resuming workers. See `migrations/20260928_add_daily_notifications.sql` and `decisions/2026-10-04_backup-vault-and-private-exit-shadow.md` |
+| `daily_notifications` | Dedup ledger for once-per-day operator alerts (`report_type`,`report_date` PK). Backs the "unfilled slots" summary so it fires once per ET day across restarts. Included in the 13-table trading-state backup inventory; reconcile restored delivery state before resuming workers. See `migrations/20260928_add_daily_notifications.sql` and `decisions/2026-10-04_trading-only-backup-scope.md` |
 
 Key `portfolio_positions` columns driving exits: `hwm_price`, `hwm_date`, `stop_loss_pct`,
 `entry_atr_pct`, `closed_above_entry`, `power_hold`, `exit_armed*`, `breakout_verdict`,

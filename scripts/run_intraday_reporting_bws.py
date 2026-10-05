@@ -31,7 +31,7 @@ def valid_secret(value):
             and not any(char in value for char in ("\r", "\n", "\0")))
 
 
-def load_credentials(env, runner=subprocess.run):
+def load_credentials(env, runner=subprocess.run, *, required=REQUIRED):
     token = env.get("BWS_ACCESS_TOKEN", "")
     mask(token)
     if not valid_secret(token):
@@ -75,7 +75,7 @@ def load_credentials(env, runner=subprocess.run):
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise BootstrapError("Bitwarden secret lookup returned an invalid response.")
     values = {}
-    for key in REQUIRED:
+    for key in required:
         matches = [row.get("value") for row in rows
                    if row.get("projectId") == project_id and row.get("key") == key]
         for value in matches:

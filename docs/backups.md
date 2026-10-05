@@ -16,52 +16,46 @@ watchdog's Bitwarden loader and no-cache `scripts/bws_ci.toml` profile. Configur
 only the GitHub Actions application bootstrap secret `BWS_ACCESS_TOKEN`; its
 machine account must read the `ai-trading-bot` Bitwarden project. That project
 must contain one valid value each for `SUPABASE_URL`, `SUPABASE_KEY`,
-`INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`. Values are
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`. Values are
 loaded into the exporter subprocess environment only, masked in Actions output,
 and never written to an environment file or CLI cache. Missing/ambiguous vault
 values fail before export, without falling back to individual Actions secrets.
 
-Saved intraday comparison results (`intraday_replay_runs`) are included. Their
-private table requires the project's service-role `INTRADAY_SUPABASE_KEY`; the
-exporter prefers it over `SUPABASE_KEY`. The same credential can read the
-service-role-only `exit_shadow_log`; an ordinary anon key is not sufficient.
-The unrelated production SSH secrets remain Actions secrets.
-See `decisions/2026-10-04_backup-vault-and-private-exit-shadow.md` for why.
-The research inbox's settings, proposals and append-only decision events
-(`intraday_calibration_settings`, `intraday_calibration_proposals`,
-`intraday_calibration_events`) are also included. Calibration health and
-expiring worker leases are not evidence and are explicitly excluded.
-Apply `migrations/20261003_add_calibration_loop.sql` before deployment.
-See `decisions/2026-10-03_interactive-self-calibration.md`.
+The exporter uses only `SUPABASE_KEY`. The backup neither requires nor forwards
+`INTRADAY_SUPABASE_KEY`; the independent research watchdog still requires it.
+Production SSH secrets remain Actions secrets.
 
-The required inventory contains **27 tables**, including all ten previously
-unclassified notification, reporting and shadow tables:
+The required inventory contains **13 trading-state tables**:
 
 | Tables | Stable export ordering |
 |---|---|
+| `account_balances` | `date` |
+| `breakout_learnings`, `cash_flows`, `exit_requests`, `trade_history` | `id` |
 | `daily_notifications` | `report_type`, `report_date` |
-| `intraday_shadow_checkpoints` | `run_id`, `sequence` |
-| `intraday_shadow_runs`, `intraday_shadow_events`, `intraday_shadow_health` | `id` |
-| `intraday_research_reports`, `intraday_research_calibration_artifacts` | `id` |
-| `intraday_research_incidents`, `intraday_research_delivery_receipts`, `intraday_research_reporting_state` | `id` |
+| `daily_triggers`, `trigger_history` | `triggered_at`, `ticker` |
+| `ibkr_fills` | `exec_id` |
+| `portfolio_positions`, `watchlist` | `ticker` |
+| `trigger_decisions` | `decision_date`, `ticker` |
+| `watchlist_history` | `snapshot_date`, `ticker` |
 
-These are required exports, not optional exclusions: a missing table or denied
-read fails the backup. Shadow seeds, complete published event histories,
-checkpoints, research reports and calibration artifacts are retained together
-with their delivery and operational context. The operator explicitly includes
-shadow health, reporting coordination state and the daily-notification ledger
-in these snapshots, even though they are operational rather than trade data.
-Apply `20260928_add_daily_notifications.sql`,
-`20260930_add_intraday_shadow.sql` and `20260930_add_intraday_reporting.sql`
-before export. See
-`decisions/2026-10-04_backup-vault-and-private-exit-shadow.md`.
+A missing table or denied read for any required table still fails the backup.
+Permissions failures are not silently ignored.
 
-Raw `intraday_capture_events` and their sampling membership are deliberately
-excluded from the indefinitely retained full snapshots. They follow
-`INTRADAY_RETENTION_DAYS` (365 by default); weekly copies of the entire raw
-history would multiply storage and defeat that retention. Health is ephemeral
-and session counts are a derived view. Export important replay datasets before
-expiry. See `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
+**All calibration and benchmarking research is excluded:** every
+`intraday_calibration_*`, `intraday_research_*`, `intraday_shadow_*` and
+`intraday_capture_*` table/view, plus `intraday_replay_runs` and `exit_shadow_log`.
+`agent_logs` remains excluded under its existing retention policy.
+Each known exclusion has an explicit reason in `supabase_backup.NOT_BACKED_UP`;
+the exporter reports excluded names and records `excluded_tables` with reasons
+in the manifest. `--tables` cannot override these exclusions.
+
+This is a recovery limitation, not a claim that research history can be
+recreated. Weekly backups cannot restore calibration settings/decisions,
+benchmarks, simulated trades or their reports. Export any research evidence
+that must survive independently, including raw inputs before
+`INTRADAY_RETENTION_DAYS` (365 by default) expires. Existing server archives,
+Supabase tables and research workers are not deleted or altered.
+See `decisions/2026-10-04_trading-only-backup-scope.md` for why.
 
 | | |
 |---|---|
@@ -69,7 +63,7 @@ expiry. See `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
 | Schedule | Sundays, 14:00 UTC |
 | Script | `supabase_backup.py` |
 | Destination | `/home/pom/docker/ai-trading-bot/backups/` on the prod server |
-| Size | Depends on retained tables and saved replay outputs; measure each archive |
+| Size | Depends on retained trading-state tables; measure each archive |
 
 The export runs in the GitHub Actions runner and is rsynced to the server, so
 the DietPi host needs no Python, no pyarrow and no Supabase credentials. It
@@ -142,7 +136,7 @@ backups/
   README.md
 ```
 
-Each run writes a **complete snapshot** into a new dated partition. Nothing is
+Each run writes a **complete snapshot of the required tables** into a new dated partition. Nothing is
 ever overwritten, so every week is independently restorable and the archive
 grows incrementally. There is no row-level delta. `portfolio_positions` is mutated in
 place every 15 minutes, so an append-only delta would miss most of what changes.
@@ -259,27 +253,21 @@ unordered multi-page fetch can duplicate one row and drop another.
 You do not have to remember this.
 `tests/test_supabase_backup.py::test_every_known_table_is_backed_up` scans
 `migrations/` and the Supabase calls in the source and fails if a table the bot
-uses is missing from `TABLES`.
+uses is missing from both `TABLES` and `NOT_BACKED_UP`. New research tables must
+be explicitly excluded with a reason rather than added to the required export.
 
 ## Restoring
 
 The files are plain tables — read the Parquet and upsert back into Supabase.
 Check `parquet_sha256` in the manifest first if a file's integrity is in doubt.
 
-Restore while producers and delivery workers are stopped. Restore
-`intraday_shadow_runs` before its events, checkpoints and health references;
-check that each restored published sequence has its full event history before
-resuming calibration. The exporter reads tables sequentially, not in a single
-database transaction, so inclusion of all tables is not by itself proof that
-their captured versions are mutually consistent.
-
-Saved `intraday_research_reporting_state` lease fields and
-`intraday_shadow_health` timestamps are historical context, not proof of a
-current worker. Do not reactivate an archived lease or treat restored health as
-live. Reconcile reporting receipts/status before enabling delivery to avoid
-resending historical notifications. Raw capture retention exclusions above
-still apply; this archive is not a complete replacement for retained raw
-intraday quotes.
+Restore while trading writers and notification workers are stopped. Reconcile
+`daily_notifications` against actual delivery before resuming alerts.
+The exporter reads tables sequentially, not in a single database transaction;
+inclusion of all required tables does not prove cross-table consistency.
+Consult the dated manifest: older archives may contain research tables, but
+new snapshots deliberately cannot restore that subsystem. Do not interpret
+historical worker leases or health timestamps as current.
 
 ⚠️ **This has never been rehearsed.** Tracked as FU-010.
 

@@ -2,7 +2,12 @@
 
 Date: 2026-09-30
 Status: Accepted - deployment and calibration scope extended by
-`2026-09-30_observer-and-calibration-harness.md`
+`2026-09-30_observer-and-calibration-harness.md`; backup scope superseded in part
+by [trading-only backups](2026-10-04_trading-only-backup-scope.md).
+
+> **2026-10-04:** Saved comparison results are no longer in weekly backups.
+> The entire calibration/benchmarking subsystem is excluded. Collection,
+> retention and human-approval boundaries remain unchanged.
 
 > **2026-09-30:** An independent observer can collect while trading is stopped;
 > it does not claim to capture live decisions. Offline frozen-selection and

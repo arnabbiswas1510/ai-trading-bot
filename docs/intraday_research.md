@@ -31,8 +31,9 @@ history from before recording began.
    to project `ai-trading-bot`. The workflow fetches `SUPABASE_URL`, `SUPABASE_KEY`,
    `INTRADAY_SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` by exact
    name from that project; do not duplicate those five values into Actions.
-   The weekly backup remains separate and still requires its existing GitHub
-   Actions secrets, including `INTRADAY_SUPABASE_KEY`.
+   The weekly backup uses the same Bitwarden bootstrap but only the four
+   non-research secrets above; it does not require `INTRADAY_SUPABASE_KEY`
+   and excludes this entire research subsystem.
 4. Apply the delivered patch and deploy the web and execution images through
    the existing pipeline. Leave the GitHub repository Actions variable
    `TRADING_RUNTIME_MODE` unset or set it to `observe`: deployment starts real
@@ -609,10 +610,12 @@ The collector maintains a rolling raw-data horizon through
 expired live trigger can still be valued in an alternative portfolio.
 Collector spool limits and unavailable prices remain visible failures.
 
-Raw events are not copied into the indefinitely retained weekly full backup;
-saved comparison results are. Export important input datasets before their
-retention expires. A result's fingerprint identifies its input but cannot
-recover deleted observations.
+Raw events, saved comparison results, calibration decisions/artifacts and
+simulated portfolio/reporting state are all excluded from weekly trading-state
+backups. Preserve needed research evidence independently and export important
+input datasets before their retention expires. A result's fingerprint
+identifies its input but cannot recover deleted observations.
+See `decisions/2026-10-04_trading-only-backup-scope.md` for the backup boundary.
 
 Shadow runs are not automatically prefix-pruned: their actual seed and every
 predecessor frame are required to reproduce later hypothetical holdings.

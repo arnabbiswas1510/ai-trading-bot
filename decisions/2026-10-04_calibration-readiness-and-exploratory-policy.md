@@ -1,8 +1,12 @@
 # Complete the calibration input pipeline and freeze exploratory operator limits
 
 Date: 2026-10-04
-Status: Accepted; market-session evidence remains required
+Status: Accepted; backup inventory reference superseded by [trading-only scope](2026-10-04_trading-only-backup-scope.md); market-session evidence remains required
 Scope: Research inputs, CI dependencies and explicit operator research settings
+
+> **2026-10-04:** The companion 27-table backup inventory is no longer current.
+> Weekly backups retain 13 trading-state tables and exclude research.
+> Calibration inputs and exploratory operator limits below are unchanged.
 
 ## Context
 

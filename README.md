@@ -84,7 +84,8 @@ permission to deploy. See [the production policy](docs/interactive_calibration.m
 The shadow seed and quote reader share the recorder's supported quote transport;
 missing or stale inputs still block a usable experiment. The daily screening
 test gate installs its own complete dependency manifest, and
-[weekly backups](docs/backups.md) use Bitwarden and include 27 required tables.
+[weekly backups](docs/backups.md) use Bitwarden and include 13 trading-state
+tables, excluding calibration and benchmarking research.
 See `decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
 
 **Unexpected-short safety:** broker-confirmed signed inventory, scoped to the
@@ -569,7 +570,7 @@ and `main_loop()`.
 | Daily screener | `0 21 * * 1-5` | Fundamental → technical → AI scoring chain |
 | IBKR cash-flow sync | `0 6 * * 2-6` | Reconcile deposits/withdrawals via Flex Query |
 | Trigger outcome backfill | `0 12 * * 0` | Attach forward returns to archived triggers |
-| Supabase backup | `0 14 * * 0` | Full snapshot of every table to Parquet on the prod server |
+| Supabase backup | `0 14 * * 0` | Full snapshot of 13 trading-state tables to Parquet; research excluded |
 
 ---
 
@@ -777,7 +778,7 @@ docker compose --profile observe logs -f intraday-observer
 | `force_sell.py` | Liquidate a named position immediately |
 | `rotate_positions.py` | Interactive review of holdings against fresh triggers |
 | `managed_exit.py` | Run an armed exit manually |
-| `supabase_backup.py` | Export every Supabase table to Parquet (see [Backups](#backups)) |
+| `supabase_backup.py` | Export retained trading-state tables to Parquet (see [Backups](#backups)) |
 
 ---
 
@@ -787,7 +788,7 @@ Supabase holds all trading state, and `trade_history` is the only record of what
 strategy did with real money — every scheduled parameter review replays it. It is backed
 up weekly.
 
-A GitHub Action (`weekly_supabase_backup.yml`, Sundays 14:00 UTC) exports all 12 tables and
+A GitHub Action (`weekly_supabase_backup.yml`, Sundays 14:00 UTC) exports 13 trading-state tables and
 rsyncs them to `/home/pom/docker/ai-trading-bot/backups/` on the production server:
 
 ```
@@ -796,9 +797,15 @@ backups/
   manifest/<YYYY-MM-DD>.json                                          <- counts + checksums
 ```
 
-Each run writes a **complete snapshot into a new dated partition** and never overwrites an
+Calibration, benchmarking, replay and simulated-shadow data are excluded.
+The backup uses `SUPABASE_KEY` from Bitwarden and does not require the private
+research key. A denied read on a retained trading table still fails the run.
+The manifest records intentional exclusions; existing archives are untouched.
+See `decisions/2026-10-04_trading-only-backup-scope.md` for why.
+
+Each run writes a **complete snapshot of retained tables into a new dated partition** and never overwrites an
 earlier one, so the archive grows incrementally while every week stays independently
-restorable. There is no row-level delta: the whole database is ~700 rows (~180KB/week), and
+restorable. There is no row-level delta; archive size depends on the retained tables, and
 `portfolio_positions` is mutated in place every 15 minutes, so an append-only delta would
 miss most of what changes.
 

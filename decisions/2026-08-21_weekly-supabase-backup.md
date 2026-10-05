@@ -1,7 +1,12 @@
 # Weekly Supabase backup to Parquet on the production server
 
 - **Date:** 2026-08-21
-- **Status:** Accepted — with two errata (see below)
+- **Status:** Accepted with errata; scope superseded in part by [trading-only backups](2026-10-04_trading-only-backup-scope.md)
+
+> **2026-10-04:** "Every table" is no longer the recovery policy. Weekly backups
+> retain 13 trading-state tables and explicitly exclude calibration/benchmarking
+> research. Each known table must still be classified; all retained tables must
+> succeed. The backup uses Bitwarden-loaded `SUPABASE_KEY`.
 
 > **Erratum, 2026-09-28.** The paragraph below describing the ship step as
 > pinning the host key with `ssh-keyscan` is **superseded**. That scan-then-
