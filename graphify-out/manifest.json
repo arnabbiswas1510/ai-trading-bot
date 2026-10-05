@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1791130710.4045274,
-    "ast_hash": "949bcd310f4fef9b254eb85dc576b569",
+    "mtime": 1791161240.8392684,
+    "ast_hash": "eb8f20e270940ba2ab7b3ed4293749ba",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -900,8 +900,8 @@
     "semantic_hash": ""
   },
   "docs/retired_code.md": {
-    "mtime": 1791131152.4854002,
-    "ast_hash": "dc12b9cf011d6e50b3e0f4bdd5c85532",
+    "mtime": 1791160989.6957664,
+    "ast_hash": "6d88d56b7c03687033cd703e09684e12",
     "semantic_hash": ""
   },
   "tests/test_dashboard_pricing.py": {
@@ -1870,8 +1870,8 @@
     "semantic_hash": ""
   },
   "intraday_capture.py": {
-    "mtime": 1791128917.8970962,
-    "ast_hash": "10dcf833ec534db29df00c366e189a2b",
+    "mtime": 1791160989.7392375,
+    "ast_hash": "2d599ac187f3ef2bd2febfb09abae916",
     "semantic_hash": ""
   },
   "intraday_replay.py": {
@@ -1885,8 +1885,8 @@
     "semantic_hash": ""
   },
   "tests/test_intraday_capture.py": {
-    "mtime": 1791092615.6331632,
-    "ast_hash": "869ec3d2f807c335f9151d5d9aebf80b",
+    "mtime": 1791161069.6838875,
+    "ast_hash": "3c49c4ac0ee4f927e02dbfd8a2be17de",
     "semantic_hash": ""
   },
   "tests/test_intraday_capture_integration.py": {
@@ -1910,8 +1910,8 @@
     "semantic_hash": ""
   },
   "docs/intraday_research.md": {
-    "mtime": 1791129010.2082474,
-    "ast_hash": "d271434cbc43a50a0a33b501be4ca774",
+    "mtime": 1791161240.8146262,
+    "ast_hash": "150c7417d71da7309a3d021bd3a6cbc7",
     "semantic_hash": ""
   },
   "broker_positions.py": {
@@ -2020,8 +2020,8 @@
     "semantic_hash": ""
   },
   "shadow_inputs.py": {
-    "mtime": 1791128917.9115844,
-    "ast_hash": "e828bde20a85ce9c834ec82942853941",
+    "mtime": 1791160989.7231112,
+    "ast_hash": "9ad46a7b40b9b87f80efe0cb73fa90fb",
     "semantic_hash": ""
   },
   "shadow_store.py": {
@@ -2060,8 +2060,8 @@
     "semantic_hash": ""
   },
   "tests/test_shadow_worker.py": {
-    "mtime": 1791128953.2717822,
-    "ast_hash": "d2d2921d8833d05f8f251f1473a324c1",
+    "mtime": 1791161069.6676822,
+    "ast_hash": "8428f8cef58f653a8f968dab8d627545",
     "semantic_hash": ""
   },
   ".github/workflows/intraday_research_review.yml": {
@@ -2360,8 +2360,8 @@
     "semantic_hash": ""
   },
   "quote_transport.py": {
-    "mtime": 1791128895.8044057,
-    "ast_hash": "21d1f6fbd4a46d20c9878b4301add015",
+    "mtime": 1791160989.706911,
+    "ast_hash": "dee815a6f5617fdadc25da5236b52680",
     "semantic_hash": ""
   },
   "scripts/run_supabase_backup_bws.py": {

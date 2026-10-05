@@ -353,6 +353,48 @@ def test_batch_entitlement_fallback_covers_45_symbols_and_records_provenance(rec
     assert config["quote_fallback_reason"] == "batch_quote_http_402"
 
 
+@pytest.mark.parametrize("individual", [False, True])
+def test_recorder_share_class_alias_keeps_internal_identity_and_provenance(recorder, individual):
+    recorder.symbols = {s: {"last_seen_at": capture.now()} for s in ("MOG.A", "ZZZ")}
+    stamp = capture.dt.datetime.now(capture.UTC).timestamp()
+    rows = [{"symbol": s, "price": 20, "timestamp": stamp} for s in ("MOG-A", "ZZZ")]
+    http = MagicMock()
+    http.get.side_effect = ([quote_response(status=402)] + [
+        quote_response([r]) for r in rows] if individual else [quote_response(rows)])
+    recorder.sample(http)
+    payload = recorder.queue.get_nowait()["payload"]
+    assert payload["complete"] is True
+    assert payload["errors"] == payload["missing_quotes"] == []
+    assert [q["ticker"] for q in payload["quotes"]] == ["MOG.A", "ZZZ"]
+    assert payload["quotes"][0]["provider_symbol"] == "MOG-A"
+    assert payload["quote_requests"][0]["parameters"] == {"symbols": "MOG-A,ZZZ"}
+    assert payload["quote_requests"][0]["symbol_map"] == {"MOG-A": "MOG.A", "ZZZ": "ZZZ"}
+    assert "apikey" not in json.dumps(payload)
+
+
+def test_recorder_does_not_merge_ambiguous_aliases(recorder):
+    recorder.symbols = {s: {"last_seen_at": capture.now()} for s in ("MOG.A", "MOG-A")}
+    http = MagicMock()
+    recorder.sample(http)
+    payload = recorder.queue.get_nowait()["payload"]
+    assert payload["complete"] is False
+    assert payload["quotes"] == []
+    assert payload["errors"][0]["reason"] == "ambiguous_provider_symbol"
+    http.get.assert_not_called()
+
+
+def test_recorder_rejects_wrong_share_class(recorder):
+    recorder.symbols = {"MOG.A": {"last_seen_at": capture.now()}}
+    http = MagicMock()
+    http.get.return_value = quote_response([
+        {"symbol": "MOG-B", "price": 20, "timestamp": capture.dt.datetime.now(capture.UTC).timestamp()}])
+    recorder.sample(http)
+    payload = recorder.queue.get_nowait()["payload"]
+    assert payload["complete"] is False
+    assert payload["quotes"] == []
+    assert payload["missing_quotes"] == ["MOG.A"]
+
+
 @pytest.mark.parametrize("status", [301, 401, 403, 429, 500])
 def test_only_batch_402_enables_individual_fallback(recorder, status):
     recorder.symbols = {"ABC": {"last_seen_at": capture.now()}}

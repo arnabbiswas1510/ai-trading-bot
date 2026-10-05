@@ -716,7 +716,9 @@ class Recorder:
                 if not isinstance(row, dict):
                     errors.append({"reason": "invalid_quote_row"})
                     continue
-                ticker = row.get("symbol")
+                provider_symbol = row.get("symbol")
+                ticker = (proof["symbol_map"].get(provider_symbol)
+                          if isinstance(provider_symbol, str) else None)
                 if ticker not in chunk:
                     errors.append({"reason": "unrequested_quote_row"})
                     continue
@@ -731,6 +733,7 @@ class Recorder:
                     if not math.isfinite(price) or price <= 0 or not math.isfinite(stamp) or not -60 <= age <= self.max_quote_age:
                         raise ValueError("invalid price or stale provider timestamp")
                     quotes.append({"ticker": ticker, "price": price, "source": "FMP",
+                                   "provider_symbol": provider_symbol,
                                    "endpoint": f"stable/{endpoint}",
                                    "provider_timestamp": dt.datetime.fromtimestamp(stamp, UTC).isoformat(),
                                    "received_at": received})
@@ -747,6 +750,7 @@ class Recorder:
                                   "fallback_reason": self.quote_fallback_reason,
                                   "request_count": transport["request_count"],
                                   "request_limit": transport["request_limit"],
+                                  "quote_requests": transport["requests"],
                                   "budget_seconds": budget,
                                   "received_at": now()})
         if errors:

@@ -280,6 +280,8 @@ application/deployment boundary, not a claim that service-role database
 credentials are themselves read-only.
 
 The worker reads completed observer snapshots, source trading tables and FMP.
+Candidate reads are ordered by both `daily_triggers` key columns,
+`(triggered_at, ticker)`, on every page. That table has no `id` column.
 Date-only screener trigger labels remain dates; their availability is established
 by the separate acquisition timestamp, not an invented intraday trigger time.
 Missing screener ATR (average true range, a measure of daily price movement)
@@ -636,6 +638,18 @@ Authentication, rate-limit, network and server failures never select a different
 endpoint. An individual request failure ends that round instead of repeating the
 failure across the retained universe. This fixes subscription compatibility
 without changing trading rules or requiring a subscription upgrade.
+
+Internal dotted A/B share-class symbols are translated only at the FMP boundary:
+`MOG.A` requests `MOG-A`, and `BRK.B` requests `BRK-B`. Existing hyphenated names
+and exchange suffixes such as `.L` or `.AX` are unchanged. Request evidence carries
+an explicit provider-to-internal `symbol_map`; accepted quotes retain the
+internal ticker plus `provider_symbol`. The shadow quote also retains its raw,
+unmodified provider row. Recorder samples include the credential-free
+`quote_requests` evidence. Wrong share classes, unrequested symbols and ambiguous
+inputs such as both `MOG.A` and `MOG-A` are not merged or accepted as complete.
+Shadow daily-history requests use the same translation while keeping history
+cache keys in the internal spelling. Database and brokerage identifiers are
+not renamed, and failed requests are never "fixed" by dropping a stock.
 
 Each round has a dispatch budget of the smallest of **30 seconds**, half
 `INTRADAY_SAMPLE_SECONDS`, and half `INTRADAY_MAX_QUOTE_AGE_SECONDS`; at most

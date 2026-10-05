@@ -28,6 +28,28 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-10-04 - Invalid trigger ordering and provider ticker assumptions
+
+The `InputProducer.frame()` query in `shadow_inputs.py` no longer orders
+`daily_triggers` by a nonexistent `id`. It uses the actual composite key
+`(triggered_at, ticker)` across every page. The active old query failed the
+production preflight with PostgreSQL `42703`; no hypothetical run had yet been
+created. No database column or trading rule is removed.
+
+Direct use of internal dotted A/B share-class tickers as FMP symbols is replaced
+in `quote_transport.fetch_quotes()` and `PublicMarketData.history()`.
+`Recorder.sample()` and `PublicMarketData.quotes()` resolve responses through
+the request's explicit provider-to-internal mapping, keeping the raw provider
+identity and timestamps. This is an identifier translation, not a ticker rename
+in the database or broker. Production returned HTTP 402 for `MOG.A` but HTTP 200
+for `MOG-A`; the former stopped the 104-symbol quote probe after 64 successes.
+
+Restore reference: commit `7967a6d`, specifically `shadow_inputs.py`,
+`quote_transport.py`, `intraday_capture.py` and their corresponding tests.
+An `id` ordering would require a real schema change; direct symbol forwarding
+would require FMP to accept every internal spelling. Neither assumption is
+currently true. See `docs/intraday_research.md` for the repaired input contract.
+
 ## 2026-10-04 - Shadow seed numeric sweep and quote transport relocation
 
 `build_seed()` in `shadow_inputs.py` no longer converts every USD account tag

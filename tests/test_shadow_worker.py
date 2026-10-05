@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import shadow_engine
-from shadow_inputs import InputGap, build_seed, completed_daily_bars, InputProducer, PublicMarketData
+from shadow_inputs import InputGap, build_seed, completed_daily_bars, InputProducer, PublicMarketData, ReadOnlySources
 from shadow_store import ShadowStore, StoreError, fingerprint
 from shadow_worker import Worker, session_ticks, next_tick
 from test_intraday_replay import records, DAY
@@ -47,6 +47,59 @@ class Cloud:
         key = self.body.get("id") or (self.body["run_id"], self.body["sequence"])
         self.rows[(self.target, key)] = self.body
         return self
+
+
+class TriggerTableClient:
+    """Mirror the real composite key; reject the nonexistent id column."""
+    def __init__(self, rows):
+        self.rows, self.page_orders = rows, []
+
+    def table(self, table):
+        assert table == "daily_triggers"
+        client = self
+
+        class Query:
+            def __init__(self):
+                self.columns, self.filters = [], []
+
+            def select(self, fields):
+                assert fields == "*"
+                return self
+
+            def gte(self, column, value):
+                self.filters.append((column, value))
+                return self
+
+            def order(self, column, desc=False):
+                assert column in ("triggered_at", "ticker"), f"Unknown column: {column}"
+                self.columns.append((column, desc))
+                return self
+
+            def range(self, start, end):
+                self.start, self.end = start, end
+                return self
+
+            def execute(self):
+                client.page_orders.append(tuple(self.columns))
+                rows = [r for r in client.rows if all(r[c] >= v for c, v in self.filters)]
+                rows.sort(key=lambda r: tuple(r[c] for c, _ in self.columns),
+                          reverse=self.columns[0][1])
+                return MagicMock(data=rows[self.start:self.end + 1])
+
+        return Query()
+
+
+@pytest.mark.parametrize("descending", [False, True])
+def test_trigger_source_paginates_by_both_real_key_columns(descending):
+    rows = [{"ticker": f"T{i % 7}", "triggered_at": (
+        dt.date(2026, 1, 1) + dt.timedelta(days=i // 7)).isoformat()} for i in range(601)]
+    client = TriggerTableClient(list(reversed(rows)))
+    result = ReadOnlySources(client).read(
+        "daily_triggers", order=("triggered_at", "ticker"), descending=descending)
+    assert result["rows"] == sorted(
+        rows, key=lambda r: (r["triggered_at"], r["ticker"]), reverse=descending)
+    assert client.page_orders == [
+        (("triggered_at", descending), ("ticker", descending))] * 2
 
 
 def test_store_restart_staging_and_exactly_once_fill(directory, records):
@@ -361,6 +414,92 @@ def test_shadow_quotes_45_symbol_fallback_preserves_mode_raw_data_and_provenance
     assert evidence[-1]["request_count"] == 45
 
 
+@pytest.mark.parametrize("individual", [False, True])
+def test_shadow_share_class_quotes_preserve_internal_and_provider_identities(individual):
+    from quote_transport import fmp_symbol
+    now = dt.datetime.fromisoformat("2026-10-04T11:00:00-04:00")
+    symbols = ["BRK.B", "MOG.A", "XYZ"]
+    rows = [{"symbol": fmp_symbol(s), "price": 100, "timestamp": now.timestamp()}
+            for s in symbols]
+    http = MagicMock()
+    http.get.side_effect = ([shadow_quote_response(status=402)] + [
+        shadow_quote_response([row]) for row in rows] if individual else [
+            shadow_quote_response(rows)])
+    quotes, evidence = PublicMarketData(http, "DO-NOT-LOG", lambda: now).quotes(symbols)
+    assert set(quotes) == set(symbols)
+    assert quotes["MOG.A"]["provider_symbol"] == "MOG-A"
+    assert quotes["MOG.A"]["raw"] == rows[1]
+    assert quotes["MOG.A"]["provider_timestamp"] == now.astimezone(UTC).isoformat()
+    assert evidence[0]["parameters"] == {"symbols": "BRK-B,MOG-A,XYZ"}
+    assert evidence[0]["symbol_map"] == {"BRK-B": "BRK.B", "MOG-A": "MOG.A", "XYZ": "XYZ"}
+    assert "DO-NOT-LOG" not in str(evidence)
+    if individual:
+        assert [c.kwargs["params"]["symbol"] for c in http.get.call_args_list[1:]] == [
+            "BRK-B", "MOG-A", "XYZ"]
+
+
+def test_full_104_symbol_shadow_quote_universe_including_share_class():
+    from quote_transport import fmp_symbol
+    now = dt.datetime.now(UTC)
+    symbols = ["MOG.A"] + [f"T{i:03}" for i in range(103)]
+    http = MagicMock()
+
+    def get(url, *, params, **kwargs):
+        if url.endswith("batch-quote") or params["symbol"] == "MOG.A":
+            return shadow_quote_response(status=402)
+        return shadow_quote_response([
+            {"symbol": params["symbol"], "price": 100, "timestamp": now.timestamp()}])
+
+    http.get.side_effect = get
+    quotes, evidence = PublicMarketData(http, "synthetic", lambda: now).quotes(symbols)
+    assert set(quotes) == set(symbols)
+    assert http.get.call_count == evidence[-1]["request_count"] == 105
+    assert all(quotes[s]["raw"]["symbol"] == fmp_symbol(s) for s in symbols)
+
+
+@pytest.mark.parametrize("returned", ["MOG-B", "MOG.A", "OTHER"])
+def test_share_class_response_cannot_substitute_another_identity(returned):
+    http = MagicMock()
+    http.get.return_value = shadow_quote_response([
+        {"symbol": returned, "price": 100, "timestamp": 123}])
+    with pytest.raises(InputGap, match="Unrequested"):
+        PublicMarketData(http, "synthetic").quotes(["MOG.A"])
+
+
+def test_ambiguous_share_class_aliases_fail_before_requesting_quotes():
+    http = MagicMock()
+    with pytest.raises(InputGap, match="ambiguous_provider_symbol"):
+        PublicMarketData(http, "synthetic").quotes(["MOG.A", "MOG-A"])
+    http.get.assert_not_called()
+
+
+@pytest.mark.parametrize("ticker,expected", [
+    ("MOG.A", "MOG-A"), ("BRK.B", "BRK-B"), ("MOG-A", "MOG-A"),
+    ("VOD.L", "VOD.L"), ("BHP.AX", "BHP.AX"), ("ABC", "ABC"),
+])
+def test_fmp_symbol_translation_is_limited_to_dotted_ab_share_classes(ticker, expected):
+    from quote_transport import fmp_symbol
+    assert fmp_symbol(ticker) == expected
+
+
+def test_shadow_history_translates_share_class_and_preserves_cache_identity():
+    from market_calendar import session_bounds
+    now = dt.datetime.fromisoformat("2026-10-04T11:00:00-04:00")
+    days = [now.date() - dt.timedelta(days=i) for i in range(100, 0, -1)]
+    bars = [dict(date=d.isoformat(), open=100, high=101, low=99, close=100,
+                 volume=1000) for d in days if session_bounds(d)]
+    http = MagicMock()
+    http.get.return_value = shadow_quote_response(bars)
+    market = PublicMarketData(http, "synthetic", lambda: now)
+    history = market.history("MOG.A", now)
+    assert http.get.call_args.kwargs["params"]["symbol"] == "MOG-A"
+    assert history["parameters"]["symbol"] == "MOG-A"
+    assert history["symbol_map"] == {"MOG-A": "MOG.A"}
+    assert ("MOG.A", "2026-10-03") in market._history_cache
+    assert market.history("MOG.A", now) == history
+    assert http.get.call_count == 1
+
+
 @pytest.mark.parametrize("status", [301, 401, 403, 429, 500])
 def test_shadow_only_402_enables_fallback_without_leaking_errors(status):
     http = MagicMock()
@@ -470,11 +609,7 @@ def test_producer_outputs_real_engine_frames_and_prices_shadow_only_holdings(rec
     if recorded_atr == "absent":
         trigger.pop("atr_pct")
     rows = [trigger, dict(trigger, ticker="VETOED", ai_grade="D")]
-    class Sources:
-        def read(self, *args, **kwargs):
-            return dict(proof, rows=rows, received_at=now.isoformat())
-        def observer_pair(self, account):
-            return pair
+    source_client = TriggerTableClient(rows)
     class Market:
         universes = []
         def history(self, symbol, as_of):
@@ -491,7 +626,8 @@ def test_producer_outputs_real_engine_frames_and_prices_shadow_only_holdings(rec
             return {s: {"price": 100, "provider_timestamp": now.isoformat(),
                         "received_at": now.isoformat(), "source": "FMP"} for s in symbols}, []
     market = Market()
-    producer = InputProducer(Sources(), market, "U_TEST", config, clock=lambda: now)
+    producer = InputProducer(ReadOnlySources(source_client, clock=lambda: now),
+                             market, "U_TEST", config, clock=lambda: now)
     frame = producer.frame(state, now.isoformat(), now)
     state, output = shadow_engine.advance(state, frame["engine_frame"])
     assert [f["ticker"] for f in output["fills"]] == ["CAND"]
@@ -511,6 +647,8 @@ def test_producer_outputs_real_engine_frames_and_prices_shadow_only_holdings(rec
     state, output = shadow_engine.advance(state, frame["engine_frame"])
     assert "CAND" in market.universes[-1]  # not in actual account or current candidates
     assert "VETOED" in market.universes[-1]  # still available to alternative configurations
+    assert source_client.page_orders == [
+        (("triggered_at", False), ("ticker", False))] * 2
 
 
 @pytest.mark.parametrize("start,expected_key,eod,closing", [

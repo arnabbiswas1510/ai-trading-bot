@@ -12,7 +12,7 @@ from indicators import calculate_ema, calculate_sma, compute_rsi
 from market_calendar import trading_days_between
 from market_direction import index_verdict
 from shadow_store import fingerprint
-from quote_transport import fetch_quotes, quote_budget_seconds
+from quote_transport import fetch_quotes, fmp_symbol, quote_budget_seconds
 
 NY = ZoneInfo("America/New_York")
 UTC = dt.timezone.utc
@@ -65,6 +65,9 @@ class ReadOnlySources:
 
     def read(self, table, filters=(), *, order="id", descending=False, limit=None):
         require(table in SOURCE_TABLES, "Source table is outside read allowlist.")
+        columns = (order,) if isinstance(order, str) else tuple(order)
+        require(bool(columns) and all(isinstance(c, str) and c for c in columns),
+                "Source ordering requires nonempty column names.")
         started = self.clock().isoformat()
         rows, offset = [], 0
         while True:
@@ -72,7 +75,8 @@ class ReadOnlySources:
             for method, key, value in filters:
                 require(method in ("eq", "gte", "lte", "lt", "in_"), "Unsupported read filter.")
                 query = getattr(query, method)(key, value)
-            query = query.order(order, desc=descending)
+            for column in columns:
+                query = query.order(column, desc=descending)
             page_size = min(500, limit - len(rows)) if limit else 500
             batch = query.range(offset, offset + page_size - 1).execute().data
             require(isinstance(batch, list), f"{table}: incomplete database response.")
@@ -143,8 +147,10 @@ class PublicMarketData:
             rows, proof = response["rows"], response["proof"]
             for row in rows:
                 require(isinstance(row, dict), "Invalid FMP quote row.")
-                symbol = row.get("symbol")
-                require(isinstance(symbol, str) and symbol in response["symbols"],
+                provider_symbol = row.get("symbol")
+                require(isinstance(provider_symbol, str), "Invalid FMP quote symbol.")
+                symbol = proof["symbol_map"].get(provider_symbol)
+                require(symbol in response["symbols"],
                         "Unrequested FMP quote symbol.")
                 require(symbol not in result, "Duplicate FMP quote symbol.")
                 provider = row.get("timestamp")
@@ -159,7 +165,8 @@ class PublicMarketData:
                     "price": number(row.get("price"), f"{symbol}.price", positive=True),
                     "provider_timestamp": provider_time,
                     "received_at": proof["received_at"], "source": "FMP",
-                    "raw": row, "endpoint": "stable/" + proof["endpoint"],
+                    "raw": row, "provider_symbol": provider_symbol,
+                    "endpoint": "stable/" + proof["endpoint"],
                 }
         require(set(symbols) == result.keys(), "FMP quote response omitted requested symbols.")
         metadata = {k: transport[k] for k in (
@@ -172,8 +179,9 @@ class PublicMarketData:
         through = as_of.astimezone(NY).date() - dt.timedelta(days=1)
         key = (symbol, through.isoformat())
         if key not in self._history_cache:
+            provider_symbol = fmp_symbol(symbol)
             rows, evidence = self._get("historical-price-eod/full", {
-                "symbol": symbol, "from": (through - dt.timedelta(
+                "symbol": provider_symbol, "from": (through - dt.timedelta(
                     days=self._benchmark_days if symbol in self._benchmarks else 180)).isoformat(),
                 "to": through.isoformat(),
             })
@@ -183,6 +191,7 @@ class PublicMarketData:
                     f"{symbol}: stale daily history.")
             self._history_cache[key] = {
                 "bars": accepted, "excluded_unavailable_dates": rejected, **evidence,
+                "symbol_map": {provider_symbol: symbol},
                 "available_at": evidence["received_at"],
             }
         return copy.deepcopy(self._history_cache[key])
@@ -460,7 +469,8 @@ class InputProducer:
         lookback = (started.astimezone(NY).date() - dt.timedelta(
             days=self.config["replay_config"]["trigger_lookback_days"])).isoformat()
         candidates = self.sources.read(
-            "daily_triggers", (("gte", "triggered_at", lookback),), order="id")
+            "daily_triggers", (("gte", "triggered_at", lookback),),
+            order=("triggered_at", "ticker"))
         # Keep every row, including NULL AI grades/scores and gate-vetoed names.
         rows = candidates["rows"]
         require(len(rows) <= MAX_SYMBOLS, "Candidate universe exceeds input budget.")

@@ -1,5 +1,15 @@
 """Bounded public quote acquisition; no broker, storage or strategy dependencies."""
 
+import re
+
+
+def fmp_symbol(ticker):
+    """Translate dotted A/B share classes, not exchange suffixes or broker symbols."""
+    if not isinstance(ticker, str) or not ticker:
+        raise ValueError("FMP ticker must be a nonempty string")
+    match = re.fullmatch(r"([A-Z][A-Z0-9]*)\.([AB])", ticker)
+    return "-".join(match.groups()) if match else ticker
+
 
 def quote_budget_seconds(sample_seconds, max_quote_age):
     return min(30.0, sample_seconds / 2, max_quote_age / 2)
@@ -24,6 +34,10 @@ def fetch_quotes(http, api_key, tickers, *, budget, clock, monotonic,
         "endpoints_attempted": [], "request_count": 0, "request_limit": len(ordered) + 1,
         "budget_seconds": budget, "next_symbol": next_symbol,
     }
+    provider_symbols = {ticker: fmp_symbol(ticker) for ticker in ordered}
+    if len(set(provider_symbols.values())) != len(ordered):
+        result["errors"].append({"reason": "ambiguous_provider_symbol"})
+        return result
     offset = 0
     while offset < len(ordered):
         if stopped():
@@ -36,12 +50,14 @@ def fetch_quotes(http, api_key, tickers, *, budget, clock, monotonic,
             break
         endpoint = result["endpoint_mode"]
         chunk = ordered[offset:offset + (100 if endpoint == "batch-quote" else 1)]
-        params = {"symbols": ",".join(chunk)} if endpoint == "batch-quote" else {"symbol": chunk[0]}
+        symbol_map = {provider_symbols[ticker]: ticker for ticker in chunk}
+        params = ({"symbols": ",".join(symbol_map)} if endpoint == "batch-quote"
+                  else {"symbol": provider_symbols[chunk[0]]})
         result["request_count"] += 1
         if endpoint not in result["endpoints_attempted"]:
             result["endpoints_attempted"].append(endpoint)
         proof = {"source": "FMP", "endpoint": endpoint, "parameters": params,
-                 "requested_at": clock()}
+                 "requested_at": clock(), "symbol_map": symbol_map}
         result["requests"].append(proof)
         try:
             response = http.get(f"https://financialmodelingprep.com/stable/{endpoint}",

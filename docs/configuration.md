@@ -174,6 +174,11 @@ incomplete coverage, never synthetic prices. No additional environment setting
 is needed.
 The shadow input reader uses the same transport, but rejects incomplete frames
 rather than treating partial recorder coverage as a usable decision input.
+FMP requests translate dotted A/B share classes (for example `MOG.A` to `MOG-A`)
+and resolve quotes back to the unchanged internal ticker with explicit provider
+provenance. Shadow histories use the same translation. No environment override
+is needed. Candidate pagination uses both real `daily_triggers` key columns,
+`triggered_at` and `ticker`, not a nonexistent `id`.
 Shadow initialization parses only the required numeric `NetLiquidation` tag;
 textual USD account tags remain preserved raw, not coerced into money.
 
