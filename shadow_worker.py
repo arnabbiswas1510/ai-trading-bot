@@ -76,13 +76,15 @@ class Worker:
     def tick(self, *, new_run=False):
         now = self.clock()
         run = self.store.active()
+        new_run = bool(self.store.new_run_request(run)) or new_run
+        starting = run is None or new_run
         if run and run["status"] != "running" and not new_run:
             self.store.health("blocked", "Run is blocked; correct input sources and explicitly use --new-run.")
             diagnostics.emit("shadow-worker", "shadow_run_blocked",
                              context={"run_status": run["status"], "reason_code": "explicit_new_run_required"})
             return False
         try:
-            if run is None or new_run:
+            if starting:
                 # Avoid acquiring an overnight seed and falsely claiming its next-day
                 # account state was observed at the opening decision.
                 bounds = session_bounds(now.astimezone(NY).date())
@@ -90,15 +92,17 @@ class Worker:
                     self.store.health("waiting", "Waiting for a regular NYSE session to capture actual seed.")
                     return False
                 seed = self.producer.seed()
+                if not bounds[0] <= self.clock() < bounds[1]:
+                    raise InputGap("Startup seed acquisition crossed the session boundary; fresh inputs are required.")
                 state = self.engine.initialize(seed, self.producer.config)
-                self.store.create_run(seed, self.producer.config, self.engine.checkpoint(state),
-                                      self.engine.engine_fingerprint(), explicit=new_run)
-                diagnostics.emit("shadow-worker", "shadow_run_created", level="INFO")
-                run = self.store.active()
+                initial_state = self.engine.checkpoint(state)
+                # A seed alone is not a usable experiment. Keep the attempt in
+                # memory until a complete first frame passes engine validation.
+                run = {"config": self.producer.config, "state": initial_state}
             if semantic_config_fingerprint(run["config"]) != semantic_config_fingerprint(self.producer.config):
                 raise InputGap("Effective strategy configuration changed; explicit new run is required.")
             state = self.engine.restore(run["state"])
-            pending = self.store.pending(run["id"])
+            pending = None if starting else self.store.pending(run["id"])
             if pending:
                 # Replay durable prices even if the process is now past this slot.
                 frame = pending
@@ -119,8 +123,20 @@ class Worker:
                 frame = self.producer.frame(
                     state, due.isoformat(), due, eod=eod,
                     decision_cycle=decision and (first or not final), end_mark=final)
-                self.store.stage(run["id"], frame)
+                if not starting:
+                    self.store.stage(run["id"], frame)
+            if starting and not opening <= self.clock() < closing:
+                raise InputGap("Startup frame acquisition crossed the session boundary; fresh inputs are required.")
             state, output = self.engine.advance(state, frame["engine_frame"])
+            if starting:
+                if not opening <= self.clock() < closing:
+                    raise InputGap("Startup acquisition crossed the session boundary; fresh inputs are required.")
+                self.store.create_run(seed, self.producer.config, initial_state,
+                                      self.engine.engine_fingerprint(), explicit=new_run)
+                starting = False
+                run = self.store.active()
+                diagnostics.emit("shadow-worker", "shadow_run_created", level="INFO")
+                self.store.stage(run["id"], frame)
             self.store.commit_cycle(run["id"], frame, self.engine.checkpoint(state), output)
             if hasattr(self.producer, "committed"):
                 self.producer.committed(frame)
@@ -129,17 +145,32 @@ class Worker:
                              context={"cycle_at": frame["occurred_at"], "run_status": "running"})
             return True
         except (InputGap, ValueError, StoreError) as exc:
+            if starting and isinstance(exc, InputGap):
+                message = f"Startup inputs unavailable; will retry with a fresh seed: {exc}"[:1000]
+                self.store.health("waiting", message)
+                diagnostics.emit("shadow-worker", "shadow_startup_waiting", error=exc,
+                                 context={"reason_code": "startup_input_readiness"})
+                LOG.warning("%s", message)
+                return False
             diagnostics.emit("shadow-worker", "shadow_input_blocked", error=exc,
                              context={"reason_code": "input_or_engine_validation"})
             # Messages in these classes contain controlled validation text, not URLs/keys.
-            self.store.block(str(exc)[:1000], now.isoformat())
+            if starting:
+                self.store.health("blocked", str(exc)[:1000])
+            else:
+                self.store.block(str(exc)[:1000], now.isoformat())
             LOG.error("Shadow input/engine blocked: %s", exc)
             return False
         except Exception as exc:
             diagnostics.emit("shadow-worker", "shadow_acquisition_failed", error=exc)
             # Never persist HTTP exceptions containing secret-bearing URLs.
-            message = f"Shadow acquisition failed ({type(exc).__name__}); explicit new run required."
-            self.store.block(message, now.isoformat())
+            detail = ("no new run was created; inspect diagnostics."
+                      if starting else "explicit new run required.")
+            message = f"Shadow acquisition failed ({type(exc).__name__}); {detail}"
+            if starting:
+                self.store.health("blocked", message)
+            else:
+                self.store.block(message, now.isoformat())
             LOG.error("%s", message)
             return False
 
@@ -168,12 +199,24 @@ def parser():
     result.add_argument("--poll", type=float, default=30)
     result.add_argument("--spool", default=DEFAULT_SPOOL)
     result.add_argument("--account", default=os.getenv("IBKR_ACCOUNT"))
-    result.add_argument("--new-run", action="store_true",
-                        help="Explicitly supersede prior hypothetical run with fresh actual account evidence.")
+    recovery = result.add_mutually_exclusive_group()
+    recovery.add_argument("--new-run", action="store_true",
+                          help="Explicitly supersede prior hypothetical run with fresh actual account evidence.")
+    recovery.add_argument("--queue-new-run", action="store_true",
+                          help="Queue one replacement of the blocked run in the local spool, then exit.")
     return result
 
 
 def run(args, *, producer=None, cloud=None, stop=None, engine=None):
+    if getattr(args, "queue_new_run", False):
+        store = ShadowStore(args.spool)
+        try:
+            request = store.queue_new_run()
+            print(f"Queued one replacement for blocked run {request['run_id']}; "
+                  "the worker will wait for valid regular-session inputs.")
+            return 0
+        finally:
+            store.close()
     if args.poll <= 0 or not args.account:
         raise ValueError("A positive --poll and explicit --account / IBKR_ACCOUNT are required.")
     if producer is None or cloud is None:
@@ -202,7 +245,7 @@ def run(args, *, producer=None, cloud=None, stop=None, engine=None):
                 new_run = False
             uploaded = worker.flush()
             if args.once:
-                return 0 if uploaded and after and after["status"] == "running" else 1
+                return 0 if uploaded and after and after["status"] == "running" and not new_run else 1
             stop.wait(args.poll)
     finally:
         store.close()

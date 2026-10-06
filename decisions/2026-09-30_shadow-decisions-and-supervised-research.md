@@ -1,7 +1,13 @@
 # Decision-only portfolio simulation and supervised research
 
 Date: 2026-09-30
-Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md) and extended by [interactive self-calibration](2026-10-03_interactive-self-calibration.md); shadow accounting and supervision remain accepted, with the diagnostic-write exception below.
+Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md) and [startup input readiness](2026-10-05_shadow-startup-input-readiness.md), and extended by [interactive self-calibration](2026-10-03_interactive-self-calibration.md); shadow accounting and supervision remain accepted, with the exceptions below.
+
+> **2026-10-05:** Before a run's first complete frame validates, input failures
+> now wait/retry without creating an experiment or superseding its predecessor.
+> Established-run gaps still block permanently. Operators can queue a one-use,
+> run-specific replacement request; normal restarts do not independently
+> authorize reseeding. No stale prices or missing intervals are fabricated.
 
 > **2026-10-03:** A separate broker-free calibration worker now searches supported
 > numeric settings and reserves future evaluation. The descriptive reporter

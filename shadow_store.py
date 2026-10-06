@@ -94,10 +94,42 @@ class ShadowStore:
             raise StoreError("Checkpoint checksum mismatch; refusing to resume.")
         return result
 
+    def new_run_request(self, run):
+        row = self.db.execute(
+            "SELECT value FROM metadata WHERE key='new_run_request'").fetchone()
+        if not row:
+            return None
+        try:
+            request = json.loads(row["value"])
+            valid = (isinstance(request, dict) and set(request) == {"run_id", "requested_at"}
+                     and run is not None and run["status"] == "blocked"
+                     and request["run_id"] == run["id"]
+                     and isinstance(request["requested_at"], str)
+                     and dt.datetime.fromisoformat(request["requested_at"]).tzinfo is not None)
+        except (ValueError, TypeError):
+            valid = False
+        if not valid:
+            raise StoreError("Invalid or stale new-run request; refusing to replace a different run.")
+        return request
+
+    def queue_new_run(self):
+        run = self.active()
+        if not run or run["status"] != "blocked":
+            raise StoreError("A queued replacement requires an existing blocked shadow run.")
+        request = self.new_run_request(run)
+        if request:
+            return request
+        request = {"run_id": run["id"], "requested_at": now()}
+        with self.db:
+            self.db.execute("INSERT INTO metadata VALUES('new_run_request',?)", (canonical(request),))
+            self._health("waiting", "Operator requested a fresh run; waiting for valid regular-session inputs.")
+        return request
+
     def create_run(self, seed, config, state, revision, *, explicit=False):
         previous = self.active()
         if previous and not explicit:
             raise StoreError("An existing shadow run requires explicit --new-run.")
+        request = self.new_run_request(previous)
         run_id = fingerprint({"seed": seed, "config": config, "revision": revision})
         if self.db.execute("SELECT 1 FROM runs WHERE id=?", (run_id,)).fetchone():
             raise StoreError("Identical seed/config run already exists; use fresh observations.")
@@ -113,6 +145,8 @@ class ShadowStore:
             self._enqueue("intraday_shadow_runs", self._run_row(current))
             self._enqueue("intraday_shadow_checkpoints", {
                 "run_id": run_id, "sequence": 0, "state": state, "created_at": created})
+            if request:
+                self.db.execute("DELETE FROM metadata WHERE key='new_run_request'")
         return run_id
 
     def _run_row(self, run, **overrides):

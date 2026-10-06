@@ -515,8 +515,11 @@ class InputProducer:
         require((finished - scheduled_at).total_seconds() <= 120,
                 "Cycle acquisition missed its 120-second scheduled observation window.")
         for symbol, quote in quotes.items():
-            require(0 <= (finished - timestamp(quote["provider_timestamp"])).total_seconds() <= 600,
-                    f"{symbol}: stale/future provider quote.")
+            age = (finished - timestamp(quote["provider_timestamp"])).total_seconds()
+            require(0 <= age <= 600,
+                    f"{symbol}: stale/future provider quote "
+                    f"(provider={quote['provider_timestamp']}, received={quote['received_at']}, "
+                    f"captured={finished.isoformat()}, age_seconds={age:.3f}).")
             require(timestamp(quote["provider_timestamp"]) <= timestamp(quote["received_at"]),
                     f"{symbol}: provider quote is later than receipt.")
         feature_rows = []

@@ -88,6 +88,14 @@ test gate installs its own complete dependency manifest, and
 tables, excluding calibration and benchmarking research.
 See `decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
 
+The simulated portfolio is created only after its first complete input cycle
+validates. Opening quote delays remain visible and retry without inventing prices
+or creating a permanently blocked empty run. Gaps after startup still block;
+an operator can queue one explicit replacement of a blocked run with
+`--queue-new-run`. Real trading and the five/ten-session research policy are
+unchanged. See `decisions/2026-10-05_shadow-startup-input-readiness.md` and
+[recovery instructions](docs/intraday_research.md#queue-one-recovery-including-outside-market-hours).
+
 **Unexpected-short safety:** broker-confirmed signed inventory, scoped to the
 selected account, is checked independently of cached position marks. An
 unexpected short or unavailable inventory blocks new buys and quarantines

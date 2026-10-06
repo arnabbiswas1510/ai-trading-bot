@@ -304,7 +304,15 @@ Seed cash remains observed equity minus the observed position value; no ledger
 cash tag substitutes for the broker's equity.
 
 Its dedicated `shadow-data` volume holds `/app/shadow/shadow.sqlite3`.
-Inputs are staged before simulation, and portfolio changes, decisions and upload
+An account seed alone does not create a run. Startup acquires a new seed and a
+complete first frame, validates that frame with the pure simulation engine, and
+only then persists the new run and its first cycle. Missing, stale or future
+quotes leave startup visibly **waiting**, with its reason, and the normal
+30-second worker poll retries with a newly observed seed. No ticker is omitted,
+no price timestamp is rewritten, and no overnight seed is used. An attempt that
+crosses the session close is discarded before run creation.
+
+For established runs, inputs are staged before simulation; portfolio changes, decisions and upload
 outbox entries are committed transactionally. Re-uploading an acknowledged cycle
 does not create another trade. Do not remove this volume to "fix" a worker.
 The local spool is bounded to 1 GiB and each staged frame to 16 MiB; reaching a
@@ -317,6 +325,37 @@ changes and early closes. Missing intervals cannot be backfilled with today's
 quotes. A blocked run retains its state and reason; a deliberate new run uses
 fresh actual-account evidence instead of pretending the missing path is known.
 Normal restarts do not request a new run.
+Startup waiting is not a successful session or a simulated HOLD. The first
+partial session does not count toward calibration's complete-session requirement.
+Quote rejection messages name the ticker, provider/receipt/capture timestamps
+and computed age, without credentials.
+See `decisions/2026-10-05_shadow-startup-input-readiness.md` for why.
+
+### Queue one recovery, including outside market hours
+
+After investigating a blocked run, an operator can queue exactly one replacement.
+Install the startup-readiness patch before expecting the worker to consume it.
+From the production Compose directory:
+
+```bash
+docker compose stop shadow-worker
+docker compose run --rm --no-deps shadow-worker \
+  python shadow_worker.py --queue-new-run
+docker compose up -d --no-deps shadow-worker
+```
+
+The queue command needs only the local spool, not live market or broker access.
+It exits after storing the request; it does **not** claim a new run has started.
+If the queue command fails, inspect the error and still restore the normal worker.
+The stopped-worker interval prevents concurrent writers to the SQLite spool.
+
+The request names the currently blocked run and survives service restarts.
+The normal worker waits until regular market hours and all first-cycle inputs
+are valid. Failed startup attempts preserve the previous run and its evidence.
+Successful replacement atomically consumes the request; subsequent restarts
+resume the new run rather than resetting it again. A stale/malformed request
+fails explicitly instead of authorizing replacement of a different run.
+Do not put a recurring `--new-run` flag into a restarting service definition.
 
 For an operator-approved fresh start after investigating a blocked run, stop the
 existing worker first so there is only one writer to its SQLite store:
@@ -329,7 +368,9 @@ docker compose --profile observe up -d --no-deps shadow-worker
 ```
 
 Run the diagnostic during a regular exchange session. Inspect its exit/result
-and the recorded health before treating the new run as usable. This starts
+and the recorded health before treating the new run as usable. `--once` does not
+wait through startup failures; use the queued recovery above for automatic retries.
+A successful first cycle starts
 another **hypothetical** portfolio; it neither repairs nor trades the real
 account. Connection failures, acquisition limits and unsupported strategy paths
 remain reasons to investigate, not permission to loosen validation.

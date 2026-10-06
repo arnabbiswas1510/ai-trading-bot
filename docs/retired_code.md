@@ -28,6 +28,28 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-10-05 - Shadow run creation moved after startup input validation
+
+**Relocated, not removed:** `Worker.tick()` in `shadow_worker.py` no longer calls
+`ShadowStore.create_run()` immediately after observing the account seed. Run
+creation now follows acquisition and engine validation of the complete first
+frame. Startup `InputGap` errors wait visibly and retry with a newly observed
+seed; they do not create or supersede a simulated experiment. Existing runs
+still block permanently on missing inputs and require explicit replacement.
+
+The old path was active. On 2026-10-05 it created a run at 09:30:13 ET and
+blocked its first cycle on `RS: stale/future provider quote` a second later.
+Both independent collectors rejected RS at 09:30 and recorded valid RS data by
+09:35, but the simulated worker remained blocked all day. No simulated decision
+or fill was committed. These are research-only paths; real trading is unchanged.
+
+The new regression coverage is in `tests/test_shadow_startup.py`, alongside
+the existing `tests/test_shadow_worker.py`. Restore the former sequence with
+`git show 507b135:shadow_worker.py` and its corresponding tests only if recording
+a permanently failed experiment before its first valid input becomes an explicit
+requirement. Do not restore it merely to conceal missing quotes.
+See `decisions/2026-10-05_shadow-startup-input-readiness.md`.
+
 ## 2026-10-04 - Research tables removed from weekly backup scope
 
 **Retired from backup only, not deleted from Supabase:** `exit_shadow_log`,

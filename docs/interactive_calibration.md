@@ -153,6 +153,15 @@ hypothetical-portfolio history, not raw error records or reconstructed daily
 highs/lows. Complete input coverage, compatible engine/configuration and the
 recorded starting portfolio are mandatory.
 
+The source worker waits and retries if its first complete input cycle is not
+ready. **Overview & health** displays that startup reason; no simulated run,
+decision or complete training session is claimed while it waits. Once a run
+exists, missing intervals still block it and require operator-authorized
+replacement. Queued replacement requests are one-use, tied to the blocked run,
+and do not erase its evidence.
+See `decisions/2026-10-05_shadow-startup-input-readiness.md` and the recovery
+commands in [intraday research](intraday_research.md#queue-one-recovery-including-outside-market-hours).
+
 With default settings, a weekly campaign compares at most sixteen numeric
 candidates using the latest five complete trading sessions. A selected candidate
 is frozen before the next eligible session opens and evaluated over five

@@ -201,7 +201,13 @@ the backup's SSH transport secrets remain separate. See
 The shadow worker requires explicit `IBKR_ACCOUNT` (or `--account`) for
 actual-account initialization, but does not connect to IBKR. CLI defaults are
 `--poll 30` seconds and `--spool /app/shadow/shadow.sqlite3`; `--once` is a
-diagnostic and `--new-run` explicitly supersedes a previous hypothetical run.
+diagnostic and `--new-run` explicitly supersedes a previous hypothetical run
+only after its replacement's first complete input cycle validates.
+`--queue-new-run` records one durable replacement request for the current blocked
+run and exits without network access; stop the normal worker before invoking it,
+then restore the normal worker to consume the request during regular market
+hours. Startup input gaps wait/retry; established-run gaps still block.
+See `decisions/2026-10-05_shadow-startup-input-readiness.md`.
 `SHADOW_SOURCE_SUPABASE_KEY` is an optional separate read key for source tables;
 blank falls back to the private research key. No new live strategy defaults
 are introduced. See
