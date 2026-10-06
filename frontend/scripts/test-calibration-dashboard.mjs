@@ -61,6 +61,12 @@ const events = [
 assert.equal(activityRows(events, 'fills').length, 2);
 assert.equal(activityRows(events, 'fills', 'zzz')[0].action, 'GAP', 'Ticker filters must not hide missing coverage');
 assert.equal(activityRows(events, 'fills', 'aa')[0].commission, 0);
+assert.deepEqual(activityRows([{
+  sequence: 4, kind: 'run_recovered', occurred_at: '2026-10-06T13:35:00Z',
+  reason: 'Acquisition gap; failed run preserved', new_run_id: 'a'.repeat(64),
+}], 'fills', 'zzz').map((row) => [row.action, row.reason]), [[
+  'RUN RECOVERED', `Acquisition gap; failed run preserved Separate replacement run: ${'a'.repeat(64)}.`,
+]]);
 assert.deepEqual(recordedEquity(events).map((row) => row.equity), [10000, null, 10005]);
 assert.deepEqual(events.map((row) => row.sequence), [3, 2, 1], 'Chart sorting must not mutate page order');
 const page = { run_id: 'abc', through_sequence: 3, events, next_before_sequence: 1 };
@@ -117,6 +123,17 @@ const errorHtml = renderToStaticMarkup(React.createElement(Overview, {
 assert.match(errorHtml, /Service offline/);
 assert.match(errorHtml, /Unavailable/);
 assert.doesNotMatch(errorHtml, /\$0\.00/);
+const recoveryHtml = renderToStaticMarkup(React.createElement(Overview, {
+  capture: errorResource, inbox: errorResource, detail: errorResource, onReview() {},
+  shadow: { data: { health: [], reports: [], runs: [{
+    status: 'running', seed_at: '2026-10-06T13:35:00Z', earliest_full_session: '2026-10-07',
+    recovery: { previous_run_id: 'b'.repeat(64), mode: 'automatic' },
+  }] }, loading: false, error: '' },
+}));
+assert.match(recoveryHtml, /Earliest eligible full session: 2026-10-07/);
+assert.match(recoveryHtml, /not proof that a complete day was recorded/);
+assert.match(recoveryHtml, /Automatic replacement of run/);
+assert.match(recoveryHtml, /Separate runs are not combined/);
 assert.equal(riskMetricsView(proposal), null);
 const riskProposal = structuredClone(proposal);
 riskProposal.artifact.frozen.selection.artifact_sha256 = 'a'.repeat(64);

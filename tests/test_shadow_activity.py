@@ -48,6 +48,9 @@ class ActivityQuery(Query):
                     if key == "output:payload->output":
                         payload = row.get("payload")
                         selected["output"] = payload.get("output") if isinstance(payload, dict) else None
+                    elif ":payload->>" in key:
+                        alias, field = key.split(":payload->>")
+                        selected[alias] = row.get("payload", {}).get(field)
                     else:
                         selected[key] = row.get(key)
                 projected.append(selected)
@@ -117,6 +120,30 @@ def cloud(monkeypatch):
         monkeypatch.setattr(service.shadow_engine, name,
                             Mock(side_effect=AssertionError("Read-only activity cannot run the engine")))
     return client
+
+
+def test_recovery_history_is_visible_without_simulated_fills_or_engine_replay(cloud):
+    run = cloud.rows["intraday_shadow_runs"][0]
+    run.update(latest_sequence=6, status="blocked")
+    cloud.rows["intraday_shadow_checkpoints"] = [
+        row for row in cloud.rows["intraday_shadow_checkpoints"] if row["sequence"] <= 3]
+    cloud.rows["intraday_shadow_events"] = [
+        row for row in cloud.rows["intraday_shadow_events"] if row["sequence"] <= 3]
+    for sequence, kind in enumerate(("recovery_queued", "recovery_blocked", "run_recovered"), 4):
+        cloud.rows["intraday_shadow_events"].append({
+            "run_id": RUN, "sequence": sequence, "session": "2026-09-28",
+            "occurred_at": "2026-09-28T14:00:00Z", "kind": kind,
+            "payload": {"reason": "Recorded acquisition gap",
+                        **({"new_run_id": OTHER} if kind == "run_recovered" else {})},
+        })
+    result = service.activity(RUN)
+    assert [event["kind"] for event in result["events"][:3]] == [
+        "run_recovered", "recovery_blocked", "recovery_queued"]
+    assert result["events"][0]["new_run_id"] == OTHER
+    assert all(event["reason"] == "Recorded acquisition gap"
+               and event["fills"] == event["decisions"] == event["equity_curve"] == []
+               for event in result["events"][:3])
+    assert result["portfolio"]["sequence"] == 3
 
 
 def test_actual_recorded_output_scoped_and_projected_without_mutation(cloud):

@@ -21,6 +21,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import sys
 import uuid
 from collections import Counter
@@ -44,6 +45,7 @@ NY = ZoneInfo("America/New_York")
 FRESH_SECONDS = 600
 DECISION_FRESH_SECONDS = 1200
 STARTUP_GRACE = dt.timedelta(minutes=10)
+PREOPEN_CHECK = dt.timedelta(minutes=30)
 REPORT_DELAY = dt.timedelta(minutes=30)
 LABEL = "HYPOTHETICAL — research only; NOT real trades."
 
@@ -172,6 +174,19 @@ def health_failures(now, observer, shadow, snapshot, quotes, shadow_output=None,
             failures["calibration-heartbeat"] = "Calibration worker has no heartbeat within 30 minutes."
         elif calibration.get("status") in ("error", "blocked"):
             failures["calibration-progress"] = "Calibration worker reports a blocked or failed research cycle."
+    if shadow and shadow.get("status") in ("error", "blocked"):
+        failures["shadow-progress"] = (
+            "The simulated experiment is blocked. Check its recorded reason and replacement status; "
+            "a running container is not a usable experiment.")
+    bounds = session_bounds(now.astimezone(NY).date())
+    if bounds and bounds[0] - PREOPEN_CHECK <= now < bounds[0] + STARTUP_GRACE:
+        for name, row in (("observer", observer), ("shadow", shadow)):
+            if not row or not fresh(row.get("last_seen_at"), now):
+                failures[name + "-heartbeat"] = (
+                    f"Pre-open readiness: {name} has no recent heartbeat. "
+                    "Restore it before the opening observation window.")
+        if observer and (observer.get("config") or {}).get("spool_available") is False:
+            failures["observer-spool"] = "Observer durable event spool is unavailable."
     if not expected_market(now):
         return failures
     if not observer or not fresh(observer.get("last_seen_at"), now):
@@ -602,6 +617,37 @@ def _attempt_notification(errors, operation, *args, **kwargs):
         return False
 
 
+def notify_shadow_replacements(store, telegram, now, errors):
+    """Run provenance survives recovery between sweeps; receipts survive retries."""
+    rows = store.all("intraday_shadow_runs", {
+        "select": "id,created_at,status,latest_sequence,initial_state",
+        "initial_state->source_evidence->recovery->>mode": "eq.automatic",
+        "order": "created_at,id",
+    })
+    for row in rows:
+        seed = row.get("initial_state")
+        evidence = seed.get("source_evidence", {}) if isinstance(seed, dict) else {}
+        recovery = evidence.get("recovery") if isinstance(evidence, dict) else None
+        if recovery is None:
+            continue
+        if (not isinstance(recovery, dict) or recovery.get("mode") != "automatic"
+                or not re.fullmatch(r"[a-f0-9]{64}", str(row.get("id", "")))
+                or not re.fullmatch(r"[a-f0-9]{64}", str(recovery.get("previous_run_id", "")))
+                or stamp(recovery.get("requested_at")) is None
+                or stamp(row.get("created_at")) is None):
+            raise ReportingError("Automatic research replacement has invalid provenance.")
+        body = (
+            LABEL + "\nAUTOMATIC SIMULATION REPLACEMENT\n"
+            f"Previous run: {recovery['previous_run_id']}\nNew run: {row['id']}\n"
+            f"Created: {row['created_at']}. Current recorded status: {row.get('status', 'unavailable')}.\n"
+            "The old experiment and its gap remain preserved. This is a separate experiment, "
+            "not continuous performance or proof of a complete training day. "
+            "See Calibration > Overview & health and Simulated activity. Real trading is unchanged."
+        )
+        _attempt_notification(errors, deliver, store, telegram,
+                              "shadow-replacement:" + row["id"], body, now)
+
+
 def monitor(store, telegram, issues, now, health, runtime_mode="observe"):
     failures = health_failures(now, **health, runtime_mode=runtime_mode)
     existing = {r["issue_key"]: r for r in store.select(
@@ -671,6 +717,7 @@ def run(store, telegram, issues, now, runtime_mode="observe"):
     try:
         health = load_health(store)
         failures, errors = monitor(store, telegram, issues, now, health, runtime_mode)
+        notify_shadow_replacements(store, telegram, now, errors)
         state = _one(store, STATE, {"id": "eq.scheduler"})
         if not state:
             raise StorageError("Reporting scheduler state is missing; apply reporting migration")

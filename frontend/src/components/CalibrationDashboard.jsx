@@ -136,6 +136,17 @@ function Overview({ capture, shadow, inbox, detail, onReview }) {
         {item.last_error && <><br />Blocker: {item.last_error}</>}
       </p>)}
       {shadow.data?.health.length === 0 && <p style={muted}>No shadow-worker heartbeat recorded.</p>}
+      {shadow.data?.runs[0] && <div role="status" style={muted}>
+        <strong>Current simulation: {label(shadow.data.runs[0].status)}</strong>
+        <p>Starting portfolio observed: {time(shadow.data.runs[0].seed_at)}.
+          {' '}Earliest eligible full session: {shadow.data.runs[0].earliest_full_session ?? 'Unavailable'}.
+          This date is eligibility only, not proof that a complete day was recorded.</p>
+        {shadow.data.runs[0].recovery && <p>
+          Automatic replacement of run <code>{shadow.data.runs[0].recovery.previous_run_id}</code>.
+          The failed experiment remains available under Simulated activity.
+          Separate runs are not combined into continuous performance.
+        </p>}
+      </div>}
       <ResourceState resource={inbox} name="Research status" />
       {health?.last_error && <p role="alert">Research blocker: {health.last_error}</p>}
       {health?.metrics?.reason && <p style={muted}>{health.metrics.reason}</p>}

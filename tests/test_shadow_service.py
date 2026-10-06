@@ -82,6 +82,34 @@ def test_status_labels_checkpoint_hypothetical_and_keeps_unknowns(cloud):
     assert all(call.operation == "select" for call in cloud.calls)
 
 
+def test_status_exposes_partial_day_eligibility_and_recovery_without_raw_seed(cloud, monkeypatch):
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+
+    ny = ZoneInfo("America/New_York")
+    monkeypatch.setattr(service, "session_bounds", lambda day: (
+        dt.datetime.combine(day, dt.time(9, 30), ny),
+        dt.datetime.combine(day, dt.time(16), ny),
+    ) if day.weekday() < 5 else None)
+    run = cloud.rows["intraday_shadow_runs"][0]
+    run["initial_state"] = {
+        "timestamp": "2026-10-06T09:30:01-04:00",
+        "account": {"private": "not part of status metadata"},
+        "source_evidence": {"recovery": {
+            "mode": "automatic", "previous_run_id": "a" * 64,
+            "requested_at": "2026-10-06T13:30:00Z", "reason_code": "observation_gap",
+        }},
+    }
+    result = service.status()["runs"][0]
+    assert result["earliest_full_session"] == "2026-10-07"
+    assert result["recovery"]["previous_run_id"] == "a" * 64
+    assert "initial_state" not in result and "account" not in result
+    run["initial_state"]["timestamp"] = "2026-10-09T15:00:00-04:00"
+    assert service.status()["runs"][0]["earliest_full_session"] == "2026-10-12"
+    run["initial_state"]["timestamp"] = "2026-10-06T09:30:00-04:00"
+    assert service.status()["runs"][0]["earliest_full_session"] == "2026-10-06"
+
+
 def test_empty_status_is_not_a_zero_balance(cloud):
     cloud.rows.clear()
     assert service.status()["portfolio"] is None

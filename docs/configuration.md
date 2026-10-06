@@ -203,11 +203,17 @@ actual-account initialization, but does not connect to IBKR. CLI defaults are
 `--poll 30` seconds and `--spool /app/shadow/shadow.sqlite3`; `--once` is a
 diagnostic and `--new-run` explicitly supersedes a previous hypothetical run
 only after its replacement's first complete input cycle validates.
+The worker may prepare an in-memory account seed in the 120 seconds before the
+open, retaining the existing freshness limit. It never persists an overnight
+seed or treats a post-open seed as complete opening evidence.
 `--queue-new-run` records one durable replacement request for the current blocked
 run and exits without network access; stop the normal worker before invoking it,
 then restore the normal worker to consume the request during regular market
-hours. Startup input gaps wait/retry; established-run gaps still block.
-See `decisions/2026-10-05_shadow-startup-input-readiness.md`.
+hours. Startup input gaps wait/retry. Recoverable established-run acquisitions
+retry within the existing 120-second observation window; after a genuine gap,
+automatic recovery preserves the failed experiment and creates a distinct run.
+There is no automatic recovery from integrity or semantic-configuration errors.
+See `decisions/2026-10-05_resilient-research-recovery.md`.
 `SHADOW_SOURCE_SUPABASE_KEY` is an optional separate read key for source tables;
 blank falls back to the private research key. No new live strategy defaults
 are introduced. See
@@ -222,6 +228,13 @@ checks 10-minute freshness/coverage gaps, and schedules daily reporting at
 exchange close plus 30 minutes. Paired buy/monitor decisions have a separate
 20-minute freshness bound because they run every 15 minutes; quote frames run
 every five minutes. Weekly reports become due Monday at 08:00 New York.
+`PREOPEN_CHECK` is a fixed 30-minute lead time: worker heartbeats and observer
+spool readiness are checked from 09:00 New York on exchange days, through the
+existing 10-minute opening grace period. This is not a premarket price-quality
+certification. Explicit blocked/error shadow health is actionable even overnight.
+Automatic replacement notifications use immutable run provenance and the existing
+per-recipient delivery receipts; a recovery between sweeps is not missed.
+No new environment variable or notification credential is required.
 Full setup, delay/catch-up limitations and
 hypothetical portfolio recovery are in [intraday research](intraday_research.md).
 

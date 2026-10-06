@@ -93,7 +93,10 @@ export function activityRows(events, type, ticker = '') {
   return events.flatMap((event) => {
     if (event.kind !== 'cycle') return [{
       sequence: event.sequence, timestamp: event.occurred_at, ticker: '',
-      action: 'GAP', reason: `Recorded ${event.kind}; this is not evidence of no trading.`,
+      action: event.kind === 'gap' ? 'GAP' : event.kind.replaceAll('_', ' ').toUpperCase(),
+      reason: (typeof event.reason === 'string' && event.reason
+        ? event.reason : `Recorded ${event.kind}; this is not evidence of no trading.`)
+        + (event.new_run_id ? ` Separate replacement run: ${event.new_run_id}.` : ''),
       key: `${event.sequence}-gap`,
     }];
     return (event[type] ?? []).map((value, index) => ({

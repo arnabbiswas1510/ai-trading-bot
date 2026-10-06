@@ -308,7 +308,12 @@ An account seed alone does not create a run. Startup acquires a new seed and a
 complete first frame, validates that frame with the pure simulation engine, and
 only then persists the new run and its first cycle. Missing, stale or future
 quotes leave startup visibly **waiting**, with its reason, and the normal
-30-second worker poll retries with a newly observed seed. No ticker is omitted,
+30-second worker poll retries with fresh evidence. A provisional account seed
+may be acquired during the 120 seconds immediately before the open, but no run
+or decision is persisted until a valid regular-session frame is available.
+The provisional seed must remain fresh; an expired or absent seed requires a
+new observation and a post-open start remains partial. A brief opening quote
+failure can reuse a still-fresh pre-open seed within the same limit. No ticker is omitted,
 no price timestamp is rewritten, and no overnight seed is used. An attempt that
 crosses the session close is discarded before run creation.
 
@@ -322,18 +327,57 @@ research evidence, not live `portfolio_positions` or `trade_history` changes.
 
 The schedule follows actual NYSE sessions, including holidays, daylight-saving
 changes and early closes. Missing intervals cannot be backfilled with today's
-quotes. A blocked run retains its state and reason; a deliberate new run uses
-fresh actual-account evidence instead of pretending the missing path is known.
-Normal restarts do not request a new run.
+quotes. A blocked run retains its state and reason; a replacement uses fresh
+actual-account evidence instead of pretending the missing path is known.
+Normal restarts resume compatible runs; recoverable input-gap runs follow the
+automatic replacement policy below.
 Startup waiting is not a successful session or a simulated HOLD. The first
 partial session does not count toward calibration's complete-session requirement.
 Quote rejection messages name the ticker, provider/receipt/capture timestamps
 and computed age, without credentials.
 See `decisions/2026-10-05_shadow-startup-input-readiness.md` for why.
 
+### Bounded retries and automatic recovery
+
+Recoverable acquisition failures retry the same due slot inside its existing
+120-second observation deadline. Every attempt still needs complete valid inputs;
+no failed attempt is recorded as a HOLD or substituted with a later price outside
+the window. Integrity, engine-validation and semantic-configuration problems do
+not authorize automatic reset.
+
+A genuine input gap ends that experiment. The worker can automatically queue a
+one-use request for a separately labelled replacement, tied to that failed run.
+It starts only when a fresh seed and complete first frame validate. The original
+run, gap and simulated history remain inspectable. Separate runs are never joined
+into a continuous performance result or a frozen evaluation campaign.
+An old, zero-cycle failed startup can recover across an engine revision only
+when its seed/configuration/checkpoint checksums agree, no inputs or cycles exist,
+and semantic settings still match. The old state is not replayed. Established
+experiments retain strict engine compatibility.
+
+The replacement records its predecessor in immutable starting evidence. The
+independent watchdog delivers a Telegram notice using durable per-recipient
+receipts, even if the replacement was created between two sweeps. Delivery is
+best-effort on the existing 15-minute cloud schedule, not immediate or exactly-once
+across a lost acknowledgement. Research recovery never authorizes a real order.
+
+From 09:00 New York on exchange days, the watchdog checks worker heartbeats and
+observer spool availability before the open. Explicit blocked/error simulation
+health is reported even overnight, rather than hidden by the market-hours gate.
+These checks do not certify quotes that have not arrived. During market hours,
+fresh broker snapshots, complete quotes and actual decision output remain required.
+
+**Calibration > Overview & health** shows the seed time, replacement lineage and
+earliest eligible full session. That date is not a claim of completion. A seed
+observed after the opening still cannot make that partial day complete.
+An actual, still-fresh pre-open seed can make the upcoming session eligible
+without changing its timestamp or the full-session rule.
+See `decisions/2026-10-05_resilient-research-recovery.md`.
+
 ### Queue one recovery, including outside market hours
 
-After investigating a blocked run, an operator can queue exactly one replacement.
+Automatic recovery handles recognized input gaps. For other investigated failures,
+an operator can still explicitly queue exactly one replacement.
 Install the startup-readiness patch before expecting the worker to consume it.
 From the production Compose directory:
 

@@ -89,11 +89,16 @@ tables, excluding calibration and benchmarking research.
 See `decisions/2026-10-04_calibration-readiness-and-exploratory-policy.md`.
 
 The simulated portfolio is created only after its first complete input cycle
-validates. Opening quote delays remain visible and retry without inventing prices
-or creating a permanently blocked empty run. Gaps after startup still block;
-an operator can queue one explicit replacement of a blocked run with
-`--queue-new-run`. Real trading and the five/ten-session research policy are
-unchanged. See `decisions/2026-10-05_shadow-startup-input-readiness.md` and
+validates. Recoverable input failures retry within the existing observation
+deadline. A genuine gap ends that experiment; automatic recovery starts a
+separately labelled replacement with fresh evidence, preserves the old run and
+notifies the operator. Integrity/configuration failures still require attention.
+The dashboard shows the earliest eligible full session, not an invented completed
+day. A still-fresh account seed captured within two minutes before the open can
+make that opening day eligible without rewriting timestamps.
+The watchdog checks worker readiness from 09:00 New York and reports blocked
+simulations even overnight. Real trading and the five/ten-session research policy
+are unchanged. See `decisions/2026-10-05_resilient-research-recovery.md` and
 [recovery instructions](docs/intraday_research.md#queue-one-recovery-including-outside-market-hours).
 
 **Unexpected-short safety:** broker-confirmed signed inventory, scoped to the

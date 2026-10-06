@@ -3,9 +3,11 @@ import datetime as dt
 import hashlib
 import json
 import re
+from zoneinfo import ZoneInfo
 
 import intraday_service as research
 import shadow_engine
+from market_calendar import session_bounds
 
 
 def _query(query):
@@ -40,6 +42,39 @@ def reports():
                   .select("*").order("created_at", desc=True).limit(20))
 
 
+def _start_details(seed):
+    if not isinstance(seed, dict):
+        raise ValueError("Shadow run has malformed starting evidence.")
+    seed_at = seed.get("timestamp")
+    first_session = None
+    if seed_at is not None:
+        if not isinstance(seed_at, str):
+            raise ValueError("Shadow start timestamp must be text.")
+        start = dt.datetime.fromisoformat(seed_at.replace("Z", "+00:00"))
+        if start.tzinfo is None:
+            raise ValueError("Shadow start timestamp must include a timezone.")
+        day = start.astimezone(ZoneInfo("America/New_York")).date()
+        for offset in range(370):
+            candidate = day + dt.timedelta(days=offset)
+            bounds = session_bounds(candidate)
+            if bounds and bounds[0] >= start:
+                first_session = candidate.isoformat()
+                break
+        if first_session is None:
+            raise ValueError("Calendar cannot resolve an eligible full research session.")
+    evidence = seed.get("source_evidence", {})
+    if not isinstance(evidence, dict):
+        raise ValueError("Shadow run has malformed source evidence.")
+    recovery = evidence.get("recovery")
+    if recovery is not None:
+        if (not isinstance(recovery, dict) or recovery.get("mode") != "automatic"
+                or not re.fullmatch(r"[a-f0-9]{64}", str(recovery.get("previous_run_id", "")))):
+            raise ValueError("Shadow replacement provenance is invalid.")
+        recovery = {key: recovery.get(key) for key in
+                    ("mode", "previous_run_id", "requested_at", "reason_code")}
+    return {"seed_at": seed_at, "earliest_full_session": first_session, "recovery": recovery}
+
+
 def status():
     client = research.get_client()
     health = _query(client.table("intraday_shadow_health").select("*")
@@ -50,9 +85,12 @@ def status():
         row["heartbeat_stale"] = not seen or (
             now - dt.datetime.fromisoformat(seen.replace("Z", "+00:00"))
         ).total_seconds() > 600
-    runs = _query(client.table("intraday_shadow_runs")
-                  .select("id,created_at,status,engine_revision,latest_sequence")
+    fields = ("id", "created_at", "status", "engine_revision", "latest_sequence")
+    rows = _query(client.table("intraday_shadow_runs")
+                  .select(",".join(fields) + ",initial_state")
                   .order("created_at", desc=True).limit(20))
+    runs = [{**{key: row.get(key) for key in fields},
+             **_start_details(row["initial_state"])} for row in rows]
     portfolio = None
     if runs:
         row = runs[0]
@@ -144,7 +182,8 @@ def activity(run_id, limit=50, before_sequence=None, through_sequence=None):
         raise ValueError("through_sequence exceeds the published shadow sequence.")
     client = research.get_client()
     query = (client.table("intraday_shadow_events")
-             .select("run_id,sequence,session,occurred_at,kind,output:payload->output")
+             .select("run_id,sequence,session,occurred_at,kind,output:payload->output,"
+                     "reason:payload->>reason,new_run_id:payload->>new_run_id")
              .eq("run_id", run_id).lte("sequence", through_sequence))
     if before_sequence is not None:
         query = query.lt("sequence", before_sequence)
@@ -164,8 +203,18 @@ def activity(run_id, limit=50, before_sequence=None, through_sequence=None):
             raise ValueError(f"Published shadow activity is missing expected sequence {previous - 1}.")
         previous = sequence
         kind = row.get("kind")
-        if kind == "gap":
+        details = {}
+        if kind in ("gap", "recovery_queued", "run_recovered", "recovery_blocked"):
             output = {"decisions": [], "fills": [], "equity_curve": []}
+            reason, new_run = row.get("reason"), row.get("new_run_id")
+            if reason is not None:
+                if not isinstance(reason, str):
+                    raise ValueError("Recorded recovery reason must be text.")
+                details["reason"] = reason
+            if new_run is not None:
+                if not isinstance(new_run, str) or not re.fullmatch(r"[a-f0-9]{64}", new_run):
+                    raise ValueError("Recorded replacement run identifier is invalid.")
+                details["new_run_id"] = new_run
         elif kind == "cycle":
             output = row.get("output")
             if not isinstance(output, dict) or any(
@@ -179,6 +228,7 @@ def activity(run_id, limit=50, before_sequence=None, through_sequence=None):
         events.append({
             "sequence": sequence, "session": row["session"], "occurred_at": row["occurred_at"],
             "kind": kind, **{key: output[key] for key in ("decisions", "fills", "equity_curve")},
+            **details,
         })
     page = events[:limit]
     coverage_warning = None

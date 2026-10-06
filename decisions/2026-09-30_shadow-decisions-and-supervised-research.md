@@ -1,7 +1,13 @@
 # Decision-only portfolio simulation and supervised research
 
 Date: 2026-09-30
-Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md) and [startup input readiness](2026-10-05_shadow-startup-input-readiness.md), and extended by [interactive self-calibration](2026-10-03_interactive-self-calibration.md); shadow accounting and supervision remain accepted, with the exceptions below.
+Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md), [startup input readiness](2026-10-05_shadow-startup-input-readiness.md) and [resilient research recovery](2026-10-05_resilient-research-recovery.md), and extended by [interactive self-calibration](2026-10-03_interactive-self-calibration.md); shadow accounting and supervision remain accepted, with the exceptions below.
+
+> **2026-10-05, subsequent approval:** Recognized input gaps now permit automatic,
+> separately labelled replacement, with immutable predecessor evidence and
+> notification. The manual-only recovery restriction in the earlier note below
+> is superseded. An ended experiment is still ended; no gap or partial day is
+> reclassified as complete, and integrity/configuration failures remain blocked.
 
 > **2026-10-05:** Before a run's first complete frame validates, input failures
 > now wait/retry without creating an experiment or superseding its predecessor.

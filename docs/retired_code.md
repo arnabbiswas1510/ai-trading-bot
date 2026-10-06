@@ -28,7 +28,32 @@ you knowing a rule was retired but not what its code actually did.
 
 ---
 
+## 2026-10-05 - Manual-only recovery after research input gaps
+
+**Replaced, not removed:** the immediate permanent-block/manual-replacement
+path for recoverable acquisition failures in `Worker.tick()` (`shadow_worker.py`)
+and its recovery metadata handling in `shadow_store.py`. Brief failures can
+retry within the existing observation deadline; a genuinely missing interval
+still ends that experiment, but an explicitly labelled replacement can start
+automatically with fresh evidence. Integrity and strategy-compatibility failures
+remain operator-blocked. Separate runs are never joined into one experiment.
+
+The previous path was active and stopped the October 5 RS experiment before any
+simulated decision was recorded. Patch 114 repaired initial startup but retained
+manual-only recovery after later gaps. The operator explicitly authorized
+automatic replacement and notification on October 5. No live order logic is
+retired or changed.
+
+Restore the prior policy from `git show 8402d0b:shadow_worker.py` and
+`git show 8402d0b:shadow_store.py`, with the corresponding startup/worker tests,
+only if research replacements must again require individual approval.
+See `decisions/2026-10-05_resilient-research-recovery.md`.
+
 ## 2026-10-05 - Shadow run creation moved after startup input validation
+
+> The manual-only established-run recovery policy described in this earlier
+> entry was subsequently replaced by the same-day resilience decision above.
+> Its first-frame validation and preservation of failed evidence still apply.
 
 **Relocated, not removed:** `Worker.tick()` in `shadow_worker.py` no longer calls
 `ShadowStore.create_run()` immediately after observing the account seed. Run

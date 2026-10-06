@@ -155,11 +155,31 @@ recorded starting portfolio are mandatory.
 
 The source worker waits and retries if its first complete input cycle is not
 ready. **Overview & health** displays that startup reason; no simulated run,
-decision or complete training session is claimed while it waits. Once a run
-exists, missing intervals still block it and require operator-authorized
-replacement. Queued replacement requests are one-use, tied to the blocked run,
-and do not erase its evidence.
-See `decisions/2026-10-05_shadow-startup-input-readiness.md` and the recovery
+decision or complete training session is claimed while it waits. Brief acquisition
+failures can retry inside the existing observation deadline. Genuine missing
+intervals still end that run, but the worker automatically requests a separately
+labelled replacement for recoverable input gaps. Integrity and configuration
+errors still require operator attention. Requests are one-use, tied to the
+blocked run, and do not erase its evidence.
+
+**Overview & health** shows the current seed timestamp, earliest eligible full
+session and automatic replacement's predecessor. Eligibility is not a completed
+session count: the whole subsequent session must still be recorded. The independent
+watchdog sends a replacement notification even when recovery occurred between
+its sweeps, using durable per-recipient receipts. Its 15-minute GitHub schedule
+is best-effort, not immediate delivery.
+
+The source can prepare a genuine account seed in the two minutes before the
+open. If that seed remains fresh when the first valid market frame arrives,
+the opening day can be eligible. If startup needs a later fresh seed, the
+dashboard instead shows a later eligible session; it does not count the partial
+day to make progress appear faster.
+
+A frozen campaign never switches to a replacement's seed. If its source fails,
+that campaign is blocked with its evidence retained; later research needs enough
+complete sessions from its own new run. Separate experiments are never stitched
+together to hide a gap.
+See `decisions/2026-10-05_resilient-research-recovery.md` and the recovery
 commands in [intraday research](intraday_research.md#queue-one-recovery-including-outside-market-hours).
 
 With default settings, a weekly campaign compares at most sixteen numeric

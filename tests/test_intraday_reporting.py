@@ -203,7 +203,10 @@ def test_fresh_receipt_does_not_hide_stale_provider_quote():
 @pytest.mark.parametrize("time", ["2026-09-30T09:35", "2026-10-03T10:00",
                                    "2026-11-26T11:00", "2026-11-27T13:01"])
 def test_expected_market_excludes_startup_weekend_holiday_and_early_close(time):
-    assert reporting.health_failures(at(time), None, None, None, None) == {}
+    assert reporting.expected_market(at(time)) is False
+    failures = reporting.health_failures(at(time), None, None, None, None)
+    assert set(failures) == ({"observer-heartbeat", "shadow-heartbeat"}
+                             if time == "2026-09-30T09:35" else set())
 
 
 def test_daily_waits_thirty_minutes_after_early_close():

@@ -1,8 +1,17 @@
 # Validate startup inputs before creating a simulated research run
 
 - **Date:** 2026-10-05
-- **Status:** Accepted
+- **Status:** Superseded in part by [resilient research recovery](2026-10-05_resilient-research-recovery.md)
 - **Scope:** Research startup and explicit recovery; no live trading changes
+
+> **2026-10-05, subsequent decision:** First-frame validation remains required.
+> The operator subsequently authorized automatic, separately labelled replacement
+> after genuine recoverable input gaps, with notification and preserved history.
+> Brief acquisition failures retry within the existing deadline. Manual-only
+> replacement below is historical; integrity/configuration failures still require
+> intervention. Complete-session eligibility is not relaxed.
+> A fresh provisional seed may now be observed within 120 seconds before the
+> open, but no experiment or decision is committed before a valid market frame.
 
 ## Evidence
 

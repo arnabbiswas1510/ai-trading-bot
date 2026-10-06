@@ -265,7 +265,7 @@ def test_failed_explicit_replacement_does_not_mutate_previous_run(rig, monkeypat
 
 
 @pytest.mark.parametrize("stamp", [
-    "2026-09-30T09:29:59-04:00", "2026-09-30T16:00:00-04:00",
+    "2026-09-30T09:27:59-04:00", "2026-09-30T16:00:00-04:00",
     "2026-09-30T20:00:00-04:00", "2026-10-03T10:00:00-04:00",
 ])
 @pytest.mark.parametrize("replacing", [False, True])
@@ -281,6 +281,42 @@ def test_off_hours_do_not_acquire_seed_or_frame(rig, stamp, replacing):
     assert rig.producer.seed.call_count == seed_calls
     assert rig.producer.frame.call_count == frame_calls
     assert health(rig.store)["status"] == "waiting"
+
+
+@pytest.mark.parametrize("replacing", [False, True])
+@pytest.mark.parametrize("opening", ["09:30:00", "09:31:31"])
+def test_near_open_seed_stays_in_memory_and_is_used_only_while_fresh(rig, replacing, opening):
+    if replacing:
+        assert rig.worker.tick()
+        rig.store.block("Existing unclassified gap", rig.clock[0].isoformat())
+    before = domain_rows(rig.store)
+    seed_calls, frame_calls = rig.producer.seed.call_count, rig.producer.frame.call_count
+    rig.clock[0] = dt.datetime.fromisoformat("2026-09-30T09:29:30-04:00")
+    rig.market.history["available_at"] = rig.clock[0].isoformat()
+    assert rig.worker.tick(new_run=replacing) is False
+    assert domain_rows(rig.store) == before
+    assert rig.producer.seed.call_count == seed_calls + 1
+    assert rig.producer.frame.call_count == frame_calls
+    assert health(rig.store)["status"] == "waiting"
+    preopen_seed = copy.deepcopy(rig.seeds[-1])
+    rig.sources.cash = 125000
+    rig.clock[0] = dt.datetime.fromisoformat(f"2026-09-30T{opening}-04:00")
+    assert rig.worker.tick(new_run=replacing) is True
+    run = rig.store.active()
+    if opening == "09:30:00":
+        assert run["seed"] == preopen_seed
+        assert run["seed"]["account"]["cash"] == 100000
+        assert rig.producer.seed.call_count == seed_calls + 1
+    else:
+        assert run["seed"]["timestamp"] == rig.clock[0].isoformat()
+        assert run["seed"]["account"]["cash"] == 125000
+        assert rig.producer.seed.call_count == seed_calls + 2
+    assert run["sequence"] == run["state"]["frame_count"] == 1
+    assert rig.producer.frame.call_count == frame_calls + 1
+    assert all(dt.datetime.fromisoformat(event["timestamp"]) >= dt.datetime.fromisoformat(
+        "2026-09-30T09:30:00-04:00") for event in rig.frames[-1]["engine_frame"]["events"])
+    assert all("data" in item and "reference" not in item
+               for item in rig.frames[-1]["source_evidence"]["daily_history"].values())
 
 
 @pytest.mark.parametrize("stage", ["seed", "frame"])
@@ -333,32 +369,52 @@ def test_failure_after_run_creation_blocks_without_marking_history_committed(rig
     assert rig.producer.seed.call_count == rig.producer.frame.call_count == 1
 
 
-def test_gap_after_first_commit_is_durable_and_does_not_automatically_reseed(rig):
+def test_gap_after_first_commit_waits_then_queues_distinct_recovery(rig):
     assert rig.worker.tick()
     old = rig.store.active()
+    before = domain_rows(rig.store)
     rig.clock[0] = dt.datetime.fromisoformat("2026-09-30T09:35:00-04:00")
     rig.market.stale = True
     assert rig.worker.tick() is False
+    assert domain_rows(rig.store) == before
+    assert rig.store.active()["status"] == "running"
+    assert health(rig.store)["status"] == "waiting"
+    assert rig.store.new_run_request(rig.store.active()) is None
+    assert rig.producer.seed.call_count == 1
+    rig.clock[0] += dt.timedelta(seconds=119)
+    assert rig.worker.tick() is False
+    assert domain_rows(rig.store) == before
+    assert rig.store.active()["status"] == "running"
+    rig.clock[0] += dt.timedelta(seconds=1)
+    assert rig.worker.tick() is False
     blocked = rig.store.active()
     assert blocked["id"] == old["id"] and blocked["status"] == "blocked"
-    assert blocked["sequence"] == old["sequence"] + 1
+    assert blocked["sequence"] == old["sequence"] + 2
     assert blocked["state"] == old["state"]
     events = [json.loads(row[0]) for row in rig.store.db.execute(
         "SELECT row_json FROM events ORDER BY sequence")]
-    assert [event["kind"] for event in events] == ["cycle", "gap"]
-    assert events[-1]["payload"]["requires_explicit_new_run"] is True
-    assert "stale" in events[-1]["payload"]["reason"].lower()
-    rig.market.stale = False
+    assert [event["kind"] for event in events] == ["cycle", "gap", "recovery_queued"]
+    assert events[1]["payload"]["requires_explicit_new_run"] is False
+    assert "stale" in events[1]["payload"]["reason"].lower()
+    request = rig.store.new_run_request(blocked)
+    assert request["mode"] == "automatic" and request["run_id"] == old["id"]
     before = domain_rows(rig.store)
     assert rig.worker.tick() is False
     assert domain_rows(rig.store) == before
-    assert rig.producer.seed.call_count == 1 and rig.producer.frame.call_count == 2
+    assert rig.store.new_run_request(rig.store.active()) == request
+    assert rig.producer.seed.call_count == 2 and rig.producer.frame.call_count == 5
     assert rig.producer.committed.call_count == 1
-    assert health(rig.store)["status"] == "blocked"
-    assert rig.worker.tick(new_run=True) is True
-    assert rig.store.active()["id"] != old["id"]
-    assert rig.store.db.execute("SELECT status FROM runs WHERE id=?", (old["id"],)).fetchone()[0] == "superseded"
-    assert rig.producer.seed.call_count == 2
+    assert health(rig.store)["status"] == "waiting"
+    rig.market.stale = False
+    rig.clock[0] += dt.timedelta(seconds=30)
+    assert rig.worker.tick() is True
+    replacement = rig.store.active()
+    assert replacement["id"] != old["id"]
+    assert replacement["sequence"] == replacement["state"]["frame_count"] == 1
+    old_row = rig.store.db.execute("SELECT status,state FROM runs WHERE id=?", (old["id"],)).fetchone()
+    assert old_row["status"] == "blocked" and json.loads(old_row["state"]) == old["state"]
+    assert rig.store.new_run_request(replacement) is None
+    assert rig.producer.seed.call_count == 3
     assert all("data" in item and "reference" not in item
                for item in rig.frames[-1]["source_evidence"]["daily_history"].values())
 
@@ -432,8 +488,9 @@ def test_run_loop_keeps_explicit_replacement_pending_until_first_commit(rig, mon
         shadow_worker.run(args, producer=rig.producer, cloud=rig.cloud, stop=Stop())
     finally:
         rig.store = ShadowStore(rig.path)
-    assert flags == [True, True, True, False]
+    assert flags == [True, True, False, False]
     assert len(seed_attempts) == 2
+    assert [stamp.strftime("%H:%M:%S") for stamp in seed_attempts] == ["09:29:30", "09:30:00"]
     assert rig.store.active()["id"] != old_id
     assert rig.store.active()["status"] == "running"
     assert rig.store.active()["sequence"] == 1
@@ -645,7 +702,7 @@ def test_queue_cli_and_immediate_new_run_are_mutually_exclusive():
     assert error.value.code == 2
 
 
-@pytest.mark.parametrize("failure", ["quote", "unexpected", None])
+@pytest.mark.parametrize("failure", ["quote", "transport", "unexpected", None])
 def test_once_new_run_reports_replacement_outcome_not_preserved_running_status(rig, monkeypatch, failure):
     assert rig.worker.tick()
     original_run = rig.store.active()
@@ -654,8 +711,9 @@ def test_once_new_run_reports_replacement_outcome_not_preserved_running_status(r
     rig.sources.cash = 125000
     if failure == "quote":
         rig.market.stale = True
-    elif failure == "unexpected":
-        monkeypatch.setattr(rig.producer, "frame", Mock(side_effect=ConnectionError(
+    elif failure in {"transport", "unexpected"}:
+        error = ConnectionError if failure == "transport" else RuntimeError
+        monkeypatch.setattr(rig.producer, "frame", Mock(side_effect=error(
             "https://provider.invalid?apikey=synthetic-sensitive-token")))
     original_worker = shadow_worker.Worker
 
@@ -686,10 +744,15 @@ def test_once_new_run_reports_replacement_outcome_not_preserved_running_status(r
         assert current == original_run
         assert domain_rows(rig.store) == before
         assert rig.producer.committed.call_count == 1
-        if failure == "unexpected":
+        if failure in {"transport", "unexpected"}:
             message = health(rig.store)["last_error"]
-            assert "no new run was created" in message
-            assert "inspect diagnostics" in message
+            if failure == "unexpected":
+                assert "no new run was created" in message
+                assert "inspect diagnostics" in message
+            else:
+                assert health(rig.store)["status"] == "waiting"
+                assert "will retry with a fresh seed" in message
+                assert "Source transport temporarily unavailable" in message
             assert "explicit new run required" not in message
             assert "synthetic-sensitive-token" not in message
             assert "provider.invalid" not in message

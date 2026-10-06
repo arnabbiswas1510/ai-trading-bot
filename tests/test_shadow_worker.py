@@ -1,5 +1,6 @@
 import copy
 import datetime as dt
+import json
 from pathlib import Path
 import shutil
 import uuid
@@ -165,9 +166,11 @@ def test_worker_replays_pending_without_refetch_then_blocks_missing_prices(direc
     assert worker.tick()
     assert not worker.tick()
     assert store.active()["status"] == "blocked"
-    assert store.active()["sequence"] == 2
-    assert not worker.tick()
-    assert store.active()["sequence"] == 2
+    assert store.active()["sequence"] == 3
+    events = [json.loads(row[0]) for row in store.db.execute(
+        "SELECT row_json FROM events ORDER BY sequence")]
+    assert [event["kind"] for event in events] == ["cycle", "gap", "recovery_queued"]
+    assert store.new_run_request(store.active())["run_id"] == run_id
     store.close()
 
 
