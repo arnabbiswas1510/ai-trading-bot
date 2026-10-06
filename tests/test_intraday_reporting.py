@@ -2,6 +2,7 @@
 import datetime as dt
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -348,7 +349,9 @@ def test_reporting_store_forbids_live_writes():
 def test_report_workflow_is_independent_private_and_failure_visible():
     root = Path(__file__).resolve().parents[1]
     text = (root / ".github/workflows/intraday_research_review.yml").read_text()
-    assert "'*/15 * * * *'" in text
+    assert "'*/5 13-20 * * 1-5'" in text
+    assert "'*/15 0-12,21-23 * * 1-5'" in text
+    assert "'*/15 * * * 0,6'" in text
     assert "issues: write" in text
     assert "cancel-in-progress: false" in text
     assert "BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}" in text
@@ -359,6 +362,44 @@ def test_report_workflow_is_independent_private_and_failure_visible():
     assert "python -m scripts.run_intraday_reporting_bws" in text
     assert "secrets.SUPABASE_KEY" not in text
     assert "sha256sum --check" in text
+
+
+def test_watchdog_schedule_covers_week_without_overlap_and_both_dst_regimes():
+    text = (Path(__file__).resolve().parents[1] /
+            ".github/workflows/intraday_research_review.yml").read_text()
+    expressions = re.findall(r"- cron: '([^']+)'", text)
+    assert len(expressions) == 3
+
+    def values(field, maximum):
+        result = set()
+        for part in field.split(","):
+            span, _, step = part.partition("/")
+            low, high = (0, maximum) if span == "*" else (
+                tuple(map(int, span.split("-"))) if "-" in span else (int(span), int(span)))
+            result.update(range(low, high + 1, int(step or 1)))
+        return result
+
+    schedules = []
+    for expression in expressions:
+        minute, hour, day, month, weekday = expression.split()
+        assert day == month == "*"
+        schedules.append((values(minute, 59), values(hour, 23), values(weekday, 6)))
+
+    def matches(minute, hour, weekday):
+        return sum(minute in minutes and hour in hours and weekday in weekdays
+                   for minutes, hours, weekdays in schedules)
+
+    for weekday in range(7):
+        for hour in range(24):
+            cadence = 5 if 1 <= weekday <= 5 and 13 <= hour <= 20 else 15
+            for minute in range(60):
+                assert matches(minute, hour, weekday) == int(minute % cadence == 0)
+
+    for day in ("2026-10-06", "2026-11-03"):
+        start = at(day + "T09:00:00")
+        for offset in range(0, 7 * 60 + 1, 5):
+            utc = (start + dt.timedelta(minutes=offset)).astimezone(dt.timezone.utc)
+            assert matches(utc.minute, utc.hour, utc.isoweekday() % 7) == 1
 
 
 def test_private_reporting_schema_and_delivery_identity():

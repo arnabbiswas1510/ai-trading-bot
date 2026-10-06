@@ -1,10 +1,14 @@
 # Recover research collection without manufacturing continuous evidence
 
 - **Date:** 2026-10-05
-- **Status:** Accepted
+- **Status:** Accepted; watchdog cadence superseded by [2026-10-06](2026-10-06_faster-research-watchdog.md)
 - **Scope:** Research-only resilience, supervision and operator visibility
 
 ## Context and authorization
+
+> 2026-10-06: The fifteen-minute cloud cadence below now applies only outside
+> the weekday 13:00-20:59 UTC window, when checks run every five minutes.
+> Recovery mechanics and evidence requirements are unchanged.
 
 The October 5 RS opening quote failure halted an empty simulated experiment for
 the entire day. Patch 114 delayed run creation until the first valid cycle, but

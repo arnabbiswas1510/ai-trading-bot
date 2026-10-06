@@ -497,7 +497,8 @@ def build_report(period, events, shadow_events, observer, now, calibration=None,
                "generated_at": now.isoformat(), "coverage": coverage, "shadow": shadow,
                "calibration": calibration_info, "evidence_warnings": warnings,
                "human_review_required": True,
-               "schedule": "Best-effort 15-minute cloud cron; delayed runs catch up durable period keys."}
+               "schedule": ("Best-effort cloud cron: every 5 minutes weekdays 13:00-20:59 UTC, "
+                            "every 15 minutes otherwise; delayed runs catch up durable period keys.")}
     body = render_report(period, payload)
     return {**period, "status": "pending", "body": body, "payload": payload,
             "created_at": now.isoformat()}

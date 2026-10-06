@@ -223,7 +223,8 @@ The independent cloud watchdog imports `SUPABASE_URL`,
 `INTRADAY_SUPABASE_KEY`, `SUPABASE_KEY` (independent operational diagnostics),
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` from Bitwarden using the Actions
 bootstrap secret `BWS_ACCESS_TOKEN`. It also uses its
-built-in GitHub token with issue-write permission. It runs every 15 minutes,
+built-in GitHub token with issue-write permission. It runs every five minutes
+Monday-Friday during 13:00-20:59 UTC and every fifteen minutes otherwise,
 checks 10-minute freshness/coverage gaps, and schedules daily reporting at
 exchange close plus 30 minutes. Paired buy/monitor decisions have a separate
 20-minute freshness bound because they run every 15 minutes; quote frames run
@@ -235,6 +236,10 @@ certification. Explicit blocked/error shadow health is actionable even overnight
 Automatic replacement notifications use immutable run provenance and the existing
 per-recipient delivery receipts; a recovery between sweeps is not missed.
 No new environment variable or notification credential is required.
+The UTC window covers pre-open and regular trading in both New York DST regimes;
+holiday/early-close checks remain exchange-calendar aware. Scheduling is
+best-effort, not a five-minute alert guarantee. See
+`decisions/2026-10-06_faster-research-watchdog.md`.
 Full setup, delay/catch-up limitations and
 hypothetical portfolio recovery are in [intraday research](intraday_research.md).
 

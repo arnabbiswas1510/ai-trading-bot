@@ -23,6 +23,12 @@ for unsupported paths. Older exit/cooling-off studies are historical models,
 not a ranking of which live rule costs the most. See [Backtesting](docs/backtesting.md)
 and `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
+**Research watchdog:** independent cloud checks run every five minutes on weekdays
+13:00-20:59 UTC (covering pre-open and regular trading in both New York DST
+regimes), and every fifteen minutes otherwise. Alerts remain best-effort;
+collection, recovery and live-buy permissions are unchanged. See
+`decisions/2026-10-06_faster-research-watchdog.md`.
+
 **Intraday research:** the Backtester page can compare the AI veto using
 recorded intraday inputs and the actual starting portfolio, prior sales and
 protective orders. Passive collection and weekly comparisons never change

@@ -358,7 +358,7 @@ experiments retain strict engine compatibility.
 The replacement records its predecessor in immutable starting evidence. The
 independent watchdog delivers a Telegram notice using durable per-recipient
 receipts, even if the replacement was created between two sweeps. Delivery is
-best-effort on the existing 15-minute cloud schedule, not immediate or exactly-once
+best-effort on the cloud schedule described below, not immediate or exactly-once
 across a lost acknowledgement. Research recovery never authorizes a real order.
 
 From 09:00 New York on exchange days, the watchdog checks worker heartbeats and
@@ -430,7 +430,26 @@ using the already approved recipients. Its built-in `GITHUB_TOKEN` needs
 `issues: write`; no broker credentials are needed. Host provisioning does not
 configure the Actions bootstrap token.
 
-The cloud workflow runs every 15 minutes independently of the production host.
+The cloud workflow runs independently of the production host every five minutes
+Monday-Friday during 13:00-20:59 UTC, and every fifteen minutes at all other times.
+The faster window is 09:00-16:59 New York during daylight-saving time and
+08:00-15:59 during standard time; the 16:00 standard-time closing check remains
+scheduled by the fifteen-minute window. This padding covers pre-open readiness
+and all regular-session checks without seasonal cron edits. Holidays and early
+closes still use the exchange calendar inside the reporter.
+
+The schedules do not overlap. They request 160 weekday and 96 weekend runs per
+day; GitHub delays and the serialized job can reduce actual execution frequency.
+Freshness limits, opening grace, notification deduplication and worker recovery
+are unchanged. For a ten-minute stale-data threshold, polling nominally detects
+failure after 10-15 rather than 10-25 minutes in the faster window, excluding
+runner delays. It cannot recover missing observations or shorten calibration.
+See `decisions/2026-10-06_faster-research-watchdog.md`.
+
+Apply and push patch 116 after market close using the normal deployment process.
+There is no special rollout flag or deployment-workflow change. The hosted
+watchdog uses the updated default-branch schedule; do not regenerate the graph
+after applying the patch.
 It checks actual broker/quote/decision progress as well as heartbeat age, sends
 failure/recovery notifications, and maintains persistent GitHub incidents.
 Daily summaries become due 30 minutes after the exchange closes. Weekly reports

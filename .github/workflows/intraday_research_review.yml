@@ -4,7 +4,11 @@ name: Intraday Research Collection Watchdog
 # GitHub schedules are best-effort; durable period keys catch up delayed reports.
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    # UTC padding covers 09:00 pre-open through 16:00 New York in both DST regimes.
+    # Schedules do not overlap; holidays/early closes remain calendar-aware in Python.
+    - cron: '*/5 13-20 * * 1-5'
+    - cron: '*/15 0-12,21-23 * * 1-5'
+    - cron: '*/15 * * * 0,6'
   workflow_dispatch:
 
 permissions:

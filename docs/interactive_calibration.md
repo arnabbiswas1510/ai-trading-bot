@@ -166,8 +166,11 @@ blocked run, and do not erase its evidence.
 session and automatic replacement's predecessor. Eligibility is not a completed
 session count: the whole subsequent session must still be recorded. The independent
 watchdog sends a replacement notification even when recovery occurred between
-its sweeps, using durable per-recipient receipts. Its 15-minute GitHub schedule
-is best-effort, not immediate delivery.
+its sweeps, using durable per-recipient receipts. Its GitHub schedule runs every
+five minutes Monday-Friday during 13:00-20:59 UTC and every fifteen minutes
+otherwise. This covers pre-open and regular trading in both New York DST regimes,
+but remains best-effort, not immediate delivery. It does not accelerate training
+or automatic worker recovery. See `decisions/2026-10-06_faster-research-watchdog.md`.
 
 The source can prepare a genuine account seed in the two minutes before the
 open. If that seed remains fresh when the first valid market frame arrives,

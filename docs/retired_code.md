@@ -3,6 +3,22 @@
 Every rule, constant or code path deliberately deleted from this repository is
 recorded here **before** it is removed.
 
+## 2026-10-06: Uniform fifteen-minute research watchdog schedule
+
+The active `*/15 * * * *` schedule in
+`.github/workflows/intraday_research_review.yml` is replaced, not the watchdog
+itself. Its contract test in `tests/test_intraday_reporting.py` and schedule
+description in `research/intraday_reporting.py` now describe five-minute weekday
+checks during 13:00-20:59 UTC and fifteen-minute checks otherwise.
+The old schedule ran the observation-only cloud reporter; it never placed live
+trades. Faster checks reduce alert polling delay around the open and during the
+session without changing worker recovery or evidence thresholds.
+See `decisions/2026-10-06_faster-research-watchdog.md`.
+Restore the former schedule with
+`git show c736676:.github/workflows/intraday_research_review.yml` (and the matching
+test/report description from that commit) if runner or API load proves
+unacceptable. Fifteen-minute monitoring outside the faster window is retained.
+
 ## Why this file exists
 
 Deleted code is invisible. Once a rule is gone, the only trace left is a diff

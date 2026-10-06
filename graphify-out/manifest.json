@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1791249859.002174,
-    "ast_hash": "67a8d012b1aed65c85274c95cd4f890a",
+    "mtime": 1791295099.3566418,
+    "ast_hash": "3e41d7f459b99cf672874db315c6cb0b",
     "semantic_hash": ""
   },
   "backend/requirements.txt": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "docs/configuration.md": {
-    "mtime": 1791249858.9752448,
-    "ast_hash": "125a7fe921c9e272cb87dfb87cdacbf4",
+    "mtime": 1791295032.535692,
+    "ast_hash": "69bd790a435ad5c2bf017c4cc8b3c1d7",
     "semantic_hash": ""
   },
   "docs/fundamental_screener.md": {
@@ -900,8 +900,8 @@
     "semantic_hash": ""
   },
   "docs/retired_code.md": {
-    "mtime": 1791249640.4809906,
-    "ast_hash": "a9997b5b8b93b200de133f827dd81d4d",
+    "mtime": 1791295099.3704987,
+    "ast_hash": "1bc2771425b85cfe9b75fbd938fba0ca",
     "semantic_hash": ""
   },
   "tests/test_dashboard_pricing.py": {
@@ -1910,8 +1910,8 @@
     "semantic_hash": ""
   },
   "docs/intraday_research.md": {
-    "mtime": 1791250443.6978562,
-    "ast_hash": "9ed661afe7d50ad0ba5824dd4b5df84c",
+    "mtime": 1791295093.6568995,
+    "ast_hash": "6af8ca999320dd5a4d64e096650d5fd2",
     "semantic_hash": ""
   },
   "broker_positions.py": {
@@ -2000,8 +2000,8 @@
     "semantic_hash": ""
   },
   "research/intraday_reporting.py": {
-    "mtime": 1791249348.2616181,
-    "ast_hash": "097a004eec0f4e0631318cb97fe44f46",
+    "mtime": 1791295032.503947,
+    "ast_hash": "61f32a0551eda04b87aa4f666024ce77",
     "semantic_hash": ""
   },
   "research/intraday_reporting_delivery.py": {
@@ -2035,8 +2035,8 @@
     "semantic_hash": ""
   },
   "tests/test_intraday_reporting.py": {
-    "mtime": 1791249461.1279082,
-    "ast_hash": "1472863af4a5bfce3861e2ae59dc2b81",
+    "mtime": 1791295032.5190368,
+    "ast_hash": "1cdaf099e33f14441557d12f6bddb0d9",
     "semantic_hash": ""
   },
   "tests/test_shadow_calibration.py": {
@@ -2065,8 +2065,8 @@
     "semantic_hash": ""
   },
   ".github/workflows/intraday_research_review.yml": {
-    "mtime": 1791091891.5253818,
-    "ast_hash": "b876068ffd0a7cf442b639a45cd78074",
+    "mtime": 1791295032.4874313,
+    "ast_hash": "df2b8a51125a64b15756224f73ca2a47",
     "semantic_hash": ""
   },
   "decisions/2026-09-30_shadow-decisions-and-supervised-research.md": {
@@ -2260,8 +2260,8 @@
     "semantic_hash": ""
   },
   "docs/interactive_calibration.md": {
-    "mtime": 1791249858.987081,
-    "ast_hash": "60337cd1921488c4aab613e793ff32ed",
+    "mtime": 1791295032.5459054,
+    "ast_hash": "b8a9187a969ef292ab6b5ba32e26d9a5",
     "semantic_hash": ""
   },
   "frontend/scripts/test-calibration-dashboard.mjs": {
@@ -2425,8 +2425,13 @@
     "semantic_hash": ""
   },
   "decisions/2026-10-05_resilient-research-recovery.md": {
-    "mtime": 1791250443.6807191,
-    "ast_hash": "9009bdb29efdee7a7b95e4c043321613",
+    "mtime": 1791295093.6671324,
+    "ast_hash": "d8b9fdf82bca907fa1fca2ed08363ff8",
+    "semantic_hash": ""
+  },
+  "decisions/2026-10-06_faster-research-watchdog.md": {
+    "mtime": 1791295093.6750107,
+    "ast_hash": "6c447325931cf6296b5f345458c4d1f5",
     "semantic_hash": ""
   }
 }
