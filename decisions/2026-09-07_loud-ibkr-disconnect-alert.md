@@ -6,7 +6,7 @@
 ## Context
 
 On 2026-09-07 the dashboard showed every open position priced from FMP with the
-label "FMP estimate — not broker." Investigation on the prod box (`192.168.1.2`)
+label "FMP estimate — not broker." Investigation on the prod box (`192.168.10.2`)
 found the real fault: **IB Gateway was stuck in a login loop all session**
 (`connection error No Internet connection`, TOTP entered, `breaking out of
 maintenance cycle because login is needed again`, repeat). The API port 4000 was

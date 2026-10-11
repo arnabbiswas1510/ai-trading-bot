@@ -716,7 +716,7 @@ old execution images that lack the entry gate. Runtime services no longer have
 mutually exclusive Compose profiles. Inspect current positions and broker-held
 protection: an observer heartbeat alone does not confirm real risk management.
 
-The gateway's browser desktop is at `http://192.168.1.2:15800/` on the trusted
+The gateway's browser desktop is at `http://192.168.10.2:15800/` on the trusted
 LAN (host `15800` maps to container `5800`). It is unauthenticated: do not expose
 it to the internet. Port-mapping corrections require an explicitly authorized
 gateway recreation; ordinary application deploys leave the gateway running.

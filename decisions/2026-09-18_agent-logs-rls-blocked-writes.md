@@ -8,7 +8,7 @@
 Log shipping to Supabase shipped earlier the same day
 (`decisions/2026-09-18_comprehensive-log-shipping.md`). Its whole purpose is to
 make the execution agent's log readable from anywhere, because the production
-host at `192.168.1.2` is not reachable from outside the LAN and `docker logs` is
+host at `192.168.10.2` is not reachable from outside the LAN and `docker logs` is
 therefore unavailable exactly when it is most needed.
 
 It did not work. `agent_logs` was empty.

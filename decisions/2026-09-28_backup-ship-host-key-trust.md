@@ -32,7 +32,7 @@ Two facts had to be separated first:
 - **Port 2222 is not misconfigured.** The router forwards *external* port 2222
   to the host's *internal* port 22. `deploy_to_server.yml` uses the identical
   `DEPLOY_HOST:2222` and deploys succeed routinely, which proves the host/port
-  are correct. (On the LAN, connecting to `192.168.1.2:2222` is *refused*
+  are correct. (On the LAN, connecting to `192.168.10.2:2222` is *refused*
   because sshd listens on 22 there; that is expected, not a fault.)
 - **The ship step was more brittle than the deploy, by design.** It ran a
   separate one-shot `ssh-keyscan -p 2222` into `known_hosts`, then rsync'd with

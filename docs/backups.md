@@ -76,7 +76,7 @@ in an `always()` step.
 
 > **Port 2222 is the router's external NAT to the host's internal port 22.**
 > GitHub Actions connect over the internet on 2222; on the LAN you connect on
-> **22** (`ssh -p 22 … pom@192.168.1.2`) and 2222 is refused — that is expected.
+> **22** (`ssh -p 22 … pom@192.168.10.2`) and 2222 is refused — that is expected.
 
 ### Why past runs failed
 

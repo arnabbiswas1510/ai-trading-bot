@@ -358,7 +358,7 @@ def test_secret_file_is_parsed_not_executed(work, monkeypatch):
 
 def test_plaintext_remote_and_redirect_rejected():
     with pytest.raises(ValueError, match="HTTPS"):
-        preflight.verify_remote("http://192.168.1.2:8000", "x" * 40, {}, "")
+        preflight.verify_remote("http://192.168.10.2:8000", "x" * 40, {}, "")
     with pytest.raises(ValueError, match="redirects"):
         preflight.NoRedirect().redirect_request(None, None, 302, "", {}, "https://other.example")
 

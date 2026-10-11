@@ -62,7 +62,7 @@ windows when IBKR forces a disconnect.
 ### Step 7: Add secret to server .env
 SSH into your server and add the TOTP secret:
 ```bash
-ssh root@192.168.1.2
+ssh root@192.168.10.2
 nano /home/pom/docker/trading/.env
 ```
 
@@ -86,7 +86,7 @@ Real secrets remain on the production host, never in the patch.
 
 ### Step 9: Restart the gateway
 ```bash
-ssh -p 22 pom@192.168.1.2
+ssh -p 22 pom@192.168.10.2
 cd /home/pom/docker/ai-trading-bot
 docker compose --profile live stop execution-agent
 docker compose --profile observe stop intraday-observer shadow-worker
@@ -209,7 +209,7 @@ and `decisions/2026-10-03_independent-research-diagnostics.md`.
 
 **"Login dialog timeout" in gateway logs:**
 - IBKR may be showing an unexpected popup (new account notice, etc.)
-- Open `http://192.168.1.2:15800/` on the trusted LAN to see the gateway screen.
+- Open `http://192.168.10.2:15800/` on the trusted LAN to see the gateway screen.
   Docker maps host port `15800` to the pinned gateway image's noVNC listener
   on container port `5800`; raw VNC port `5900` is not published.
 - A connection reset at that URL can mean a wrong Docker port mapping, not a

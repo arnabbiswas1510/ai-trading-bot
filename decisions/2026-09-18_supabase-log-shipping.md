@@ -24,7 +24,7 @@ the *next* such outage is visible, but it could not explain this one, because
 the evidence that would have explained it — the agent's own stdout — was
 unreachable.
 
-The production host is a DietPi box on a home LAN at `192.168.1.2`. Reading its
+The production host is a DietPi box on a home LAN at `192.168.10.2`. Reading its
 logs requires either being on that network or SSHing into it. From a corporate
 network neither is possible: outbound SSH to the home router is blocked, and
 probing empirically showed the corporate proxy also blocks the operator's

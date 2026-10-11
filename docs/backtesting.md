@@ -221,14 +221,14 @@ live rules, resolved once per daily bar (same fidelity caveat as section 0).
 
 ### From the dashboard
 
-Open the app (`http://192.168.1.2:8000`) → **Backtester** tab → set the date
+Open the app (`http://192.168.10.2:8000`) → **Backtester** tab → set the date
 range, capital, stop-loss % and slot count → run. Leaving the ticker list empty
 uses the current watchlist.
 
 ### From the API
 
 ```bash
-curl -X POST http://192.168.1.2:8000/api/backtest \
+curl -X POST http://192.168.10.2:8000/api/backtest \
   -H 'Content-Type: application/json' \
   -d '{
         "tickers": ["AAPL","MSFT","NVDA"],
