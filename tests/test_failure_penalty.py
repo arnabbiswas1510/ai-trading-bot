@@ -15,9 +15,11 @@ all 6 losers. A penalty that scores LPG (+6.47%) exactly as it scores CHRD
 See decisions/2026-09-17_failure-penalty-disabled.md.
 """
 
+import datetime as dt
 import importlib
 import os
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -51,6 +53,20 @@ def _learning(exit_date, entry_values, failed=True, trigger_type="BREAKOUT"):
     for key, val in entry_values.items():
         params[key] = {"entry": val, "failed": failed}
     return {"exit_date": exit_date, "failed_params": params}
+
+
+def _penalty_at(screener, trigger, learnings, as_of="2026-09-17"):
+    """Keep historical evidence at its measurement date, not the CI run date."""
+    instant = dt.datetime.fromisoformat(f"{as_of}T12:00:00+00:00")
+
+    class FixedDateTime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz) if tz else instant.replace(tzinfo=None)
+
+    # Patch only the pure calculation, not screener imports or client setup.
+    with patch.object(dt, "datetime", FixedDateTime):
+        return screener._compute_failure_penalty(trigger, learnings)
 
 
 # Real entry parameters from the six losing breakouts that were driving the
@@ -88,14 +104,14 @@ class TestPenaltyDisabledByDefault:
 
     def test_penalty_is_zero_when_disabled(self):
         ts = _screener(0)
-        penalty, _ = ts._compute_failure_penalty(DHT_TRIGGER, LIVE_LOSERS)
+        penalty, _ = _penalty_at(ts, DHT_TRIGGER, LIVE_LOSERS)
         assert penalty == 0
 
     def test_cap_is_honoured_not_hardcoded(self):
         # The cap used to be a literal 20. If it ever regresses to a literal,
         # this fails -- which is the point: the kill switch must actually kill.
         ts = _screener(5)
-        penalty, _ = ts._compute_failure_penalty(DHT_TRIGGER, LIVE_LOSERS)
+        penalty, _ = _penalty_at(ts, DHT_TRIGGER, LIVE_LOSERS)
         assert penalty == 5
 
 
@@ -107,7 +123,7 @@ class TestTheMeasurementThatCondemnedIt:
 
     def test_dht_saturates_the_cap(self):
         ts = _screener(20)
-        penalty, reason = ts._compute_failure_penalty(DHT_TRIGGER, LIVE_LOSERS)
+        penalty, reason = _penalty_at(ts, DHT_TRIGGER, LIVE_LOSERS)
         assert penalty == 20
         assert "volume_surge" in reason and "rs_score" in reason
 
@@ -115,15 +131,15 @@ class TestTheMeasurementThatCondemnedIt:
         # Raising the cap far above 20 shows the uncapped score is ~4x the cap.
         # A cap doing that much work is not a score, it is a constant.
         ts = _screener(1000)
-        penalty, _ = ts._compute_failure_penalty(DHT_TRIGGER, LIVE_LOSERS)
+        penalty, _ = _penalty_at(ts, DHT_TRIGGER, LIVE_LOSERS)
         assert penalty >= 60
 
     def test_dht_own_winning_trade_is_penalised_identically(self):
         # The decisive result: the configuration that produced DHT's +3.47%
         # winner scores exactly the same as the candidate the penalty rejected.
         ts = _screener(20)
-        rejected, _ = ts._compute_failure_penalty(DHT_TRIGGER, LIVE_LOSERS)
-        winner, _ = ts._compute_failure_penalty(DHT_OWN_WINNER, LIVE_LOSERS)
+        rejected, _ = _penalty_at(ts, DHT_TRIGGER, LIVE_LOSERS)
+        winner, _ = _penalty_at(ts, DHT_OWN_WINNER, LIVE_LOSERS)
         assert winner == rejected == 20
 
     def test_tolerances_are_wider_than_the_signal(self):
@@ -140,13 +156,39 @@ class TestTheMeasurementThatCondemnedIt:
             )
 
 
+class TestTimeDecay:
+    @pytest.mark.parametrize("as_of", ["2026-09-17", "2027-10-20"])
+    @pytest.mark.parametrize("age_days, expected", [(0, 6), (29, 6), (30, 6), (31, 4), (89, 4)])
+    def test_recent_weight_includes_day_30(self, as_of, age_days, expected):
+        ts = _screener(1000)
+        exit_date = (dt.date.fromisoformat(as_of) - dt.timedelta(days=age_days)).isoformat()
+        learnings = [_learning(exit_date, {"volume_surge": 1.65})]
+
+        penalty, _ = _penalty_at(ts, DHT_TRIGGER, learnings, as_of)
+
+        assert penalty == expected
+
+    @pytest.mark.parametrize("as_of, expected", [
+        ("2026-09-17", 78),
+        ("2026-10-09", 72),
+        ("2026-10-10", 58),
+        ("2026-10-20", 52),
+    ])
+    def test_historical_examples_decay_at_explicit_dates(self, as_of, expected):
+        ts = _screener(1000)
+
+        penalty, _ = _penalty_at(ts, DHT_TRIGGER, LIVE_LOSERS, as_of)
+
+        assert penalty == expected
+
+
 class TestPreBreakoutWasAlwaysExempt:
     def test_pre_breakout_never_matches_breakout_learnings(self):
         # 196/196 PRE_BREAKOUT rows in trigger_history scored 0. The _meta
         # trigger_type filter is why: every learning row is BREAKOUT-tagged.
         ts = _screener(20)
         pre = {**DHT_TRIGGER, "trigger_type": "PRE_BREAKOUT"}
-        penalty, reason = ts._compute_failure_penalty(pre, LIVE_LOSERS)
+        penalty, reason = _penalty_at(ts, pre, LIVE_LOSERS)
         assert penalty == 0
         assert reason == ""
 
@@ -159,6 +201,6 @@ class TestWinnersNeverContributed:
         winners = [_learning("2026-09-16", {"volume_surge": 1.65, "rs_score": 100,
                                             "technical_score": 68,
                                             "pivot_distance_pct": -1.79}, failed=False)]
-        penalty, reason = ts._compute_failure_penalty(DHT_TRIGGER, winners)
+        penalty, reason = _penalty_at(ts, DHT_TRIGGER, winners)
         assert penalty == 0
         assert reason == ""
