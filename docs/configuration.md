@@ -72,6 +72,42 @@ Never copy the token into a committed template or an approval artifact.
 
 ### Interactive calibration settings
 
+The manual **Run daily health check** button requires the web container's existing
+research database access and outbound HTTPS to `api.github.com` for this public
+repository's screener workflow metadata. It introduces no new environment
+variable, secret, operator token or trading permission. The optional
+`session_date` query selects a NYSE trading day; the default is the latest
+completed session. The browser allows 60 seconds per manually requested report
+and does not poll this endpoint. Missing evidence is UNKNOWN, never a successful
+fallback. These are diagnostic settings, not financial approval requirements.
+See [daily health checks](interactive_calibration.md#daily-health-check) and
+`decisions/2026-10-20_daily-calibration-health-check.md`.
+
+The server uses fixed diagnostic bounds rather than new environment overrides:
+
+| Daily-health bound | Value and purpose |
+|---|---|
+| Shared network budget | 45 seconds across sources; remaining reads become UNKNOWN when exhausted |
+| Per-request timeout | 3 seconds to connect, 8 seconds to read; redirects are refused and TLS remains verified |
+| Response size | 4 MiB per response; oversized or truncated responses are not assessed as complete |
+| Projected session events | At most 2,000 rows; no full replay or price-history export |
+| Proposal scan | At most 200 proposals; overflow is UNKNOWN, not a truncated approval summary |
+| GitHub workflow runs/jobs | At most 100 per response for this repository's daily screener |
+| Observer/shadow heartbeat | 10 minutes; calibration heartbeat 30 minutes |
+| Persisted output during market hours | Within 10 minutes after the opening grace period |
+| Simulation decision coverage | Paired buy/monitor inputs every 15 minutes from NYSE open, within the existing 120-second acquisition window; only elapsed windows are required |
+| Closing simulation mark | Within 120 seconds of the tick scheduled one minute before actual NYSE close |
+| Saved daily report grace | 30 minutes after the selected session closes |
+| Reserved evaluation progress | Must reach each reserved trading session after its close +30 minutes, not merely finish by the final date |
+| Missing/incomplete screener grace | Scheduled 21:00 UTC plus 3 hours, capped at the next NYSE open |
+| Trigger freshness | Existing `TRIGGER_LOOKBACK_DAYS` calendar-day window, normally 3; freshness is not proof of screening success |
+
+An already-blocked read can outlast the shared budget by up to its read timeout;
+DNS resolution is not strictly bounded by Requests. The browser's 60-second limit
+is the final safeguard, so an unavailable source does not guarantee that a partial
+report always returns. GitHub's run-creation windows cannot certify reruns of older
+runs created outside those windows; the report discloses that limitation.
+
 The private `intraday_calibration_settings` singleton, edited through the
 authenticated research inbox, controls research scheduling rather than live
 trading. Defaults: `enabled=true`, `training_sessions=5`,

@@ -92,6 +92,8 @@ const FEATURE_FINGERPRINTS = [
   { feature: "No synthetic portfolio reset", string: "Cash and holdings are not reset" },
   { feature: "Separate hypothetical portfolio", string: "Decision-only portfolio" },
   { feature: "Shadow health", string: "/api/intraday/shadow/status" },
+  { feature: "Manual daily calibration health", string: "Run daily health check" },
+  { feature: "Daily calibration evidence API", string: "/api/calibration/daily-health" },
   { feature: "Labelled shadow export", string: "/api/intraday/shadow/export" },
   { feature: "Scheduled research reports", string: "Daily summaries and weekly research reports" },
   { feature: "Real entry control endpoint", string: "/api/trading-control" },

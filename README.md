@@ -61,6 +61,15 @@ progress, detailed same-window benchmarks, ticker contributions and paginated
 simulated trades/decisions. It stays accessible when real-portfolio data fails;
 missing or stale research evidence is not reported as zero performance.
 Existing Backtester research tools remain available.
+**Calibration > Overview & health > Run daily health check** reads each major
+pipeline stage on demand: screening, candidate inputs, recorded session coverage,
+simulation and calibration progress. It distinguishes PASS, WAIT, FAIL and UNKNOWN,
+and gives a next step for each stage. Run it after the close and daily screening;
+the latest completed NYSE session is selected by default. An after-close screener
+success prepares the next session; it cannot repair missing inputs earlier that
+day. This manual snapshot does not replace automatic alerts or authorize real buys.
+See [daily health checks](docs/interactive_calibration.md#daily-health-check) and
+`decisions/2026-10-20_daily-calibration-health-check.md`.
 Benchmark detail includes Treasury-adjusted Sharpe/Sortino, a clearly labelled
 window-estimate Calmar, sampled maximum drawdown, volatility and loss statistics.
 Daily observations and historical rates are saved with each experiment;

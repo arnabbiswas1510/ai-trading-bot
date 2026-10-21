@@ -4,6 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { transformWithEsbuild } from 'vite';
 import { experimentFields } from '../src/lib/calibrationResearch.js';
+import { dailyHealthIssue, healthCheckIds, healthLabels, healthScopes, healthTime, loadDailyHealth } from '../src/lib/calibrationHealth.js';
 import {
   activityPageValid, activityRows, benchmarkView, calibrationTabs, campaignProgress,
   contributionRows, initialCampaign, metricDelta, recordedEquity, sortedTrials,
@@ -175,4 +176,93 @@ assert.match(offlineHtml, /Historical rates missing/);
 assert.match(offlineHtml, /do not silently fall back/);
 const oldRiskHtml = renderToStaticMarkup(React.createElement(RiskMetrics, { proposal, phase: 'training' }));
 assert.match(oldRiskHtml, /Older artifacts are not retroactively rewritten/);
+const healthReport = {
+  schema_version: 1, timezone: 'America/New_York',
+  session_date: '2026-10-20', session_complete: true,
+  checked_at: '2026-10-21T02:15:00+00:00', overall_status: 'fail',
+  checks: [
+    { id: 'screening-next-session', title: 'Daily screening', scope: 'next_session', status: 'fail',
+      summary: 'Unit-test failure prevented all screening stages.',
+      next_step: 'Repair the failure and rerun the daily screener.', evidence_at: '2026-10-20T23:33:24Z' },
+    { id: 'calibration-campaign', title: 'Calibration progress', scope: 'current', status: 'wait',
+      summary: 'Only one complete training session is available.',
+      next_step: 'Collect more complete sessions without restarting the run.', evidence_at: null },
+  ],
+  limitations: ['Operational evidence does not establish profitability or authorize real buys.'],
+};
+healthReport.checks.push(...healthCheckIds.filter((id) => !healthReport.checks.some((row) => row.id === id))
+  .map((id) => ({ id, title: id, scope: 'current', status: 'pass',
+    summary: 'Required evidence is present.', next_step: '', evidence_at: healthReport.checked_at })));
+assert.equal(dailyHealthIssue(healthReport), null);
+assert.match(dailyHealthIssue({ ...healthReport, checks: healthReport.checks.slice(1) }), /stages are missing/);
+assert.match(dailyHealthIssue(healthReport, '2026-10-19'), /different session/);
+assert.match(dailyHealthIssue({ ...healthReport, overall_status: 'pass' }), /contradicts/);
+for (const patch of [
+  { checks: [] }, { checks: null }, { checked_at: '2026-10-20T12:00:00' },
+  { session_date: '2026-02-30' }, { session_complete: 'true' }, { limitations: null },
+  { timezone: 'UTC' }, { schema_version: 2 }, { overall_status: 'constructor' },
+]) assert.ok(dailyHealthIssue({ ...healthReport, ...patch }));
+for (const patch of [
+  { summary: null }, { next_step: null }, { next_step: '' }, { evidence_at: undefined }, { scope: 'other' },
+  { status: 'success' }, { title: '' }, { id: '' },
+]) assert.ok(dailyHealthIssue({ ...healthReport, checks: [{ ...healthReport.checks[0], ...patch }] }));
+assert.ok(dailyHealthIssue({ ...healthReport, checks: [healthReport.checks[0], healthReport.checks[0]] }));
+for (const [statuses, overall] of [
+  [['pass', 'pass'], 'pass'], [['pass', 'wait'], 'wait'],
+  [['unknown', 'wait'], 'unknown'], [['unknown', 'fail'], 'fail'],
+]) {
+  const report = { ...healthReport, overall_status: overall,
+    checks: healthReport.checks.map((row, i) => ({ ...row, status: statuses[i] ?? 'pass' })) };
+  assert.equal(dailyHealthIssue(report), null);
+}
+assert.ok(dailyHealthIssue({ ...healthReport, session_complete: false, overall_status: 'pass',
+  checks: healthReport.checks.map((row) => ({ ...row, status: 'pass' })) }));
+assert.match(healthTime(healthReport.checked_at), /Oct 20, 2026/);
+assert.equal(healthTime(null), 'Not recorded');
+const abortController = new AbortController();
+let healthCall;
+assert.equal(await loadDailyHealth(async (...args) => {
+  healthCall = args;
+  return healthReport;
+}, '2026-10-20', abortController.signal), healthReport);
+assert.equal(healthCall[0], '/api/calibration/daily-health?session_date=2026-10-20');
+assert.equal(healthCall[1].method, 'GET');
+assert.equal(healthCall[1].cache, 'no-store');
+assert.equal(healthCall[1].signal, abortController.signal);
+assert.equal(healthCall[2], 60000);
+await loadDailyHealth(async (url) => {
+  assert.equal(url, '/api/calibration/daily-health');
+  return healthReport;
+});
+await assert.rejects(loadDailyHealth(async () => ({ ...healthReport, checks: [] })), /incomplete/);
+await assert.rejects(loadDailyHealth(async () => { throw new Error('Offline'); }), /Offline/);
+const dailySource = readFileSync(new URL('../src/components/DailyCalibrationHealth.jsx', import.meta.url), 'utf8');
+assert.doesNotMatch(dailySource, /setInterval/);
+assert.match(dailySource, /setState\(\{ loading: true, report: null, error: '' \}\)/,
+  'Do not keep an old green report visible while checking again');
+assert.match(dailySource, /active\.current\?\.abort\(\)/);
+assert.match(dailySource, /disabled=\{state\.loading\}/);
+assert.match(source, /hidden=\{tab !== 'overview'\}><DailyCalibrationHealth/,
+  'Keep the manual snapshot mounted when switching calibration tabs');
+const dailyCode = (await transformWithEsbuild(dailySource.replace(/^import[\s\S]*?;\n/gm, '')
+  .replace(/export (?:default )?function/g, 'function'),
+'DailyCalibrationHealth.jsx', { loader: 'jsx', jsx: 'transform' })).code
+  .replace(/\b(useState|useEffect|useRef)\(/g, 'React.$1(');
+const dailyComponents = new Function('React', 'dailyHealthIssue', 'healthLabels', 'healthScopes', 'healthTime',
+  `${dailyCode};return { DailyCalibrationHealth, DailyHealthReport };`)(
+  React, dailyHealthIssue, healthLabels, healthScopes, healthTime);
+const dailyIdleHtml = renderToStaticMarkup(React.createElement(dailyComponents.DailyCalibrationHealth));
+assert.match(dailyIdleHtml, /Run daily health check/);
+assert.match(dailyIdleHtml, /Not checked yet/);
+assert.doesNotMatch(dailyIdleHtml, /PASS - evidence available/);
+const dailyHtml = renderToStaticMarkup(React.createElement(dailyComponents.DailyHealthReport, { report: healthReport }));
+assert.match(dailyHtml, /FAIL - action needed/);
+assert.match(dailyHtml, /WAIT - not complete/);
+assert.match(dailyHtml, /Repair the failure/);
+assert.match(dailyHtml, /Preparation for the next session/);
+assert.match(dailyHtml, /not continuous monitoring/);
+const invalidDailyHtml = renderToStaticMarkup(React.createElement(dailyComponents.DailyHealthReport,
+  { report: { ...healthReport, overall_status: 'pass' } }));
+assert.match(invalidDailyHtml, /contradicts/);
+assert.doesNotMatch(invalidDailyHtml, /PASS - evidence available/);
 console.log('Calibration dashboard: missing-data, comparison, progress, pagination, navigation and rendered-panel checks passed.');

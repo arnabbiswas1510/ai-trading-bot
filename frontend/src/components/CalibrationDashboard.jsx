@@ -3,6 +3,7 @@ import { Activity, Download, FlaskConical, RefreshCw } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import CalibrationResearchView from './CalibrationResearchView.jsx';
 import CalibrationRiskMetrics from './CalibrationRiskMetrics.jsx';
+import DailyCalibrationHealth from './DailyCalibrationHealth.jsx';
 import IntradayReplayView, { request } from './IntradayReplayView.jsx';
 import { finiteNumber } from '../lib/intradayReplay.js';
 import { experimentFields, heartbeatLabel, metricText } from '../lib/calibrationResearch.js';
@@ -441,6 +442,7 @@ export default function CalibrationDashboard() {
           }}>{title}</button>)}
       </div>
     </section>
+    <div hidden={tab !== 'overview'}><DailyCalibrationHealth /></div>
     {calibrationTabs.filter(([key]) => key !== 'inbox').map(([key]) => <div key={key} role="tabpanel"
       id={`cal-panel-${key}`} aria-labelledby={`cal-tab-${key}`} hidden={tab !== key}>
       {tab === key && key === 'overview' && <Overview capture={capture} shadow={shadow} inbox={inbox} detail={detail} onReview={review} />}

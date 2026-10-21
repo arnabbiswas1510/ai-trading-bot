@@ -11,9 +11,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 if __package__:
-    from . import intraday_service
+    from . import intraday_service, calibration_daily_health
 else:
     import intraday_service
+    import calibration_daily_health
 from research.calibration_store import CalibrationStore, Conflict, StoreUnavailable, ValidationError
 
 router = APIRouter()
@@ -103,6 +104,16 @@ def inbox(response: Response, store=Depends(get_store)):
         "proposals": store.list_proposals(), "write_configured": bool(_configured_token()),
         "deployment_mode": "operator_artifact",
     })
+
+
+@router.get("/api/calibration/daily-health")
+def daily_health(response: Response, session_date: str | None = None):
+    _no_store(response)
+    try:
+        return calibration_daily_health.daily_health(session_date)
+    except ValueError:
+        raise HTTPException(400, "Choose a past or current NYSE session within the installed calendar.",
+                            headers={"Cache-Control": "no-store"}) from None
 
 
 @router.get("/api/calibration/proposals/{identifier}")

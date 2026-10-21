@@ -14,7 +14,7 @@ balance, zero trades, or a successful evaluation.
 
 | Tab | What it shows |
 |---|---|
-| Overview & health | Collector and simulation heartbeats, latest persisted output, pending/dropped records, research blockers, risk-policy availability, pending reviews and the selected campaign's reserved dates/progress |
+| Overview & health | Manual daily pipeline health check with stage-specific evidence and next steps; collector and simulation heartbeats, latest persisted output, pending/dropped records, research blockers, risk-policy availability, pending reviews and the selected campaign's reserved dates/progress |
 | Benchmark detail | Recorded rules versus the frozen candidate for the same training or future-evaluation window; after-cost equity change, sampled drawdown, fees, position counts, exact parameter differences, ticker contributions and frozen risk limits |
 | Simulated activity | Recorded reference-run holdings, simulated fills, buy/hold/skip/exit decisions and actual saved equity marks, with ticker filtering and older-cycle pages |
 | Review & approve | The existing authenticated inbox, durable feedback, research requests, policy settings and separately approved deployment artifacts |
@@ -26,8 +26,9 @@ controls. Unsaved inbox drafts and the memory-only token survive switching
 Calibration tabs, but not leaving the page. A pending inbox action locks campaign
 selection. Clear the token explicitly when finished.
 
-Health and campaign summaries refresh every 30 seconds. Simulated activity is a
-manual-refresh snapshot, with 50 recorded cycles per page. Each cycle may contain
+Existing worker-health and campaign summaries refresh every 30 seconds; the daily
+health-check report refreshes only when its button is pressed. Simulated activity
+is a manual-refresh snapshot, with 50 recorded cycles per page. Each cycle may contain
 many fills or none. Older pages stay inside the same published sequence boundary;
 **Refresh newest page** explicitly starts a new snapshot. Holdings describe the
 latest verified checkpoint within that boundary, not the older page's date.
@@ -50,6 +51,73 @@ authorization. An approved artifact is **not** evidence that it has been deploye
 The page does not certify current executor deployment.
 
 See `decisions/2026-10-03_unified-calibration-dashboard.md` for why.
+
+## Daily health check
+
+Open **Calibration > Overview & health** and press **Run daily health check** after
+the market closes and the daily screener finishes. Leave the date blank to inspect
+the latest completed NYSE session, or select a trading-session date explicitly.
+The exchange calendar handles weekends, holidays and early closes. All times in
+this report are labelled New York time.
+
+The check reads existing evidence; it does not run a screener, replay trades,
+start or restart a service, change settings, approve a proposal or enable buys.
+It is a manual snapshot with a visible check time, not a promise of ongoing
+monitoring. Switching Calibration tabs retains the snapshot; leaving the page or
+reloading it clears it. Running again clears the old result while new evidence
+loads, so an old green result never stands in for an unsuccessful refresh.
+
+| Result | Meaning |
+|---|---|
+| PASS | The evidence required by this stage is present and satisfies its operational checks. |
+| WAIT | Work or sufficient research evidence is not complete. Read the reason; this is not success. |
+| FAIL | Recorded evidence shows a failure or blocker requiring action. |
+| UNKNOWN | Required evidence is missing, malformed, unavailable or beyond the bounded query. Success cannot be inferred. |
+
+The overall result uses the most serious stage: FAIL before UNKNOWN before WAIT
+before PASS. An unfinished session cannot receive an overall PASS. Each stage
+shows its evidence, evidence time, scope and next step. A failed source must not
+prevent other independently available stages from being reported.
+
+**Scopes matter.** Selected-session coverage describes the day requested.
+Current worker health describes the state at the time of the button click.
+After-close screening and the current candidate table prepare the next session;
+they cannot certify what the simulation received earlier in the selected day.
+A successful rerun can restore the feed without repairing a failed historical day.
+
+The report checks the cloud screening workflow and its individual screening
+stages, candidate freshness, saved daily coverage evidence, actual recorded
+simulation inputs/continuity, and calibration settings and progress. Empty
+candidate cycles must not look like useful parameter comparisons simply because
+the worker is alive. Equally, a successful screen can genuinely find no qualifying
+stocks: the bot must not force trades to make a health report green.
+
+Simulation coverage requires paired buy/monitor inputs in each elapsed 15-minute
+decision window and a closing valuation mark. Quote-only frames cannot substitute
+for missing decisions. An evaluating campaign must advance through each reserved
+session after close plus 30 minutes; a missing daily update is flagged before the
+final evaluation date. Historical blocked campaigns do not override newer completed
+results, but a currently blocked simulation source still requires attention.
+
+Waiting for more training sessions or a reserved future evaluation date is not
+an infrastructure outage. A completed search can legitimately recommend no change.
+Neither case establishes profitability. A PASS does not certify broker order
+execution, approve a strategy change or grant permission to enable live buying.
+The existing scheduled watchdog and notifications continue separately; this button
+does not add another cron or send an alert.
+
+The read-only endpoint is `GET /api/calibration/daily-health`, optionally with
+`session_date=YYYY-MM-DD`. It uses the dashboard's existing research database
+access and public GitHub workflow metadata. It requires no new operator token,
+database migration or secret. GitHub rate limits and unavailable private evidence
+are reported as UNKNOWN rather than silently relying on stale successful runs.
+Reads have [fixed diagnostic limits](configuration.md), including response-size
+and row-count bounds. The simulation check inspects projected inputs and schedule
+coverage, not a full replay, price-quality audit or certification of every trade.
+GitHub queries use run-creation windows and cannot certify a rerun of an older run
+created outside those windows.
+
+See `decisions/2026-10-20_daily-calibration-health-check.md` for why.
 
 ## Risk-adjusted benchmark metrics
 
