@@ -5,6 +5,14 @@ research and live strategy changes. The bot searches supported parameter
 settings, tests a frozen candidate on future recorded observations and brings
 the result here. It does **not** change live settings or enable real buys.
 
+Research uses the explicitly selected storage backend. After the
+[filesystem migration](filesystem_research.md), all campaign evidence,
+settings, approvals, audits and reports live in local PostgreSQL, not Supabase.
+The dashboard and worker use the same transactional functions and preserve
+existing approval requirements. Live source data and the real-entry control
+are unchanged. Local reports cannot detect a complete outage of their own host.
+See `decisions/2026-10-26_filesystem-research-storage.md`.
+
 ## Follow the process in the dashboard
 
 Open **Calibration** in the sidebar. This page reads research services separately
@@ -328,7 +336,7 @@ campaign with future evidence is required. A result can also legitimately say
 
 ### Production policy
 
-The operator-approved cloud settings saved on 2026-10-04 use five complete
+The operator-approved research settings saved on 2026-10-04 use five complete
 training sessions, ten future evaluation sessions and at most sixteen candidates.
 These are explicit settings, not changes to the five/five software defaults.
 

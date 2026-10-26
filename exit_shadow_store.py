@@ -1,7 +1,6 @@
 """Private research-only persistence; never borrows the live trading client."""
-import os
-
 import research_diagnostics as diagnostics
+from research_storage import research_client
 
 _client = None
 
@@ -9,17 +8,7 @@ _client = None
 def get_client():
     global _client
     if _client is None:
-        url = os.getenv("SUPABASE_URL", "")
-        key = os.getenv("INTRADAY_SUPABASE_KEY", "")
-        if any(not value.strip() or value.strip() == "@bws"
-               or any(char in value for char in ("\r", "\n", "\0"))
-               for value in (url, key)):
-            raise ValueError("Exit-shadow private credentials are not configured.")
-        from supabase import ClientOptions, create_client
-
-        _client = create_client(
-            url, key, options=ClientOptions(postgrest_client_timeout=5),
-        )
+        _client = research_client(timeout=5)
     return _client
 
 

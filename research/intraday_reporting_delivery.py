@@ -73,6 +73,18 @@ class Store:
         self.url, self.http = url.rstrip("/") + "/rest/v1/", http
         self.headers = {"apikey": key, "Authorization": "Bearer " + key}
 
+    @classmethod
+    def configured(cls, http=requests):
+        from research_storage import research_rest_url, research_headers
+        try:
+            instance = cls.__new__(cls)
+            instance.url = research_rest_url().rstrip("/") + "/"
+            instance.headers = research_headers()
+            instance.http = http
+            return instance
+        except ValueError:
+            raise StorageError("Selected research storage credentials are missing or invalid") from None
+
     def request(self, method, path, *, params=None, data=None, prefer=None):
         headers = dict(self.headers)
         if prefer:

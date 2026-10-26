@@ -1,8 +1,12 @@
 # Backup vault credentials and isolated private exit-shadow persistence
 
 - **Date:** 2026-10-04
-- **Status:** Superseded in part by [trading-only backup scope](2026-10-04_trading-only-backup-scope.md)
+- **Status:** Superseded in part by [trading-only backup scope](2026-10-04_trading-only-backup-scope.md) and [filesystem research storage](2026-10-26_filesystem-research-storage.md)
 - **Scope:** Operational credentials and research persistence; no trading rules
+
+> **2026-10-26:** Isolated exit-shadow persistence follows the selected research
+> backend. In local mode it uses the local service-role credential, not the
+> Supabase private key. No fallback to the trading client is introduced.
 
 ## Context
 

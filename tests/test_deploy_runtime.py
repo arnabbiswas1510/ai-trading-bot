@@ -1,5 +1,6 @@
 """Offline deployment contract; Docker is a recording executable, never a daemon."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -32,6 +33,11 @@ def deployment():
         "    sys.exit(42)\n"
         "if args[:2] == ['container', 'ls'] and os.environ['EXISTING_AGENT'] != 'missing':\n"
         "    print('container-id')\n"
+        "if args[:2] == ['compose', 'config']:\n"
+        "    assert os.environ.get('COMPOSE_PROFILES') == 'local-research'\n"
+        "    print(os.environ.get('TEST_COMPOSE_CONFIG', '{}'))\n"
+        "if args[:3] == ['compose', 'exec', '-T']:\n"
+        "    print(os.environ.get('TEST_IMPORT_PROOF', '{}'))\n"
         "if args[:2] == ['image', 'inspect']:\n"
         "    print(os.environ['IMAGE_GATE'])\n"
         "elif args[:2] == ['inspect', 'execution-agent'] and 'live-entry-gate' in args[-1]:\n"
@@ -46,16 +52,34 @@ def deployment():
     (work / "scripts").mkdir()
     shutil.copy(HELPER, work / "scripts/deploy_runtime.sh")
 
-    def run(mode=None, fail=None, args=(), existing="guarded", image_gate="1", morning=False):
+    def run(mode=None, fail=None, args=(), existing="guarded", image_gate="1", morning=False,
+            research=None, receipt=False, local_config=None, dotenv_backend=None):
         env = os.environ.copy()
         env.pop("TRADING_RUNTIME_MODE", None)
         env.pop("FAIL_DOCKER_ACTION", None)
+        env.pop("RESEARCH_STORAGE_BACKEND", None)
         env.update(PATH=f"{work}{os.pathsep}{env['PATH']}", DOCKER_LOG=str(log),
                    EXISTING_AGENT=existing, IMAGE_GATE=image_gate, PROJECT_DIR=str(work))
         if mode is not None:
             env["TRADING_RUNTIME_MODE"] = mode
         if fail:
             env["FAIL_DOCKER_ACTION"] = fail
+        if research is not None:
+            env["RESEARCH_STORAGE_BACKEND"] = research
+        if receipt:
+            identity = ["123456", "16384", "research"]
+            target = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+            env["TEST_IMPORT_PROOF"] = json.dumps({
+                "identity": identity,
+                "proof": {"verified": True, "target_identity": target,
+                          "source_identity": "source", "manifest_sha256": "f" * 64},
+            })
+        env["TEST_COMPOSE_CONFIG"] = json.dumps(local_config if local_config is not None else {
+            "services": {name: {"environment": {}} for name in [*SERVICES, "research-reporting"]},
+        })
+        if dotenv_backend is not None:
+            with (work / ".env").open("a") as out:
+                out.write(f"RESEARCH_STORAGE_BACKEND={dotenv_backend}\n")
         result = subprocess.run(
             ["sh", str(ROOT / "scripts/restart_6am.sh" if morning else HELPER), *args], cwd=work, env=env,
             text=True, capture_output=True, check=False,
@@ -72,6 +96,7 @@ def deployment():
 
 SERVICES = ["execution-agent", "intraday-observer", "shadow-worker", "calibration-worker", "trading-bot"]
 GATEWAY = ["compose", "up", "-d", "--no-deps", "--no-recreate", "ib-gateway"]
+CONFIG = ["compose", "config", "--format", "json"]
 
 
 @pytest.mark.parametrize("mode", [None, "", "observe", "live"])
@@ -79,6 +104,7 @@ def test_all_modes_keep_protection_and_research_running(deployment, mode):
     result, calls = deployment(mode)
     assert result.returncode == 0, result.stderr
     assert [call for call in calls if call[0] == "compose"] == [
+        CONFIG,
         ["compose", "pull", *SERVICES],
         GATEWAY,
         ["compose", "up", "-d", "--no-deps", "--pull", "never", *SERVICES],
@@ -146,7 +172,7 @@ def test_legacy_image_cannot_be_started_even_on_restart(deployment, args):
 def test_daemon_inspection_failure_never_assumes_agent_absent(deployment):
     result, calls = deployment(fail="ls")
     assert result.returncode == 42
-    assert len(calls) == 1
+    assert len(calls) == 2 and calls[0] == CONFIG
 
 
 @pytest.mark.parametrize("mode", ["observe", "live"])
@@ -177,7 +203,7 @@ def test_runtime_deploy_cannot_execute_order_operations_or_restart_gateway(deplo
             continue
         assert call[0] == "compose"
         operation = call[1]
-        assert operation in {"stop", "pull", "up"}
+        assert operation in {"config", "stop", "pull", "up"}
         if operation == "up":
             assert "--no-deps" in call
         if "ib-gateway" in call:
@@ -267,3 +293,191 @@ def test_shadow_worker_has_no_gateway_network_or_dependency():
     assert "depends_on:" not in block
     assert "IB_GATEWAY" not in block
     assert "shadow-data:/app/shadow" in block
+
+
+def local_configuration():
+    env = {
+        "RESEARCH_STORAGE_BACKEND": "local",
+        "RESEARCH_DATABASE_URL": "http://research-api:3000",
+        "RESEARCH_DATABASE_KEY": "test-jwt",
+        "GITHUB_TOKEN": "test-token", "GITHUB_REPOSITORY": "owner/repo",
+        "TELEGRAM_BOT_TOKEN": "test-token", "TELEGRAM_CHAT_IDS": "123",
+    }
+    services = {name: {"environment": dict(env)} for name in [*SERVICES, "research-reporting"]}
+    services["research-db"] = {"environment": {"POSTGRES_PASSWORD": "p" * 32}}
+    services["research-api"] = {"environment": {
+        "PGRST_JWT_SECRET": "s" * 32,
+        "PGRST_DB_URI": "postgres://authenticator:" + "a" * 32 + "@research-db:5432/research",
+    }}
+    return {"services": services}
+
+
+def test_local_backend_requires_verified_import_before_replacing_consumers(deployment):
+    result, calls = deployment(research="local", local_config=local_configuration())
+    assert result.returncode == 1
+    assert "verified import proof missing" in result.stderr
+    assert not any("up" in call and "execution-agent" in call for call in calls)
+    assert not any("up" in call and "research-reporting" in call for call in calls)
+
+
+def test_local_backend_validates_credentials_before_changing_runtime(deployment):
+    config = local_configuration()
+    config["services"]["trading-bot"]["environment"]["RESEARCH_DATABASE_KEY"] = ""
+    result, calls = deployment(research="local", receipt=True, local_config=config)
+    assert result.returncode != 0
+    assert "credentials are incomplete" in result.stderr
+    assert calls == [["compose", "config", "--format", "json"]]
+
+
+def test_local_backend_starts_database_checks_restore_then_starts_consumers(deployment):
+    result, calls = deployment(research="local", receipt=True, local_config=local_configuration())
+    assert result.returncode == 0, result.stderr
+    start = ["compose", "up", "-d", "--no-deps", "--pull", "never", *SERVICES, "research-reporting"]
+    db = ["compose", "up", "-d", "--no-deps", "--pull", "never", "--wait",
+          "--wait-timeout", "120", "research-db"]
+    assert calls.index(db) < calls.index(start)
+    probe = next(call for call in calls if call[:2] == ["compose", "run"])
+    assert calls.index(probe) < calls.index(start)
+    assert "intraday_calibration_settings" in probe[-1]
+    assert not any("stop" in call for call in calls)
+
+
+def test_local_restore_probe_failure_does_not_replace_consumers(deployment):
+    result, calls = deployment(research="local", receipt=True,
+                               local_config=local_configuration(), fail="run")
+    assert result.returncode == 42
+    assert not any("up" in call and "execution-agent" in call for call in calls)
+
+
+@pytest.mark.parametrize("kind", ["transport", "api", "configuration", "unexpected"])
+def test_readiness_retries_only_expected_errors(monkeypatch, kind):
+    import httpx
+    import research_storage
+    import time
+    from postgrest.exceptions import APIError
+    from unittest.mock import Mock
+
+    errors = {
+        "transport": httpx.ConnectError("private transport detail"),
+        "api": APIError({"code": "PGRST205", "message": "private response",
+                         "details": "", "hint": ""}),
+        "configuration": ValueError("private configuration"),
+        "unexpected": RuntimeError("unexpected programming failure"),
+    }
+    factory = Mock(side_effect=errors[kind])
+    sleep = Mock()
+    monkeypatch.setattr(research_storage, "research_client", factory)
+    monkeypatch.setattr(time, "sleep", sleep)
+    code = re.search(
+        r"docker compose run --rm --no-deps --entrypoint python research-reporting -c '\n(.*?)\n'",
+        HELPER.read_text(), re.DOTALL,
+    ).group(1)
+    if kind == "unexpected":
+        with pytest.raises(RuntimeError, match="unexpected programming failure"):
+            exec(code, {})
+        assert factory.call_count == 1
+        sleep.assert_not_called()
+    else:
+        with pytest.raises(SystemExit, match="restored research settings are unavailable"):
+            exec(code, {})
+        assert factory.call_count == 6
+        assert sleep.call_count == 5
+
+
+def test_local_storage_and_reporter_are_opt_in_without_exposed_database_ports():
+    for name in ("research-db", "research-api", "research-reporting"):
+        block = service_block(name)
+        assert 'profiles: ["local-research"]' in block
+        assert "ports:" not in block
+    assert "research_database" in service_block("research-db")
+    assert "research_bridge" not in service_block("research-db")
+    assert "postgres://authenticator:" in service_block("research-api")
+    assert "PGRST_DB_ANON_ROLE: anon" in service_block("research-api")
+    assert "RESEARCH_API_PASSWORD" in service_block("research-api")
+    assert "${RESEARCH_DATA_DIR:-/home/pom/docker/ai-trading-bot/research-data}/postgres" in service_block("research-db")
+    for name in ("execution-agent", "intraday-observer", "trading-bot"):
+        assert "research_bridge" in service_block(name)
+
+
+@pytest.mark.parametrize(("shell", "effective"), [("supabase", "local"), ("local", "supabase")])
+def test_shell_cannot_bypass_effective_backend_readiness(deployment, shell, effective):
+    config = local_configuration()
+    for name in [*SERVICES, "research-reporting"]:
+        config["services"][name]["environment"]["RESEARCH_STORAGE_BACKEND"] = effective
+    result, calls = deployment(research=shell, local_config=config)
+    assert result.returncode != 0
+    assert "shell and effective Compose" in result.stderr
+    assert calls == [CONFIG]
+
+
+@pytest.mark.parametrize("invalid", ["", "LOCAL", "other"])
+def test_invalid_effective_backend_never_changes_containers(deployment, invalid):
+    config = local_configuration()
+    for name in [*SERVICES, "research-reporting"]:
+        config["services"][name]["environment"]["RESEARCH_STORAGE_BACKEND"] = invalid
+    result, calls = deployment(local_config=config)
+    assert result.returncode != 0
+    assert "effective research consumer backends disagree or are invalid" in result.stderr
+    assert calls == [CONFIG]
+
+
+@pytest.mark.parametrize("service", [*SERVICES, "research-reporting"])
+def test_one_consumer_cannot_choose_a_different_backend(deployment, service):
+    config = local_configuration()
+    config["services"][service]["environment"]["RESEARCH_STORAGE_BACKEND"] = "supabase"
+    result, calls = deployment(local_config=config)
+    assert result.returncode != 0
+    assert "effective research consumer backends disagree" in result.stderr
+    assert calls == [CONFIG]
+
+
+@pytest.mark.parametrize(("declared", "effective"), [("supabase", "local"), ("local", "supabase")])
+def test_strategy_overlay_cannot_silently_override_operator_backend(deployment, declared, effective):
+    config = local_configuration()
+    for name in [*SERVICES, "research-reporting"]:
+        config["services"][name]["environment"]["RESEARCH_STORAGE_BACKEND"] = effective
+    result, calls = deployment(local_config=config, dotenv_backend=declared)
+    assert result.returncode != 0
+    assert ".env and effective Compose" in result.stderr
+    assert calls == [CONFIG]
+
+
+@pytest.mark.parametrize(("dotenv", "shell", "overlay"), [
+    ("local", "supabase", None),
+    ("supabase", "local", None),
+    ("local", None, "supabase"),
+    ("supabase", None, "local"),
+    ("local", "local", "supabase"),
+    ("supabase", "supabase", "local"),
+])
+def test_real_compose_precedence_is_checked_before_lifecycle_commands(
+        tmp_path, dotenv, shell, overlay):
+    real_docker = shutil.which("docker")
+    if not real_docker:
+        pytest.skip("Docker Compose CLI is not installed")
+    version = subprocess.run([real_docker, "compose", "version"], capture_output=True)
+    if version.returncode:
+        pytest.skip("Docker Compose plugin is not installed")
+    shutil.copy(ROOT / "docker-compose.yml", tmp_path / "docker-compose.yml")
+    (tmp_path / ".env").write_text(f"RESEARCH_STORAGE_BACKEND={dotenv}\n")
+    (tmp_path / "approved_strategy.env").write_text(
+        "" if overlay is None else f"RESEARCH_STORAGE_BACKEND={overlay}\n")
+    shim = tmp_path / "docker"
+    log = tmp_path / "calls.jsonl"
+    shim.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        f"with open({str(log)!r}, 'a') as stream: stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:3] != ['compose', 'config']: raise SystemExit(73)\n"
+        f"os.execv({real_docker!r}, [{real_docker!r}, *sys.argv[1:]])\n")
+    shim.chmod(0o755)
+    env = dict(os.environ, PATH=f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    for key in ("RESEARCH_STORAGE_BACKEND", "COMPOSE_FILE", "COMPOSE_ENV_FILES", "COMPOSE_PROFILES"):
+        env.pop(key, None)
+    if shell is not None:
+        env["RESEARCH_STORAGE_BACKEND"] = shell
+    result = subprocess.run(["sh", str(HELPER)], cwd=tmp_path, env=env,
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode not in (0, 73), result.stderr
+    assert "research backend disagree" in result.stderr
+    assert [json.loads(line) for line in log.read_text().splitlines()] == [CONFIG]

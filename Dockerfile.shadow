@@ -18,8 +18,8 @@ COPY intraday_capture.py intraday_replay.py quote_transport.py trigger_audit.py 
 COPY research/live_rule_replay.py research/calibrate_intraday.py ./research/
 COPY research/auto_calibration.py research/calibration_store.py research/calibration_worker.py ./research/
 COPY research/calibration_risk.py research/calibration_risk_report.py research/treasury_reference.py ./research/
-COPY research/intraday_reporting_delivery.py ./research/
-COPY research_diagnostics.py research_entrypoint.py ./
+COPY research/intraday_reporting_delivery.py research/intraday_reporting.py ./research/
+COPY research_diagnostics.py research_entrypoint.py research_storage.py research_source_client.py ./
 
 RUN mkdir -p /app/shadow
 CMD ["python", "research_entrypoint.py", "shadow-worker"]

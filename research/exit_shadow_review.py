@@ -32,9 +32,13 @@ import json
 import os
 import sys
 from collections import defaultdict
+from pathlib import Path
 
 import requests
 import urllib3
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from research_storage import research_rest_url, research_headers
 
 # Below this many distinct open positions across more than one day the sample is
 # one cohort wearing a disguise — report the counts and skip rather than read
@@ -54,8 +58,8 @@ def _env(name: str) -> str:
 
 
 def fetch_rows(insecure: bool) -> list:
-    url = _env("SUPABASE_URL").rstrip("/")
-    key = _env("SUPABASE_KEY")
+    url = research_rest_url()
+    headers = research_headers()
     if insecure:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -63,8 +67,8 @@ def fetch_rows(insecure: bool) -> list:
     while True:
         try:
             r = requests.get(
-                f"{url}/rest/v1/{SHADOW_TABLE}",
-                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+                f"{url}/{SHADOW_TABLE}",
+                headers=headers,
                 params={"select": "*", "offset": offset, "limit": page,
                         "order": "cycle_ts.asc"},
                 timeout=30, verify=not insecure,
@@ -76,11 +80,10 @@ def fetch_rows(insecure: bool) -> list:
                 sys.exit(
                     f"error: {SHADOW_TABLE} does not exist yet.\n"
                     "       Apply migrations/20260927_add_exit_shadow_log.sql in the "
-                    "Supabase SQL Editor, then wait for\n"
+                    "selected research database, then wait for\n"
                     "       the execution agent to run a few monitor cycles before "
-                    "reviewing.\n"
-                    f"       (server said: {body.strip()[:200]})")
-            sys.exit(f"error: could not reach Supabase ({e})")
+                    "reviewing.")
+            sys.exit(f"error: could not reach research storage ({type(e).__name__})")
         batch = r.json()
         out.extend(batch)
         if len(batch) < page:
@@ -132,7 +135,7 @@ def analyse(rows: list) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--insecure", action="store_true",
-                    help="skip TLS verification for Supabase")
+                    help="skip TLS verification for research storage")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args()
 

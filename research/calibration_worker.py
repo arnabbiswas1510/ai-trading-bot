@@ -406,13 +406,10 @@ def main():
     if args.poll < 30:
         parser.error("--poll must be at least 30 seconds.")
     logging.basicConfig(level=logging.INFO)
-    from supabase import create_client
-    url, key = os.getenv("SUPABASE_URL"), os.getenv("INTRADAY_SUPABASE_KEY")
-    if not url or not key:
-        raise ValueError("Dedicated private research credentials are required.")
-    client = create_client(url, key)
+    from research_storage import research_client
+    client = research_client()
     store = CalibrationStore(client)
-    delivery_store = DeliveryStore(url, key)
+    delivery_store = DeliveryStore.configured()
     telegram = Telegram(os.getenv("TELEGRAM_BOT_TOKEN", ""),
                         os.getenv("TELEGRAM_CHAT_IDS", "").split(","))
     stopped = threading.Event()

@@ -3,7 +3,12 @@
 Date: 2026-09-30
 Status: Accepted - deployment and calibration scope extended by
 `2026-09-30_observer-and-calibration-harness.md`; backup scope superseded in part
-by [trading-only backups](2026-10-04_trading-only-backup-scope.md).
+by [trading-only backups](2026-10-04_trading-only-backup-scope.md); local storage
+and retention superseded in part by [filesystem research](2026-10-26_filesystem-research-storage.md).
+
+> **2026-10-26:** Local mode retains research in filesystem-backed PostgreSQL
+> without automatic age-based purging. Its separate archive/cutover workflow
+> does not change live decisions or approvals. Legacy cloud retention remains.
 
 > **2026-10-04:** Saved comparison results are no longer in weekly backups.
 > The entire calibration/benchmarking subsystem is excluded. Collection,

@@ -1,9 +1,11 @@
 """Offline approval deployment tests: no broker, production, or Git remote calls."""
 import copy
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import uuid
 
 import pytest
@@ -530,8 +532,20 @@ def test_preflight_failure_precedes_any_service_lifecycle(work, restart):
     (work / "scripts").mkdir()
     (work / deploy.MANIFEST_FILE).write_text("{}")
     (work / "scripts/validate_calibration_deployment.py").write_text("raise SystemExit(42)\n")
+    services = ("execution-agent", "intraday-observer", "shadow-worker",
+                "calibration-worker", "trading-bot", "research-reporting")
+    docker = work / "docker"
+    docker.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "assert sys.argv[1:] == ['compose', 'config', '--format', 'json']\n"
+        f"print({json.dumps({'services': {name: {'environment': {}} for name in services}})!r})\n"
+    )
+    docker.chmod(0o755)
+    env = dict(os.environ, PATH=f"{work}{os.pathsep}{os.environ['PATH']}")
+    env.pop("RESEARCH_STORAGE_BACKEND", None)
     result = subprocess.run(
         ["sh", str(ROOT / "scripts/deploy_runtime.sh"), *(["--restart"] if restart else [])],
-        cwd=work, capture_output=True, text=True)
+        cwd=work, capture_output=True, text=True, env=env)
     assert result.returncode == 42
     assert "docker" not in result.stderr

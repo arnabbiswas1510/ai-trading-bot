@@ -10,7 +10,7 @@ SPOOLS = {
     "intraday-observer": "/app/logs/observer-diagnostics",
     "execution-agent": "/app/logs/execution-diagnostics",
     "shadow-worker": "/app/shadow/diagnostics",
-    "research-reporting": "/tmp/research-reporting-diagnostics",
+    "research-reporting": "./reporting-data/diagnostics",
     "calibration-worker": "/app/calibration/diagnostics",
 }
 MODULES = {

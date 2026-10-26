@@ -6,6 +6,14 @@ every scheduled parameter review in
 [`tech_debt_and_requirements_tracker.md`](tech_debt_and_requirements_tracker.md)
 replays it. It is backed up weekly to flat files on the production server.
 
+**Research has a separate filesystem migration and archive procedure.**
+The [operator runbook](filesystem_research.md) exports all 19 research tables,
+verifies and imports them into local PostgreSQL, then separately authorizes
+cloud cleanup. These artifacts are not part of the weekly trading backup.
+Keep another archive copy on a different device; the production database and
+an archive on the same disk share a failure risk. See
+`decisions/2026-10-26_filesystem-research-storage.md`.
+
 See `decisions/2026-08-21_weekly-supabase-backup.md` for why it is designed this
 way.
 
@@ -22,7 +30,8 @@ and never written to an environment file or CLI cache. Missing/ambiguous vault
 values fail before export, without falling back to individual Actions secrets.
 
 The exporter uses only `SUPABASE_KEY`. The backup neither requires nor forwards
-`INTRADAY_SUPABASE_KEY`; the independent research watchdog still requires it.
+`INTRADAY_SUPABASE_KEY`; legacy cloud research still requires it. Migrated
+research uses its separate local credential.
 Production SSH secrets remain Actions secrets.
 
 The required inventory contains **13 trading-state tables**:
@@ -53,8 +62,9 @@ This is a recovery limitation, not a claim that research history can be
 recreated. Weekly backups cannot restore calibration settings/decisions,
 benchmarks, simulated trades or their reports. Export any research evidence
 that must survive independently, including raw inputs before
-`INTRADAY_RETENTION_DAYS` (365 by default) expires. Existing server archives,
-Supabase tables and research workers are not deleted or altered.
+`INTRADAY_RETENTION_DAYS` (365 by default) expires. The weekly backup does not delete or alter server archives,
+Supabase tables or research workers. The separate research migration does so
+only through its explicit operator workflow.
 See `decisions/2026-10-04_trading-only-backup-scope.md` for why.
 
 | | |
@@ -112,8 +122,9 @@ verifying its dated manifest on the server.
 
 `exit_shadow.py` remains a pure candidate-rule calculation. The monitor writes
 its genuine observations through `exit_shadow_store.py`, with a separate cached
-client using `INTRADAY_SUPABASE_KEY` and a 5-second PostgREST request timeout.
-There is no fallback to the ordinary trading key and no replacement of the
+client using the selected research backend and a 5-second PostgREST request timeout.
+Legacy cloud mode requires `INTRADAY_SUPABASE_KEY`; local mode requires
+`RESEARCH_DATABASE_KEY`. There is no fallback to the ordinary trading key and no replacement of the
 global trading client. The service-role-only policy remains unchanged.
 
 Write and calculation errors cannot prevent the monitor from continuing its

@@ -23,16 +23,27 @@ for unsupported paths. Older exit/cooling-off studies are historical models,
 not a ranking of which live rule costs the most. See [Backtesting](docs/backtesting.md)
 and `decisions/2026-09-30_recorded-input-replay-and-fidelity-boundaries.md`.
 
-**Research watchdog:** independent cloud checks run every five minutes on weekdays
+**Research storage:** an operator-run migration moves calibration, raw observations,
+simulations and reports into filesystem-backed PostgreSQL. Export and verify
+existing evidence before clearing cloud research; live trading stays in Supabase.
+The compatibility default remains cloud storage until explicitly switched.
+See the [filesystem migration runbook](docs/filesystem_research.md) and
+`decisions/2026-10-26_filesystem-research-storage.md`. Local disk is finite;
+deletion does not reset Supabase bandwidth already charged.
+
+**Research watchdog:** checks run every five minutes on weekdays
 13:00-20:59 UTC (covering pre-open and regular trading in both New York DST
 regimes), and every fifteen minutes otherwise. Alerts remain best-effort;
-collection, recovery and live-buy permissions are unchanged. See
+collection, recovery and live-buy permissions are unchanged. In local-storage
+mode reporting runs on the host and the cloud research workflow is disabled;
+it cannot detect a total outage of its own host. Legacy cloud mode retains
+independent Actions checks. See
 `decisions/2026-10-06_faster-research-watchdog.md`.
 
 **Intraday research:** the Backtester page can compare the AI veto using
 recorded intraday inputs and the actual starting portfolio, prior sales and
 protective orders. Passive collection and weekly comparisons never change
-live strategy parameters. Deploy only after applying
+live strategy parameters. For legacy cloud storage, deploy only after applying
 `migrations/20260930_add_intraday_research.sql` and provisioning the private
 `INTRADAY_SUPABASE_KEY`. See [setup, data limits and retention](docs/intraday_research.md)
 and `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
@@ -47,7 +58,7 @@ decision inputs and evaluates it on separate later data; it never changes live
 parameters. A separate broker-free shadow worker supplies point-in-time decisions
 and maintains a durable hypothetical portfolio. Its labelled exports feed the
 same selection/holdout process; raw observer records alone remain insufficient.
-An independent cloud watchdog sends daily health summaries and weekly research
+The selected research reporter sends daily health summaries and weekly research
 reports, with persistent GitHub incidents for failures. These are automated
 notifications, not an assistant continuously monitoring or messaging interactively.
 See `docs/intraday_research.md` and
@@ -541,7 +552,8 @@ credential presence (never values), source locations and collection/upload
 progress. Diagnostics use the ordinary `SUPABASE_KEY`, with bounded retry spools
 on existing host volumes; private observations and simulated performance stay
 private. Logging heartbeats do not certify successful benchmarking, and a total
-Supabase outage still needs the independent GitHub/Telegram watchdog.
+Supabase outages delay cloud diagnostics. Legacy cloud research has an independent
+GitHub/Telegram watchdog; local reporting cannot detect a total outage of its host.
 See [research diagnostics](docs/intraday_research.md#diagnose-research-failures-without-production-ssh)
 and `decisions/2026-10-03_independent-research-diagnostics.md`.
 
@@ -587,7 +599,7 @@ and `main_loop()`.
 | Broker | Interactive Brokers via `ib_insync`, headless IB Gateway |
 | Fundamentals | TradingView Scanner API |
 | Prices | Financial Modeling Prep (FMP) for screening and agent exit rules; **open-position values come from IBKR** (`decisions/2026-09-03_ibkr-sourced-position-values.md`) |
-| Database | Supabase (Postgres) — cloud state; SQLite for local settings only |
+| Database | Supabase for live state; filesystem-backed PostgreSQL for migrated research; SQLite for settings and durable worker spools |
 | AI | OpenAI (trigger evaluation) |
 | Alerts | Telegram |
 
@@ -686,7 +698,7 @@ existing `.env` in place. Non-secret strategy parameters remain literal values i
 the template and can be hand-edited. See `docs/configuration.md` and
 `decisions/2026-09-27_bitwarden-secret-resolution.md`.
 
-Apply the SQL in `migrations/` to your Supabase project **in filename order**,
+For the legacy cloud layout, apply the SQL in `migrations/` to Supabase **in filename order**,
 then:
 
 > Migrations are named `YYYYMMDD_slug.sql`, so a plain alphabetical sort is also

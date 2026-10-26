@@ -61,6 +61,7 @@ services:
     dns: *external-dns
     networks:
       - trading_bridge
+      - research_bridge
 
   intraday-observer:
     image: ghcr.io/arnabbiswas1510/ai-trading-bot-execution-agent:latest
@@ -84,6 +85,66 @@ services:
     dns: *external-dns
     networks:
       - trading_bridge
+      - research_bridge
+
+  research-db:
+    image: postgres:17.7-bookworm
+    container_name: research-db
+    profiles: ["local-research"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: research
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${RESEARCH_POSTGRES_PASSWORD:-}
+    volumes:
+      - ${RESEARCH_DATA_DIR:-/home/pom/docker/ai-trading-bot/research-data}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d research"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - research_database
+
+  research-api:
+    image: postgrest/postgrest:v12.2.12
+    container_name: research-api
+    profiles: ["local-research"]
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${RESEARCH_API_PASSWORD:-}@research-db:5432/research
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${RESEARCH_JWT_SECRET:-}
+      PGRST_DB_MAX_ROWS: 1000
+      PGRST_SERVER_HOST: 0.0.0.0
+    depends_on:
+      research-db:
+        condition: service_healthy
+    networks:
+      - research_bridge
+      - research_database
+
+  research-reporting:
+    image: ghcr.io/arnabbiswas1510/ai-trading-bot-shadow:latest
+    container_name: research-reporting
+    profiles: ["local-research"]
+    command: ["python", "research_entrypoint.py", "research-reporting", "--loop"]
+    restart: unless-stopped
+    stop_grace_period: 90s
+    env_file:
+      - .env
+      - approved_strategy.env
+    volumes:
+      - ${RESEARCH_DATA_DIR:-/home/pom/docker/ai-trading-bot/research-data}/reporting:/app/reporting-data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    dns: *external-dns
+    networks:
+      - research_bridge
 
   shadow-worker:
     image: ghcr.io/arnabbiswas1510/ai-trading-bot-shadow:latest
@@ -149,8 +210,12 @@ services:
     dns: *external-dns
     networks:
       - trading_bridge
+      - research_bridge
 
 networks:
+  research_database:
+    driver: bridge
+    internal: true
   research_bridge:
     driver: bridge
     driver_opts:

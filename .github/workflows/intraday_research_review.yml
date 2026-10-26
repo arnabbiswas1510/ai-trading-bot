@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   watchdog:
+    if: ${{ (vars.RESEARCH_STORAGE_BACKEND || 'supabase') == 'supabase' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -43,6 +44,7 @@ jobs:
           echo "$GITHUB_WORKSPACE/.ci-tools" >> "$GITHUB_PATH"
       - name: Check collection and deliver due research reports
         env:
+          RESEARCH_STORAGE_BACKEND: ${{ vars.RESEARCH_STORAGE_BACKEND || 'supabase' }}
           TRADING_RUNTIME_MODE: ${{ vars.TRADING_RUNTIME_MODE || 'observe' }}
           BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}

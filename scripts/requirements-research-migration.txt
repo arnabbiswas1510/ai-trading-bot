@@ -1,0 +1,2 @@
+# Operator tooling only; not an application/container dependency.
+psycopg[binary]>=3.2.6,<4

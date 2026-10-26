@@ -1,7 +1,12 @@
 # Decision-only portfolio simulation and supervised research
 
 Date: 2026-09-30
-Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md), [startup input readiness](2026-10-05_shadow-startup-input-readiness.md) and [resilient research recovery](2026-10-05_resilient-research-recovery.md), and extended by [interactive self-calibration](2026-10-03_interactive-self-calibration.md); shadow accounting and supervision remain accepted, with the exceptions below.
+Status: Superseded in part by [dashboard live-entry control](2026-10-01_dashboard-live-entry-control.md), [startup input readiness](2026-10-05_shadow-startup-input-readiness.md), [resilient research recovery](2026-10-05_resilient-research-recovery.md) and [filesystem research storage](2026-10-26_filesystem-research-storage.md), and extended by [interactive self-calibration](2026-10-03_interactive-self-calibration.md); shadow accounting and supervision remain accepted, with the exceptions below.
+
+> **2026-10-26:** In explicitly selected local mode, private research tables
+> move to filesystem-backed PostgreSQL and reporting runs on the production
+> host. The cloud-only storage and independent cloud-reporter assumptions below
+> no longer apply to that mode. Simulation evidence and approval rules remain.
 
 > **2026-10-05, subsequent approval:** Recognized input gaps now permit automatic,
 > separately labelled replacement, with immutable predecessor evidence and

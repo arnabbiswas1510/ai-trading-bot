@@ -29,7 +29,7 @@ COPY agent_entrypoint.py execution_agent.py execution_agent_ref.py exit_rules.py
 COPY intraday_capture.py intraday_observer.py quote_transport.py exit_core.py trade_costs.py broker_positions.py ./
 COPY research_configuration.py market_direction.py ./
 COPY trading_control.py restart_and_health_check.py ./
-COPY research_diagnostics.py research_entrypoint.py ./
+COPY research_diagnostics.py research_entrypoint.py research_storage.py ./
 
 # Execute the agent via the fatal-safe wrapper: it ships any startup crash
 # (including import-time errors, before log shipping is up) to Supabase

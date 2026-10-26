@@ -87,6 +87,9 @@ def _identifier(value):
             token and token in value
             for token in (
                 os.getenv("SUPABASE_KEY"), os.getenv("INTRADAY_SUPABASE_KEY"),
+                os.getenv("RESEARCH_DATABASE_KEY"), os.getenv("RESEARCH_JWT_SECRET"),
+                os.getenv("RESEARCH_POSTGRES_PASSWORD"),
+                os.getenv("RESEARCH_API_PASSWORD"),
                 os.getenv("FMP_API_KEY"),
             )
         )

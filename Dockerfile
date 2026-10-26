@@ -53,7 +53,7 @@ COPY decision_core.py cooling_off.py market_calendar.py intraday_replay.py ./bac
 COPY trigger_audit.py intraday_capture.py quote_transport.py ./backend/
 COPY shadow_engine.py ./backend/
 COPY trading_control.py ./backend/
-COPY research_diagnostics.py research_entrypoint.py ./backend/
+COPY research_diagnostics.py research_entrypoint.py research_storage.py ./backend/
 COPY shadow_inputs.py shadow_store.py research_configuration.py market_direction.py indicators.py ./backend/
 COPY research/live_rule_replay.py ./backend/research/live_rule_replay.py
 COPY research/calibrate_intraday.py research/auto_calibration.py research/calibration_store.py research/calibration_deployment.py ./backend/research/

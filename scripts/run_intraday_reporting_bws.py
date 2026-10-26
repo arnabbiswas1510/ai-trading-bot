@@ -92,6 +92,12 @@ def load_credentials(env, runner=subprocess.run, *, required=REQUIRED):
 def main(argv=None, env=None, runner=subprocess.run):
     env = dict(os.environ if env is None else env)
     try:
+        backend = env.get("RESEARCH_STORAGE_BACKEND", "supabase")
+        if backend == "local":
+            print("Local research reporting runs on the production host; cloud research reads are disabled.")
+            return 0
+        if backend != "supabase":
+            raise BootstrapError("RESEARCH_STORAGE_BACKEND must be supabase or local.")
         credentials = load_credentials(env, runner)
         child_env = {key: value for key, value in env.items() if not key.startswith("BWS_")}
         child_env.update(credentials)

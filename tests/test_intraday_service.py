@@ -239,14 +239,14 @@ def test_database_errors_do_not_echo_secret_urls():
     with pytest.raises(service.ResearchUnavailable) as error:
         service._query(query)
     assert "do-not-echo" not in str(error.value)
-    assert "20260930_add_intraday_research.sql" in str(error.value)
+    assert "selected server-side research storage credentials" in str(error.value)
 
 
 def test_client_initialization_does_not_echo_credentials(monkeypatch):
     monkeypatch.setattr(service, "_client", None)
     monkeypatch.setattr(service.db, "SUPABASE_URL", "https://example.invalid")
     monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "do-not-echo")
-    monkeypatch.setattr(service, "create_client", Mock(side_effect=ValueError("do-not-echo")))
+    monkeypatch.setattr(service, "research_client", Mock(side_effect=ValueError("do-not-echo")))
     with pytest.raises(service.ResearchUnavailable) as error:
         service.get_client()
     assert "do-not-echo" not in str(error.value)

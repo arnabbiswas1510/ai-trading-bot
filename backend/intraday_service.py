@@ -10,7 +10,7 @@ import uuid
 from collections import Counter
 from zoneinfo import ZoneInfo
 
-from supabase import create_client
+from research_storage import research_client
 
 import config
 import database as db
@@ -46,13 +46,8 @@ def report_failure(event, exc, query=None):
 def get_client():
     global _client
     if _client is None:
-        key = os.getenv("INTRADAY_SUPABASE_KEY") or db.SUPABASE_KEY
-        if not db.SUPABASE_URL or not key:
-            exc = ResearchUnavailable("Intraday research database credentials are not configured.")
-            detail = report_failure("research_credentials_missing", exc)
-            raise ResearchUnavailable(f"{exc} {detail}")
         try:
-            _client = create_client(db.SUPABASE_URL, key)
+            _client = research_client()
         except Exception as exc:
             log.error("Intraday client initialization failed (%s)", type(exc).__name__)
             detail = report_failure("research_client_failed", exc)
@@ -72,8 +67,8 @@ def _query(query):
         detail = report_failure("research_query_failed", exc, query)
         raise ResearchUnavailable(
             "Intraday research database is unavailable. Apply "
-            "20260930_add_intraday_research.sql and configure a server-side "
-            f"service-role INTRADAY_SUPABASE_KEY. {detail}"
+            "the research schema and configure the selected server-side "
+            f"research storage credentials. {detail}"
         ) from exc
 
 

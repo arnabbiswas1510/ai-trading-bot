@@ -12,6 +12,16 @@ history from before recording began.
 
 ## Deploying
 
+For filesystem storage, follow [the export-first migration runbook](filesystem_research.md)
+instead of the legacy cloud setup below. Local PostgreSQL stores research in a
+persistent host directory and PostgREST exposes the same private table/function
+contract inside Docker. Application research reads, writes and analyses use
+that store; live source tables and operational diagnostics remain in Supabase.
+There is no fallback to cloud research if local storage fails.
+See `decisions/2026-10-26_filesystem-research-storage.md`.
+
+### Legacy cloud setup (`RESEARCH_STORAGE_BACKEND=supabase`)
+
 1. Apply `migrations/20260930_add_intraday_research.sql`,
    `migrations/20260930_add_intraday_shadow.sql`, and
    `migrations/20260930_add_intraday_reporting.sql`, and
@@ -52,6 +62,13 @@ history from before recording began.
 Migrations are **not applied automatically** by deploying the code.
 
 ### Watchdog credential bootstrap
+
+This bootstrap applies only to legacy cloud research. Local mode runs the
+reporter on the production host with local research credentials; set the
+GitHub repository variable `RESEARCH_STORAGE_BACKEND=local` to disable the
+cloud research job. Do not leave both reporters running during cutover.
+The host-side reporter cannot detect complete host failure, unlike the former
+independent cloud arrangement.
 
 The hosted runner installs official `bws` 2.1.0 with a pinned SHA-256 check, then
 `scripts/run_intraday_reporting_bws.py` loads only the five watchdog credentials.
@@ -166,8 +183,9 @@ sends a safe `diagnostic_spool_failed` notification directly, at most once every
 30 seconds. This fallback does not make unwritten local events durable.
 
 If Supabase itself or the host's network is unavailable, no logger can publish
-there immediately. Pending host diagnostics retry after recovery; the independent
-GitHub/Telegram watchdog remains the outage alarm. Its GitHub runner uses a
+there immediately. Pending host diagnostics retry after recovery. In legacy
+cloud mode the independent GitHub/Telegram watchdog remains the outage alarm;
+local reporting does not provide an independent host-outage alarm. The GitHub runner uses a
 temporary diagnostic spool, not storage guaranteed across workflow runs.
 Keep both ordinary `SUPABASE_KEY` and private `INTRADAY_SUPABASE_KEY` values in
 Bitwarden project `ai-trading-bot`. The watchdog imports both using its Actions
@@ -257,11 +275,11 @@ observer. A disconnected gateway prevents broker observations; already accepted
 events remain in the disk spool and candidate recording has its own worker.
 
 For an isolated diagnostic, `python3 intraday_observer.py --once` requests one
-snapshot and waits up to 45 seconds for its cloud upload. Supply `--host`,
+snapshot and waits up to 45 seconds for persistence to the selected research store. Supply `--host`,
 `--port`, `--account` and `--spool` for that environment. Do not run it alongside
 another observer using the same client ID, spool or health identity. A nonzero
 exit means the diagnostic was not successful; retained local events do not
-prove cloud persistence. Normal continuous operation omits `--once`.
+prove research-store persistence. Normal continuous operation omits `--once`.
 
 The observer's health ID is `intraday-observer`; the embedded recorder retains
 `execution-agent`. The dashboard shows each collector separately; an observer
@@ -322,7 +340,7 @@ outbox entries are committed transactionally. Re-uploading an acknowledged cycle
 does not create another trade. Do not remove this volume to "fix" a worker.
 The local spool is bounded to 1 GiB and each staged frame to 16 MiB; reaching a
 limit blocks visibly rather than dropping predecessor evidence.
-The cloud's private shadow run/event/checkpoint/health tables hold replicated
+The selected store's private shadow run/event/checkpoint/health tables hold replicated
 research evidence, not live `portfolio_positions` or `trade_history` changes.
 
 The schedule follows actual NYSE sessions, including holidays, daylight-saving
@@ -358,7 +376,7 @@ experiments retain strict engine compatibility.
 The replacement records its predecessor in immutable starting evidence. The
 independent watchdog delivers a Telegram notice using durable per-recipient
 receipts, even if the replacement was created between two sweeps. Delivery is
-best-effort on the cloud schedule described below, not immediate or exactly-once
+best-effort on the reporting schedule described below, not immediate or exactly-once
 across a lost acknowledgement. Research recovery never authorizes a real order.
 
 From 09:00 New York on exchange days, the watchdog checks worker heartbeats and
@@ -419,7 +437,14 @@ another **hypothetical** portfolio; it neither repairs nor trades the real
 account. Connection failures, acquisition limits and unsupported strategy paths
 remain reasons to investigate, not permission to loosen validation.
 
-## Independent daily/weekly supervision
+## Daily/weekly supervision
+
+Local storage uses the host-side research reporter with the same reporting
+rules and cadence below. It requires local research access, Telegram credentials
+and a GitHub token with issue-write access for incident delivery. It cannot
+observe an outage of its own host. Cloud setup in this section is only for
+`RESEARCH_STORAGE_BACKEND=supabase`; the migration runbook describes switching
+reporters without losing period keys or delivery receipts.
 
 Enable `.github/workflows/intraday_research_review.yml` on the repository's
 default branch. Configure the GitHub Actions secret `BWS_ACCESS_TOKEN` with
@@ -446,10 +471,9 @@ failure after 10-15 rather than 10-25 minutes in the faster window, excluding
 runner delays. It cannot recover missing observations or shorten calibration.
 See `decisions/2026-10-06_faster-research-watchdog.md`.
 
-Apply and push patch 116 after market close using the normal deployment process.
-There is no special rollout flag or deployment-workflow change. The hosted
-watchdog uses the updated default-branch schedule; do not regenerate the graph
-after applying the patch.
+The hosted watchdog uses the default-branch schedule only in cloud mode.
+Local cutover requires the explicit repository backend variable and host reporter.
+Do not regenerate the graph after applying the delivered patch.
 It checks actual broker/quote/decision progress as well as heartbeat age, sends
 failure/recovery notifications, and maintains persistent GitHub incidents.
 Daily summaries become due 30 minutes after the exchange closes. Weekly reports
@@ -569,11 +593,12 @@ recommendation. Manual requests support up to 93 calendar days by default, with
 50,000-row and 64-MiB input limits to protect the web worker. Evaluate longer
 retained history as multiple windows; **do not sum their dollar differences as
 one continuous portfolio backtest** because each has its own recorded start.
-The independent cloud watchdog separately owns daily and weekly
+The selected reporter separately owns daily and weekly
 observation/shadow reports. Manual actual-decision comparisons remain available
 for valid historical data.
 
-Retain 365 days of raw observations initially. Check coverage and decision
+Legacy cloud mode retains 365 days of raw observations by default; local mode
+does not automatically purge them by age. Check coverage and decision
 reproduction from the first complete session rather than waiting weeks to find
 failures. Automatic exploratory comparisons begin once their training window is
 available. Deployment requires the operator's predeclared evidence and risk
@@ -641,8 +666,9 @@ mutable `latest`. Run calibration with networking disabled, mounting only the
 private input/output directory. Broker/database/API credentials are unnecessary.
 
 To include a completed frozen evaluation in later weekly reports, explicitly
-archive its output from a secure environment with `SUPABASE_URL` and the
-server-side `INTRADAY_SUPABASE_KEY` configured:
+archive its output from a secure environment with the selected research
+backend configured (`RESEARCH_DATABASE_URL` / `RESEARCH_DATABASE_KEY` for
+local mode, `SUPABASE_URL` / `INTRADAY_SUPABASE_KEY` for legacy cloud mode):
 
 ```bash
 python3 research/intraday_reporting.py \

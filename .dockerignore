@@ -9,6 +9,12 @@
 **/env/
 **/venv/
 .env
+.research.env
+research-local.env
+research-data/
+research-archives/
+reporting-data/
+*.patch
 **/*.db
 **/*.sqlite
 **/.vscode/

@@ -3,6 +3,7 @@ import datetime as dt
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import uuid
 from unittest.mock import MagicMock
 
@@ -172,6 +173,56 @@ def test_worker_replays_pending_without_refetch_then_blocks_missing_prices(direc
     assert [event["kind"] for event in events] == ["cycle", "gap", "recovery_queued"]
     assert store.new_run_request(store.active())["run_id"] == run_id
     store.close()
+
+
+def test_pre_routing_checkpoint_resumes_with_unchanged_engine_files(directory, records, monkeypatch):
+    """A transport-only deployment must resume the checkpoint from its base revision."""
+    from research import calibrate_intraday
+    from research_source_client import ResearchSourceClient
+
+    root = Path(shadow_engine.__file__).resolve().parent
+    baseline = directory / "previous-engine"
+    paths = set(shadow_engine.ENGINE_FILES) | set(calibrate_intraday.ENGINE_FILES)
+    for name in paths:
+        target = baseline / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(subprocess.check_output(["git", "show", f"HEAD:{name}"], cwd=root))
+    seed, frames = seed_and_frames(build_dataset(records, DAY, DAY))
+    first = frames[0]
+    first["frame_id"] = first["captured_at"]
+    with monkeypatch.context() as previous:
+        previous.setattr(shadow_engine, "__file__", str(baseline / "shadow_engine.py"))
+        previous.setattr(calibrate_intraday, "__file__", str(baseline / "research/calibrate_intraday.py"))
+        old_fingerprint = shadow_engine.engine_fingerprint()
+        old_calibration = calibrate_intraday.engine_fingerprint()
+        saved = shadow_engine.checkpoint(shadow_engine.initialize(seed, seed["config"]))
+    assert shadow_engine.engine_fingerprint() == old_fingerprint
+    assert calibrate_intraday.engine_fingerprint() == old_calibration
+    assert shadow_engine.restore(saved) == saved
+    # The adapter itself is outside both fingerprint sets and never changes inputs.
+    adapter = ResearchSourceClient(MagicMock(), MagicMock())
+    adapter.table("intraday_capture_events")
+    assert "research_source_client.py" not in paths
+    assert "shadow_worker.py" not in paths
+
+    class Producer:
+        config = seed["config"]
+
+        def frame(self, *args, **kwargs):
+            raise AssertionError("Previously staged input must not be refetched")
+
+    store = ShadowStore(directory / "previous-checkpoint.sqlite3")
+    try:
+        run_id = store.create_run(seed, seed["config"], saved, old_fingerprint)
+        store.stage(run_id, dict(cycle_key=first["frame_id"], occurred_at=first["captured_at"],
+                                 session=DAY, engine_frame=first))
+        worker = Worker(store, Producer(), Cloud(),
+                        clock=lambda: dt.datetime.fromisoformat(first["captured_at"]))
+        assert worker.tick()
+        assert store.active()["status"] == "running"
+        assert store.active()["sequence"] == 1
+    finally:
+        store.close()
 
 
 @pytest.mark.parametrize("change", ["build_label", "setting", "engine_source"])

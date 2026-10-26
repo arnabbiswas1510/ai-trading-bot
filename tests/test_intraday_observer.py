@@ -684,6 +684,7 @@ def worker_setup(monkeypatch, *, upload_fails=False):
     monkeypatch.setattr(supabase, "create_client", lambda *args, **kwargs: client)
     monkeypatch.setenv("SUPABASE_URL", "https://offline.invalid")
     monkeypatch.setenv("SUPABASE_KEY", "not-a-credential")
+    monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "private-not-a-credential")
     # Exercise real lifecycle/journal/upload; discovery and FMP have separate tests.
     monkeypatch.setattr(capture.Recorder, "refresh_universe", lambda *args: None)
     monkeypatch.setattr(capture.Recorder, "sample", lambda *args: None)

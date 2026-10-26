@@ -1,6 +1,10 @@
 # 2026-10-04 — Load watchdog credentials from Bitwarden on the hosted runner
 
-**Status:** Accepted
+**Status:** Accepted for legacy cloud reporting; local reporting location superseded by [filesystem research storage](2026-10-26_filesystem-research-storage.md)
+
+> **2026-10-26:** After local cutover the cloud research job is disabled and a
+> host-side reporter uses operator-provisioned local credentials. The bootstrap
+> below remains applicable to legacy cloud mode and the separate trading backup.
 
 ## Context
 

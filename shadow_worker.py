@@ -379,13 +379,14 @@ def run(args, *, producer=None, cloud=None, stop=None, engine=None):
     if producer is None or cloud is None:
         import requests
         from supabase import create_client
+        from research_storage import research_client
+        from research_source_client import ResearchSourceClient
         url = os.getenv("SUPABASE_URL")
-        key = os.getenv("INTRADAY_SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+        key = os.getenv("SHADOW_SOURCE_SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
         if not url or not key:
             raise ValueError("Server-side Supabase configuration is required.")
-        cloud = create_client(url, key)
-        source_key = os.getenv("SHADOW_SOURCE_SUPABASE_KEY") or key
-        sources = ReadOnlySources(create_client(url, source_key))
+        cloud = research_client()
+        sources = ReadOnlySources(ResearchSourceClient(create_client(url, key), cloud))
         producer = InputProducer(sources, PublicMarketData(requests.Session(), os.getenv("FMP_API_KEY")),
                                  args.account, effective_config())
     stop = stop or threading.Event()

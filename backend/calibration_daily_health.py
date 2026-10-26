@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from market_calendar import session_bounds
+from research_storage import research_rest_url, research_headers
 
 NY = ZoneInfo("America/New_York")
 UTC = dt.timezone.utc
@@ -122,7 +123,7 @@ class Reader:
         else:
             import database
         self.url = database.SUPABASE_URL
-        self.key = os.getenv("INTRADAY_SUPABASE_KEY") or database.SUPABASE_KEY
+        self.key = database.SUPABASE_KEY
         self.deadline = time.monotonic() + REQUEST_BUDGET_SECONDS
 
     def _get(self, url, params, headers):
@@ -153,13 +154,21 @@ class Reader:
             raise EvidenceUnavailable("Source request failed or returned invalid JSON; inspect service diagnostics.") from None
 
     def rows(self, table, fields, filters=None, *, order=None, limit=MAX_ROWS, latest=False):
-        if not self.url or not self.key:
-            raise EvidenceUnavailable("Research database access is not configured on the web server.")
+        if table.startswith("intraday_"):
+            try:
+                url, headers = research_rest_url(), research_headers()
+            except ValueError:
+                raise EvidenceUnavailable("Research database access is not configured on the web server.") from None
+        else:
+            if table != "daily_triggers" or not self.url or not self.key:
+                raise EvidenceUnavailable("Live source database access is not configured on the web server.")
+            url = self.url.rstrip("/") + "/rest/v1"
+            headers = {"apikey": self.key, "Authorization": "Bearer " + self.key}
         params = {"select": fields, "limit": limit, **(filters or {})}
         if order:
             params["order"] = order
-        rows, headers = self._get(self.url.rstrip("/") + "/rest/v1/" + table, params, {
-            "apikey": self.key, "Authorization": "Bearer " + self.key, "Prefer": "count=exact",
+        rows, headers = self._get(url.rstrip("/") + "/" + table, params, {
+            **headers, "Prefer": "count=exact",
         })
         require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows))
         total = (headers.get("Content-Range") or "").rsplit("/", 1)[-1]

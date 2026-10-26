@@ -1,8 +1,13 @@
 # Isolate trading-state backups from calibration and benchmarking
 
 - **Date:** 2026-10-04
-- **Status:** Accepted
+- **Status:** Accepted trading-backup scope; separate research recovery extended by [filesystem research storage](2026-10-26_filesystem-research-storage.md)
 - **Scope:** Backup inventory and credentials only; no trading or research rules
+
+> **2026-10-26:** The 13-table trading-backup exclusion still holds. Local-mode
+> research now has a separate export/import/cleanup workflow and filesystem
+> archive policy. The historical statement that no research workers or cloud
+> data are altered describes this decision, not the later operator-run migration.
 
 ## Context
 

@@ -1,8 +1,13 @@
 # Faster research watchdog checks around market hours
 
 - **Date:** 2026-10-06
-- **Status:** Accepted
+- **Status:** Accepted cadence; local-mode reporting location superseded by [filesystem research storage](2026-10-26_filesystem-research-storage.md)
 - **Scope:** Cloud monitoring cadence only
+
+> **2026-10-26:** After explicit local-storage cutover, a host-side reporter uses
+> this cadence and the cloud research job is disabled. Host-side reporting is
+> not independent host-outage detection. The original cloud implementation
+> below remains applicable to the legacy Supabase backend only.
 
 ## Context
 

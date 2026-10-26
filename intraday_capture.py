@@ -22,6 +22,7 @@ import time
 import uuid
 from zoneinfo import ZoneInfo
 import research_diagnostics as diagnostics
+from research_storage import backend as research_backend, research_client
 from quote_transport import fetch_quotes, quote_budget_seconds
 from config import (
     INTRADAY_CAPTURE_ENABLED, INTRADAY_SAMPLE_SECONDS, INTRADAY_RETENTION_DAYS,
@@ -757,7 +758,7 @@ class Recorder:
             self.error(f"quote coverage incomplete: {len(errors)} errors")
 
     def run(self):
-        db = client = http = None
+        db = client = live_client = http = None
         next_sample = next_health = next_discovery = next_purge = 0
         next_diagnostic = 0
         operation = "recorder_imports"
@@ -778,15 +779,20 @@ class Recorder:
                         break
                     if client is None:
                         operation = "research_client"
-                        client = create_client(os.environ["SUPABASE_URL"],
-                            os.getenv("INTRADAY_SUPABASE_KEY") or os.environ["SUPABASE_KEY"],
+                        client = research_client(timeout=10)
+                    if self.stopping.is_set():
+                        continue
+                    if live_client is None:
+                        operation = "live_source_client"
+                        live_client = create_client(os.environ["SUPABASE_URL"],
+                            os.environ["SUPABASE_KEY"],
                             options=SyncClientOptions(postgrest_client_timeout=10))
                     operation = "snapshot_jobs"
-                    self.process_snapshot_jobs(db, client)
+                    self.process_snapshot_jobs(db, live_client)
                     if time.monotonic() >= next_discovery:
                         operation = "universe_discovery"
                         next_discovery = time.monotonic() + 900
-                        self.refresh_universe(client)
+                        self.refresh_universe(live_client)
                         self.journal(db)
                         if self.stopping.is_set():
                             continue
@@ -830,8 +836,9 @@ class Recorder:
                     self.log_errors()
                     if time.monotonic() >= next_purge:
                         operation = "retention"
-                        client.rpc("purge_intraday_capture",
-                                   {"keep_days": self.retention_days}).execute()
+                        if research_backend() != "local":
+                            client.rpc("purge_intraday_capture",
+                                       {"keep_days": self.retention_days}).execute()
                         cutoff = (dt.datetime.now(UTC) - dt.timedelta(days=self.retention_days)).isoformat()
                         db.execute("DELETE FROM symbols WHERE last_seen_at < ?", (cutoff,))
                         db.execute("DELETE FROM snapshot_jobs WHERE completed_at < ?", (cutoff,))
@@ -862,9 +869,7 @@ class Recorder:
                     self.log_errors()
                     if client is None:
                         try:
-                            client = create_client(os.environ["SUPABASE_URL"],
-                                os.getenv("INTRADAY_SUPABASE_KEY") or os.environ["SUPABASE_KEY"],
-                                options=SyncClientOptions(postgrest_client_timeout=10))
+                            client = research_client(timeout=10)
                         except Exception as health_exc:
                             diagnostics.emit(self.health_id, "capture_health_client_failed", error=health_exc)
                             self.error("Intraday capture health client unavailable")

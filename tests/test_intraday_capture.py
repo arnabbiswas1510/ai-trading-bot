@@ -522,6 +522,7 @@ def test_worker_purges_daily_and_sends_health_when_market_closed(monkeypatch, re
     client.table().select().order().range().execute.return_value.data = []
     monkeypatch.setenv("SUPABASE_URL", "https://example.invalid")
     monkeypatch.setenv("SUPABASE_KEY", "test-only")
+    monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "private-test-only")
     monkeypatch.setattr(supabase, "create_client", lambda *args, **kwargs: client)
     monkeypatch.setattr(recorder, "refresh_universe", lambda client: None)
     monkeypatch.setattr(recorder, "sample", lambda http: None)
@@ -542,6 +543,7 @@ def test_disk_failure_publishes_health_without_leaking_exception_text(monkeypatc
     client = MagicMock()
     monkeypatch.setenv("SUPABASE_URL", "https://example.invalid")
     monkeypatch.setenv("SUPABASE_KEY", "test-only")
+    monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "private-test-only")
     monkeypatch.setattr(supabase, "create_client", lambda *args, **kwargs: client)
     def unavailable():
         raise OSError("do-not-publish-secret")

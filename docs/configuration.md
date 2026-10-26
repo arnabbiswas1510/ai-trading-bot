@@ -46,6 +46,30 @@ These settings govern recording/research only, never live buy/sell thresholds.
 See [Recorded intraday research](intraday_research.md) and
 `decisions/2026-09-30_intraday-capture-and-approved-research.md`.
 
+### Filesystem-backed research storage
+
+Select `RESEARCH_STORAGE_BACKEND=local` only after completing the
+[export/import runbook](filesystem_research.md). `supabase` is the compatibility
+default so deploying code alone cannot strand existing research.
+See `decisions/2026-10-26_filesystem-research-storage.md`.
+
+| Variable | Purpose |
+|---|---|
+| `RESEARCH_STORAGE_BACKEND` | `supabase` or `local`; unknown values fail. Also set the matching GitHub Actions variable to disable cloud research reporting after cutover. |
+| `RESEARCH_DATABASE_URL` | Local PostgREST origin, normally `http://research-api:3000`; required in local mode, no `/rest/v1` suffix. |
+| `RESEARCH_DATABASE_KEY` | Private local service-role JWT; never the Supabase key or a browser credential. |
+| `RESEARCH_POSTGRES_PASSWORD` | Local PostgreSQL administrator password, generated and held outside Git. |
+| `RESEARCH_API_PASSWORD` | Separate local PostgREST authenticator password. |
+| `RESEARCH_JWT_SECRET` | Local JWT signing secret shared by bootstrap and PostgREST; keep private. |
+| `RESEARCH_DATA_DIR` | Host research storage root; default `/home/pom/docker/ai-trading-bot/research-data`. Archive copies on another device remain necessary. |
+| `SOURCE_RESEARCH_PG_DSN` | Operator-only native PostgreSQL connection to the source during export/cleanup; not a REST URL or service-role API key. |
+| `LOCAL_RESEARCH_PG_DSN` | Operator-only native PostgreSQL connection to the local import target. |
+
+No local database or API port is published by Compose. Missing local credentials
+or a database outage produces an explicit research failure, never a cloud
+fallback. Live-source reads still use Supabase. Local mode retains raw research
+without automatic age-based purging; watch disk usage and maintain archives.
+
 `TRADING_RUNTIME_MODE` remains a validated **GitHub repository Actions variable**
 accepting `observe` (default) or `live`. Both start real protective execution,
 the observer, shadow worker, calibration worker and dashboard. Neither value enables new real buys.
@@ -183,13 +207,13 @@ which controls the recorder embedded in the execution agent.
 |---|---|---|
 | `INTRADAY_CAPTURE_ENABLED` | `true` | Enable passive recording; failures do not disable risk monitoring |
 | `INTRADAY_SAMPLE_SECONDS` | `300` | Candidate price sampling interval, in seconds |
-| `INTRADAY_RETENTION_DAYS` | `365` | Rolling raw-event and candidate-membership horizon |
+| `INTRADAY_RETENTION_DAYS` | `365` | Legacy cloud raw-event/candidate-membership horizon; automatic purge is bypassed for local research |
 | `INTRADAY_MAX_SYMBOLS` | `250` | Sampling budget; exceeding it is a visible coverage gap |
 | `INTRADAY_MAX_QUOTE_AGE_SECONDS` | `600` | Maximum age for an observation reused at a replay event |
 | `INTRADAY_CAPTURE_SPOOL` | `/app/logs/intraday_capture.sqlite3` | Durable upload spool in the existing logs volume |
 | `INTRADAY_AUTO_COMPARE` | `true` | Weekly actual-decision comparisons when recorded decision frames exist, independent of entry permission; cloud shadow reports are separate |
 | `INTRADAY_REPLAY_MAX_DAYS` | `93` | Maximum calendar days per dashboard comparison |
-| `INTRADAY_SUPABASE_KEY` | secret, `@bws` in template | Server-side service-role key for private snapshots/results; code can fall back to `SUPABASE_KEY` only if that key has sufficient privileges |
+| `INTRADAY_SUPABASE_KEY` | secret, `@bws` in template | Legacy cloud research credential; never a fallback for a missing local key. Research does not borrow the ordinary trading key. |
 
 Apply `migrations/20260930_add_intraday_research.sql`,
 `migrations/20260930_add_intraday_shadow.sql` and
@@ -251,11 +275,11 @@ automatic recovery preserves the failed experiment and creates a distinct run.
 There is no automatic recovery from integrity or semantic-configuration errors.
 See `decisions/2026-10-05_resilient-research-recovery.md`.
 `SHADOW_SOURCE_SUPABASE_KEY` is an optional separate read key for source tables;
-blank falls back to the private research key. No new live strategy defaults
+blank falls back to the ordinary `SUPABASE_KEY`, never the local research key. No new live strategy defaults
 are introduced. See
 `decisions/2026-09-30_shadow-decisions-and-supervised-research.md`.
 
-The independent cloud watchdog imports `SUPABASE_URL`,
+In legacy Supabase mode, the independent cloud watchdog imports `SUPABASE_URL`,
 `INTRADAY_SUPABASE_KEY`, `SUPABASE_KEY` (independent operational diagnostics),
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS` from Bitwarden using the Actions
 bootstrap secret `BWS_ACCESS_TOKEN`. It also uses its
@@ -271,7 +295,9 @@ existing 10-minute opening grace period. This is not a premarket price-quality
 certification. Explicit blocked/error shadow health is actionable even overnight.
 Automatic replacement notifications use immutable run provenance and the existing
 per-recipient delivery receipts; a recovery between sweeps is not missed.
-No new environment variable or notification credential is required.
+Local mode uses the host-side reporter and its local research credential plus
+operator-provisioned GitHub issue token. The cadence and evidence requirements
+are identical; independence from a host outage is not.
 The UTC window covers pre-open and regular trading in both New York DST regimes;
 holiday/early-close checks remain exchange-calendar aware. Scheduling is
 best-effort, not a five-minute alert guarantee. See
@@ -446,7 +472,8 @@ presence/key family, database error codes, HTTP status, failing source locations
 blocking states and upload progress can therefore be read with the existing
 operational credential. A fresh logging heartbeat is not a successful research
 cycle. Delivery retries use separate bounded local spools on existing volumes;
-Supabase outages delay visibility and require the existing independent watchdog.
+Supabase outages delay operational-log visibility. Legacy cloud reporting has an
+independent watchdog; local-mode reporting cannot detect a total host outage.
 These diagnostics do not depend on `AGENT_LOG_SHIP_ALL`; cloud rows share the
 existing `agent_logs` retention managed by the execution agent.
 
@@ -648,7 +675,7 @@ Prove-It stop. Fires once per position; suppressed for power-held leaders. **PRO
 
 **Measurement only — this never places, cancels or modifies an order, and no
 live rule reads its output.** Every monitor cycle, the agent records to the
-Supabase `exit_shadow_log` table what the live Prove-It rule and two candidates
+selected research store's `exit_shadow_log` table what the live Prove-It rule and two candidates
 *would* do to each open position: **Q1** = Phase 2 arms at **+3%** instead of the
 live +2% (`PROVE_IT_P2_ARM_GAIN_PCT`); **Q2** = a **5%** give-back trail from the
 high-water mark instead of the live 1.5% profit-lock. It exists to feed the

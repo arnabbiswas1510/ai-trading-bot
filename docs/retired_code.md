@@ -3,6 +3,33 @@
 Every rule, constant or code path deliberately deleted from this repository is
 recorded here **before** it is removed.
 
+## 2026-10-26: Cloud-only research persistence and reporting
+
+**Relocated, not deleted:** research capture, shadow runs, calibration proposals
+and audit transactions, replay results, reporting receipts and exit-shadow
+observations use the selected research endpoint through `research_storage.py`.
+The prior direct `SUPABASE_URL` / `INTRADAY_SUPABASE_KEY` research routing lived
+in `intraday_capture.py`, `shadow_inputs.py`, `shadow_worker.py`,
+`exit_shadow_store.py`, `research/calibration_store.py`,
+`research/calibration_worker.py`, `research/intraday_reporting*.py`,
+`research/exit_shadow_review.py` and the backend research services.
+The legacy cloud backend remains available for staged migration; live-source
+reads and operational `agent_logs` are not retired.
+
+The cloud-only assumption was active in production, including recorded research;
+it did not place live trades. In local mode the Actions research reporter is
+replaced by host-side reporting, and automatic `purge_intraday_capture` calls
+are bypassed to preserve local history. Existing spool bounds still apply.
+The host-side reporter cannot report a complete outage of its own host.
+
+Supabase's 12.38 GB / 5.5 GB egress warning motivated moving research rather than
+repeatedly deleting its evidence. See
+`decisions/2026-10-26_filesystem-research-storage.md`.
+Recover prior code with `git show 32febff:<path>` and corresponding tests.
+Return to cloud-only operation only with a verified reverse migration and an
+acceptable measured bandwidth budget; never select the emptied cloud store
+as a fallback for a local outage.
+
 ## 2026-10-06: Uniform fifteen-minute research watchdog schedule
 
 The active `*/15 * * * *` schedule in

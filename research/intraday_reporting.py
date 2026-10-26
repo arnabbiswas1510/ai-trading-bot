@@ -22,7 +22,9 @@ import math
 import os
 from pathlib import Path
 import re
+import signal
 import sys
+import threading
 import uuid
 from collections import Counter
 from zoneinfo import ZoneInfo
@@ -795,7 +797,7 @@ def main(env=None, http=requests, now=None):
                         env.get("TELEGRAM_CHAT_IDS", "").split(","), http)
     issues = Issues(env.get("GITHUB_REPOSITORY", ""), env.get("GITHUB_TOKEN", ""), http)
     try:
-        store = Store(env.get("SUPABASE_URL", ""), env.get("INTRADAY_SUPABASE_KEY", ""), http)
+        store = Store.configured(http)
         result = run(store, telegram, issues, now, env.get("TRADING_RUNTIME_MODE") or "observe")
         if not result.get("leased_elsewhere"):
             fallback_alert(issues, telegram, "watchdog",
@@ -823,30 +825,91 @@ def main(env=None, http=requests, now=None):
         return 1
 
 
-if __name__ == "__main__":
-    # The DB lease outlives the workflow timeout. Manual runs are bounded too,
-    # so a stalled previous owner cannot resume after its lease is reassigned.
-    import signal
+def next_sweep(now):
+    """Match the legacy UTC cron: five minutes weekday 13–20h, fifteen otherwise."""
+    candidate = now.astimezone(UTC).replace(second=0, microsecond=0) + dt.timedelta(minutes=1)
+    for _ in range(15):
+        interval = 5 if candidate.weekday() < 5 and 13 <= candidate.hour <= 20 else 15
+        if candidate.minute % interval == 0:
+            return candidate
+        candidate += dt.timedelta(minutes=1)
+    raise AssertionError("Reporting schedule failed to find the next quarter-hour")
+
+
+class ReportingStopped(BaseException):
+    """Interrupt a blocking sweep without treating operator shutdown as a failure."""
+
+
+def serve(*, stop=None, clock=lambda: dt.datetime.now(UTC), sweep=main):
+    stop = stop or threading.Event()
+    previous = {}
+
+    def shutdown(*_):
+        stop.set()
+        raise ReportingStopped()
+
     def deadline(*_):
         raise RuntimeBudgetExceeded()
-    signal.signal(signal.SIGALRM, deadline)
-    signal.alarm(540)
+
+    try:
+        for sig, handler in ((signal.SIGTERM, shutdown), (signal.SIGINT, shutdown),
+                             (signal.SIGALRM, deadline)):
+            previous[sig] = signal.signal(sig, handler)
+        while not stop.is_set():
+            try:
+                signal.alarm(540)
+                sweep()
+            except (Exception, RuntimeBudgetExceeded) as exc:
+                diagnostics.emit("research-reporting", "reporting_loop_failed", error=exc)
+            finally:
+                signal.alarm(0)
+            now = clock()
+            stop.wait(max(1, (next_sweep(now) - now).total_seconds()))
+    except ReportingStopped:
+        pass
+    finally:
+        signal.alarm(0)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+    return 0
+
+
+def cli(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--save-calibration", type=Path,
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--loop", action="store_true",
+                      help="Run local reporting continuously, with durable catchup and bounded sweeps.")
+    mode.add_argument("--save-calibration", type=Path,
                         help="Archive an existing frozen evaluation; does not run or select experiments.")
-    args = parser.parse_args()
-    if args.save_calibration:
-        try:
+    args = parser.parse_args(argv)
+    if args.loop:
+        from research_storage import backend
+        if backend() != "local":
+            parser.error("--loop requires RESEARCH_STORAGE_BACKEND=local; use the cloud watchdog in legacy mode.")
+        return serve()
+    def deadline(*_):
+        raise RuntimeBudgetExceeded()
+    previous = signal.signal(signal.SIGALRM, deadline)
+    signal.alarm(540)
+    try:
+        if args.save_calibration:
             with args.save_calibration.open("rb") as stream:
                 raw = stream.read(4 * 1024 * 1024 + 1)
             if len(raw) > 4 * 1024 * 1024:
                 raise ReportingError("Saved calibration exceeds 4 MiB")
-            store = Store(os.getenv("SUPABASE_URL", ""), os.getenv("INTRADAY_SUPABASE_KEY", ""))
+            store = Store.configured()
             print(save_calibration(store, json.loads(raw)))
-        except Exception as exc:
-            diagnostics.emit("research-reporting", "calibration_archive_failed", error=exc)
-            print("::error::" + safe_detail(exc), file=sys.stderr)
-            raise SystemExit(1)
-    else:
-        raise SystemExit(main())
+            return 0
+        return main()
+    except (Exception, RuntimeBudgetExceeded) as exc:
+        diagnostics.emit("research-reporting", "calibration_archive_failed", error=exc)
+        print("::error::" + safe_detail(exc), file=sys.stderr)
+        return 1
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())

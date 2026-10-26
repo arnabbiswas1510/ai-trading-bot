@@ -58,7 +58,7 @@ def test_missing_private_client_configuration_emits_without_private_client(monke
     monkeypatch.setattr(service.db, "SUPABASE_URL", "")
     with pytest.raises(service.ResearchUnavailable, match="agent_logs"):
         service.get_client()
-    assert emissions.call_args.args == ("web", "research_credentials_missing")
+    assert emissions.call_args.args == ("web", "research_client_failed")
 
 
 def test_reporting_retains_http_and_database_code_without_body(emissions):
@@ -94,6 +94,7 @@ def test_recorder_failure_reports_phase_even_when_private_health_also_fails(monk
     monkeypatch.setattr(recorder, "health", Mock(side_effect=failure))
     monkeypatch.setenv("SUPABASE_URL", "https://private.invalid")
     monkeypatch.setenv("SUPABASE_KEY", "public-test-key")
+    monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "private-test-key")
     import supabase
     monkeypatch.setattr(supabase, "create_client", Mock(return_value=Mock()))
     original_wait = recorder.stopping.wait

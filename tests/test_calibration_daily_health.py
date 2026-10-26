@@ -515,6 +515,8 @@ def test_saved_error_and_warning_contents_are_not_echoed():
 
 
 def test_row_bound_rejects_server_cap_and_allows_explicit_latest(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.invalid")
+    monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "offline")
     reader = h.Reader.__new__(h.Reader)
     reader.url, reader.key = "https://example.invalid", "offline"
     monkeypatch.setattr(reader, "_get", lambda *args: ([{}], {"Content-Range": "0-0/2001"}))
@@ -524,6 +526,8 @@ def test_row_bound_rejects_server_cap_and_allows_explicit_latest(monkeypatch):
 
 
 def test_request_limits_and_get_only(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.invalid")
+    monkeypatch.setenv("INTRADAY_SUPABASE_KEY", "offline")
     calls = []
     class Response:
         status_code = 200

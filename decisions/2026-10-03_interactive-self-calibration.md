@@ -1,7 +1,12 @@
 # Automatic research with operator-approved strategy deployment
 
 Date: 2026-10-03
-Status: Accepted with the diagnostic-refresh exception below; production activation requires the migration, credentials and deployment.
+Status: Accepted with the diagnostic-refresh and storage exceptions below; production activation requires the migration, credentials and deployment.
+
+> **2026-10-26:** [Filesystem research storage](2026-10-26_filesystem-research-storage.md)
+> moves the same private calibration tables and transactional functions into
+> local PostgreSQL after export/import. Supabase is no longer the research store
+> in that mode. Approval, revision and frozen-evidence requirements are unchanged.
 
 > 2026-10-04: [Production operator policy](2026-10-04_calibration-readiness-and-exploratory-policy.md)
 > specifies ten future evaluation sessions and explicit exploratory risk limits.
